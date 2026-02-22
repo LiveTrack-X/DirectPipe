@@ -33,6 +33,9 @@ FetchContent_Declare(
 # Only fetch JUCE if building the host
 if(DIRECTPIPE_BUILD_HOST)
     FetchContent_MakeAvailable(JUCE)
+
+    # VST2 SDK (interface headers for VST2 plugin hosting)
+    juce_set_vst2_sdk_path("${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/VST2_SDK")
 endif()
 
 # ─── Google Test (for testing) ───
