@@ -1,0 +1,71 @@
+name: Build DirectPipe
+
+on:
+  push:
+    branches: [main, claude/*]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # 수동 실행 가능
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: >
+        cmake -B build
+        -DCMAKE_BUILD_TYPE=Release
+        -DDIRECTPIPE_BUILD_OBS_PLUGIN=OFF
+        -DDIRECTPIPE_BUILD_TESTS=ON
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Run Tests
+      run: ctest --test-dir build --config Release --output-on-failure
+
+    - name: Package DirectPipe
+      shell: pwsh
+      run: |
+        # Collect build outputs
+        New-Item -ItemType Directory -Force -Path package
+
+        # Find and copy the exe
+        $exe = Get-ChildItem -Path build -Recurse -Filter "DirectPipe.exe" | Select-Object -First 1
+        if ($exe) {
+          Copy-Item $exe.FullName -Destination package/
+          Write-Host "Found exe: $($exe.FullName)"
+        } else {
+          Write-Host "Warning: DirectPipe.exe not found, listing build output:"
+          Get-ChildItem -Path build -Recurse -Filter "*.exe" | ForEach-Object { Write-Host $_.FullName }
+        }
+
+        # Copy DLLs if any
+        Get-ChildItem -Path build -Recurse -Filter "*.dll" | ForEach-Object {
+          Copy-Item $_.FullName -Destination package/
+        }
+
+        # Create portable.flag for portable mode testing
+        New-Item -ItemType File -Path package/portable.flag
+
+        # Create config directory
+        New-Item -ItemType Directory -Force -Path package/config
+
+    - name: Upload DirectPipe Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: DirectPipe-Windows-x64
+        path: package/
+        retention-days: 30
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: build/Testing/
+        retention-days: 7
