@@ -8,12 +8,12 @@
  */
 #pragma once
 
-#include <JuceHeader.h>
 #include <atomic>
 #include <functional>
 #include <vector>
 #include <string>
 #include <mutex>
+#include <algorithm>
 
 namespace directpipe {
 
