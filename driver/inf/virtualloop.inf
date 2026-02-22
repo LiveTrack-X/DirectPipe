@@ -1,0 +1,128 @@
+;
+; virtualloop.inf
+;
+; INF file for the Virtual Loop Mic WDM audio capture driver.
+;
+; This driver exposes a virtual microphone device ("Virtual Loop Mic")
+; that reads PCM audio from the DirectPipe shared memory region.
+;
+; Based on the Microsoft Sysvad sample INF structure.
+;
+; Installation:
+;   pnputil /add-driver virtualloop.inf /install
+;
+; Uninstallation:
+;   pnputil /delete-driver virtualloop.inf /uninstall /force
+;
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = MEDIA
+ClassGUID   = {4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider    = %ManufacturerName%
+CatalogFile = virtualloop.cat
+DriverVer   = 02/22/2026,3.1.0.0
+PnpLockdown = 1
+
+; ---- Supported OS versions ------------------------------------------------
+; Windows 10 version 1903 (19H1) and later
+[Manufacturer]
+%ManufacturerName% = DeviceList, NTamd64.10.0...18362
+
+; ---- Device list (x64 only) -----------------------------------------------
+[DeviceList.NTamd64.10.0...18362]
+%DeviceName% = VirtualLoop_Install, ROOT\VirtualLoopMic
+
+; ============================================================================
+; Installation section
+; ============================================================================
+
+[VirtualLoop_Install]
+Include   = ks.inf, wdmaudio.inf
+Needs     = KS.Registration, WDMAUDIO.Registration
+CopyFiles = VirtualLoop_CopyFiles
+AddReg    = VirtualLoop_AddReg
+
+[VirtualLoop_Install.Services]
+AddService = VirtualLoopMic, 0x00000002, VirtualLoop_ServiceInstall
+
+; ---- Service installation --------------------------------------------------
+[VirtualLoop_ServiceInstall]
+DisplayName   = %ServiceName%
+ServiceType   = 1                  ; SERVICE_KERNEL_DRIVER
+StartType     = 3                  ; SERVICE_DEMAND_START
+ErrorControl  = 1                  ; SERVICE_ERROR_NORMAL
+ServiceBinary = %13%\virtualloop.sys
+
+; ---- File copy -------------------------------------------------------------
+[VirtualLoop_CopyFiles]
+virtualloop.sys
+
+[DestinationDirs]
+VirtualLoop_CopyFiles = 13        ; Driver Store directory (DIRID 13)
+
+; ---- Source disk/file information -------------------------------------------
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+virtualloop.sys = 1
+
+; ---- Registry entries ------------------------------------------------------
+; Register the device interfaces and audio endpoint properties.
+[VirtualLoop_AddReg]
+; Create a device interface for the capture endpoint
+HKR, "Interfaces\{6994AD04-93EF-11D0-A3CC-00A0C9223196}", "AutoAttach", 1, 01, 00, 00, 00
+
+; Register the KS filter factory name (matches adapter.cpp PcRegisterSubdevice name)
+HKR, "VirtualLoopCapture", "FriendlyName", , %DeviceName%
+
+; Audio endpoint properties
+; PKEY_AudioEndpoint_Association — associates this endpoint with the audio adapter
+HKR, "EP\\0", %PKEY_AudioEndpoint_Association%, %REG_BINARY%, \
+    01, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00
+
+; PKEY_AudioEndpoint_Supports_EventDriven_Mode — enable event-driven WASAPI
+HKR, "EP\\0", %PKEY_AudioEndpoint_Supports_EventDriven_Mode%, %REG_DWORD%, 0x00000001
+
+; ---- WDF co-installer (not needed for WDM, but included for completeness) --
+[VirtualLoop_Install.Wdf]
+; This is a WDM driver (not KMDF), so no WDF section needed.
+; If migrating to KMDF in the future, add KmdfService directives here.
+
+; ---- Device interface installation -----------------------------------------
+[VirtualLoop_Install.Interfaces]
+; Register the KS capture interface
+AddInterface = %KSCATEGORY_AUDIO%, %KSNAME_VirtualLoopCapture%, VirtualLoop_CaptureInterface
+AddInterface = %KSCATEGORY_CAPTURE%, %KSNAME_VirtualLoopCapture%, VirtualLoop_CaptureInterface
+
+[VirtualLoop_CaptureInterface]
+AddReg = VirtualLoop_CaptureInterface_AddReg
+
+[VirtualLoop_CaptureInterface_AddReg]
+HKR,, "FriendlyName", , %DeviceName%
+HKR,, "CLSID", , "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"     ; KSProxy.ax
+
+; ============================================================================
+; Strings
+; ============================================================================
+
+[Strings]
+; Localizable strings
+ManufacturerName = "DirectPipe"
+DeviceName       = "Virtual Loop Mic"
+ServiceName      = "Virtual Loop Mic Audio Capture Driver"
+DiskName         = "Virtual Loop Mic Driver Installation Disk"
+
+; Non-localizable strings
+KSCATEGORY_AUDIO   = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_CAPTURE = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+KSNAME_VirtualLoopCapture = "VirtualLoopCapture"
+
+; Property keys (PKEY format)
+PKEY_AudioEndpoint_Association                  = "{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},2"
+PKEY_AudioEndpoint_Supports_EventDriven_Mode    = "{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},7"
+
+; Registry value types
+REG_BINARY  = 0x00000001
+REG_DWORD   = 0x00010001

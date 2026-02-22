@@ -4,6 +4,9 @@ add_executable(directpipe-tests
     test_ring_buffer.cpp
     test_shared_memory.cpp
     test_latency.cpp
+    test_action_dispatcher.cpp
+    test_websocket_protocol.cpp
+    test_ipc_integration.cpp
 )
 
 target_link_libraries(directpipe-tests PRIVATE
