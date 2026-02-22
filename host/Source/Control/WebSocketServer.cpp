@@ -80,15 +80,10 @@ void WebSocketServer::stop()
 void WebSocketServer::serverThread()
 {
     while (running_.load(std::memory_order_acquire)) {
-        auto client = std::make_unique<juce::StreamingSocket>();
-
         if (serverSocket_->waitUntilReady(true, 500) > 0) {
             if (serverSocket_->isConnected()) {
                 auto accepted = serverSocket_->waitForNextConnection();
                 if (accepted) {
-                    auto clientSocket = std::make_unique<juce::StreamingSocket>();
-                    // In practice, JUCE StreamingSocket::waitForNextConnection
-                    // returns a raw socket. Here we use a simplified approach.
                     auto conn = std::make_unique<ClientConnection>();
                     conn->socket = std::unique_ptr<juce::StreamingSocket>(accepted);
                     conn->thread = std::thread([this, rawPtr = conn.get()] {
