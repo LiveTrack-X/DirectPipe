@@ -25,7 +25,7 @@ HotkeyHandler::~HotkeyHandler()
 
 static HotkeyHandler* s_hotkeyInstance = nullptr;
 
-LRESULT CALLBACK HotkeyHandler::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM /*lParam*/)
+LRESULT CALLBACK HotkeyHandler::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_HOTKEY && s_hotkeyInstance) {
         s_hotkeyInstance->processHotkeyMessage(static_cast<int>(wParam));

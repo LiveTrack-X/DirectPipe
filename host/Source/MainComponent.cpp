@@ -75,7 +75,7 @@ MainComponent::MainComponent()
     // ── Section Labels ──
     auto setupLabel = [](juce::Label& label, const juce::String& text) {
         label.setText(text, juce::dontSendNotification);
-        label.setFont(juce::FontOptions(16.0f, juce::Font::bold));
+        label.setFont(juce::Font(16.0f, juce::Font::bold));
         label.setColour(juce::Label::textColourId, juce::Colours::white);
     };
     setupLabel(inputSectionLabel_, "INPUT");
@@ -89,7 +89,7 @@ MainComponent::MainComponent()
 
     // ── Status Bar Labels ──
     auto setupStatusLabel = [this](juce::Label& label) {
-        label.setFont(juce::FontOptions(12.0f));
+        label.setFont(juce::Font(12.0f));
         label.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
         addAndMakeVisible(label);
     };
