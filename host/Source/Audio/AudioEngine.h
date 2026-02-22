@@ -22,9 +22,10 @@ namespace directpipe {
  * @brief Main audio processing engine.
  *
  * Coordinates:
- * 1. WASAPI Exclusive mode input from USB microphone
- * 2. VST plugin chain processing
- * 3. Output routing to 3 destinations simultaneously
+ * 1. WASAPI Shared mode input from USB microphone (non-exclusive)
+ * 2. VST plugin chain processing with atomic bypass flags
+ * 3. Output routing to shared memory (Virtual Loop Mic) and monitor
+ * 4. Mono/Stereo channel mode selection
  */
 class AudioEngine : public juce::AudioIODeviceCallback {
 public:
@@ -99,6 +100,24 @@ public:
     bool isMonitorEnabled() const { return monitorEnabled_; }
 
     /**
+     * @brief Set channel mode (1 = Mono, 2 = Stereo).
+     */
+    void setChannelMode(int channels);
+    int getChannelMode() const { return channelMode_.load(std::memory_order_relaxed); }
+
+    /**
+     * @brief Set input gain (0.0 - 2.0+).
+     */
+    void setInputGain(float gain) { inputGain_.store(gain, std::memory_order_relaxed); }
+    float getInputGain() const { return inputGain_.load(std::memory_order_relaxed); }
+
+    /**
+     * @brief Set master mute (all outputs).
+     */
+    void setMuted(bool muted) { muted_.store(muted, std::memory_order_relaxed); }
+    bool isMuted() const { return muted_.load(std::memory_order_relaxed); }
+
+    /**
      * @brief Get the current input level (0.0 - 1.0).
      */
     float getInputLevel() const { return inputLevel_.load(std::memory_order_relaxed); }
@@ -154,13 +173,16 @@ private:
     bool running_ = false;
     bool monitorEnabled_ = true;
 
-    // Thread-safe level meters
+    // Thread-safe control flags (set from any thread, read by audio thread)
     std::atomic<float> inputLevel_{0.0f};
     std::atomic<float> outputLevel_{0.0f};
+    std::atomic<float> inputGain_{1.0f};
+    std::atomic<int> channelMode_{1};    // 1 = Mono, 2 = Stereo
+    std::atomic<bool> muted_{false};
 
     // Current audio settings
     double currentSampleRate_ = 48000.0;
-    int currentBufferSize_ = 128;
+    int currentBufferSize_ = 480;  // v3.1: default 480 samples
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioEngine)
 };

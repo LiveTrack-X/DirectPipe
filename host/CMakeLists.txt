@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "1.0.0"
+    VERSION "3.1.0"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -37,6 +37,28 @@ target_sources(DirectPipe PRIVATE
     Source/UI/PresetManager.cpp
     Source/UI/DirectPipeLookAndFeel.h
     Source/UI/DirectPipeLookAndFeel.cpp
+    Source/UI/AudioSettings.h
+    Source/UI/AudioSettings.cpp
+    Source/UI/OutputPanel.h
+    Source/UI/OutputPanel.cpp
+    Source/UI/ControlSettingsPanel.h
+    Source/UI/ControlSettingsPanel.cpp
+    Source/Control/ActionDispatcher.h
+    Source/Control/ActionDispatcher.cpp
+    Source/Control/StateBroadcaster.h
+    Source/Control/StateBroadcaster.cpp
+    Source/Control/HotkeyHandler.h
+    Source/Control/HotkeyHandler.cpp
+    Source/Control/MidiHandler.h
+    Source/Control/MidiHandler.cpp
+    Source/Control/WebSocketServer.h
+    Source/Control/WebSocketServer.cpp
+    Source/Control/HttpApiServer.h
+    Source/Control/HttpApiServer.cpp
+    Source/Control/ControlMapping.h
+    Source/Control/ControlMapping.cpp
+    Source/Control/ControlManager.h
+    Source/Control/ControlManager.cpp
 )
 
 target_compile_definitions(DirectPipe PRIVATE
@@ -47,7 +69,7 @@ target_compile_definitions(DirectPipe PRIVATE
     JUCE_PLUGINHOST_VST3=1
     JUCE_PLUGINHOST_VST=1
     JUCE_WASAPI=1
-    JUCE_WASAPI_EXCLUSIVE=1
+    JUCE_WASAPI_EXCLUSIVE=0
 )
 
 target_link_libraries(DirectPipe PRIVATE

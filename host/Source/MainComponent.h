@@ -1,33 +1,42 @@
 /**
  * @file MainComponent.h
- * @brief Main application component — combines audio engine and UI
+ * @brief Main application component — combines audio engine, control system, and UI
  */
 #pragma once
 
 #include <JuceHeader.h>
 #include "Audio/AudioEngine.h"
+#include "Control/ActionDispatcher.h"
+#include "Control/StateBroadcaster.h"
+#include "Control/ControlManager.h"
 #include "UI/DeviceSelector.h"
 #include "UI/PluginChainEditor.h"
 #include "UI/LevelMeter.h"
 #include "UI/PresetManager.h"
 #include "UI/DirectPipeLookAndFeel.h"
+#include "UI/AudioSettings.h"
+#include "UI/OutputPanel.h"
+#include "UI/ControlSettingsPanel.h"
 
 #include <memory>
 
 namespace directpipe {
 
 /**
- * @brief Root UI component for the DirectPipe application.
+ * @brief Root UI component for the DirectPipe v3.1 application.
  *
- * Hosts the audio engine and all UI sub-components:
- * - Device selector (input/output)
+ * Hosts the audio engine, external control system, and all UI sub-components:
+ * - Device selector (input)
+ * - Audio settings (sample rate, buffer, channel mode)
  * - VST plugin chain editor
  * - Level meters
- * - Output controls
+ * - Output panel (Virtual Loop Mic + Monitor)
+ * - Control settings (Hotkeys, MIDI, Stream Deck)
  * - Status bar with latency/CPU info
  */
 class MainComponent : public juce::Component,
-                      public juce::Timer {
+                      public juce::Timer,
+                      public ActionListener {
 public:
     MainComponent();
     ~MainComponent() override;
@@ -35,43 +44,50 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
+    // ActionListener
+    void onAction(const ActionEvent& event) override;
+
 private:
     void timerCallback() override;
 
     // Audio engine (core)
     AudioEngine audioEngine_;
 
+    // External control system
+    ActionDispatcher dispatcher_;
+    StateBroadcaster broadcaster_;
+    std::unique_ptr<ControlManager> controlManager_;
+
     // Custom look and feel
     DirectPipeLookAndFeel lookAndFeel_;
 
     // UI Components
     std::unique_ptr<DeviceSelector> deviceSelector_;
+    std::unique_ptr<AudioSettings> audioSettings_;
     std::unique_ptr<PluginChainEditor> pluginChainEditor_;
     std::unique_ptr<LevelMeter> inputMeter_;
-    std::unique_ptr<LevelMeter> outputMeterOBS_;
-    std::unique_ptr<LevelMeter> outputMeterVMic_;
-    std::unique_ptr<LevelMeter> outputMeterMonitor_;
+    std::unique_ptr<LevelMeter> outputMeter_;
+    std::unique_ptr<OutputPanel> outputPanel_;
+    std::unique_ptr<ControlSettingsPanel> controlSettingsPanel_;
 
-    // Output volume sliders
-    juce::Slider obsVolumeSlider_;
-    juce::Slider vmicVolumeSlider_;
-    juce::Slider monitorVolumeSlider_;
+    // Input gain slider
+    juce::Slider inputGainSlider_;
+    juce::Label inputGainLabel_{"", "Gain:"};
 
-    // Output enable toggles
-    juce::ToggleButton obsEnableBtn_{"OBS Plugin"};
-    juce::ToggleButton vmicEnableBtn_{"Virtual Mic"};
-    juce::ToggleButton monitorEnableBtn_{"Monitor"};
+    // Master mute button
+    juce::TextButton panicMuteBtn_{"PANIC MUTE"};
 
     // Status bar labels
     juce::Label latencyLabel_;
     juce::Label cpuLabel_;
     juce::Label formatLabel_;
-    juce::Label obsStatusLabel_;
+    juce::Label portableLabel_;
 
     // Section labels
     juce::Label inputSectionLabel_;
     juce::Label vstSectionLabel_;
     juce::Label outputSectionLabel_;
+    juce::Label controlSectionLabel_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

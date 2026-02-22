@@ -1,0 +1,76 @@
+/**
+ * @file HttpApiServer.h
+ * @brief Simple REST API server for universal control
+ *
+ * Provides HTTP GET endpoints for controlling DirectPipe.
+ * Stream Deck's "Open Website" action can call these directly.
+ */
+#pragma once
+
+#include <JuceHeader.h>
+#include "ActionDispatcher.h"
+#include "StateBroadcaster.h"
+
+#include <atomic>
+#include <memory>
+#include <string>
+#include <thread>
+
+namespace directpipe {
+
+/**
+ * @brief Lightweight HTTP server providing REST API endpoints.
+ *
+ * Endpoints:
+ * - GET /api/status                → Full state JSON
+ * - GET /api/bypass/:index/toggle  → Toggle plugin bypass
+ * - GET /api/bypass/master/toggle  → Toggle master bypass
+ * - GET /api/mute/toggle           → Toggle mute
+ * - GET /api/mute/panic            → Panic mute
+ * - GET /api/volume/:target/:value → Set volume
+ * - GET /api/preset/:index         → Load preset
+ * - GET /api/gain/:delta           → Adjust input gain
+ */
+class HttpApiServer {
+public:
+    HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster);
+    ~HttpApiServer();
+
+    /**
+     * @brief Start the HTTP server.
+     * @param port Port to listen on (default 8766).
+     * @return true if started successfully.
+     */
+    bool start(int port = 8766);
+
+    /**
+     * @brief Stop the server.
+     */
+    void stop();
+
+    /**
+     * @brief Check if running.
+     */
+    bool isRunning() const { return running_.load(std::memory_order_relaxed); }
+
+    /**
+     * @brief Get the port.
+     */
+    int getPort() const { return port_; }
+
+private:
+    void serverThread();
+    void handleClient(std::unique_ptr<juce::StreamingSocket> client);
+    std::string processRequest(const std::string& method, const std::string& path);
+    std::string makeResponse(int statusCode, const std::string& body);
+
+    ActionDispatcher& dispatcher_;
+    StateBroadcaster& broadcaster_;
+
+    std::unique_ptr<juce::StreamingSocket> serverSocket_;
+    std::thread serverThread_;
+    std::atomic<bool> running_{false};
+    int port_ = 8766;
+};
+
+} // namespace directpipe

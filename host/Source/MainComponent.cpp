@@ -1,9 +1,10 @@
 /**
  * @file MainComponent.cpp
- * @brief Main application component implementation
+ * @brief Main application component implementation (v3.1)
  */
 
 #include "MainComponent.h"
+#include "Control/ControlMapping.h"
 
 namespace directpipe {
 
@@ -14,9 +15,18 @@ MainComponent::MainComponent()
     // Initialize audio engine
     audioEngine_.initialize();
 
+    // Initialize external control system
+    controlManager_ = std::make_unique<ControlManager>(dispatcher_, broadcaster_);
+    controlManager_->initialize();
+    dispatcher_.addListener(this);
+
     // ── Device Selector ──
     deviceSelector_ = std::make_unique<DeviceSelector>(audioEngine_);
     addAndMakeVisible(*deviceSelector_);
+
+    // ── Audio Settings (v3.1: sample rate, buffer, channel mode) ──
+    audioSettings_ = std::make_unique<AudioSettings>(audioEngine_);
+    addAndMakeVisible(*audioSettings_);
 
     // ── Plugin Chain Editor ──
     pluginChainEditor_ = std::make_unique<PluginChainEditor>(audioEngine_.getVSTChain());
@@ -24,61 +34,43 @@ MainComponent::MainComponent()
 
     // ── Level Meters ──
     inputMeter_ = std::make_unique<LevelMeter>("INPUT");
-    outputMeterOBS_ = std::make_unique<LevelMeter>("OBS");
-    outputMeterVMic_ = std::make_unique<LevelMeter>("VMic");
-    outputMeterMonitor_ = std::make_unique<LevelMeter>("Mon");
+    outputMeter_ = std::make_unique<LevelMeter>("OUTPUT");
     addAndMakeVisible(*inputMeter_);
-    addAndMakeVisible(*outputMeterOBS_);
-    addAndMakeVisible(*outputMeterVMic_);
-    addAndMakeVisible(*outputMeterMonitor_);
+    addAndMakeVisible(*outputMeter_);
 
-    // ── Output Volume Sliders ──
-    auto setupSlider = [this](juce::Slider& s) {
-        s.setSliderStyle(juce::Slider::LinearHorizontal);
-        s.setRange(0.0, 1.0, 0.01);
-        s.setValue(1.0);
-        s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
-        addAndMakeVisible(s);
-    };
-    setupSlider(obsVolumeSlider_);
-    setupSlider(vmicVolumeSlider_);
-    setupSlider(monitorVolumeSlider_);
+    // ── Input Gain Slider ──
+    inputGainLabel_.setColour(juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible(inputGainLabel_);
 
-    obsVolumeSlider_.onValueChange = [this] {
-        audioEngine_.getOutputRouter().setVolume(
-            OutputRouter::Output::SharedMemory, static_cast<float>(obsVolumeSlider_.getValue()));
+    inputGainSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
+    inputGainSlider_.setRange(0.0, 2.0, 0.01);
+    inputGainSlider_.setValue(1.0);
+    inputGainSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
+    inputGainSlider_.onValueChange = [this] {
+        audioEngine_.setInputGain(static_cast<float>(inputGainSlider_.getValue()));
     };
-    vmicVolumeSlider_.onValueChange = [this] {
-        audioEngine_.getOutputRouter().setVolume(
-            OutputRouter::Output::VirtualMic, static_cast<float>(vmicVolumeSlider_.getValue()));
-    };
-    monitorVolumeSlider_.onValueChange = [this] {
-        audioEngine_.getOutputRouter().setVolume(
-            OutputRouter::Output::Monitor, static_cast<float>(monitorVolumeSlider_.getValue()));
-    };
+    addAndMakeVisible(inputGainSlider_);
 
-    // ── Output Enable Toggles ──
-    addAndMakeVisible(obsEnableBtn_);
-    addAndMakeVisible(vmicEnableBtn_);
-    addAndMakeVisible(monitorEnableBtn_);
+    // ── Output Panel (v3.1: Virtual Loop Mic + Monitor) ──
+    outputPanel_ = std::make_unique<OutputPanel>(audioEngine_);
+    addAndMakeVisible(*outputPanel_);
 
-    obsEnableBtn_.setToggleState(true, juce::dontSendNotification);
-    vmicEnableBtn_.setToggleState(true, juce::dontSendNotification);
-    monitorEnableBtn_.setToggleState(true, juce::dontSendNotification);
+    // ── Control Settings Panel (v3.1: Hotkeys, MIDI, Stream Deck) ──
+    controlSettingsPanel_ = std::make_unique<ControlSettingsPanel>(*controlManager_);
+    addAndMakeVisible(*controlSettingsPanel_);
 
-    obsEnableBtn_.onClick = [this] {
-        audioEngine_.getOutputRouter().setEnabled(
-            OutputRouter::Output::SharedMemory, obsEnableBtn_.getToggleState());
+    // ── Panic Mute Button ──
+    panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
+    panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    panicMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    panicMuteBtn_.onClick = [this] {
+        bool muted = !audioEngine_.isMuted();
+        audioEngine_.setMuted(muted);
+        panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
+        panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                                juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
     };
-    vmicEnableBtn_.onClick = [this] {
-        audioEngine_.getOutputRouter().setEnabled(
-            OutputRouter::Output::VirtualMic, vmicEnableBtn_.getToggleState());
-    };
-    monitorEnableBtn_.onClick = [this] {
-        audioEngine_.getOutputRouter().setEnabled(
-            OutputRouter::Output::Monitor, monitorEnableBtn_.getToggleState());
-        audioEngine_.setMonitorEnabled(monitorEnableBtn_.getToggleState());
-    };
+    addAndMakeVisible(panicMuteBtn_);
 
     // ── Section Labels ──
     auto setupLabel = [](juce::Label& label, const juce::String& text) {
@@ -89,9 +81,11 @@ MainComponent::MainComponent()
     setupLabel(inputSectionLabel_, "INPUT");
     setupLabel(vstSectionLabel_, "VST CHAIN");
     setupLabel(outputSectionLabel_, "OUTPUT");
+    setupLabel(controlSectionLabel_, "CONTROLS");
     addAndMakeVisible(inputSectionLabel_);
     addAndMakeVisible(vstSectionLabel_);
     addAndMakeVisible(outputSectionLabel_);
+    addAndMakeVisible(controlSectionLabel_);
 
     // ── Status Bar Labels ──
     auto setupStatusLabel = [this](juce::Label& label) {
@@ -102,20 +96,81 @@ MainComponent::MainComponent()
     setupStatusLabel(latencyLabel_);
     setupStatusLabel(cpuLabel_);
     setupStatusLabel(formatLabel_);
-    setupStatusLabel(obsStatusLabel_);
+    setupStatusLabel(portableLabel_);
+
+    // Show portable mode indicator
+    if (ControlMappingStore::isPortableMode()) {
+        portableLabel_.setText("Portable Mode", juce::dontSendNotification);
+        portableLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6C63FF));
+    }
 
     // Start UI update timer (30 Hz)
     startTimerHz(30);
 
-    setSize(700, 600);
+    setSize(800, 750);
 }
 
 MainComponent::~MainComponent()
 {
     stopTimer();
+    dispatcher_.removeListener(this);
+    controlManager_->shutdown();
     audioEngine_.shutdown();
     setLookAndFeel(nullptr);
 }
+
+// ─── Action handling ────────────────────────────────────────────────────────
+
+void MainComponent::onAction(const ActionEvent& event)
+{
+    switch (event.action) {
+        case Action::PluginBypass:
+            audioEngine_.getVSTChain().setPluginBypassed(event.intParam,
+                !audioEngine_.getVSTChain().getPluginSlot(event.intParam)->bypassed);
+            break;
+
+        case Action::MasterBypass:
+            // Toggle all plugins bypass
+            for (int i = 0; i < audioEngine_.getVSTChain().getPluginCount(); ++i) {
+                auto* slot = audioEngine_.getVSTChain().getPluginSlot(i);
+                if (slot) audioEngine_.getVSTChain().setPluginBypassed(i, !slot->bypassed);
+            }
+            break;
+
+        case Action::PanicMute:
+            audioEngine_.setMuted(true);
+            panicMuteBtn_.setButtonText("UNMUTE");
+            panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
+            break;
+
+        case Action::ToggleMute:
+        case Action::InputMuteToggle: {
+            bool muted = !audioEngine_.isMuted();
+            audioEngine_.setMuted(muted);
+            panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
+            panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                                    juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+            break;
+        }
+
+        case Action::InputGainAdjust:
+            audioEngine_.setInputGain(audioEngine_.getInputGain() + event.floatParam * 0.1f);
+            inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
+            break;
+
+        case Action::SetVolume:
+            if (event.stringParam == "monitor")
+                audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
+            else if (event.stringParam == "vmic")
+                audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::VirtualMic, event.floatParam);
+            break;
+
+        default:
+            break;
+    }
+}
+
+// ─── Paint ──────────────────────────────────────────────────────────────────
 
 void MainComponent::paint(juce::Graphics& g)
 {
@@ -123,62 +178,73 @@ void MainComponent::paint(juce::Graphics& g)
 
     // Draw section separators
     g.setColour(juce::Colour(0xFF3A3A5A));
+    int w = getWidth();
+    int halfW = w / 2;
 
-    auto bounds = getLocalBounds().reduced(10);
-    int inputSectionBottom = bounds.getY() + 100;
-    int vstSectionBottom = inputSectionBottom + 250;
-
-    g.drawHorizontalLine(inputSectionBottom, 10.0f, static_cast<float>(getWidth() - 10));
-    g.drawHorizontalLine(vstSectionBottom, 10.0f, static_cast<float>(getWidth() - 10));
+    // Left column separators
+    g.drawHorizontalLine(130, 10.0f, static_cast<float>(halfW - 5));
+    g.drawHorizontalLine(370, 10.0f, static_cast<float>(halfW - 5));
 
     // Status bar background
     g.setColour(juce::Colour(0xFF15152A));
-    g.fillRect(0, getHeight() - 30, getWidth(), 30);
+    g.fillRect(0, getHeight() - 30, w, 30);
 }
+
+// ─── Layout ─────────────────────────────────────────────────────────────────
 
 void MainComponent::resized()
 {
     auto bounds = getLocalBounds().reduced(10);
+    int halfW = bounds.getWidth() / 2 - 5;
+
+    // ═══ Left Column: Input + VST Chain ═══
     int y = bounds.getY();
 
     // ── INPUT Section ──
     inputSectionLabel_.setBounds(bounds.getX(), y, 100, 24);
     y += 26;
-    deviceSelector_->setBounds(bounds.getX(), y, bounds.getWidth() - 60, 60);
-    inputMeter_->setBounds(bounds.getRight() - 50, y, 40, 60);
-    y += 70;
+
+    deviceSelector_->setBounds(bounds.getX(), y, halfW - 50, 50);
+    inputMeter_->setBounds(bounds.getX() + halfW - 45, y, 40, 50);
+    y += 56;
+
+    // Input gain row
+    inputGainLabel_.setBounds(bounds.getX(), y, 40, 24);
+    inputGainSlider_.setBounds(bounds.getX() + 44, y, halfW - 44, 24);
+    y += 30;
 
     // ── VST CHAIN Section ──
     vstSectionLabel_.setBounds(bounds.getX(), y, 200, 24);
     y += 26;
-    pluginChainEditor_->setBounds(bounds.getX(), y, bounds.getWidth(), 210);
-    y += 220;
 
-    // ── OUTPUT Section ──
-    outputSectionLabel_.setBounds(bounds.getX(), y, 200, 24);
-    y += 28;
+    int vstH = bounds.getBottom() - y - 40; // leave room for status bar + mute btn
+    pluginChainEditor_->setBounds(bounds.getX(), y, halfW, vstH - 34);
+    y += vstH - 30;
 
-    int outputRowHeight = 30;
-    int toggleWidth = 110;
-    int meterWidth = 40;
-    int sliderWidth = bounds.getWidth() - toggleWidth - meterWidth - 20;
+    panicMuteBtn_.setBounds(bounds.getX(), y, halfW, 28);
 
-    // OBS output row
-    obsEnableBtn_.setBounds(bounds.getX(), y, toggleWidth, outputRowHeight);
-    outputMeterOBS_->setBounds(bounds.getX() + toggleWidth + 5, y, meterWidth, outputRowHeight);
-    obsVolumeSlider_.setBounds(bounds.getX() + toggleWidth + meterWidth + 10, y, sliderWidth, outputRowHeight);
-    y += outputRowHeight + 5;
+    // ═══ Right Column: Audio Settings + Output + Controls ═══
+    int rx = bounds.getX() + halfW + 10;
+    int rw = bounds.getWidth() - halfW - 10;
+    int ry = bounds.getY();
 
-    // Virtual Mic output row
-    vmicEnableBtn_.setBounds(bounds.getX(), y, toggleWidth, outputRowHeight);
-    outputMeterVMic_->setBounds(bounds.getX() + toggleWidth + 5, y, meterWidth, outputRowHeight);
-    vmicVolumeSlider_.setBounds(bounds.getX() + toggleWidth + meterWidth + 10, y, sliderWidth, outputRowHeight);
-    y += outputRowHeight + 5;
+    // Audio Settings
+    audioSettings_->setBounds(rx, ry, rw, 160);
+    ry += 164;
 
-    // Monitor output row
-    monitorEnableBtn_.setBounds(bounds.getX(), y, toggleWidth, outputRowHeight);
-    outputMeterMonitor_->setBounds(bounds.getX() + toggleWidth + 5, y, meterWidth, outputRowHeight);
-    monitorVolumeSlider_.setBounds(bounds.getX() + toggleWidth + meterWidth + 10, y, sliderWidth, outputRowHeight);
+    // Output Panel
+    outputSectionLabel_.setBounds(rx, ry, rw, 24);
+    ry += 26;
+    outputMeter_->setBounds(rx + rw - 45, ry, 40, 150);
+    outputPanel_->setBounds(rx, ry, rw - 50, 150);
+    ry += 156;
+
+    // Control Settings
+    controlSectionLabel_.setBounds(rx, ry, rw, 24);
+    ry += 26;
+
+    int controlH = bounds.getBottom() - ry - 34;
+    controlSettingsPanel_->setBounds(rx, ry, rw, controlH);
 
     // ── Status Bar ──
     int statusY = getHeight() - 28;
@@ -186,19 +252,18 @@ void MainComponent::resized()
     latencyLabel_.setBounds(5, statusY, statusW, 24);
     cpuLabel_.setBounds(statusW, statusY, statusW, 24);
     formatLabel_.setBounds(statusW * 2, statusY, statusW, 24);
-    obsStatusLabel_.setBounds(statusW * 3, statusY, statusW, 24);
+    portableLabel_.setBounds(statusW * 3, statusY, statusW, 24);
 }
+
+// ─── Timer ──────────────────────────────────────────────────────────────────
 
 void MainComponent::timerCallback()
 {
     auto& monitor = audioEngine_.getLatencyMonitor();
-    auto& router = audioEngine_.getOutputRouter();
 
     // Update level meters
     inputMeter_->setLevel(audioEngine_.getInputLevel());
-    outputMeterOBS_->setLevel(router.getLevel(OutputRouter::Output::SharedMemory));
-    outputMeterVMic_->setLevel(router.getLevel(OutputRouter::Output::VirtualMic));
-    outputMeterMonitor_->setLevel(router.getLevel(OutputRouter::Output::Monitor));
+    outputMeter_->setLevel(audioEngine_.getOutputLevel());
 
     // Update status bar
     latencyLabel_.setText(
@@ -211,15 +276,15 @@ void MainComponent::timerCallback()
 
     formatLabel_.setText(
         juce::String(static_cast<int>(monitor.getSampleRate())) + "Hz / " +
-        juce::String(monitor.getBufferSize()) + " smp",
+        juce::String(monitor.getBufferSize()) + " smp / " +
+        juce::String(audioEngine_.getChannelMode() == 1 ? "Mono" : "Stereo"),
         juce::dontSendNotification);
 
-    obsStatusLabel_.setText(
-        router.isOBSConnected() ? "OBS: Connected" : "OBS: Waiting...",
-        juce::dontSendNotification);
-
-    obsStatusLabel_.setColour(juce::Label::textColourId,
-                              router.isOBSConnected() ? juce::Colours::lightgreen : juce::Colours::yellow);
+    // Update input gain slider if changed externally
+    float currentGain = audioEngine_.getInputGain();
+    if (std::abs(static_cast<float>(inputGainSlider_.getValue()) - currentGain) > 0.01f) {
+        inputGainSlider_.setValue(currentGain, juce::dontSendNotification);
+    }
 }
 
 } // namespace directpipe

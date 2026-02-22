@@ -28,7 +28,7 @@ bool AudioEngine::initialize()
         return false;
     }
 
-    // Configure for WASAPI Exclusive mode with low latency
+    // Configure for WASAPI Shared mode (non-exclusive, preserves other apps' mic access)
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         deviceManager_.getAudioDeviceSetup(setup);
@@ -105,6 +105,11 @@ void AudioEngine::setBufferSize(int bufferSize)
     deviceManager_.setAudioDeviceSetup(setup, true);
 }
 
+void AudioEngine::setChannelMode(int channels)
+{
+    channelMode_.store(juce::jlimit(1, 2, channels), std::memory_order_relaxed);
+}
+
 void AudioEngine::setSampleRate(double sampleRate)
 {
     currentSampleRate_ = sampleRate;
@@ -147,32 +152,57 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 {
     latencyMonitor_.markCallbackStart();
 
+    const int chMode = channelMode_.load(std::memory_order_relaxed);
+    const float gain = inputGain_.load(std::memory_order_relaxed);
+    const bool muted = muted_.load(std::memory_order_relaxed);
+
     // 1. Copy input data into a working buffer
-    juce::AudioBuffer<float> buffer(
-        juce::jmax(numInputChannels, numOutputChannels),
-        numSamples);
+    int workChannels = juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels));
+    juce::AudioBuffer<float> buffer(workChannels, numSamples);
     buffer.clear();
 
-    for (int ch = 0; ch < numInputChannels; ++ch) {
-        if (inputChannelData[ch] != nullptr) {
-            buffer.copyFrom(ch, 0, inputChannelData[ch], numSamples);
+    if (chMode == 1) {
+        // Mono mode: mix all input channels to channel 0
+        if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
+            buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
+        }
+        if (numInputChannels > 1 && inputChannelData[1] != nullptr) {
+            buffer.addFrom(0, 0, inputChannelData[1], numSamples, 0.5f);
+            buffer.applyGain(0, 0, numSamples, 0.5f);
+        }
+    } else {
+        // Stereo mode: copy channels as-is
+        for (int ch = 0; ch < numInputChannels && ch < workChannels; ++ch) {
+            if (inputChannelData[ch] != nullptr) {
+                buffer.copyFrom(ch, 0, inputChannelData[ch], numSamples);
+            }
         }
     }
 
+    // Apply input gain
+    if (std::abs(gain - 1.0f) > 0.001f) {
+        buffer.applyGain(gain);
+    }
+
     // Measure input level (RMS)
-    if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
-        float rms = calculateRMS(inputChannelData[0], numSamples);
+    if (buffer.getNumChannels() > 0) {
+        float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
         inputLevel_.store(rms, std::memory_order_relaxed);
     }
 
     // 2. Process through VST plugin chain (inline, zero additional latency)
-    vstChain_.processBlock(buffer, numSamples);
+    //    Each plugin's bypass flag is atomic — can be toggled from any thread
+    if (!muted) {
+        vstChain_.processBlock(buffer, numSamples);
+    }
 
-    // 3. Route processed audio to all outputs
-    outputRouter_.routeAudio(buffer, numSamples);
+    // 3. Route processed audio to outputs (SharedMem → Virtual Loop Mic, Monitor)
+    if (!muted) {
+        outputRouter_.routeAudio(buffer, numSamples);
+    }
 
     // 4. Local monitor output (copy to this callback's output)
-    if (monitorEnabled_) {
+    if (monitorEnabled_ && !muted) {
         for (int ch = 0; ch < numOutputChannels && ch < buffer.getNumChannels(); ++ch) {
             std::memcpy(outputChannelData[ch],
                         buffer.getReadPointer(ch),
