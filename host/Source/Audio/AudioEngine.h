@@ -184,6 +184,9 @@ private:
     double currentSampleRate_ = 48000.0;
     int currentBufferSize_ = 480;  // v3.1: default 480 samples
 
+    // Pre-allocated work buffer (avoids heap allocation in audio callback)
+    juce::AudioBuffer<float> workBuffer_;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioEngine)
 };
 

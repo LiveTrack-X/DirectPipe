@@ -251,24 +251,13 @@ void VSTChain::closePluginEditor(int index)
 
 void VSTChain::rebuildGraph()
 {
-    // Remove all connections
-    graph_->clear();
-
-    // Re-add I/O nodes
-    auto inputNode = graph_->addNode(
-        std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
-            juce::AudioProcessorGraph::AudioGraphIOProcessor::audioInputNode));
-    auto outputNode = graph_->addNode(
-        std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
-            juce::AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
-
-    if (!inputNode || !outputNode) return;
-
-    inputNodeId_ = inputNode->nodeID;
-    outputNodeId_ = outputNode->nodeID;
+    // Remove all existing connections only (preserve nodes)
+    for (auto conn : graph_->getConnections()) {
+        graph_->removeConnection(conn);
+    }
 
     if (chain_.empty()) {
-        // Direct connection: input → output
+        // Direct connection: input -> output
         for (int ch = 0; ch < 2; ++ch) {
             graph_->addConnection({
                 {inputNodeId_, ch},
@@ -278,15 +267,7 @@ void VSTChain::rebuildGraph()
         return;
     }
 
-    // Re-add all plugin nodes and rebuild serial chain
-    // Input → Plugin[0] → Plugin[1] → ... → Plugin[N-1] → Output
-    for (auto& slot : chain_) {
-        // Plugin instance is still alive in the graph; we need to re-add it
-        // Since we cleared the graph, the nodes are gone. For simplicity,
-        // we track that plugins are managed externally.
-    }
-
-    // Build connections: Input → first plugin
+    // Build serial chain: Input -> Plugin[0] -> ... -> Plugin[N-1] -> Output
     auto prevNodeId = inputNodeId_;
     for (size_t i = 0; i < chain_.size(); ++i) {
         auto& slot = chain_[i];
@@ -299,7 +280,7 @@ void VSTChain::rebuildGraph()
         prevNodeId = slot.nodeId;
     }
 
-    // Last plugin → Output
+    // Last plugin -> Output
     for (int ch = 0; ch < 2; ++ch) {
         graph_->addConnection({
             {prevNodeId, ch},

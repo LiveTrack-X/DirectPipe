@@ -156,9 +156,13 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     const float gain = inputGain_.load(std::memory_order_relaxed);
     const bool muted = muted_.load(std::memory_order_relaxed);
 
-    // 1. Copy input data into a working buffer
+    // 1. Copy input data into the pre-allocated work buffer (no heap allocation)
     int workChannels = juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels));
-    juce::AudioBuffer<float> buffer(workChannels, numSamples);
+    auto& buffer = workBuffer_;
+    if (buffer.getNumChannels() < workChannels || buffer.getNumSamples() < numSamples) {
+        // Only resize if the pre-allocated buffer is too small (should not happen normally)
+        buffer.setSize(workChannels, numSamples, false, false, true);
+    }
     buffer.clear();
 
     if (chMode == 1) {
@@ -230,6 +234,9 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     currentSampleRate_ = device->getCurrentSampleRate();
     currentBufferSize_ = device->getCurrentBufferSizeSamples();
+
+    // Pre-allocate work buffer to avoid heap allocation in audio callback
+    workBuffer_.setSize(2, currentBufferSize_);
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
