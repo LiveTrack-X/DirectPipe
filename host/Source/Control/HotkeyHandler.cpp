@@ -4,6 +4,7 @@
  */
 
 #include "HotkeyHandler.h"
+#include <algorithm>
 
 namespace directpipe {
 

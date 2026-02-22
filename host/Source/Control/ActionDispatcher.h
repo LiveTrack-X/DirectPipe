@@ -8,7 +8,6 @@
  */
 #pragma once
 
-#include <JuceHeader.h>
 #include <atomic>
 #include <functional>
 #include <vector>

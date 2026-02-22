@@ -4,6 +4,7 @@
  */
 
 #include "ActionDispatcher.h"
+#include <algorithm>
 
 namespace directpipe {
 

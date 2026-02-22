@@ -4,6 +4,7 @@
  */
 
 #include "StateBroadcaster.h"
+#include <algorithm>
 
 namespace directpipe {
 

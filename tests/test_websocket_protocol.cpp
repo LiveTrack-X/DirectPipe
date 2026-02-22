@@ -387,6 +387,16 @@ TEST_F(StateSerializationTest, StateJsonIsReproducible) {
 
 // ─── Round-Trip Protocol Tests ──────────────────────────────────────
 
+/**
+ * Mock listener used in round-trip tests.
+ */
+class MockActionListener : public ActionListener {
+public:
+    void onAction(const ActionEvent& e) override { events.push_back(e); }
+    std::vector<ActionEvent> events;
+    ActionEvent lastEvent() const { return events.empty() ? ActionEvent{} : events.back(); }
+};
+
 TEST_F(WebSocketProtocolTest, RoundTripPluginBypass) {
     // Simulate a Stream Deck plugin sending an action and verify the full chain
     std::string clientMessage = R"({"type":"action","action":"plugin_bypass","params":{"index":1}})";
@@ -406,16 +416,6 @@ TEST_F(WebSocketProtocolTest, RoundTripPluginBypass) {
 
     dispatcher.removeListener(&listener);
 }
-
-/**
- * Mock listener used in round-trip test.
- */
-class MockActionListener : public ActionListener {
-public:
-    void onAction(const ActionEvent& e) override { events.push_back(e); }
-    std::vector<ActionEvent> events;
-    ActionEvent lastEvent() const { return events.empty() ? ActionEvent{} : events.back(); }
-};
 
 TEST_F(WebSocketProtocolTest, RoundTripSetVolume) {
     std::string clientMessage = R"({"type":"action","action":"set_volume","params":{"target":"virtual_mic","value":0.42}})";
