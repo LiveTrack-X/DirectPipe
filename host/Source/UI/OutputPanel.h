@@ -38,10 +38,6 @@ public:
     explicit OutputPanel(AudioEngine& engine);
     ~OutputPanel() override;
 
-    // Non-copyable
-    OutputPanel(const OutputPanel&) = delete;
-    OutputPanel& operator=(const OutputPanel&) = delete;
-
     void paint(juce::Graphics& g) override;
     void resized() override;
 
@@ -70,8 +66,8 @@ private:
     /** @brief Called when the Virtual Mic mute button is toggled. */
     void onVirtualMicMuteToggled();
 
-    /** @brief Called when the Monitor mute button is toggled. */
-    void onMonitorMuteToggled();
+    /** @brief Called when the Monitor enable button is toggled. */
+    void onMonitorEnableToggled();
 
     // ─── Data ───
     AudioEngine& engine_;
@@ -81,11 +77,14 @@ private:
 
     // ── Virtual Loop Mic section ──
     juce::Label vmicSectionLabel_{"", "Virtual Loop Mic"};
-    juce::Label vmicStatusLabel_{"", "Disconnected"};
+    juce::Label vmicStatusLabel_{"", "Checking..."};
+    juce::Label vmicDriverLabel_{"", ""};
     juce::Slider vmicVolumeSlider_;
     juce::Label vmicVolumeLabel_{"", "Volume:"};
     juce::ToggleButton vmicMuteButton_{"Mute"};
     bool vmicConnected_ = false;
+    bool nativeDriverDetected_ = false;
+    bool driverCheckDone_ = false;
 
     // ── Monitor section ──
     juce::Label monitorSectionLabel_{"", "Monitor Output"};
@@ -93,7 +92,7 @@ private:
     juce::ComboBox monitorDeviceCombo_;
     juce::Slider monitorVolumeSlider_;
     juce::Label monitorVolumeLabel_{"", "Volume:"};
-    juce::ToggleButton monitorMuteButton_{"Mute"};
+    juce::ToggleButton monitorEnableButton_{"Enable"};
 
     // Theme colours (dark)
     static constexpr juce::uint32 kBgColour       = 0xFF1E1E2E;

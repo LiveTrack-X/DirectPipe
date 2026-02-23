@@ -7,6 +7,24 @@
 
 namespace directpipe {
 
+// ─── Plugin Editor Window ───────────────────────────────────────
+// Custom DocumentWindow that properly handles the close button.
+
+class PluginEditorWindow : public juce::DocumentWindow {
+public:
+    PluginEditorWindow(const juce::String& name)
+        : DocumentWindow(name, juce::Colours::darkgrey,
+                         DocumentWindow::closeButton | DocumentWindow::minimiseButton)
+    {
+        setUsingNativeTitleBar(true);
+    }
+
+    void closeButtonPressed() override
+    {
+        setVisible(false);
+    }
+};
+
 VSTChain::VSTChain()
 {
     // Register standard plugin formats (VST2, VST3)
@@ -91,6 +109,39 @@ void VSTChain::scanForPlugins(const juce::StringArray& directoriesToScan)
     }
 }
 
+int VSTChain::addPlugin(const juce::PluginDescription& desc)
+{
+    // Load the plugin directly from the description (preferred for scanned plugins)
+    juce::String error;
+    auto instance = loadPlugin(desc, error);
+    if (!instance) {
+        juce::Logger::writeToLog("Failed to load plugin: " + error);
+        return -1;
+    }
+
+    // Add to graph
+    auto node = graph_->addNode(std::move(instance));
+    if (!node) {
+        juce::Logger::writeToLog("Failed to add plugin to graph");
+        return -1;
+    }
+
+    // Create plugin slot
+    PluginSlot slot;
+    slot.name = desc.name;
+    slot.path = desc.fileOrIdentifier;
+    slot.nodeId = node->nodeID;
+    slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
+
+    const juce::ScopedLock sl(chainLock_);
+    chain_.push_back(slot);
+    rebuildGraph();
+
+    if (onChainChanged) onChainChanged();
+
+    return static_cast<int>(chain_.size()) - 1;
+}
+
 int VSTChain::addPlugin(const juce::String& pluginPath)
 {
     // Find the plugin description from known plugins or load directly
@@ -158,6 +209,14 @@ bool VSTChain::removePlugin(int index)
     if (index < 0 || index >= static_cast<int>(chain_.size()))
         return false;
 
+    // Close editor window for this plugin
+    closePluginEditor(index);
+
+    // Shift editor windows down (remove slot at index)
+    if (static_cast<size_t>(index) < editorWindows_.size()) {
+        editorWindows_.erase(editorWindows_.begin() + index);
+    }
+
     auto& slot = chain_[static_cast<size_t>(index)];
     graph_->removeNode(slot.nodeId);
     chain_.erase(chain_.begin() + index);
@@ -179,6 +238,15 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
     auto slot = chain_[static_cast<size_t>(fromIndex)];
     chain_.erase(chain_.begin() + fromIndex);
     chain_.insert(chain_.begin() + toIndex, slot);
+
+    // Move editor windows to match
+    size_t maxIdx = juce::jmax(static_cast<size_t>(fromIndex), static_cast<size_t>(toIndex));
+    if (maxIdx < editorWindows_.size()) {
+        auto win = std::move(editorWindows_[static_cast<size_t>(fromIndex)]);
+        editorWindows_.erase(editorWindows_.begin() + fromIndex);
+        editorWindows_.insert(editorWindows_.begin() + toIndex, std::move(win));
+    }
+
     rebuildGraph();
 
     if (onChainChanged) onChainChanged();
@@ -209,35 +277,35 @@ const PluginSlot* VSTChain::getPluginSlot(int index) const
     return &chain_[static_cast<size_t>(index)];
 }
 
-void VSTChain::openPluginEditor(int index, juce::Component* parentComponent)
+void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 {
     if (index < 0 || index >= static_cast<int>(chain_.size()))
         return;
 
+    // Ensure the editor windows vector is large enough
+    if (static_cast<size_t>(index) >= editorWindows_.size())
+        editorWindows_.resize(static_cast<size_t>(index) + 1);
+
+    // If window already exists, just show it
+    if (editorWindows_[static_cast<size_t>(index)]) {
+        editorWindows_[static_cast<size_t>(index)]->setVisible(true);
+        editorWindows_[static_cast<size_t>(index)]->toFront(true);
+        return;
+    }
+
     auto& slot = chain_[static_cast<size_t>(index)];
     if (!slot.instance) return;
 
-    auto editor = slot.instance->createEditorIfNeeded();
+    auto* editor = slot.instance->createEditorIfNeeded();
     if (!editor) return;
 
-    auto window = std::make_unique<juce::DocumentWindow>(
-        slot.name,
-        juce::Colours::darkgrey,
-        juce::DocumentWindow::closeButton);
-
+    auto window = std::make_unique<PluginEditorWindow>(slot.name);
     window->setContentOwned(editor, true);
     window->setResizable(false, false);
     window->centreWithSize(editor->getWidth(), editor->getHeight());
     window->setVisible(true);
+    window->setAlwaysOnTop(true);
 
-    if (parentComponent) {
-        window->setAlwaysOnTop(true);
-    }
-
-    // Store the window (ensure index is valid for the windows vector)
-    if (static_cast<size_t>(index) >= editorWindows_.size()) {
-        editorWindows_.resize(static_cast<size_t>(index) + 1);
-    }
     editorWindows_[static_cast<size_t>(index)] = std::move(window);
 }
 

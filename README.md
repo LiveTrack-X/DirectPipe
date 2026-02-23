@@ -19,15 +19,19 @@ External Control:
 
 - **WASAPI Shared mode** for non-exclusive microphone access (other apps can use mic simultaneously)
 - **VST2/VST3 plugin chain** with real-time inline processing
+- **Out-of-process VST scanner** — scans plugins in a separate process; if a bad plugin crashes, only the scanner process dies (main app survives). Automatic retry with dead man's pedal skips bad plugins.
+- **Drag & drop plugin reordering** — drag plugins up/down to change processing order
+- **Plugin editor** — open/close native VST plugin GUIs with proper window management
 - **Virtual Loop Mic** kernel driver — appears as a standard microphone in Windows
 - **Shared memory IPC** — lock-free SPSC ring buffer for ultra-low latency audio transfer
+- **System tray** — close button minimizes to tray; right-click tray icon for Show/Quit
 - **OBS Studio integration** via shared memory (no additional plugin required with driver)
 - **External control** — keyboard shortcuts, MIDI CC, Stream Deck (WebSocket), HTTP REST API
-- **Mono/Stereo** channel mode selection
+- **Mono/Stereo** channel mode selection (default: Stereo)
 - **Sample rate / buffer size** user-configurable (48kHz/480 samples default)
 - **Real-time level meters** and latency monitoring
 - **Preset management** (save/load VST chain + settings)
-- **Dark themed UI** (JUCE custom LookAndFeel)
+- **Dark themed UI** (JUCE custom LookAndFeel) with custom app icon
 
 ## Latency Comparison
 
@@ -77,7 +81,10 @@ host/                  JUCE host application
     Audio/             AudioEngine, VSTChain, OutputRouter, LatencyMonitor
     Control/           ActionDispatcher, WebSocket, HTTP, Hotkey, MIDI handlers
     IPC/               SharedMemWriter (producer side)
-    UI/                DeviceSelector, PluginChainEditor, LevelMeter, PresetManager
+    UI/                PluginChainEditor, PluginScanner, AudioSettings,
+                       LevelMeter, OutputPanel, ControlSettingsPanel,
+                       DirectPipeLookAndFeel
+  Resources/           App icon (icon.png)
 driver/                Virtual Loop Mic WDM kernel driver
 obs-plugin/            OBS Studio audio source plugin (shared memory reader)
 streamdeck-plugin/     Elgato Stream Deck plugin (WebSocket client)
@@ -105,7 +112,7 @@ docs/                  Architecture, build guide, API reference, user guide
 | Phase 2 | Audio engine + VST2/VST3 hosting | Done |
 | Phase 3 | Virtual Loop Mic kernel driver | Done (code, needs Windows build) |
 | Phase 4 | External control (Hotkey, MIDI, WebSocket, HTTP) | Done |
-| Phase 5 | GUI (JUCE) | Done (code, needs Windows build) |
+| Phase 5 | GUI (JUCE) | Done |
 | Phase 6 | Stabilization, installer | In progress |
 
 ## License

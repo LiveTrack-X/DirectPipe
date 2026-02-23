@@ -7,6 +7,26 @@
 
 namespace directpipe {
 
+static juce::String actionToDisplayName(const ActionEvent& event)
+{
+    if (!event.stringParam.empty())
+        return juce::String(event.stringParam);
+
+    switch (event.action) {
+        case Action::PluginBypass:    return "Plugin " + juce::String(event.intParam + 1) + " Bypass";
+        case Action::MasterBypass:    return "Master Bypass";
+        case Action::SetVolume:       return "Set Volume";
+        case Action::ToggleMute:      return "Toggle Mute";
+        case Action::LoadPreset:      return "Load Preset " + juce::String(event.intParam);
+        case Action::PanicMute:       return "Panic Mute";
+        case Action::InputGainAdjust: return "Input Gain Adjust";
+        case Action::NextPreset:      return "Next Preset";
+        case Action::PreviousPreset:  return "Previous Preset";
+        case Action::InputMuteToggle: return "Input Mute Toggle";
+        default:                      return "Unknown";
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  HotkeyTab implementation
 // ═════════════════════════════════════════════════════════════════════════════
@@ -17,6 +37,12 @@ HotkeyTab::HotkeyTab(ControlManager& manager)
     headerLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
     headerLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
     addAndMakeVisible(headerLabel_);
+
+    addButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(kAccentColour));
+    addButton_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    addButton_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    addButton_.onClick = [this] { onAddClicked(); };
+    addAndMakeVisible(addButton_);
 
     statusLabel_.setFont(juce::Font(12.0f));
     statusLabel_.setColour(juce::Label::textColourId, juce::Colour(kWarningColour));
@@ -55,8 +81,9 @@ void HotkeyTab::resized()
 
     int y = bounds.getY();
 
-    // Header
-    headerLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    // Header + Add button
+    headerLabel_.setBounds(bounds.getX(), y, bounds.getWidth() - 130, rowH);
+    addButton_.setBounds(bounds.getRight() - 120, y, 120, rowH);
     y += rowH + gap;
 
     // Status line
@@ -109,7 +136,7 @@ void HotkeyTab::refreshBindings()
         const auto& binding = bindings[static_cast<size_t>(i)];
 
         // Action label
-        row->actionLabel.setText(juce::String(binding.action.stringParam),
+        row->actionLabel.setText(actionToDisplayName(binding.action),
                                  juce::dontSendNotification);
         row->actionLabel.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
         row->actionLabel.setFont(juce::Font(12.0f));
@@ -161,7 +188,8 @@ void HotkeyTab::refreshBindings()
 void HotkeyTab::timerCallback()
 {
     // Check if recording mode has ended (handler will clear isRecording)
-    if (recordingIndex_ >= 0 && !manager_.getHotkeyHandler().isRecording()) {
+    // recordingIndex_ >= 0 = editing existing, -2 = adding new
+    if (recordingIndex_ != -1 && !manager_.getHotkeyHandler().isRecording()) {
         recordingIndex_ = -1;
         statusLabel_.setText("", juce::dontSendNotification);
         refreshBindings();
@@ -217,8 +245,97 @@ void HotkeyTab::onRemoveClicked(int bindingIndex)
     if (bindingIndex >= 0 && bindingIndex < static_cast<int>(bindings.size())) {
         handler.unregisterHotkey(bindings[static_cast<size_t>(bindingIndex)].id);
         manager_.saveConfig();
-        refreshBindings();
+        // Defer refresh to avoid deleting the button component from within its own callback
+        juce::MessageManager::callAsync([this] { refreshBindings(); });
     }
+}
+
+juce::PopupMenu HotkeyTab::buildActionMenu()
+{
+    juce::PopupMenu menu;
+
+    // Plugin bypass (1-8)
+    juce::PopupMenu bypassMenu;
+    for (int i = 1; i <= 8; ++i) {
+        ActionEvent evt{Action::PluginBypass, i - 1, 0.0f,
+                        "Plugin " + std::to_string(i) + " Bypass"};
+        bypassMenu.addItem(100 + i, "Plugin " + juce::String(i) + " Bypass");
+    }
+    menu.addSubMenu("Plugin Bypass", bypassMenu);
+
+    // Master bypass
+    menu.addItem(200, "Master Bypass");
+
+    // Mute / Panic
+    menu.addItem(201, "Panic Mute");
+    menu.addItem(202, "Input Mute Toggle");
+
+    // Input gain
+    menu.addItem(300, "Input Gain +1 dB");
+    menu.addItem(301, "Input Gain -1 dB");
+
+    // Presets
+    juce::PopupMenu presetMenu;
+    for (int i = 1; i <= 8; ++i) {
+        presetMenu.addItem(400 + i, "Load Preset " + juce::String(i));
+    }
+    menu.addSubMenu("Load Preset", presetMenu);
+
+    menu.addItem(500, "Next Preset");
+    menu.addItem(501, "Previous Preset");
+
+    return menu;
+}
+
+void HotkeyTab::onAddClicked()
+{
+    auto menu = buildActionMenu();
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addButton_),
+        [this](int result) {
+            if (result == 0) return;  // cancelled
+
+            ActionEvent action;
+
+            if (result >= 100 && result < 200) {
+                int pluginIdx = result - 100 - 1;
+                action = {Action::PluginBypass, pluginIdx, 0.0f,
+                          "Plugin " + std::to_string(pluginIdx + 1) + " Bypass"};
+            } else if (result == 200) {
+                action = {Action::MasterBypass, 0, 0.0f, "Master Bypass"};
+            } else if (result == 201) {
+                action = {Action::PanicMute, 0, 0.0f, "Panic Mute"};
+            } else if (result == 202) {
+                action = {Action::InputMuteToggle, 0, 0.0f, "Input Mute Toggle"};
+            } else if (result == 300) {
+                action = {Action::InputGainAdjust, 0, 1.0f, "Input Gain +1 dB"};
+            } else if (result == 301) {
+                action = {Action::InputGainAdjust, 0, -1.0f, "Input Gain -1 dB"};
+            } else if (result >= 400 && result < 500) {
+                int presetIdx = result - 400;
+                action = {Action::LoadPreset, presetIdx, 0.0f,
+                          "Load Preset " + std::to_string(presetIdx)};
+            } else if (result == 500) {
+                action = {Action::NextPreset, 0, 0.0f, "Next Preset"};
+            } else if (result == 501) {
+                action = {Action::PreviousPreset, 0, 0.0f, "Previous Preset"};
+            } else {
+                return;
+            }
+
+            // Enter recording mode to capture key combination
+            statusLabel_.setText("Press a key combination for: " +
+                                 juce::String(action.stringParam),
+                                 juce::dontSendNotification);
+            recordingIndex_ = -2;  // special value for "new binding"
+
+            manager_.getHotkeyHandler().startRecording(
+                [this, action](uint32_t mods, uint32_t vk, const std::string& name) {
+                    manager_.getHotkeyHandler().registerHotkey(mods, vk, action, name);
+                    manager_.saveConfig();
+                    // UI refresh happens in timerCallback
+                });
+        });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -372,7 +489,7 @@ void MidiTab::refreshMappings()
         row->controlLabel.setFont(juce::Font(12.0f, juce::Font::bold));
 
         // Action label
-        row->actionLabel.setText(juce::String(binding.action.stringParam),
+        row->actionLabel.setText(actionToDisplayName(binding.action),
                                  juce::dontSendNotification);
         row->actionLabel.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
         row->actionLabel.setFont(juce::Font(12.0f));
@@ -495,7 +612,8 @@ void MidiTab::onRemoveClicked(int mappingIndex)
     if (mappingIndex >= 0 && mappingIndex < static_cast<int>(handler.getBindings().size())) {
         handler.removeBinding(mappingIndex);
         manager_.saveConfig();
-        refreshMappings();
+        // Defer refresh to avoid deleting the button component from within its own callback
+        juce::MessageManager::callAsync([this] { refreshMappings(); });
     }
 }
 

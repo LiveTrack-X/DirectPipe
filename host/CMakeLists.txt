@@ -31,6 +31,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/DeviceSelector.cpp
     Source/UI/PluginChainEditor.h
     Source/UI/PluginChainEditor.cpp
+    Source/UI/PluginScanner.h
+    Source/UI/PluginScanner.cpp
     Source/UI/LevelMeter.h
     Source/UI/LevelMeter.cpp
     Source/UI/PresetManager.h
@@ -61,6 +63,15 @@ target_sources(DirectPipe PRIVATE
     Source/Control/ControlManager.cpp
 )
 
+juce_add_binary_data(DirectPipeBinaryData
+    HEADER_NAME BinaryData.h
+    NAMESPACE BinaryData
+    SOURCES
+        Resources/icon.png
+)
+
+juce_generate_juce_header(DirectPipe)
+
 target_compile_definitions(DirectPipe PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -73,6 +84,7 @@ target_compile_definitions(DirectPipe PRIVATE
 )
 
 target_link_libraries(DirectPipe PRIVATE
+    DirectPipeBinaryData
     directpipe-core
     juce::juce_audio_basics
     juce::juce_audio_devices

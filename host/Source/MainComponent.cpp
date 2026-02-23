@@ -59,6 +59,45 @@ MainComponent::MainComponent()
     controlSettingsPanel_ = std::make_unique<ControlSettingsPanel>(*controlManager_);
     addAndMakeVisible(*controlSettingsPanel_);
 
+    // ── Preset Manager ──
+    presetManager_ = std::make_unique<PresetManager>(audioEngine_);
+
+    savePresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
+    savePresetBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    savePresetBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    savePresetBtn_.onClick = [this] {
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Save Preset", PresetManager::getPresetsDirectory(), "*.dppreset");
+        chooser->launchAsync(juce::FileBrowserComponent::saveMode |
+                             juce::FileBrowserComponent::canSelectFiles,
+                             [this, chooser](const juce::FileChooser& fc) {
+            auto file = fc.getResult();
+            if (file != juce::File()) {
+                auto target = file.withFileExtension("dppreset");
+                presetManager_->savePreset(target);
+            }
+        });
+    };
+    addAndMakeVisible(savePresetBtn_);
+
+    loadPresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
+    loadPresetBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    loadPresetBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    loadPresetBtn_.onClick = [this] {
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Load Preset", PresetManager::getPresetsDirectory(), "*.dppreset");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode |
+                             juce::FileBrowserComponent::canSelectFiles,
+                             [this, chooser](const juce::FileChooser& fc) {
+            auto file = fc.getResult();
+            if (file.existsAsFile()) {
+                presetManager_->loadPreset(file);
+                refreshUI();
+            }
+        });
+    };
+    addAndMakeVisible(loadPresetBtn_);
+
     // ── Panic Mute Button ──
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
     panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
@@ -66,6 +105,15 @@ MainComponent::MainComponent()
     panicMuteBtn_.onClick = [this] {
         bool muted = !audioEngine_.isMuted();
         audioEngine_.setMuted(muted);
+        if (muted) {
+            audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::VirtualMic, false);
+            audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, false);
+            audioEngine_.setMonitorEnabled(false);
+        } else {
+            audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::VirtualMic, true);
+            audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, true);
+            audioEngine_.setMonitorEnabled(true);
+        }
         panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
         panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                                 juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
@@ -107,12 +155,16 @@ MainComponent::MainComponent()
     // Start UI update timer (30 Hz)
     startTimerHz(30);
 
-    setSize(800, 750);
+    setSize(800, 980);
+
+    // Auto-load last saved settings
+    loadSettings();
 }
 
 MainComponent::~MainComponent()
 {
     stopTimer();
+    saveSettings();
     dispatcher_.removeListener(this);
     controlManager_->shutdown();
     audioEngine_.shutdown();
@@ -124,29 +176,39 @@ MainComponent::~MainComponent()
 void MainComponent::onAction(const ActionEvent& event)
 {
     switch (event.action) {
-        case Action::PluginBypass:
-            audioEngine_.getVSTChain().setPluginBypassed(event.intParam,
-                !audioEngine_.getVSTChain().getPluginSlot(event.intParam)->bypassed);
+        case Action::PluginBypass: {
+            auto* slot = audioEngine_.getVSTChain().getPluginSlot(event.intParam);
+            if (slot)
+                audioEngine_.getVSTChain().setPluginBypassed(event.intParam, !slot->bypassed);
             break;
+        }
 
-        case Action::MasterBypass:
-            // Toggle all plugins bypass
+        case Action::MasterBypass: {
+            // If any plugin is active → bypass all.  If all bypassed → unbypass all.
+            bool anyActive = false;
             for (int i = 0; i < audioEngine_.getVSTChain().getPluginCount(); ++i) {
                 auto* slot = audioEngine_.getVSTChain().getPluginSlot(i);
-                if (slot) audioEngine_.getVSTChain().setPluginBypassed(i, !slot->bypassed);
+                if (slot && !slot->bypassed) { anyActive = true; break; }
             }
+            for (int i = 0; i < audioEngine_.getVSTChain().getPluginCount(); ++i)
+                audioEngine_.getVSTChain().setPluginBypassed(i, anyActive);
             break;
+        }
 
         case Action::PanicMute:
-            audioEngine_.setMuted(true);
-            panicMuteBtn_.setButtonText("UNMUTE");
-            panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
-            break;
-
         case Action::ToggleMute:
         case Action::InputMuteToggle: {
             bool muted = !audioEngine_.isMuted();
             audioEngine_.setMuted(muted);
+            if (muted) {
+                audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::VirtualMic, false);
+                audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, false);
+                audioEngine_.setMonitorEnabled(false);
+            } else {
+                audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::VirtualMic, true);
+                audioEngine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, true);
+                audioEngine_.setMonitorEnabled(true);
+            }
             panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
             panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                                     juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
@@ -204,17 +266,26 @@ void MainComponent::resized()
     inputSectionLabel_.setBounds(bounds.getX(), y, 100, 24);
     y += 26;
 
+    int inputStartY = y;
     deviceSelector_->setBounds(bounds.getX(), y, halfW - 50, 50);
-    inputMeter_->setBounds(bounds.getX() + halfW - 45, y, 40, 50);
     y += 56;
 
     // Input gain row
     inputGainLabel_.setBounds(bounds.getX(), y, 40, 24);
-    inputGainSlider_.setBounds(bounds.getX() + 44, y, halfW - 44, 24);
+    inputGainSlider_.setBounds(bounds.getX() + 44, y, halfW - 94, 24);
     y += 30;
 
+    // Input meter spans the full input section height
+    int inputMeterH = y - inputStartY;
+    inputMeter_->setBounds(bounds.getX() + halfW - 45, inputStartY, 40, inputMeterH);
+
     // ── VST CHAIN Section ──
-    vstSectionLabel_.setBounds(bounds.getX(), y, 200, 24);
+    vstSectionLabel_.setBounds(bounds.getX(), y, 120, 24);
+
+    // Preset save/load buttons next to section label
+    int presetBtnX = bounds.getX() + 125;
+    savePresetBtn_.setBounds(presetBtnX, y, 90, 24);
+    loadPresetBtn_.setBounds(presetBtnX + 94, y, 90, 24);
     y += 26;
 
     int vstH = bounds.getBottom() - y - 40; // leave room for status bar + mute btn
@@ -228,16 +299,21 @@ void MainComponent::resized()
     int rw = bounds.getWidth() - halfW - 10;
     int ry = bounds.getY();
 
-    // Audio Settings
-    audioSettings_->setBounds(rx, ry, rw, 160);
-    ry += 164;
+    // Audio Settings (extra height for channel mode description)
+    audioSettings_->setBounds(rx, ry, rw, 235);
+    ry += 239;
 
     // Output Panel
     outputSectionLabel_.setBounds(rx, ry, rw, 24);
     ry += 26;
-    outputMeter_->setBounds(rx + rw - 45, ry, 40, 150);
-    outputPanel_->setBounds(rx, ry, rw - 50, 150);
-    ry += 156;
+
+    int outputStartY = ry;
+    outputPanel_->setBounds(rx, ry, rw - 50, 350);
+    ry += 354;
+
+    // Output meter spans full output panel height
+    int outputMeterH = ry - outputStartY;
+    outputMeter_->setBounds(rx + rw - 45, outputStartY, 40, outputMeterH);
 
     // Control Settings
     controlSectionLabel_.setBounds(rx, ry, rw, 24);
@@ -261,13 +337,14 @@ void MainComponent::timerCallback()
 {
     auto& monitor = audioEngine_.getLatencyMonitor();
 
-    // Update level meters
+    // Update level meters (force 0 when master muted)
+    bool muted = audioEngine_.isMuted();
     inputMeter_->setLevel(audioEngine_.getInputLevel());
-    outputMeter_->setLevel(audioEngine_.getOutputLevel());
+    outputMeter_->setLevel(muted ? 0.0f : audioEngine_.getOutputLevel());
 
-    // Update status bar
+    // Update status bar (show Virtual Mic round-trip latency = input + processing + output)
     latencyLabel_.setText(
-        "Latency: " + juce::String(monitor.getTotalLatencyOBSMs(), 1) + "ms",
+        "Latency: " + juce::String(monitor.getTotalLatencyVirtualMicMs(), 1) + "ms",
         juce::dontSendNotification);
 
     cpuLabel_.setText(
@@ -285,6 +362,48 @@ void MainComponent::timerCallback()
     if (std::abs(static_cast<float>(inputGainSlider_.getValue()) - currentGain) > 0.01f) {
         inputGainSlider_.setValue(currentGain, juce::dontSendNotification);
     }
+}
+
+// ─── Settings auto-save/load ─────────────────────────────────────────────────
+
+void MainComponent::saveSettings()
+{
+    auto file = PresetManager::getAutoSaveFile();
+    presetManager_->savePreset(file);
+}
+
+void MainComponent::loadSettings()
+{
+    auto file = PresetManager::getAutoSaveFile();
+    if (file.existsAsFile()) {
+        presetManager_->loadPreset(file);
+        refreshUI();
+    }
+}
+
+void MainComponent::refreshUI()
+{
+    // Sync input gain slider
+    inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
+
+    // Refresh audio settings panel
+    if (audioSettings_)
+        audioSettings_->refreshFromEngine();
+
+    // Refresh plugin chain list
+    if (pluginChainEditor_)
+        pluginChainEditor_->refreshList();
+
+    // Refresh output panel device list (volume/enable syncs via its own timer)
+    if (outputPanel_) {
+        outputPanel_->refreshMonitorDeviceList();
+    }
+
+    // Sync panic mute button state
+    bool muted = audioEngine_.isMuted();
+    panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
+    panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                            juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
 }
 
 } // namespace directpipe

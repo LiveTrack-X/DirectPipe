@@ -11,8 +11,9 @@ It replaces the "Light Host + VB-Cable" setup with a single application that inc
 1. **Install DirectPipe** (includes the Virtual Loop Mic driver)
 2. **Launch DirectPipe**
 3. **Select your microphone** from the INPUT dropdown
-4. **Add VST plugins** to the chain (click "+ Add VST Plugin")
-5. **Configure outputs**:
+4. **Scan for VST plugins** — click "Scan..." to find all installed plugins
+5. **Add VST plugins** to the chain — click "+ Add Plugin" and select from the scanned list
+6. **Configure outputs**:
    - Virtual Loop Mic: automatically available as a microphone in all apps
    - Monitor: enable to hear yourself through headphones
 
@@ -44,8 +45,8 @@ No VB-Cable or third-party virtual audio cable needed.
 
 ### Channel Mode
 
+- **Stereo** (default): Channels pass through as-is. Use for stereo microphones.
 - **Mono**: Both microphone channels are mixed to mono (0.5 L + 0.5 R average). Best for voice.
-- **Stereo**: Channels pass through as-is. Use for stereo microphones.
 
 ### Buffer Size
 
@@ -60,21 +61,57 @@ No VB-Cable or third-party virtual audio cable needed.
 
 48000 Hz is the default and recommended for most use cases. 44100 Hz is also supported.
 
+## VST Plugin Scanner
+
+DirectPipe includes an **out-of-process VST scanner** that safely discovers all installed plugins.
+
+### Scanning for Plugins
+
+1. Click **"Scan..."** in the plugin chain area
+2. The scanner dialog shows default scan directories:
+   - `C:\Program Files\Common Files\VST3`
+   - `C:\Program Files (x86)\Common Files\VST3`
+   - `C:\Program Files\Common Files\VST`
+   - `C:\Program Files\VstPlugins`
+   - `C:\Program Files (x86)\VstPlugins`
+   - `C:\Program Files\Steinberg\VST3`
+   - `C:\Program Files\Steinberg\VSTPlugins`
+   - `C:\Program Files (x86)\Steinberg\VSTPlugins`
+3. Add custom directories with "Add Directory" if needed
+4. Click **"Scan for Plugins"** — scanning runs in a separate process
+5. If a bad plugin crashes the scanner, it automatically retries (up to 5 times), skipping the problematic plugin
+6. Scanned plugins are cached — no need to rescan next time
+
+### Adding Plugins from Scan Results
+
+1. Click **"+ Add Plugin"**
+2. Select from **"Scanned Plugins"** submenu (grouped by vendor)
+3. Or double-click a plugin in the scanner dialog
+
 ## VST Plugin Chain
 
-DirectPipe supports both **VST2** and **VST3** plugins in a serial processing chain.
+DirectPipe supports both **VST2** (.dll) and **VST3** (.vst3) plugins in a serial processing chain.
 
-- **Add**: Click "+ Add VST Plugin" and browse to a .dll (VST2) or .vst3 file
-- **Remove**: Click the X button on a plugin slot
-- **Reorder**: Drag plugins up/down in the chain
-- **Bypass**: Click the Bypass button to skip a plugin without removing it
-- **Edit**: Click Edit to open the plugin's native GUI
+- **Add**: Click "+ Add Plugin" and select from scanned plugins or browse for a file
+- **Remove**: Click the **X** button on a plugin row
+- **Reorder**: **Drag and drop** a plugin row to a new position in the chain
+- **Bypass**: Click the **Bypass** toggle to skip a plugin without removing it
+- **Edit**: Click **Edit** to open the plugin's native GUI window (click close to hide, re-click Edit to show again)
 
 ### Recommended Free VST Plugins
 
 - **ReaPlugs** (ReaEQ, ReaComp, ReaGate) — by Cockos
 - **TDR Nova** — by Tokyo Dawn Records
 - **MeldaProduction MFreeFXBundle** — comprehensive free bundle
+
+## System Tray
+
+DirectPipe minimizes to the system tray when you click the close (X) button:
+
+- **Close button**: Minimizes to system tray (app continues running in background)
+- **Tray icon double-click**: Shows the main window
+- **Tray icon right-click**: Menu with "Show Window" and "Quit DirectPipe"
+- **Quit**: Use the tray menu "Quit DirectPipe" to fully exit the application
 
 ## External Control
 
@@ -84,14 +121,16 @@ DirectPipe can be controlled while minimized or in the background.
 
 Global hotkeys work even when DirectPipe is not focused.
 
-| Default Shortcut  | Action |
-|-------------------|--------|
-| Ctrl+Shift+1      | Toggle Plugin 1 bypass |
-| Ctrl+Shift+2      | Toggle Plugin 2 bypass |
-| Ctrl+Shift+0      | Toggle master bypass |
-| Ctrl+Shift+M      | Panic mute (all outputs) |
-| Ctrl+Shift+Up/Down | Input gain +/- 1dB |
-| Ctrl+Shift+F1-F8  | Load preset 1-8 |
+| Default Shortcut    | Action |
+|---------------------|--------|
+| Ctrl+Shift+1        | Toggle Plugin 1 Bypass |
+| Ctrl+Shift+2        | Toggle Plugin 2 Bypass |
+| Ctrl+Shift+3        | Toggle Plugin 3 Bypass |
+| Ctrl+Shift+0        | Master Bypass |
+| Ctrl+Shift+M        | Panic Mute (all outputs) |
+| Ctrl+Shift+N        | Input Mute Toggle |
+| Ctrl+Shift+Up/Down  | Input gain +/- 1dB |
+| Ctrl+Shift+F1-F8    | Load preset 1-8 |
 
 Customize in Settings > Control > Hotkeys.
 
@@ -153,7 +192,13 @@ See [Control API Reference](CONTROL_API.md) for all endpoints.
 - Ensure the plugin is the correct architecture (64-bit)
 - VST2 plugins must be .dll files, VST3 must be .vst3 files
 - Some plugins require specific runtimes (Visual C++ Redistributable)
-- Check the DirectPipe log for error messages
+- Try scanning again — the scanner caches results and skips previously problematic plugins
+
+**Plugin scanner crashes?**
+- The scanner runs in a separate process — crashes don't affect DirectPipe
+- Bad plugins are automatically skipped on retry
+- Delete the cache file at `%AppData%\DirectPipe\plugin-cache.xml` to reset and rescan
+- Delete the dead man's pedal file at `%AppData%\DirectPipe\scan-deadmanspedal.txt` to allow retrying previously skipped plugins
 
 **High latency?**
 - Reduce buffer size in Audio Settings

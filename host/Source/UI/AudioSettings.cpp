@@ -52,7 +52,7 @@ AudioSettings::AudioSettings(AudioEngine& engine)
 
     monoButton_.setRadioGroupId(1);
     stereoButton_.setRadioGroupId(1);
-    monoButton_.setToggleState(true, juce::dontSendNotification); // default Mono
+    stereoButton_.setToggleState(true, juce::dontSendNotification); // default Stereo
     monoButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
     monoButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
     stereoButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
@@ -63,6 +63,11 @@ AudioSettings::AudioSettings(AudioEngine& engine)
 
     addAndMakeVisible(monoButton_);
     addAndMakeVisible(stereoButton_);
+
+    channelModeDescLabel_.setFont(juce::Font(11.0f));
+    channelModeDescLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(channelModeDescLabel_);
+    updateChannelModeDescription();
 
     // ── Latency display ──
     latencyTitleLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
@@ -125,6 +130,11 @@ void AudioSettings::resized()
     stereoButton_.setBounds(bounds.getX() + labelW + gap + radioW, y, radioW, rowH);
     y += rowH + gap + 4;
 
+    // Channel mode description
+    channelModeDescLabel_.setBounds(bounds.getX() + labelW + gap, y,
+                                    bounds.getWidth() - labelW - gap, 18);
+    y += 22;
+
     // Latency display
     latencyTitleLabel_.setBounds(bounds.getX(), y, labelW, rowH);
     latencyValueLabel_.setBounds(bounds.getX() + labelW + gap, y,
@@ -186,6 +196,20 @@ void AudioSettings::onChannelModeChanged()
 {
     int channels = stereoButton_.getToggleState() ? 2 : 1;
     engine_.setChannelMode(channels);
+    updateChannelModeDescription();
+}
+
+void AudioSettings::updateChannelModeDescription()
+{
+    if (stereoButton_.getToggleState()) {
+        channelModeDescLabel_.setText(
+            "Stereo: Input channels pass through as-is (L/R)",
+            juce::dontSendNotification);
+    } else {
+        channelModeDescLabel_.setText(
+            "Mono: Mix L+R to mono, output to both channels",
+            juce::dontSendNotification);
+    }
 }
 
 void AudioSettings::updateLatencyDisplay()

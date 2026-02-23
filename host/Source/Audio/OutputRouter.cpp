@@ -8,7 +8,11 @@
 
 namespace directpipe {
 
-OutputRouter::OutputRouter() = default;
+OutputRouter::OutputRouter()
+{
+    // Monitor output disabled by default (user enables explicitly)
+    outputs_[static_cast<int>(Output::Monitor)].enabled.store(false, std::memory_order_relaxed);
+}
 
 OutputRouter::~OutputRouter()
 {

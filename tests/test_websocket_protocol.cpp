@@ -390,7 +390,7 @@ TEST_F(StateSerializationTest, StateJsonIsReproducible) {
 /**
  * Mock listener used in round-trip tests.
  */
-class MockActionListener : public ActionListener {
+class MockActionListener : public directpipe::ActionListener {
 public:
     void onAction(const ActionEvent& e) override { events.push_back(e); }
     std::vector<ActionEvent> events;

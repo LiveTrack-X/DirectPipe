@@ -33,10 +33,6 @@ public:
     explicit AudioSettings(AudioEngine& engine);
     ~AudioSettings() override;
 
-    // Non-copyable
-    AudioSettings(const AudioSettings&) = delete;
-    AudioSettings& operator=(const AudioSettings&) = delete;
-
     void paint(juce::Graphics& g) override;
     void resized() override;
 
@@ -60,6 +56,9 @@ private:
 
     /** @brief Recalculate and display estimated latency. */
     void updateLatencyDisplay();
+
+    /** @brief Update the channel mode description label. */
+    void updateChannelModeDescription();
 
     /**
      * @brief Convert a combo-box selection ID to the corresponding sample rate.
@@ -93,6 +92,7 @@ private:
     juce::Label channelModeLabel_{"", "Channel Mode:"};
     juce::ToggleButton monoButton_{"Mono"};
     juce::ToggleButton stereoButton_{"Stereo"};
+    juce::Label channelModeDescLabel_{"", ""};
 
     // Latency display
     juce::Label latencyTitleLabel_{"", "Estimated Latency:"};

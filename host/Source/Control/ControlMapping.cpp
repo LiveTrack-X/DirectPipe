@@ -4,6 +4,7 @@
  */
 
 #include "ControlMapping.h"
+#include "HotkeyHandler.h"
 #include "MidiHandler.h"
 
 namespace directpipe {
@@ -145,7 +146,7 @@ ControlConfig ControlMappingStore::createDefaults()
         HotkeyMapping hk;
         hk.modifiers = HK_CTRL | HK_SHIFT;
         hk.virtualKey = '0' + static_cast<uint32_t>(i);
-        hk.action = {Action::PluginBypass, i - 1, 0.0f, ""};
+        hk.action = {Action::PluginBypass, i - 1, 0.0f, "Plugin " + std::to_string(i) + " Bypass"};
         hk.displayName = "Ctrl+Shift+" + std::to_string(i);
         config.hotkeys.push_back(hk);
     }
@@ -155,7 +156,7 @@ ControlConfig ControlMappingStore::createDefaults()
         HotkeyMapping hk;
         hk.modifiers = HK_CTRL | HK_SHIFT;
         hk.virtualKey = '0';
-        hk.action = {Action::MasterBypass, 0, 0.0f, ""};
+        hk.action = {Action::MasterBypass, 0, 0.0f, "Master Bypass"};
         hk.displayName = "Ctrl+Shift+0";
         config.hotkeys.push_back(hk);
     }
@@ -165,15 +166,25 @@ ControlConfig ControlMappingStore::createDefaults()
         HotkeyMapping hk;
         hk.modifiers = HK_CTRL | HK_SHIFT;
         hk.virtualKey = 'M';
-        hk.action = {Action::PanicMute, 0, 0.0f, ""};
+        hk.action = {Action::PanicMute, 0, 0.0f, "Panic Mute"};
         hk.displayName = "Ctrl+Shift+M";
         config.hotkeys.push_back(hk);
     }
 
+    // Input mute toggle: Ctrl+Shift+N
+    {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = 'N';
+        hk.action = {Action::InputMuteToggle, 0, 0.0f, "Input Mute Toggle"};
+        hk.displayName = "Ctrl+Shift+N";
+        config.hotkeys.push_back(hk);
+    }
+
     config.server.websocketPort = 8765;
-    config.server.websocketEnabled = true;
+    config.server.websocketEnabled = false;
     config.server.httpPort = 8766;
-    config.server.httpEnabled = true;
+    config.server.httpEnabled = false;
 
     return config;
 }

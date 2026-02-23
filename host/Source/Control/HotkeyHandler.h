@@ -7,6 +7,10 @@
  */
 #pragma once
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include <JuceHeader.h>
 #include "ActionDispatcher.h"
 #include "ControlMapping.h"

@@ -11,6 +11,7 @@
 #include "VSTChain.h"
 #include "OutputRouter.h"
 #include "LatencyMonitor.h"
+#include "VirtualMicOutput.h"
 #include "../IPC/SharedMemWriter.h"
 
 #include <functional>
@@ -31,10 +32,6 @@ class AudioEngine : public juce::AudioIODeviceCallback {
 public:
     AudioEngine();
     ~AudioEngine() override;
-
-    // Non-copyable
-    AudioEngine(const AudioEngine&) = delete;
-    AudioEngine& operator=(const AudioEngine&) = delete;
 
     /**
      * @brief Initialize the audio engine with device manager.
@@ -68,6 +65,11 @@ public:
     LatencyMonitor& getLatencyMonitor() { return latencyMonitor_; }
 
     /**
+     * @brief Get the virtual mic output for driver detection.
+     */
+    VirtualMicOutput& getVirtualMicOutput() { return virtualMicOutput_; }
+
+    /**
      * @brief Set the input device by name.
      * @param deviceName Name of the audio input device.
      * @return true if the device was successfully opened.
@@ -96,8 +98,8 @@ public:
     /**
      * @brief Enable or disable local monitoring output.
      */
-    void setMonitorEnabled(bool enabled) { monitorEnabled_ = enabled; }
-    bool isMonitorEnabled() const { return monitorEnabled_; }
+    void setMonitorEnabled(bool enabled) { monitorEnabled_.store(enabled, std::memory_order_relaxed); }
+    bool isMonitorEnabled() const { return monitorEnabled_.load(std::memory_order_relaxed); }
 
     /**
      * @brief Set channel mode (1 = Mono, 2 = Stereo).
@@ -169,15 +171,16 @@ private:
     VSTChain vstChain_;
     OutputRouter outputRouter_;
     LatencyMonitor latencyMonitor_;
+    VirtualMicOutput virtualMicOutput_;
 
     bool running_ = false;
-    bool monitorEnabled_ = true;
+    std::atomic<bool> monitorEnabled_{false};
 
     // Thread-safe control flags (set from any thread, read by audio thread)
     std::atomic<float> inputLevel_{0.0f};
     std::atomic<float> outputLevel_{0.0f};
     std::atomic<float> inputGain_{1.0f};
-    std::atomic<int> channelMode_{1};    // 1 = Mono, 2 = Stereo
+    std::atomic<int> channelMode_{2};    // 1 = Mono, 2 = Stereo
     std::atomic<bool> muted_{false};
 
     // Current audio settings

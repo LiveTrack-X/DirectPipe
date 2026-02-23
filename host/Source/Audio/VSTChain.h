@@ -75,6 +75,13 @@ public:
     int addPlugin(const juce::String& pluginPath);
 
     /**
+     * @brief Add a plugin from a full PluginDescription (preferred).
+     * @param desc Plugin description from scanner.
+     * @return Index of the added plugin, or -1 on failure.
+     */
+    int addPlugin(const juce::PluginDescription& desc);
+
+    /**
      * @brief Remove a plugin from the chain.
      * @param index Position in the chain.
      * @return true if removed successfully.
@@ -110,6 +117,11 @@ public:
      * @brief Get the list of known (scanned) plugin descriptions.
      */
     const juce::KnownPluginList& getKnownPlugins() const { return knownPlugins_; }
+
+    /**
+     * @brief Get the format manager (for scanner access).
+     */
+    juce::AudioPluginFormatManager& getFormatManager() { return formatManager_; }
 
     /**
      * @brief Open the native editor window for a plugin.

@@ -42,6 +42,11 @@ public:
     static juce::File getPresetsDirectory();
 
     /**
+     * @brief Get the auto-save settings file path.
+     */
+    static juce::File getAutoSaveFile();
+
+    /**
      * @brief Get list of available preset files.
      */
     juce::Array<juce::File> getAvailablePresets();

@@ -92,11 +92,12 @@ See [driver/README.md](../driver/README.md) for signing, installation, and debug
 After a successful build:
 
 ```
-build/bin/Release/DirectPipe.exe          Host application (JUCE GUI)
-build/bin/Release/directpipe-tests.exe    Test suite (56 tests)
-build/lib/Release/directpipe-core.lib     Core IPC static library
-build/lib/Release/obs-directpipe-source.dll  OBS plugin (if built)
-driver/Release/virtualloop.sys            Kernel driver (separate build)
+build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application (JUCE GUI)
+build/bin/Release/directpipe-tests.exe                   Core test suite (56 tests)
+build/tests/directpipe-host-tests_artefacts/Release/     Host test suite
+build/lib/Release/directpipe-core.lib                    Core IPC static library
+build/lib/Release/obs-directpipe-source.dll              OBS plugin (if built)
+driver/Release/virtualloop.sys                           Kernel driver (separate build)
 ```
 
 ## Test Suite

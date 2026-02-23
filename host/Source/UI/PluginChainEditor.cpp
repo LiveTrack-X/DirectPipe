@@ -4,6 +4,7 @@
  */
 
 #include "PluginChainEditor.h"
+#include "PluginScanner.h"
 
 namespace directpipe {
 
@@ -19,6 +20,7 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
     addAndMakeVisible(removeButton_);
 
     nameLabel_.setColour(juce::Label::textColourId, juce::Colours::white);
+    nameLabel_.setInterceptsMouseClicks(false, false);
 
     editButton_.onClick = [this] {
         owner_.vstChain_.openPluginEditor(rowIndex_, &owner_);
@@ -29,8 +31,11 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
     };
 
     removeButton_.onClick = [this] {
-        owner_.vstChain_.removePlugin(rowIndex_);
-        owner_.refreshList();
+        int idx = rowIndex_;
+        auto& chain = owner_.vstChain_;
+        juce::MessageManager::callAsync([&chain, idx] {
+            chain.removePlugin(idx);
+        });
     };
 
     update(rowIndex);
@@ -39,17 +44,23 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
 void PluginChainEditor::PluginRowComponent::resized()
 {
     auto bounds = getLocalBounds().reduced(2);
-    int buttonWidth = 50;
-    int toggleWidth = 40;
     int gap = 4;
 
-    removeButton_.setBounds(bounds.removeFromRight(30));
+    removeButton_.setBounds(bounds.removeFromRight(28));
     bounds.removeFromRight(gap);
-    bypassButton_.setBounds(bounds.removeFromRight(toggleWidth));
+    bypassButton_.setBounds(bounds.removeFromRight(70));
     bounds.removeFromRight(gap);
-    editButton_.setBounds(bounds.removeFromRight(buttonWidth));
+    editButton_.setBounds(bounds.removeFromRight(40));
     bounds.removeFromRight(gap);
     nameLabel_.setBounds(bounds);
+}
+
+void PluginChainEditor::PluginRowComponent::paint(juce::Graphics& g)
+{
+    if (dragOver_) {
+        g.setColour(juce::Colour(0xFF5050FF));
+        g.drawRect(getLocalBounds(), 2);
+    }
 }
 
 void PluginChainEditor::PluginRowComponent::update(int newRowIndex)
@@ -64,6 +75,51 @@ void PluginChainEditor::PluginRowComponent::update(int newRowIndex)
     }
 }
 
+void PluginChainEditor::PluginRowComponent::mouseDown(const juce::MouseEvent& /*e*/)
+{
+    owner_.pluginList_.selectRow(rowIndex_);
+}
+
+void PluginChainEditor::PluginRowComponent::mouseDrag(const juce::MouseEvent& e)
+{
+    if (e.getDistanceFromDragStart() > 5) {
+        if (auto* ddc = juce::DragAndDropContainer::findParentDragContainerFor(this)) {
+            if (!ddc->isDragAndDropActive())
+                ddc->startDragging(juce::var(rowIndex_), this);
+        }
+    }
+}
+
+bool PluginChainEditor::PluginRowComponent::isInterestedInDragSource(
+    const SourceDetails& details)
+{
+    return details.description.isInt();
+}
+
+void PluginChainEditor::PluginRowComponent::itemDragEnter(const SourceDetails&)
+{
+    dragOver_ = true;
+    repaint();
+}
+
+void PluginChainEditor::PluginRowComponent::itemDragExit(const SourceDetails&)
+{
+    dragOver_ = false;
+    repaint();
+}
+
+void PluginChainEditor::PluginRowComponent::itemDropped(const SourceDetails& details)
+{
+    dragOver_ = false;
+    repaint();
+
+    int fromIndex = static_cast<int>(details.description);
+    if (fromIndex != rowIndex_) {
+        owner_.vstChain_.movePlugin(fromIndex, rowIndex_);
+        owner_.pluginList_.selectRow(rowIndex_);
+    }
+}
+
 // ─── PluginChainEditor ──────────────────────────────────────────
 
 PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
@@ -75,9 +131,11 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     pluginList_.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF2A2A40));
 
     addAndMakeVisible(addButton_);
+    addAndMakeVisible(scanButton_);
     addAndMakeVisible(removeButton_);
 
-    addButton_.onClick = [this] { addPlugin(); };
+    addButton_.onClick = [this] { showAddPluginMenu(); };
+    scanButton_.onClick = [this] { openScannerDialog(); };
     removeButton_.onClick = [this] { removeSelectedPlugin(); };
 
     vstChain_.onChainChanged = [this] { refreshList(); };
@@ -98,9 +156,11 @@ void PluginChainEditor::resized()
 
     // Bottom bar with buttons
     auto buttonBar = bounds.removeFromBottom(30);
-    addButton_.setBounds(buttonBar.removeFromLeft(150));
-    buttonBar.removeFromLeft(5);
-    removeButton_.setBounds(buttonBar.removeFromLeft(100));
+    addButton_.setBounds(buttonBar.removeFromLeft(120));
+    buttonBar.removeFromLeft(4);
+    scanButton_.setBounds(buttonBar.removeFromLeft(80));
+    buttonBar.removeFromLeft(4);
+    removeButton_.setBounds(buttonBar.removeFromLeft(80));
 
     // Plugin list takes remaining space
     pluginList_.setBounds(bounds);
@@ -140,9 +200,79 @@ juce::Component* PluginChainEditor::refreshComponentForRow(
     return row;
 }
 
-void PluginChainEditor::addPlugin()
+void PluginChainEditor::showAddPluginMenu()
 {
-    // Open file chooser for VST plugin
+    juce::PopupMenu menu;
+
+    // Add scanned plugins as submenu
+    auto& knownPlugins = vstChain_.getKnownPlugins();
+    auto types = knownPlugins.getTypes();
+
+    if (!types.isEmpty()) {
+        // Group by vendor
+        std::map<juce::String, juce::PopupMenu> vendorMenus;
+        for (int i = 0; i < types.size(); ++i) {
+            auto vendor = types[i].manufacturerName.isEmpty() ?
+                          juce::String("Unknown") : types[i].manufacturerName;
+            vendorMenus[vendor].addItem(1000 + i, types[i].name +
+                " (" + types[i].pluginFormatName + ")");
+        }
+
+        juce::PopupMenu scannedMenu;
+        for (auto& [vendor, submenu] : vendorMenus) {
+            scannedMenu.addSubMenu(vendor, submenu);
+        }
+        menu.addSubMenu("Scanned Plugins (" + juce::String(types.size()) + ")", scannedMenu);
+        menu.addSeparator();
+    }
+
+    menu.addItem(1, "Browse for plugin file...");
+    menu.addItem(2, "Open Scanner...");
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addButton_),
+        [this, types](int result) {
+            if (result == 1) {
+                addPluginFromFile();
+            } else if (result == 2) {
+                openScannerDialog();
+            } else if (result >= 1000) {
+                int idx = result - 1000;
+                if (idx < types.size())
+                    addPluginFromDescription(types[idx]);
+            }
+        });
+}
+
+void PluginChainEditor::openScannerDialog()
+{
+    auto* scanner = new PluginScannerComponent(vstChain_);
+    scanner->setSize(550, 500);
+
+    scanner->onPluginSelected = [this](const juce::PluginDescription& desc) {
+        addPluginFromDescription(desc);
+    };
+
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned(scanner);
+    options.dialogTitle = "VST Plugin Scanner";
+    options.dialogBackgroundColour = juce::Colour(0xFF1E1E2E);
+    options.escapeKeyTriggersCloseButton = true;
+    options.useNativeTitleBar = true;
+    options.resizable = true;
+    options.launchAsync();
+}
+
+void PluginChainEditor::addPluginFromDescription(const juce::PluginDescription& desc)
+{
+    // Use callAsync to prevent scanner dialog freeze during plugin loading
+    auto descCopy = desc;
+    juce::MessageManager::callAsync([this, descCopy] {
+        vstChain_.addPlugin(descCopy);
+    });
+}
+
+void PluginChainEditor::addPluginFromFile()
+{
     auto chooser = std::make_shared<juce::FileChooser>(
         "Select VST Plugin",
         juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory),
@@ -163,7 +293,6 @@ void PluginChainEditor::removeSelectedPlugin()
     int selected = pluginList_.getSelectedRow();
     if (selected >= 0) {
         vstChain_.removePlugin(selected);
-        refreshList();
     }
 }
 

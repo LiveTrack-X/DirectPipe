@@ -19,9 +19,20 @@ LevelMeter::~LevelMeter()
     stopTimer();
 }
 
+// Convert linear RMS level to logarithmic display scale.
+// Maps -60 dB..0 dB to 0.0..1.0 so normal speech (~-30 to -10 dB)
+// fills 50-83% of the meter height instead of a tiny sliver.
+static float linearToLogDisplay(float linear)
+{
+    if (linear < 0.001f) return 0.0f;           // below -60 dB
+    float db = 20.0f * std::log10(linear);       // 0..1 → -inf..0 dB
+    return juce::jlimit(0.0f, 1.0f, (db + 60.0f) / 60.0f);  // -60..0 → 0..1
+}
+
 void LevelMeter::setLevel(float level)
 {
-    targetLevel_.store(juce::jlimit(0.0f, 1.0f, level), std::memory_order_relaxed);
+    float display = linearToLogDisplay(juce::jlimit(0.0f, 1.0f, level));
+    targetLevel_.store(display, std::memory_order_relaxed);
 }
 
 void LevelMeter::paint(juce::Graphics& g)

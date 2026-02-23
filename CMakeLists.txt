@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# MSVC: treat source/execution as UTF-8 to avoid C4819 warnings
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # Platform check
 if(NOT WIN32)
     message(WARNING "DirectPipe is designed for Windows. Some features may not be available on this platform.")

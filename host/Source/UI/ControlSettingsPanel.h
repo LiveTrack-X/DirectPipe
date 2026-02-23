@@ -51,10 +51,19 @@ private:
     /** @brief Handle [Remove] button click — remove a binding. */
     void onRemoveClicked(int bindingIndex);
 
+    /** @brief Handle [Add] button click — show action selector and record key. */
+    void onAddClicked();
+
+    /** @brief Build the action menu with all available actions. */
+    juce::PopupMenu buildActionMenu();
+
     ControlManager& manager_;
 
     // Header label
     juce::Label headerLabel_{"", "Keyboard Shortcuts"};
+
+    // Add button
+    juce::TextButton addButton_{"+ Add Shortcut"};
 
     // Scrollable viewport for the binding rows
     juce::Viewport viewport_;
@@ -270,10 +279,6 @@ public:
      */
     explicit ControlSettingsPanel(ControlManager& manager);
     ~ControlSettingsPanel() override;
-
-    // Non-copyable
-    ControlSettingsPanel(const ControlSettingsPanel&) = delete;
-    ControlSettingsPanel& operator=(const ControlSettingsPanel&) = delete;
 
     void paint(juce::Graphics& g) override;
     void resized() override;

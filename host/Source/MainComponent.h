@@ -6,6 +6,7 @@
 
 #include <JuceHeader.h>
 #include "Audio/AudioEngine.h"
+#include "Audio/OutputRouter.h"
 #include "Control/ActionDispatcher.h"
 #include "Control/StateBroadcaster.h"
 #include "Control/ControlManager.h"
@@ -47,8 +48,13 @@ public:
     // ActionListener
     void onAction(const ActionEvent& event) override;
 
+    /** @brief Refresh all UI components to match engine state. */
+    void refreshUI();
+
 private:
     void timerCallback() override;
+    void saveSettings();
+    void loadSettings();
 
     // Audio engine (core)
     AudioEngine audioEngine_;
@@ -73,6 +79,11 @@ private:
     // Input gain slider
     juce::Slider inputGainSlider_;
     juce::Label inputGainLabel_{"", "Gain:"};
+
+    // Preset buttons
+    juce::TextButton savePresetBtn_{"Save Preset"};
+    juce::TextButton loadPresetBtn_{"Load Preset"};
+    std::unique_ptr<PresetManager> presetManager_;
 
     // Master mute button
     juce::TextButton panicMuteBtn_{"PANIC MUTE"};

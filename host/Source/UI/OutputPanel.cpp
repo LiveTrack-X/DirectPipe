@@ -25,10 +25,15 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     vmicSectionLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
     addAndMakeVisible(vmicSectionLabel_);
 
-    // Status indicator (Disconnected by default)
+    // Status indicator
     vmicStatusLabel_.setFont(juce::Font(12.0f));
-    vmicStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(kRedColour));
+    vmicStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
     addAndMakeVisible(vmicStatusLabel_);
+
+    // Driver status label
+    vmicDriverLabel_.setFont(juce::Font(11.0f));
+    vmicDriverLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(vmicDriverLabel_);
 
     // Volume slider
     vmicVolumeLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
@@ -86,10 +91,10 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     addAndMakeVisible(monitorVolumeSlider_);
 
     // Mute button
-    monitorMuteButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
-    monitorMuteButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kRedColour));
-    monitorMuteButton_.onClick = [this] { onMonitorMuteToggled(); };
-    addAndMakeVisible(monitorMuteButton_);
+    monitorEnableButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    monitorEnableButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+    monitorEnableButton_.onClick = [this] { onMonitorEnableToggled(); };
+    addAndMakeVisible(monitorEnableButton_);
 
     // ── Initial state ──
     refreshMonitorDeviceList();
@@ -107,8 +112,8 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     vmicMuteButton_.setToggleState(
         !router.isEnabled(OutputRouter::Output::VirtualMic),
         juce::dontSendNotification);
-    monitorMuteButton_.setToggleState(
-        !router.isEnabled(OutputRouter::Output::Monitor),
+    monitorEnableButton_.setToggleState(
+        router.isEnabled(OutputRouter::Output::Monitor),
         juce::dontSendNotification);
 
     // Start periodic status polling at 4 Hz
@@ -137,8 +142,8 @@ void OutputPanel::paint(juce::Graphics& g)
     constexpr int gap  = 8;
 
     // Calculate Y position of the separator (after Virtual Mic section)
-    // Title + vmicSection + status + volume + mute = 5 rows
-    int separatorY = bounds.getY() + (rowH + gap) * 5 - gap / 2;
+    // Title + vmicSection + driver + volume + mute = 5 rows + driver row
+    int separatorY = bounds.getY() + (rowH + gap) * 5 + 22 + gap - gap / 2;
     g.setColour(juce::Colour(kDimTextColour).withAlpha(0.3f));
     g.drawHorizontalLine(separatorY, static_cast<float>(bounds.getX()),
                          static_cast<float>(bounds.getRight()));
@@ -164,6 +169,11 @@ void OutputPanel::resized()
     vmicStatusLabel_.setBounds(bounds.getX() + bounds.getWidth() / 2, y,
                                bounds.getWidth() / 2, rowH);
     y += rowH + gap;
+
+    // Driver status
+    vmicDriverLabel_.setBounds(bounds.getX() + labelW + gap, y,
+                                bounds.getWidth() - labelW - gap, 20);
+    y += 22 + gap;
 
     // Virtual Mic volume
     vmicVolumeLabel_.setBounds(bounds.getX(), y, labelW, rowH);
@@ -192,7 +202,7 @@ void OutputPanel::resized()
     y += rowH + gap;
 
     // Monitor mute
-    monitorMuteButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
+    monitorEnableButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
 }
 
 // ─── Timer callback ─────────────────────────────────────────────────────────
@@ -200,15 +210,53 @@ void OutputPanel::resized()
 void OutputPanel::timerCallback()
 {
     updateVirtualMicStatus();
+
+    // Sync mute/enable states with engine (reflects Panic Mute and external control)
+    auto& router = engine_.getOutputRouter();
+
+    bool vmicEnabled = router.isEnabled(OutputRouter::Output::VirtualMic);
+    if (vmicMuteButton_.getToggleState() == vmicEnabled) {
+        vmicMuteButton_.setToggleState(!vmicEnabled, juce::dontSendNotification);
+    }
+
+    bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
+    if (monitorEnableButton_.getToggleState() != monEnabled) {
+        monitorEnableButton_.setToggleState(monEnabled, juce::dontSendNotification);
+    }
 }
 
 // ─── Virtual Mic status ─────────────────────────────────────────────────────
 
 void OutputPanel::updateVirtualMicStatus()
 {
-    // Query the output router for shared-memory / OBS connection status.
-    // The Virtual Loop Mic is considered "connected" when the shared memory
-    // IPC is active (meaning OBS or another consumer is reading from it).
+    // Check native driver installation (once, expensive operation)
+    if (!driverCheckDone_) {
+        driverCheckDone_ = true;
+        nativeDriverDetected_ = engine_.getVirtualMicOutput().isNativeDriverInstalled();
+
+        if (nativeDriverDetected_) {
+            vmicDriverLabel_.setText("Native driver installed",
+                                     juce::dontSendNotification);
+            vmicDriverLabel_.setColour(juce::Label::textColourId,
+                                        juce::Colour(kGreenColour));
+        } else {
+            // Check for third-party virtual cables
+            auto thirdParty = engine_.getVirtualMicOutput().detectVirtualDevices();
+            if (!thirdParty.isEmpty()) {
+                vmicDriverLabel_.setText("Using: " + thirdParty[0],
+                                         juce::dontSendNotification);
+                vmicDriverLabel_.setColour(juce::Label::textColourId,
+                                            juce::Colour(0xFFFFEB3B));  // Yellow
+            } else {
+                vmicDriverLabel_.setText("Driver not installed - SHM only",
+                                         juce::dontSendNotification);
+                vmicDriverLabel_.setColour(juce::Label::textColourId,
+                                            juce::Colour(kDimTextColour));
+            }
+        }
+    }
+
+    // Query shared memory connection status
     auto& router = engine_.getOutputRouter();
     bool connected = router.isOBSConnected();
 
@@ -216,13 +264,13 @@ void OutputPanel::updateVirtualMicStatus()
         vmicConnected_ = connected;
 
         if (vmicConnected_) {
-            vmicStatusLabel_.setText("Connected", juce::dontSendNotification);
+            vmicStatusLabel_.setText("SHM: Active", juce::dontSendNotification);
             vmicStatusLabel_.setColour(juce::Label::textColourId,
                                        juce::Colour(kGreenColour));
         } else {
-            vmicStatusLabel_.setText("Disconnected", juce::dontSendNotification);
+            vmicStatusLabel_.setText("SHM: Waiting", juce::dontSendNotification);
             vmicStatusLabel_.setColour(juce::Label::textColourId,
-                                       juce::Colour(kRedColour));
+                                       juce::Colour(kDimTextColour));
         }
     }
 }
@@ -278,13 +326,11 @@ void OutputPanel::onVirtualMicMuteToggled()
     engine_.getOutputRouter().setEnabled(OutputRouter::Output::VirtualMic, !muted);
 }
 
-void OutputPanel::onMonitorMuteToggled()
+void OutputPanel::onMonitorEnableToggled()
 {
-    bool muted = monitorMuteButton_.getToggleState();
-    engine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, !muted);
-
-    // Also sync the engine's monitor enabled flag
-    engine_.setMonitorEnabled(!muted);
+    bool enabled = monitorEnableButton_.getToggleState();
+    engine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, enabled);
+    engine_.setMonitorEnabled(enabled);
 }
 
 } // namespace directpipe

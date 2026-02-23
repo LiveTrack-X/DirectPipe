@@ -209,11 +209,41 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     }
 
     // 4. Local monitor output (copy to this callback's output)
-    if (monitorEnabled_ && !muted) {
-        for (int ch = 0; ch < numOutputChannels && ch < buffer.getNumChannels(); ++ch) {
-            std::memcpy(outputChannelData[ch],
-                        buffer.getReadPointer(ch),
-                        sizeof(float) * static_cast<size_t>(numSamples));
+    if (monitorEnabled_.load(std::memory_order_relaxed) && !muted) {
+        float monVol = outputRouter_.getVolume(OutputRouter::Output::Monitor);
+        bool monEnabled = outputRouter_.isEnabled(OutputRouter::Output::Monitor);
+
+        if (monEnabled && monVol > 0.001f) {
+            if (chMode == 1 && buffer.getNumChannels() >= 1) {
+                // Mono mode: copy channel 0 to ALL output channels
+                for (int ch = 0; ch < numOutputChannels; ++ch) {
+                    std::memcpy(outputChannelData[ch],
+                                buffer.getReadPointer(0),
+                                sizeof(float) * static_cast<size_t>(numSamples));
+                    if (std::abs(monVol - 1.0f) > 0.001f) {
+                        juce::FloatVectorOperations::multiply(
+                            outputChannelData[ch], monVol, numSamples);
+                    }
+                }
+            } else {
+                // Stereo mode: copy matching channels
+                for (int ch = 0; ch < numOutputChannels; ++ch) {
+                    int srcCh = juce::jmin(ch, buffer.getNumChannels() - 1);
+                    std::memcpy(outputChannelData[ch],
+                                buffer.getReadPointer(srcCh),
+                                sizeof(float) * static_cast<size_t>(numSamples));
+                    if (std::abs(monVol - 1.0f) > 0.001f) {
+                        juce::FloatVectorOperations::multiply(
+                            outputChannelData[ch], monVol, numSamples);
+                    }
+                }
+            }
+        } else {
+            // Monitor muted or volume zero
+            for (int ch = 0; ch < numOutputChannels; ++ch) {
+                std::memset(outputChannelData[ch], 0,
+                            sizeof(float) * static_cast<size_t>(numSamples));
+            }
         }
     } else {
         for (int ch = 0; ch < numOutputChannels; ++ch) {

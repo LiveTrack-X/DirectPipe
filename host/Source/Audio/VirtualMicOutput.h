@@ -45,6 +45,22 @@ public:
     juce::StringArray detectVirtualDevices();
 
     /**
+     * @brief Check if the native Virtual Loop Mic WDM driver is installed.
+     *
+     * Scans Windows capture (input) devices for "Virtual Loop Mic".
+     * When the native driver is installed, audio flows via shared memory
+     * directly to the driver -- no third-party virtual cable needed.
+     *
+     * @return true if the native driver's capture device is present.
+     */
+    bool isNativeDriverInstalled();
+
+    /**
+     * @brief Get the name used by the native WDM driver.
+     */
+    static juce::String getNativeDriverDeviceName() { return "Virtual Loop Mic"; }
+
+    /**
      * @brief Initialize output to a specific virtual device.
      * @param deviceName Name of the virtual audio device.
      * @param sampleRate Audio sample rate.

@@ -35,6 +35,27 @@ juce::StringArray VirtualMicOutput::detectVirtualDevices()
     return virtualDevices;
 }
 
+bool VirtualMicOutput::isNativeDriverInstalled()
+{
+    // The native WDM driver registers as a capture (input) device named
+    // "Virtual Loop Mic". Scan all audio input devices for this name.
+    juce::AudioDeviceManager tempManager;
+    tempManager.initialiseWithDefaultDevices(2, 0);
+
+    if (auto* type = tempManager.getCurrentDeviceTypeObject()) {
+        auto inputDevices = type->getDeviceNames(true);  // input (capture) devices
+
+        for (const auto& name : inputDevices) {
+            if (name.containsIgnoreCase("Virtual Loop Mic")) {
+                juce::Logger::writeToLog("VirtualMicOutput: Native driver detected: " + name);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool VirtualMicOutput::initialize(const juce::String& deviceName,
                                    double sampleRate, int bufferSize)
 {
@@ -103,7 +124,8 @@ bool VirtualMicOutput::isVirtualDeviceName(const juce::String& name)
     auto lower = name.toLowerCase();
 
     // Known virtual audio device name patterns
-    return lower.contains("vb-audio") ||
+    return lower.contains("virtual loop mic") ||
+           lower.contains("vb-audio") ||
            lower.contains("vb-cable") ||
            lower.contains("cable input") ||
            lower.contains("cable output") ||
@@ -118,14 +140,14 @@ bool VirtualMicOutput::isVirtualDeviceName(const juce::String& name)
 juce::String VirtualMicOutput::getSetupGuideMessage()
 {
     return "Virtual microphone driver not detected.\n\n"
-           "To use DirectPipe with Discord, Zoom, and other apps, "
-           "you need a virtual audio cable driver.\n\n"
-           "Recommended (free):\n"
-           "  - VB-Cable (vb-audio.com/Cable)\n\n"
-           "After installation:\n"
-           "1. Restart DirectPipe\n"
-           "2. The virtual mic output will auto-detect\n"
-           "3. In Discord/Zoom, select 'CABLE Output' as your input device";
+           "Option 1 (Recommended): Install the native driver\n"
+           "  - Run the DirectPipe installer or use:\n"
+           "    pnputil /add-driver virtualloop.inf /install\n"
+           "  - Select 'Virtual Loop Mic' in Discord/Zoom\n\n"
+           "Option 2: Use a third-party virtual cable\n"
+           "  - VB-Cable (vb-audio.com/Cable)\n"
+           "  - Select 'CABLE Output' in Discord/Zoom\n\n"
+           "After installation, restart DirectPipe.";
 }
 
 } // namespace directpipe
