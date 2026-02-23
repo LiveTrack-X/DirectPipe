@@ -7,9 +7,12 @@ capture driver based on the Microsoft Sysvad sample. It exposes a virtual
 microphone recording device ("Virtual Loop Mic") that reads PCM audio data from
 a shared memory region created by the DirectPipe host application.
 
-This allows any Windows application (OBS, Discord, Teams, Zoom, games, etc.) to
-use the DirectPipe-processed audio as a standard microphone input without
-requiring third-party virtual audio cable software.
+This replaces the need for third-party virtual audio cables (e.g., VB-Cable).
+Any Windows application (OBS, Discord, Teams, Zoom, games, etc.) can select
+"Virtual Loop Mic" as a standard microphone input to receive DirectPipe-processed
+audio with minimal latency.
+
+For overall project architecture, see [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 ## Architecture
 
