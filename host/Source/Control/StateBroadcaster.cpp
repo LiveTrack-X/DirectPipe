@@ -5,6 +5,7 @@
 
 #include "StateBroadcaster.h"
 #include <algorithm>
+#include <JuceHeader.h>
 
 namespace directpipe {
 

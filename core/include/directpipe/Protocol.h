@@ -25,6 +25,10 @@ constexpr uint32_t PROTOCOL_VERSION = 1;
  * write_pos and read_pos are on separate cache lines to prevent
  * false sharing between producer and consumer.
  */
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure was padded due to alignment specifier
+#endif
 struct DirectPipeHeader {
     /// Write position in frames (producer increments)
     alignas(64) std::atomic<uint64_t> write_pos{0};
@@ -50,6 +54,9 @@ struct DirectPipeHeader {
     /// Reserved padding to ensure header is cache-line aligned
     uint8_t reserved[64 - sizeof(std::atomic<bool>) - 4 * sizeof(uint32_t)]{};
 };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // Ensure header fields are properly aligned
 static_assert(alignof(DirectPipeHeader) >= 64,

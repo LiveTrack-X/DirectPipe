@@ -13,6 +13,7 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <algorithm>
 
 namespace directpipe {
 
@@ -32,7 +33,7 @@ enum class Action {
 
 /// Carries an action with its parameters
 struct ActionEvent {
-    Action action;
+    Action action = Action::PanicMute;
     int intParam = 0;
     float floatParam = 0.0f;
     std::string stringParam;

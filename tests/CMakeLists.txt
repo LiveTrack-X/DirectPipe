@@ -3,6 +3,7 @@
 include(GoogleTest)
 
 # ─── Core IPC Tests (no JUCE dependency) ────────────────────────
+# Core + ActionDispatcher tests (no JUCE dependency)
 add_executable(directpipe-tests
     test_ring_buffer.cpp
     test_shared_memory.cpp
@@ -10,6 +11,9 @@ add_executable(directpipe-tests
     test_action_dispatcher.cpp
     test_ipc_integration.cpp
     # ActionDispatcher source compiled directly (no JUCE dependency)
+    test_ipc_integration.cpp
+    test_action_dispatcher.cpp
+    # ActionDispatcher no longer depends on JUCE, compile it directly
     ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
 )
 
@@ -37,6 +41,11 @@ if(DIRECTPIPE_BUILD_HOST)
 
     target_sources(directpipe-host-tests PRIVATE
         test_websocket_protocol.cpp
+# Host-dependent tests (require JUCE for StateBroadcaster JSON, etc.)
+if(DIRECTPIPE_BUILD_HOST)
+    add_executable(directpipe-host-tests
+        test_websocket_protocol.cpp
+        # Host source files needed by the tests
         ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Control/StateBroadcaster.cpp
     )
@@ -49,6 +58,9 @@ if(DIRECTPIPE_BUILD_HOST)
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
     )
+
+    # Generate JuceHeader.h for this target (needed by StateBroadcaster.cpp)
+    juce_generate_juce_header(directpipe-host-tests)
 
     target_link_libraries(directpipe-host-tests PRIVATE
         directpipe-core
