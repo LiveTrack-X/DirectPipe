@@ -1,12 +1,14 @@
 {
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "SDKVersion": 2,
+  "UUID": "com.directpipe.directpipe",
   "Author": "DirectPipe",
   "CodePath": "src/plugin.js",
   "Description": "Control DirectPipe audio processing from your Stream Deck. Toggle VST bypass, adjust volumes, switch presets, and panic mute.",
   "Name": "DirectPipe",
   "Icon": "images/directpipe",
-  "URL": "https://github.com/directpipe/directpipe",
-  "Version": "3.1.0",
+  "URL": "https://github.com/LiveTrack-X/DirectLoopMic",
+  "Version": "1.0.0.0",
   "OS": [
     {
       "Platform": "windows",
@@ -14,7 +16,11 @@
     }
   ],
   "Software": {
-    "MinimumVersion": "6.4"
+    "MinimumVersion": "6.6"
+  },
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "enabled"
   },
   "Category": "DirectPipe Audio",
   "CategoryIcon": "images/category",
@@ -24,6 +30,7 @@
       "Name": "Bypass Toggle",
       "Tooltip": "Toggle VST plugin bypass on/off. Long-press for master bypass.",
       "Icon": "images/bypass",
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "images/bypass-active",
@@ -44,8 +51,9 @@
     {
       "UUID": "com.directpipe.volume-control",
       "Name": "Volume Control",
-      "Tooltip": "Adjust volume for input, virtual mic, or monitor outputs. Use dial or press to toggle mute.",
+      "Tooltip": "Adjust volume for input or monitor. Press to toggle mute, rotate dial to adjust level.",
       "Icon": "images/volume",
+      "Controllers": ["Keypad", "Encoder"],
       "States": [
         {
           "Image": "images/volume-on",
@@ -75,8 +83,9 @@
     {
       "UUID": "com.directpipe.preset-switch",
       "Name": "Preset Switch",
-      "Tooltip": "Load a specific preset by index, or cycle through presets with next/previous.",
+      "Tooltip": "Switch to a preset slot (A-E), or cycle through presets.",
       "Icon": "images/preset",
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "images/preset-active",
@@ -93,6 +102,7 @@
       "Name": "Panic Mute",
       "Tooltip": "Immediately mute all DirectPipe audio outputs. Press again to unmute.",
       "Icon": "images/panic",
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "images/panic-off",

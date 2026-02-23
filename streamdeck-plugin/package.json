@@ -19,12 +19,13 @@
   "author": "DirectPipe",
   "license": "MIT",
   "dependencies": {
+    "@elgato/streamdeck": "^2.0.1",
     "ws": "^8.16.0"
   },
   "devDependencies": {
     "eslint": "^8.56.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

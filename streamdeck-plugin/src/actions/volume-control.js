@@ -1,129 +1,82 @@
 /**
  * @file volume-control.js
- * @brief Volume control action for the Stream Deck.
- *
- * Adjusts volume for a specific audio target (input, monitor, virtual_mic).
- * Supports both standard buttons (press to mute) and Stream Deck+ dials
- * (rotate to adjust volume).
- *
- * Button states:
- *   State 0 — Volume is active
- *   State 1 — Volume is muted
+ * @brief Volume control action — SingletonAction (@elgato/streamdeck SDK).
  */
 
-/**
- * Volume Control action handler for the Stream Deck.
- */
-class VolumeControlAction {
-    /**
-     * @param {object} plugin - Reference to the DirectPipePlugin instance.
-     */
-    constructor(plugin) {
-        /** @type {object} */
-        this.plugin = plugin;
+const { SingletonAction } = require("@elgato/streamdeck");
+
+const TARGET_NAMES = { input: "Input", monitor: "Monitor", virtual_mic: "V-Mic" };
+
+class VolumeControlAction extends SingletonAction {
+    onKeyDown(ev) {
+        const { dpClient } = require("../plugin");
+        const target = ev.payload.settings?.target || "monitor";
+        dpClient.sendAction("toggle_mute", { target });
     }
 
-    /**
-     * Called when the button key is pressed down.
-     * Toggles mute for the configured target.
-     */
-    onKeyDown(context, settings, payload) {
-        const target = (settings && settings.target) || "monitor";
-        this.plugin.client.send({
-            type: "action",
-            action: "toggle_mute",
-            params: { target },
-        });
-    }
-
-    /**
-     * Called when the button key is released.
-     */
-    onKeyUp(context, settings, payload) {
-        // No action needed
-    }
-
-    /**
-     * Called when the Stream Deck+ dial is rotated.
-     * Adjusts volume by 5% per tick.
-     */
-    onDialRotate(context, settings, payload) {
-        const target = (settings && settings.target) || "monitor";
-        const ticks = (payload && payload.ticks) || 0;
+    onDialRotate(ev) {
+        const { dpClient, getCurrentState } = require("../plugin");
+        const target = ev.payload.settings?.target || "monitor";
+        const ticks = ev.payload.ticks || 0;
         const delta = ticks * 0.05;
-        const current = this.plugin._getVolumeForTarget(target) || 1.0;
+
+        const state = getCurrentState();
+        const volumes = state?.data?.volumes;
+        const current = volumes?.[target] ?? 1.0;
         const newValue = Math.max(0, Math.min(1, current + delta));
 
-        this.plugin.client.send({
-            type: "action",
-            action: "set_volume",
-            params: { target, value: newValue },
-        });
+        dpClient.sendAction("set_volume", { target, value: newValue });
     }
 
-    /**
-     * Called when a button with this action appears on the Stream Deck.
-     */
-    onWillAppear(context, settings, payload) {
-        if (this.plugin.currentState) {
-            this.onStateUpdate(context, this.plugin.currentState);
+    onWillAppear(ev) {
+        const { getCurrentState } = require("../plugin");
+        const state = getCurrentState();
+        if (state) this._updateDisplay(ev.action, ev.payload.settings, state);
+    }
+
+    onDidReceiveSettings(ev) {
+        const { getCurrentState } = require("../plugin");
+        const state = getCurrentState();
+        if (state) this._updateDisplay(ev.action, ev.payload.settings, state);
+    }
+
+    updateAllFromState(state) {
+        for (const action of this.actions) {
+            const settings = action.getSettings?.() ?? {};
+            this._updateDisplay(action, settings, state);
         }
     }
 
-    /**
-     * Called when a button with this action disappears.
-     */
-    onWillDisappear(context, settings, payload) {
-        // No cleanup needed
-    }
-
-    /**
-     * Called when settings change via Property Inspector.
-     */
-    onSettingsChanged(context, settings) {
-        if (this.plugin.currentState) {
-            this.onStateUpdate(context, this.plugin.currentState);
+    alertAll() {
+        for (const action of this.actions) {
+            action.showAlert();
         }
     }
 
-    /**
-     * Called when a DirectPipe state update is received.
-     * Updates button to show current volume level and mute state.
-     */
-    onStateUpdate(context, state) {
-        if (!state || !state.data) return;
-
-        const contextInfo = this.plugin.activeContexts.get(context);
-        const settings = contextInfo ? contextInfo.settings : {};
-        const target = (settings && settings.target) || "monitor";
-
+    _updateDisplay(action, settings, state) {
+        if (!state?.data) return;
+        const target = settings?.target || "monitor";
         const volumes = state.data.volumes;
         if (!volumes) return;
 
         const volume = volumes[target];
         const isMuted = state.data.muted === true;
-
-        // Display target name and volume percentage
-        const targetNames = {
-            input: "Input",
-            monitor: "Monitor",
-            virtual_mic: "V-Mic",
-        };
-        const displayName = targetNames[target] || target;
+        const displayName = TARGET_NAMES[target] || target;
 
         let title;
         if (isMuted) {
             title = `${displayName}\nMUTED`;
         } else if (volume !== undefined) {
-            const pct = Math.round(volume * 100);
-            title = `${displayName}\n${pct}%`;
+            title = `${displayName}\n${Math.round(volume * 100)}%`;
         } else {
             title = displayName;
         }
 
-        this.plugin.setState(context, isMuted ? 1 : 0);
-        this.plugin.setTitle(context, title);
+        action.setState(isMuted ? 1 : 0);
+        action.setTitle(title);
     }
 }
+
+VolumeControlAction.UUID = "com.directpipe.volume-control";
 
 module.exports = { VolumeControlAction };
