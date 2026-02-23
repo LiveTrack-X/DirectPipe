@@ -1,16 +1,15 @@
 /**
  * @file OutputRouter.h
- * @brief Audio output distribution to 3 simultaneous destinations
+ * @brief Audio output distribution to 2 destinations
  *
  * Routes processed audio to:
- * 1. Shared Memory Ring Buffer → OBS Plugin
- * 2. WASAPI Output → Virtual Microphone (Discord/Zoom)
- * 3. Local Monitor → Headphones
+ * 1. Virtual Cable (second WASAPI device) → Discord/Zoom/OBS
+ * 2. Local Monitor → Headphones
  */
 #pragma once
 
 #include <JuceHeader.h>
-#include "../IPC/SharedMemWriter.h"
+#include "VirtualMicOutput.h"
 #include <atomic>
 
 namespace directpipe {
@@ -25,8 +24,7 @@ class OutputRouter {
 public:
     /// Output destination identifiers
     enum class Output {
-        SharedMemory = 0,  ///< OBS Plugin (via shared memory IPC)
-        VirtualMic,        ///< Discord/Zoom (via virtual audio device)
+        VirtualCable = 0,  ///< Virtual cable (Discord/Zoom/OBS)
         Monitor,           ///< Local monitoring (headphones)
         Count
     };
@@ -34,64 +32,26 @@ public:
     OutputRouter();
     ~OutputRouter();
 
-    /**
-     * @brief Initialize the router with audio parameters.
-     * @param sampleRate Sample rate in Hz.
-     * @param bufferSize Buffer size in samples.
-     */
     void initialize(double sampleRate, int bufferSize);
-
-    /**
-     * @brief Shut down all outputs and release resources.
-     */
     void shutdown();
 
     /**
      * @brief Route processed audio to all enabled outputs.
-     *
      * Called from the real-time audio thread. No allocations.
-     *
-     * @param buffer Processed audio data.
-     * @param numSamples Number of samples in the buffer.
      */
     void routeAudio(const juce::AudioBuffer<float>& buffer, int numSamples);
 
-    /**
-     * @brief Set volume for an output (0.0 to 1.0).
-     * @param output Target output.
-     * @param volume Volume level (0.0 = silence, 1.0 = unity).
-     */
     void setVolume(Output output, float volume);
-
-    /**
-     * @brief Get current volume for an output.
-     */
     float getVolume(Output output) const;
-
-    /**
-     * @brief Enable or disable an output.
-     */
     void setEnabled(Output output, bool enabled);
-
-    /**
-     * @brief Check if an output is enabled.
-     */
     bool isEnabled(Output output) const;
-
-    /**
-     * @brief Get the current level for an output (for metering).
-     */
     float getLevel(Output output) const;
 
-    /**
-     * @brief Check if the OBS plugin is connected (shared memory active).
-     */
-    bool isOBSConnected() const;
+    /** Wire the virtual cable output (non-owning pointer). */
+    void setVirtualMicOutput(VirtualMicOutput* vmo) { virtualMicOutput_ = vmo; }
 
-    /**
-     * @brief Get the shared memory writer (for status queries).
-     */
-    SharedMemWriter& getSharedMemWriter() { return shmWriter_; }
+    /** Check if virtual cable is active and receiving audio. */
+    bool isVirtualCableActive() const;
 
 private:
     static constexpr int kOutputCount = static_cast<int>(Output::Count);
@@ -104,7 +64,7 @@ private:
 
     OutputState outputs_[kOutputCount];
 
-    SharedMemWriter shmWriter_;
+    VirtualMicOutput* virtualMicOutput_ = nullptr;
 
     // Temporary buffer for volume-scaled output (pre-allocated)
     juce::AudioBuffer<float> scaledBuffer_;

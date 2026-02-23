@@ -10,45 +10,24 @@ It replaces the "Light Host + VB-Cable" setup with a single application that inc
 
 1. **Install DirectPipe** (includes the Virtual Loop Mic driver)
 2. **Launch DirectPipe**
-3. **Select your microphone** from the INPUT dropdown
-4. **Scan for VST plugins** — click "Scan..." to find all installed plugins
-5. **Add VST plugins** to the chain — click "+ Add Plugin" and select from the scanned list
-6. **Configure outputs**:
-   - Virtual Loop Mic: automatically available as a microphone in all apps
-   - Monitor: enable to hear yourself through headphones
+3. **Select your driver type** — ASIO or Windows Audio (WASAPI) in the Audio tab
+4. **Select your microphone** from the device dropdown
+5. **Scan for VST plugins** — click "Scan..." to find all installed plugins
+6. **Add VST plugins** to the chain — click "+ Add Plugin" and select from the scanned list
+7. **Configure monitor output** in the Output tab if you want to hear yourself
 
-## Setting Up for Discord/Zoom
+## Audio Settings (Audio Tab)
 
-1. Launch DirectPipe — the Virtual Loop Mic driver is already installed
-2. In Discord/Zoom/Teams, go to Audio Settings
-3. Set your **Input Device** to **"Virtual Loop Mic"**
-4. Speak into your USB microphone — the processed audio flows through automatically
+### Driver Type
 
-No VB-Cable or third-party virtual audio cable needed.
+- **Windows Audio (WASAPI)**: Default. Non-exclusive access — other apps can use your mic simultaneously. Separate input/output device selection.
+- **ASIO**: Lower latency. Single device selection. Dynamic sample rate and buffer size lists from the device. "ASIO Control Panel" button to open the driver's native settings.
 
-## Setting Up for OBS Studio
+### Sample Rate & Buffer Size
 
-### Method 1: Virtual Loop Mic (recommended)
+**WASAPI mode**: Fixed list of common values (44100, 48000 Hz; 64-2048 samples).
 
-1. In OBS, add a new **Audio Input Capture** source
-2. Select **"Virtual Loop Mic"** as the device
-3. Done — lowest latency path via shared memory
-
-### Method 2: OBS Plugin (alternative)
-
-1. Install DirectPipe with OBS plugin option
-2. In OBS, add a new **Audio Source**
-3. Select **"DirectPipe Audio"** from the source list
-4. The plugin auto-connects when DirectPipe is running
-
-## Audio Settings
-
-### Channel Mode
-
-- **Stereo** (default): Channels pass through as-is. Use for stereo microphones.
-- **Mono**: Both microphone channels are mixed to mono (0.5 L + 0.5 R average). Best for voice.
-
-### Buffer Size
+**ASIO mode**: Lists only what the device actually supports. Change via the ASIO Control Panel for best results.
 
 | Buffer (samples @48kHz) | Latency   | Notes |
 |--------------------------|-----------|-------|
@@ -57,36 +36,10 @@ No VB-Cable or third-party virtual audio cable needed.
 | 128                      | ~8ms      | Low latency, needs decent CPU |
 | 64                       | ~5ms      | Ultra-low, may glitch on slower systems |
 
-### Sample Rate
+### Channel Mode
 
-48000 Hz is the default and recommended for most use cases. 44100 Hz is also supported.
-
-## VST Plugin Scanner
-
-DirectPipe includes an **out-of-process VST scanner** that safely discovers all installed plugins.
-
-### Scanning for Plugins
-
-1. Click **"Scan..."** in the plugin chain area
-2. The scanner dialog shows default scan directories:
-   - `C:\Program Files\Common Files\VST3`
-   - `C:\Program Files (x86)\Common Files\VST3`
-   - `C:\Program Files\Common Files\VST`
-   - `C:\Program Files\VstPlugins`
-   - `C:\Program Files (x86)\VstPlugins`
-   - `C:\Program Files\Steinberg\VST3`
-   - `C:\Program Files\Steinberg\VSTPlugins`
-   - `C:\Program Files (x86)\Steinberg\VSTPlugins`
-3. Add custom directories with "Add Directory" if needed
-4. Click **"Scan for Plugins"** — scanning runs in a separate process
-5. If a bad plugin crashes the scanner, it automatically retries (up to 5 times), skipping the problematic plugin
-6. Scanned plugins are cached — no need to rescan next time
-
-### Adding Plugins from Scan Results
-
-1. Click **"+ Add Plugin"**
-2. Select from **"Scanned Plugins"** submenu (grouped by vendor)
-3. Or double-click a plugin in the scanner dialog
+- **Stereo** (default): Channels pass through as-is.
+- **Mono**: Both microphone channels are mixed to mono. Best for voice.
 
 ## VST Plugin Chain
 
@@ -94,24 +47,54 @@ DirectPipe supports both **VST2** (.dll) and **VST3** (.vst3) plugins in a seria
 
 - **Add**: Click "+ Add Plugin" and select from scanned plugins or browse for a file
 - **Remove**: Click the **X** button on a plugin row
-- **Reorder**: **Drag and drop** a plugin row to a new position in the chain
+- **Reorder**: **Drag and drop** a plugin row to a new position
 - **Bypass**: Click the **Bypass** toggle to skip a plugin without removing it
-- **Edit**: Click **Edit** to open the plugin's native GUI window (click close to hide, re-click Edit to show again)
+- **Edit**: Click **Edit** to open the plugin's native GUI window
 
-### Recommended Free VST Plugins
+### Plugin Internal State
 
-- **ReaPlugs** (ReaEQ, ReaComp, ReaGate) — by Cockos
-- **TDR Nova** — by Tokyo Dawn Records
-- **MeldaProduction MFreeFXBundle** — comprehensive free bundle
+Plugin parameters (EQ curves, compressor settings, etc.) are automatically saved and restored:
+- When switching between preset slots A-E
+- When closing a plugin editor window
+- On application exit
+
+## Quick Preset Slots (A-E)
+
+Five quick-access slots for different VST chain configurations.
+
+- **Click a slot** to switch to it (current slot is saved first)
+- **Same plugins**: Switching is instant (only bypass and parameters change)
+- **Different plugins**: Loads asynchronously — UI stays responsive
+- **Active slot** is highlighted in purple
+- **Occupied slots** show a lighter color
+- **Empty slots** are dimmed
+
+Slots save **chain-only data** (plugins, order, bypass, plugin parameters). Audio settings and output configuration are NOT affected by slot switching.
+
+## Output Settings (Output Tab)
+
+### Monitor Output
+
+- **Device**: Select which output device to use for monitoring
+- **Volume**: Adjust monitor volume
+- **Enable**: Toggle monitor on/off (default: off)
+
+Monitor output lets you hear your processed audio through headphones while streaming.
+
+## VST Plugin Scanner
+
+DirectPipe includes an **out-of-process VST scanner** that safely discovers all installed plugins.
+
+1. Click **"Scan..."** in the plugin chain area
+2. Default directories are pre-configured (VST3, VST2, Steinberg paths)
+3. Click **"Scan for Plugins"** — scanning runs in a separate process
+4. If a bad plugin crashes the scanner, it automatically retries (up to 5 times), skipping the problematic plugin
 
 ## System Tray
 
-DirectPipe minimizes to the system tray when you click the close (X) button:
-
-- **Close button**: Minimizes to system tray (app continues running in background)
+- **Close button**: Minimizes to system tray (app continues running)
 - **Tray icon double-click**: Shows the main window
 - **Tray icon right-click**: Menu with "Show Window" and "Quit DirectPipe"
-- **Quit**: Use the tray menu "Quit DirectPipe" to fully exit the application
 
 ## External Control
 
@@ -119,32 +102,26 @@ DirectPipe can be controlled while minimized or in the background.
 
 ### Keyboard Shortcuts
 
-Global hotkeys work even when DirectPipe is not focused.
-
 | Default Shortcut    | Action |
 |---------------------|--------|
-| Ctrl+Shift+1        | Toggle Plugin 1 Bypass |
-| Ctrl+Shift+2        | Toggle Plugin 2 Bypass |
-| Ctrl+Shift+3        | Toggle Plugin 3 Bypass |
+| Ctrl+Shift+1-3      | Toggle Plugin 1-3 Bypass |
 | Ctrl+Shift+0        | Master Bypass |
 | Ctrl+Shift+M        | Panic Mute (all outputs) |
 | Ctrl+Shift+N        | Input Mute Toggle |
 | Ctrl+Shift+Up/Down  | Input gain +/- 1dB |
 | Ctrl+Shift+F1-F8    | Load preset 1-8 |
 
-Customize in Settings > Control > Hotkeys.
+### Panic Mute
+
+Panic Mute immediately silences all outputs. When unmuted, the previous enable states are restored (monitor on/off, virtual cable on/off remembered from before mute).
 
 ### MIDI Control
 
-Connect any MIDI controller (nanoKONTROL, MIDI keyboard, etc.):
-
-1. Open Settings > Control > MIDI
+1. Open Controls tab > MIDI section
 2. Select your MIDI device
 3. Click [Learn] next to an action
 4. Move a knob/press a button on your controller
 5. The mapping is saved automatically
-
-Supports CC Toggle, CC Continuous (for volume knobs), and Note On/Off.
 
 ### Stream Deck
 
@@ -152,16 +129,9 @@ See [Stream Deck Guide](STREAMDECK_GUIDE.md) for detailed setup.
 
 ### HTTP API
 
-Control DirectPipe from any script or tool via HTTP:
-
 ```bash
-# Toggle first plugin bypass
 curl http://127.0.0.1:8766/api/bypass/0/toggle
-
-# Panic mute
 curl http://127.0.0.1:8766/api/mute/panic
-
-# Set monitor volume to 50%
 curl http://127.0.0.1:8766/api/volume/monitor/0.5
 ```
 
@@ -170,37 +140,24 @@ See [Control API Reference](CONTROL_API.md) for all endpoints.
 ## Troubleshooting
 
 **No audio input?**
-- Check that the correct microphone is selected in the INPUT dropdown
+- Check the correct microphone is selected in Audio tab
 - Verify the microphone works in Windows Sound Settings
-- Another app may be using the microphone in exclusive mode — close it
+- Try switching between WASAPI and ASIO driver types
 
 **Glitches or dropouts?**
-- Increase the buffer size (480 -> 512 or higher)
+- Increase the buffer size
+- For ASIO, use the ASIO Control Panel to adjust buffer size
 - Close other audio-intensive applications
-- Check CPU usage in the DirectPipe status bar
 
 **Virtual Loop Mic not appearing?**
-- Ensure the driver is installed (check Device Manager > Sound, video and game controllers)
+- Ensure the driver is installed (check Device Manager)
 - Reinstall DirectPipe with the driver option enabled
-- On some systems, a reboot is required after driver installation
 
-**Discord/Zoom not detecting Virtual Loop Mic?**
-- Restart Discord/Zoom after installing DirectPipe
-- Check that "Virtual Loop Mic" appears in Windows Sound Settings > Input
+**Slot switching is slow?**
+- First load of different plugins takes time (plugin initialization)
+- Subsequent switches between the same plugins are instant
+- UI remains responsive during async loading
 
-**VST plugin not loading?**
-- Ensure the plugin is the correct architecture (64-bit)
-- VST2 plugins must be .dll files, VST3 must be .vst3 files
-- Some plugins require specific runtimes (Visual C++ Redistributable)
-- Try scanning again — the scanner caches results and skips previously problematic plugins
-
-**Plugin scanner crashes?**
-- The scanner runs in a separate process — crashes don't affect DirectPipe
-- Bad plugins are automatically skipped on retry
-- Delete the cache file at `%AppData%\DirectPipe\plugin-cache.xml` to reset and rescan
-- Delete the dead man's pedal file at `%AppData%\DirectPipe\scan-deadmanspedal.txt` to allow retrying previously skipped plugins
-
-**High latency?**
-- Reduce buffer size in Audio Settings
-- Use fewer VST plugins in the chain
-- Some plugins add internal latency — check plugin documentation
+**Plugin settings lost after slot switch?**
+- Plugin internal state is saved when: switching slots, closing editor, on app exit
+- If you change parameters and immediately switch, the current slot is saved first

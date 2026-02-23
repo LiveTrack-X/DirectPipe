@@ -1,9 +1,10 @@
 /**
  * @file AudioSettings.h
- * @brief Audio configuration panel — sample rate, buffer size, channel mode
+ * @brief Unified audio I/O configuration panel
  *
- * Provides user-facing controls for core audio parameters and displays
- * the estimated round-trip latency derived from the current settings.
+ * Combines driver type selection (ASIO/WASAPI), input/output device selection,
+ * sample rate, buffer size, channel mode, and latency display
+ * into a single cohesive panel.
  */
 #pragma once
 
@@ -13,23 +14,17 @@
 namespace directpipe {
 
 /**
- * @brief UI component for configuring audio engine parameters.
+ * @brief Unified audio settings panel.
  *
- * Exposes three settings:
- * - Sample Rate  (44100, 48000, 96000 Hz)
- * - Buffer Size  (64, 128, 256, 480, 512 samples)
- * - Channel Mode (Mono / Stereo radio buttons)
+ * Always shows separate Input + Output device combos regardless of driver type.
+ * In ASIO mode, an additional "ASIO Control Panel" button is shown.
  *
- * On every change the component immediately pushes the new value
- * to the referenced AudioEngine and recalculates the estimated
- * latency display.
+ * Sample rate and buffer size lists are queried dynamically
+ * from the active audio device.
  */
-class AudioSettings : public juce::Component {
+class AudioSettings : public juce::Component,
+                      public juce::ChangeListener {
 public:
-    /**
-     * @brief Construct an AudioSettings panel.
-     * @param engine Reference to the audio engine to configure.
-     */
     explicit AudioSettings(AudioEngine& engine);
     ~AudioSettings() override;
 
@@ -38,47 +33,55 @@ public:
 
     /**
      * @brief Refresh all controls to match the current engine state.
-     *
-     * Call this after an external change (e.g. preset load) so the
-     * UI stays synchronised with the engine.
+     * Call after preset load or external device changes.
      */
     void refreshFromEngine();
 
 private:
-    /** @brief Push the selected sample rate to the engine. */
+    // ChangeListener for device manager notifications
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+
+    // Callbacks
+    void onDriverTypeChanged();
+    void onInputDeviceChanged();
+    void onOutputDeviceChanged();
+    void onInputChannelChanged();
+    void onOutputChannelChanged();
     void onSampleRateChanged();
-
-    /** @brief Push the selected buffer size to the engine. */
     void onBufferSizeChanged();
-
-    /** @brief Push the selected channel mode to the engine. */
     void onChannelModeChanged();
 
-    /** @brief Recalculate and display estimated latency. */
+    // Helpers
+    void rebuildDeviceLists();
+    void rebuildChannelLists();
+    void rebuildSampleRateList();
+    void rebuildBufferSizeList();
     void updateLatencyDisplay();
-
-    /** @brief Update the channel mode description label. */
     void updateChannelModeDescription();
 
-    /**
-     * @brief Convert a combo-box selection ID to the corresponding sample rate.
-     * @param id 1-based combo-box item ID.
-     * @return Sample rate in Hz, or 48000.0 as fallback.
-     */
-    static double sampleRateFromId(int id);
-
-    /**
-     * @brief Convert a combo-box selection ID to the corresponding buffer size.
-     * @param id 1-based combo-box item ID.
-     * @return Buffer size in samples, or 480 as fallback.
-     */
-    static int bufferSizeFromId(int id);
+    bool isAsioMode() const;
 
     // ─── Data ───
     AudioEngine& engine_;
 
     // Section title
     juce::Label titleLabel_{"", "Audio Settings"};
+
+    // Driver type (ASIO / Windows Audio)
+    juce::Label driverLabel_{"", "Driver:"};
+    juce::ComboBox driverCombo_;
+
+    // Device selection — always Input + Output
+    juce::Label inputLabel_{"", "Input:"};
+    juce::ComboBox inputCombo_;
+    juce::Label outputLabel_{"", "Output:"};
+    juce::ComboBox outputCombo_;
+
+    // ASIO channel selection (visible only in ASIO mode)
+    juce::Label inputChLabel_{"", "Input Ch:"};
+    juce::ComboBox inputChCombo_;
+    juce::Label outputChLabel_{"", "Output Ch:"};
+    juce::ComboBox outputChCombo_;
 
     // Sample rate
     juce::Label sampleRateLabel_{"", "Sample Rate:"};
@@ -97,6 +100,9 @@ private:
     // Latency display
     juce::Label latencyTitleLabel_{"", "Estimated Latency:"};
     juce::Label latencyValueLabel_{"", "-- ms"};
+
+    // ASIO Control Panel button (visible only in ASIO mode)
+    juce::TextButton asioControlBtn_{"ASIO Control Panel"};
 
     // Theme colours (dark)
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;

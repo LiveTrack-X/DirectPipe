@@ -29,6 +29,7 @@ enum class Action {
     NextPreset,         ///< Switch to next preset
     PreviousPreset,     ///< Switch to previous preset
     InputMuteToggle,    ///< Toggle microphone input mute
+    SwitchPresetSlot,   ///< Switch to preset slot (intParam = 0..4 for A..E)
 };
 
 /// Carries an action with its parameters

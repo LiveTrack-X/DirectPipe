@@ -22,7 +22,10 @@ public:
     void closeButtonPressed() override
     {
         setVisible(false);
+        if (onClosed) onClosed();
     }
+
+    std::function<void()> onClosed;
 };
 
 VSTChain::VSTChain()
@@ -36,6 +39,10 @@ VSTChain::VSTChain()
 
 VSTChain::~VSTChain()
 {
+    // Wait for any async loading to finish before destroying
+    if (loadThread_ && loadThread_->joinable())
+        loadThread_->join();
+
     releaseResources();
     editorWindows_.clear();
     chain_.clear();
@@ -130,16 +137,21 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     PluginSlot slot;
     slot.name = desc.name;
     slot.path = desc.fileOrIdentifier;
+    slot.desc = desc;
     slot.nodeId = node->nodeID;
     slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
 
-    const juce::ScopedLock sl(chainLock_);
-    chain_.push_back(slot);
-    rebuildGraph();
+    int resultIdx;
+    {
+        const juce::ScopedLock sl(chainLock_);
+        chain_.push_back(slot);
+        rebuildGraph();
+        resultIdx = static_cast<int>(chain_.size()) - 1;
+    }
 
     if (onChainChanged) onChainChanged();
 
-    return static_cast<int>(chain_.size()) - 1;
+    return resultIdx;
 }
 
 int VSTChain::addPlugin(const juce::String& pluginPath)
@@ -190,64 +202,74 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     PluginSlot slot;
     slot.name = desc.name;
     slot.path = pluginPath;
+    slot.desc = desc;
     slot.nodeId = node->nodeID;
     slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
 
-    const juce::ScopedLock sl(chainLock_);
-    chain_.push_back(slot);
-    rebuildGraph();
+    int resultIdx;
+    {
+        const juce::ScopedLock sl(chainLock_);
+        chain_.push_back(slot);
+        rebuildGraph();
+        resultIdx = static_cast<int>(chain_.size()) - 1;
+    }
 
     if (onChainChanged) onChainChanged();
 
-    return static_cast<int>(chain_.size()) - 1;
+    return resultIdx;
 }
 
 bool VSTChain::removePlugin(int index)
 {
-    const juce::ScopedLock sl(chainLock_);
+    {
+        const juce::ScopedLock sl(chainLock_);
 
-    if (index < 0 || index >= static_cast<int>(chain_.size()))
-        return false;
+        if (index < 0 || index >= static_cast<int>(chain_.size()))
+            return false;
 
-    // Close editor window for this plugin
-    closePluginEditor(index);
+        // Close editor window for this plugin
+        closePluginEditor(index);
 
-    // Shift editor windows down (remove slot at index)
-    if (static_cast<size_t>(index) < editorWindows_.size()) {
-        editorWindows_.erase(editorWindows_.begin() + index);
+        // Shift editor windows down (remove slot at index)
+        if (static_cast<size_t>(index) < editorWindows_.size()) {
+            editorWindows_.erase(editorWindows_.begin() + index);
+        }
+
+        auto& slot = chain_[static_cast<size_t>(index)];
+        graph_->removeNode(slot.nodeId);
+        chain_.erase(chain_.begin() + index);
+        rebuildGraph();
     }
 
-    auto& slot = chain_[static_cast<size_t>(index)];
-    graph_->removeNode(slot.nodeId);
-    chain_.erase(chain_.begin() + index);
-    rebuildGraph();
-
+    // Notify outside of lock to avoid deadlock if listener acquires locks
     if (onChainChanged) onChainChanged();
     return true;
 }
 
 bool VSTChain::movePlugin(int fromIndex, int toIndex)
 {
-    const juce::ScopedLock sl(chainLock_);
+    {
+        const juce::ScopedLock sl(chainLock_);
 
-    if (fromIndex < 0 || fromIndex >= static_cast<int>(chain_.size()) ||
-        toIndex < 0 || toIndex >= static_cast<int>(chain_.size()) ||
-        fromIndex == toIndex)
-        return false;
+        if (fromIndex < 0 || fromIndex >= static_cast<int>(chain_.size()) ||
+            toIndex < 0 || toIndex >= static_cast<int>(chain_.size()) ||
+            fromIndex == toIndex)
+            return false;
 
-    auto slot = chain_[static_cast<size_t>(fromIndex)];
-    chain_.erase(chain_.begin() + fromIndex);
-    chain_.insert(chain_.begin() + toIndex, slot);
+        auto slot = chain_[static_cast<size_t>(fromIndex)];
+        chain_.erase(chain_.begin() + fromIndex);
+        chain_.insert(chain_.begin() + toIndex, slot);
 
-    // Move editor windows to match
-    size_t maxIdx = juce::jmax(static_cast<size_t>(fromIndex), static_cast<size_t>(toIndex));
-    if (maxIdx < editorWindows_.size()) {
-        auto win = std::move(editorWindows_[static_cast<size_t>(fromIndex)]);
-        editorWindows_.erase(editorWindows_.begin() + fromIndex);
-        editorWindows_.insert(editorWindows_.begin() + toIndex, std::move(win));
+        // Move editor windows to match
+        size_t maxIdx = juce::jmax(static_cast<size_t>(fromIndex), static_cast<size_t>(toIndex));
+        if (maxIdx < editorWindows_.size()) {
+            auto win = std::move(editorWindows_[static_cast<size_t>(fromIndex)]);
+            editorWindows_.erase(editorWindows_.begin() + fromIndex);
+            editorWindows_.insert(editorWindows_.begin() + toIndex, std::move(win));
+        }
+
+        rebuildGraph();
     }
-
-    rebuildGraph();
 
     if (onChainChanged) onChainChanged();
     return true;
@@ -258,11 +280,17 @@ void VSTChain::setPluginBypassed(int index, bool bypassed)
     if (index < 0 || index >= static_cast<int>(chain_.size()))
         return;
 
+    // Skip if no change (avoids unnecessary saves and callbacks)
+    if (chain_[static_cast<size_t>(index)].bypassed == bypassed)
+        return;
+
     chain_[static_cast<size_t>(index)].bypassed = bypassed;
 
     if (auto* node = graph_->getNodeForId(chain_[static_cast<size_t>(index)].nodeId)) {
         node->setBypassed(bypassed);
     }
+
+    if (onChainChanged) onChainChanged();
 }
 
 int VSTChain::getPluginCount() const
@@ -305,6 +333,9 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
     window->centreWithSize(editor->getWidth(), editor->getHeight());
     window->setVisible(true);
     window->setAlwaysOnTop(true);
+    window->onClosed = [this] {
+        if (onEditorClosed) onEditorClosed();
+    };
 
     editorWindows_[static_cast<size_t>(index)] = std::move(window);
 }
@@ -369,6 +400,89 @@ std::unique_ptr<juce::AudioPluginInstance> VSTChain::loadPlugin(
 {
     return formatManager_.createPluginInstance(
         desc, currentSampleRate_, currentBlockSize_, error);
+}
+
+void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
+                                  std::function<void()> onComplete)
+{
+    // Wait for any previous async load to finish
+    if (loadThread_ && loadThread_->joinable())
+        loadThread_->join();
+
+    // Clear current chain immediately (audio goes silent)
+    {
+        const juce::ScopedLock sl(chainLock_);
+        editorWindows_.clear();
+        for (auto& slot : chain_)
+            graph_->removeNode(slot.nodeId);
+        chain_.clear();
+        rebuildGraph();
+    }
+
+    asyncLoading_.store(true);
+
+    // Capture values needed by background thread
+    double sr = currentSampleRate_;
+    int bs = currentBlockSize_;
+
+    // Use a shared struct to pass loaded plugins from background thread to message thread
+    struct AsyncLoadResult {
+        struct Entry {
+            std::unique_ptr<juce::AudioPluginInstance> instance;
+            PluginLoadRequest request;
+        };
+        std::vector<Entry> entries;
+    };
+    auto result = std::make_shared<AsyncLoadResult>();
+
+    loadThread_ = std::make_unique<std::thread>(
+        [this, requests = std::move(requests), onComplete = std::move(onComplete),
+         sr, bs, result]()
+    {
+        for (auto& req : requests) {
+            juce::String error;
+            auto inst = formatManager_.createPluginInstance(req.desc, sr, bs, error);
+            if (inst)
+                result->entries.push_back({std::move(inst), std::move(req)});
+            else
+                juce::Logger::writeToLog("Async load failed: " + req.name + " - " + error);
+        }
+
+        // Post to message thread to wire into graph
+        juce::MessageManager::callAsync(
+            [this, result, onComplete]()
+        {
+            const juce::ScopedLock sl(chainLock_);
+
+            for (auto& entry : result->entries) {
+                auto node = graph_->addNode(std::move(entry.instance));
+                if (!node) continue;
+
+                PluginSlot slot;
+                slot.name = entry.request.name;
+                slot.path = entry.request.path;
+                slot.desc = entry.request.desc;
+                slot.nodeId = node->nodeID;
+                slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
+                slot.bypassed = entry.request.bypassed;
+                chain_.push_back(slot);
+
+                if (slot.bypassed)
+                    node->setBypassed(true);
+
+                if (entry.request.hasState && slot.instance)
+                    slot.instance->setStateInformation(
+                        entry.request.stateData.getData(),
+                        static_cast<int>(entry.request.stateData.getSize()));
+            }
+
+            rebuildGraph();
+            asyncLoading_.store(false);
+
+            if (onChainChanged) onChainChanged();
+            if (onComplete) onComplete();
+        });
+    });
 }
 
 } // namespace directpipe

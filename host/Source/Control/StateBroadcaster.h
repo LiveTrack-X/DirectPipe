@@ -41,7 +41,7 @@ struct AppState {
     double sampleRate = 48000.0;
     int bufferSize = 480;
     int channelMode = 1;  // 1 = Mono, 2 = Stereo
-    bool driverConnected = false;
+    bool virtualCableActive = false;
 };
 
 /// Listener for state changes

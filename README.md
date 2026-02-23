@@ -7,9 +7,9 @@ USB 마이크용 VST2/VST3 호스트 + 초저지연 루프백 시스템.
 ## Architecture
 
 ```
-USB Mic -> WASAPI Shared (~10ms) -> VST Chain (0ms added)
-  -> SharedMem -> Virtual Loop Mic Driver -> Discord/Zoom/OBS (~13-23ms total)
-  -> WASAPI Out -> Headphones (local monitor)
+USB Mic -> WASAPI Shared / ASIO -> VST Chain (0ms added)
+  -> SharedMem -> Virtual Loop Mic Driver -> Discord/Zoom/OBS
+  -> WASAPI / ASIO Out -> Headphones (local monitor)
 
 External Control:
   Hotkey / MIDI / WebSocket / HTTP -> ActionDispatcher -> AudioEngine
@@ -17,20 +17,21 @@ External Control:
 
 ## Features
 
-- **WASAPI Shared mode** for non-exclusive microphone access (other apps can use mic simultaneously)
+- **WASAPI Shared + ASIO** dual driver support (non-exclusive mic access with WASAPI, low-latency with ASIO)
 - **VST2/VST3 plugin chain** with real-time inline processing
-- **Out-of-process VST scanner** — scans plugins in a separate process; if a bad plugin crashes, only the scanner process dies (main app survives). Automatic retry with dead man's pedal skips bad plugins.
+- **Out-of-process VST scanner** — scans plugins in a separate process; bad plugin crashes only kill the scanner. Automatic retry with dead man's pedal.
 - **Drag & drop plugin reordering** — drag plugins up/down to change processing order
-- **Plugin editor** — open/close native VST plugin GUIs with proper window management
+- **Plugin editor** — open/close native VST plugin GUIs; plugin internal state saved/restored per slot
+- **Quick Preset Slots (A-E)** — 5 chain-only presets for instant switching. Async loading prevents UI freeze. Plugin parameters preserved across slots.
 - **Virtual Loop Mic** kernel driver — appears as a standard microphone in Windows
 - **Shared memory IPC** — lock-free SPSC ring buffer for ultra-low latency audio transfer
 - **System tray** — close button minimizes to tray; right-click tray icon for Show/Quit
-- **OBS Studio integration** via shared memory (no additional plugin required with driver)
+- **Tabbed settings UI** — Audio, Output, Controls organized in tabs
 - **External control** — keyboard shortcuts, MIDI CC, Stream Deck (WebSocket), HTTP REST API
+- **Panic mute** with pre-mute state memory (remembers and restores enable states)
 - **Mono/Stereo** channel mode selection (default: Stereo)
-- **Sample rate / buffer size** user-configurable (48kHz/480 samples default)
+- **Sample rate / buffer size** user-configurable (ASIO: dynamic from device, WASAPI: fixed list)
 - **Real-time level meters** and latency monitoring
-- **Preset management** (save/load VST chain + settings)
 - **Dark themed UI** (JUCE custom LookAndFeel) with custom app icon
 
 ## Latency Comparison
@@ -55,22 +56,14 @@ cmake --build build --config Release
 cd build && ctest --config Release
 ```
 
-### Windows (full build with JUCE GUI)
+### Requirements
 
-```powershell
-cmake -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-cd build && ctest --config Release
-```
-
-## Requirements
-
-- **Windows 10/11** (64-bit) — primary target platform
+- **Windows 10/11** (64-bit)
 - **Visual Studio 2022** (C++ Desktop Development workload)
 - **CMake 3.22+**
 - **JUCE 7.0.12** (fetched automatically via CMake FetchContent)
+- **ASIO SDK** (in `thirdparty/asiosdk/` for ASIO driver support)
 - **Windows Driver Kit (WDK)** — for Virtual Loop Mic driver build
-- **OBS Studio 28+** — optional, for OBS plugin
 
 ## Project Structure
 
@@ -78,19 +71,18 @@ cd build && ctest --config Release
 core/                  IPC library (SPSC ring buffer, shared memory, named events)
 host/                  JUCE host application
   Source/
-    Audio/             AudioEngine, VSTChain, OutputRouter, LatencyMonitor
+    Audio/             AudioEngine, VSTChain, OutputRouter, LatencyMonitor,
+                       VirtualMicOutput, AudioRingBuffer
     Control/           ActionDispatcher, WebSocket, HTTP, Hotkey, MIDI handlers
     IPC/               SharedMemWriter (producer side)
     UI/                PluginChainEditor, PluginScanner, AudioSettings,
                        LevelMeter, OutputPanel, ControlSettingsPanel,
-                       DirectPipeLookAndFeel
+                       PresetManager, DirectPipeLookAndFeel
   Resources/           App icon (icon.png)
 driver/                Virtual Loop Mic WDM kernel driver
-obs-plugin/            OBS Studio audio source plugin (shared memory reader)
 streamdeck-plugin/     Elgato Stream Deck plugin (WebSocket client)
 tests/                 Unit tests (Google Test, 56 tests)
-installer/             Inno Setup installer script
-thirdparty/            VST2 SDK interface headers
+thirdparty/            VST2 SDK headers, ASIO SDK
 docs/                  Architecture, build guide, API reference, user guide
 ```
 
@@ -110,10 +102,10 @@ docs/                  Architecture, build guide, API reference, user guide
 | Phase 0 | Environment setup, CMake scaffolding | Done |
 | Phase 1 | Core IPC library (ring buffer, shared memory) | Done |
 | Phase 2 | Audio engine + VST2/VST3 hosting | Done |
-| Phase 3 | Virtual Loop Mic kernel driver | Done (code, needs Windows build) |
+| Phase 3 | Virtual Loop Mic kernel driver | Done |
 | Phase 4 | External control (Hotkey, MIDI, WebSocket, HTTP) | Done |
 | Phase 5 | GUI (JUCE) | Done |
-| Phase 6 | Stabilization, installer | In progress |
+| Phase 6 | ASIO support, preset system, stabilization | In progress |
 
 ## License
 

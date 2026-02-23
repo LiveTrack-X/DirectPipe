@@ -38,6 +38,9 @@ public:
 
     void refreshList();
 
+    /** @brief Called when chain content changes (add/remove/reorder/bypass). */
+    std::function<void()> onChainModified;
+
 private:
     friend class PluginRowComponent;
 

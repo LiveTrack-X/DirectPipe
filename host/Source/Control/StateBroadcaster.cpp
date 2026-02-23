@@ -90,7 +90,7 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("sample_rate", state.sampleRate);
     data->setProperty("buffer_size", state.bufferSize);
     data->setProperty("channel_mode", state.channelMode);
-    data->setProperty("driver_connected", state.driverConnected);
+    data->setProperty("virtual_cable_active", state.virtualCableActive);
 
     root->setProperty("data", juce::var(data));
 

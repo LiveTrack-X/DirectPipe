@@ -23,6 +23,10 @@ static juce::String actionToDisplayName(const ActionEvent& event)
         case Action::NextPreset:      return "Next Preset";
         case Action::PreviousPreset:  return "Previous Preset";
         case Action::InputMuteToggle: return "Input Mute Toggle";
+        case Action::SwitchPresetSlot: {
+            char label = 'A' + static_cast<char>(event.intParam);
+            return "Preset Slot " + juce::String::charToString(label);
+        }
         default:                      return "Unknown";
     }
 }
@@ -254,11 +258,9 @@ juce::PopupMenu HotkeyTab::buildActionMenu()
 {
     juce::PopupMenu menu;
 
-    // Plugin bypass (1-8)
+    // Plugin bypass (1-16, freely selectable)
     juce::PopupMenu bypassMenu;
-    for (int i = 1; i <= 8; ++i) {
-        ActionEvent evt{Action::PluginBypass, i - 1, 0.0f,
-                        "Plugin " + std::to_string(i) + " Bypass"};
+    for (int i = 1; i <= 16; ++i) {
         bypassMenu.addItem(100 + i, "Plugin " + juce::String(i) + " Bypass");
     }
     menu.addSubMenu("Plugin Bypass", bypassMenu);
@@ -283,6 +285,14 @@ juce::PopupMenu HotkeyTab::buildActionMenu()
 
     menu.addItem(500, "Next Preset");
     menu.addItem(501, "Previous Preset");
+
+    // Preset slots (A..E)
+    juce::PopupMenu slotMenu;
+    for (int i = 0; i < 5; ++i) {
+        char label = 'A' + static_cast<char>(i);
+        slotMenu.addItem(600 + i, "Preset Slot " + juce::String::charToString(label));
+    }
+    menu.addSubMenu("Preset Slot", slotMenu);
 
     return menu;
 }
@@ -319,6 +329,11 @@ void HotkeyTab::onAddClicked()
                 action = {Action::NextPreset, 0, 0.0f, "Next Preset"};
             } else if (result == 501) {
                 action = {Action::PreviousPreset, 0, 0.0f, "Previous Preset"};
+            } else if (result >= 600 && result < 700) {
+                int slotIdx = result - 600;
+                char label = 'A' + static_cast<char>(slotIdx);
+                action = {Action::SwitchPresetSlot, slotIdx, 0.0f,
+                          "Preset Slot " + std::string(1, label)};
             } else {
                 return;
             }

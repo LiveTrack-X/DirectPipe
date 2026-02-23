@@ -141,8 +141,8 @@ ControlConfig ControlMappingStore::createDefaults()
 {
     ControlConfig config;
 
-    // Default hotkeys (Ctrl+Shift+0..9 for plugin bypass, M for mute)
-    for (int i = 1; i <= 3; ++i) {
+    // Default hotkeys (Ctrl+Shift+1..9 for plugin bypass)
+    for (int i = 1; i <= 9; ++i) {
         HotkeyMapping hk;
         hk.modifiers = HK_CTRL | HK_SHIFT;
         hk.virtualKey = '0' + static_cast<uint32_t>(i);
@@ -178,6 +178,17 @@ ControlConfig ControlMappingStore::createDefaults()
         hk.virtualKey = 'N';
         hk.action = {Action::InputMuteToggle, 0, 0.0f, "Input Mute Toggle"};
         hk.displayName = "Ctrl+Shift+N";
+        config.hotkeys.push_back(hk);
+    }
+
+    // Preset slots: Ctrl+Shift+F1..F5
+    for (int i = 0; i < 5; ++i) {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = VK_F1 + static_cast<uint32_t>(i);
+        std::string label(1, 'A' + static_cast<char>(i));
+        hk.action = {Action::SwitchPresetSlot, i, 0.0f, "Preset Slot " + label};
+        hk.displayName = "Ctrl+Shift+F" + std::to_string(i + 1);
         config.hotkeys.push_back(hk);
     }
 

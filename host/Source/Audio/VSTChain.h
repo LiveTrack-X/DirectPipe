@@ -11,6 +11,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <thread>
 
 namespace directpipe {
 
@@ -19,7 +20,8 @@ namespace directpipe {
  */
 struct PluginSlot {
     juce::String name;
-    juce::String path;
+    juce::String path;           ///< fileOrIdentifier (may be shared for shell plugins)
+    juce::PluginDescription desc; ///< Full description for accurate re-loading
     bool bypassed = false;
     juce::AudioProcessorGraph::NodeID nodeId;
     juce::AudioPluginInstance* instance = nullptr;  // non-owning
@@ -136,8 +138,36 @@ public:
      */
     void closePluginEditor(int index);
 
+    /**
+     * @brief Request for async plugin loading.
+     */
+    struct PluginLoadRequest {
+        juce::PluginDescription desc;
+        juce::String name, path;
+        bool bypassed = false;
+        juce::MemoryBlock stateData;
+        bool hasState = false;
+    };
+
+    /**
+     * @brief Replace the entire chain asynchronously (non-blocking).
+     *
+     * Clears the current chain immediately, loads plugins on a background
+     * thread, then wires them into the graph on the message thread.
+     * @param requests Plugins to load.
+     * @param onComplete Called on message thread when loading finishes.
+     */
+    void replaceChainAsync(std::vector<PluginLoadRequest> requests,
+                           std::function<void()> onComplete);
+
+    /** @brief True while async chain loading is in progress. */
+    bool isLoading() const { return asyncLoading_.load(); }
+
     // Callback when the chain changes (for UI update)
     std::function<void()> onChainChanged;
+
+    // Callback when a plugin editor window is closed (for state save)
+    std::function<void()> onEditorClosed;
 
 private:
     /**
@@ -177,6 +207,10 @@ private:
 
     // Mutex for chain modification (NOT used in processBlock)
     juce::CriticalSection chainLock_;
+
+    // Async loading state
+    std::atomic<bool> asyncLoading_{false};
+    std::unique_ptr<std::thread> loadThread_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VSTChain)
 };

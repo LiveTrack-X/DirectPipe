@@ -163,6 +163,9 @@ void WebSocketServer::processMessage(const std::string& message)
     } else if (actionStr == "input_gain") {
         event.action = Action::InputGainAdjust;
         event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("delta"))) : 1.0f;
+    } else if (actionStr == "switch_preset_slot") {
+        event.action = Action::SwitchPresetSlot;
+        event.intParam = params ? static_cast<int>(params->getProperty("slot")) : 0;
     } else {
         return;  // Unknown action
     }

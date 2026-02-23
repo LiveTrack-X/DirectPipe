@@ -138,7 +138,10 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     scanButton_.onClick = [this] { openScannerDialog(); };
     removeButton_.onClick = [this] { removeSelectedPlugin(); };
 
-    vstChain_.onChainChanged = [this] { refreshList(); };
+    vstChain_.onChainChanged = [this] {
+        refreshList();
+        if (onChainModified) onChainModified();
+    };
 }
 
 PluginChainEditor::~PluginChainEditor()

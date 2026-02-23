@@ -23,12 +23,10 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/OutputRouter.cpp
     Source/Audio/LatencyMonitor.h
     Source/Audio/LatencyMonitor.cpp
+    Source/Audio/AudioRingBuffer.h
     Source/Audio/VirtualMicOutput.h
     Source/Audio/VirtualMicOutput.cpp
-    Source/IPC/SharedMemWriter.h
-    Source/IPC/SharedMemWriter.cpp
-    Source/UI/DeviceSelector.h
-    Source/UI/DeviceSelector.cpp
+    # DeviceSelector removed — merged into AudioSettings
     Source/UI/PluginChainEditor.h
     Source/UI/PluginChainEditor.cpp
     Source/UI/PluginScanner.h
@@ -72,6 +70,16 @@ juce_add_binary_data(DirectPipeBinaryData
 
 juce_generate_juce_header(DirectPipe)
 
+# ─── ASIO SDK detection ───
+set(ASIO_SDK_DIR "${CMAKE_SOURCE_DIR}/thirdparty/asiosdk")
+if(EXISTS "${ASIO_SDK_DIR}/common/asio.h")
+    set(DIRECTPIPE_HAS_ASIO ON)
+    message(STATUS "ASIO SDK found at ${ASIO_SDK_DIR}")
+else()
+    set(DIRECTPIPE_HAS_ASIO OFF)
+    message(STATUS "ASIO SDK not found (looked in ${ASIO_SDK_DIR}/common/asio.h) — ASIO disabled")
+endif()
+
 target_compile_definitions(DirectPipe PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -81,7 +89,12 @@ target_compile_definitions(DirectPipe PRIVATE
     JUCE_PLUGINHOST_VST=1
     JUCE_WASAPI=1
     JUCE_WASAPI_EXCLUSIVE=0
+    JUCE_ASIO=$<BOOL:${DIRECTPIPE_HAS_ASIO}>
 )
+
+if(DIRECTPIPE_HAS_ASIO)
+    target_include_directories(DirectPipe PRIVATE "${ASIO_SDK_DIR}/common")
+endif()
 
 target_link_libraries(DirectPipe PRIVATE
     DirectPipeBinaryData

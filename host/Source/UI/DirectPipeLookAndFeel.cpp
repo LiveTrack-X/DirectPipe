@@ -139,22 +139,25 @@ void DirectPipeLookAndFeel::drawComboBox(
 
 void DirectPipeLookAndFeel::drawButtonBackground(
     juce::Graphics& g, juce::Button& button,
-    const juce::Colour& /*backgroundColour*/,
+    const juce::Colour& backgroundColour,
     bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
 {
     auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
 
-    juce::Colour bgCol = surfaceColor_;
+    // Use the button's actual colour (respects buttonOnColourId for toggled buttons)
+    juce::Colour bgCol = backgroundColour;
     if (shouldDrawButtonAsDown)
-        bgCol = accentColor_;
+        bgCol = bgCol.brighter(0.2f);
     else if (shouldDrawButtonAsHighlighted)
-        bgCol = surfaceColor_.brighter(0.15f);
+        bgCol = bgCol.brighter(0.1f);
 
     g.setColour(bgCol);
     g.fillRoundedRectangle(bounds, 4.0f);
 
-    g.setColour(juce::Colour(0xFF3A3A5A));
-    g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+    // Brighter border for toggled-on buttons
+    bool isOn = button.getToggleState() && button.getClickingTogglesState();
+    g.setColour(isOn ? backgroundColour.brighter(0.3f) : juce::Colour(0xFF3A3A5A));
+    g.drawRoundedRectangle(bounds, 4.0f, isOn ? 1.5f : 1.0f);
 }
 
 } // namespace directpipe

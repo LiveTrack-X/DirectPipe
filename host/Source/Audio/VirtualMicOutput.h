@@ -1,123 +1,85 @@
 /**
  * @file VirtualMicOutput.h
- * @brief Virtual microphone output management
+ * @brief Virtual cable output via second WASAPI device.
  *
- * Handles routing processed audio to a virtual audio device
- * (e.g., VB-Cable, Virtual Audio Cable) so that Discord, Zoom,
- * and other communication apps can receive the processed audio.
+ * Routes processed audio to a virtual audio cable (e.g., VB-Audio Hi-Fi Cable)
+ * so that Discord, Zoom, OBS, and other apps can capture the processed audio.
+ * Uses a lock-free ring buffer to bridge the main audio callback and the
+ * virtual cable's independent WASAPI callback thread.
  */
 #pragma once
 
 #include <JuceHeader.h>
+#include "AudioRingBuffer.h"
 #include <atomic>
 #include <memory>
 
 namespace directpipe {
 
-/**
- * @brief Detection and usage status of virtual microphone drivers.
- */
-enum class VirtualMicStatus {
-    NotDetected,    ///< No virtual audio device found
-    Detected,       ///< Virtual audio device found but not active
-    Active,         ///< Audio is being routed to virtual device
-    Error           ///< Error opening the virtual device
+enum class VirtualCableStatus {
+    NotConfigured,  ///< No device selected
+    Active,         ///< Audio flowing to virtual cable
+    Error           ///< Device open failed or sample rate mismatch
 };
 
 /**
- * @brief Manages output to a virtual microphone device.
+ * @brief WASAPI output to a virtual audio cable device.
  *
- * Strategy:
- * 1. Auto-detect installed virtual audio devices (VB-Cable, etc.)
- * 2. Open the device as WASAPI output
- * 3. Route processed PCM audio to it
- * 4. Fall back to Shared mode if Exclusive not available
+ * Owns a separate AudioDeviceManager with its own callback thread.
+ * The main audio callback writes to a lock-free ring buffer (producer),
+ * and this class's callback reads from it (consumer) and outputs to WASAPI.
  */
-class VirtualMicOutput {
+class VirtualMicOutput : public juce::AudioIODeviceCallback {
 public:
     VirtualMicOutput();
-    ~VirtualMicOutput();
+    ~VirtualMicOutput() override;
 
-    /**
-     * @brief Scan for available virtual audio devices.
-     * @return List of detected virtual audio device names.
-     */
-    juce::StringArray detectVirtualDevices();
-
-    /**
-     * @brief Check if the native Virtual Loop Mic WDM driver is installed.
-     *
-     * Scans Windows capture (input) devices for "Virtual Loop Mic".
-     * When the native driver is installed, audio flows via shared memory
-     * directly to the driver -- no third-party virtual cable needed.
-     *
-     * @return true if the native driver's capture device is present.
-     */
-    bool isNativeDriverInstalled();
-
-    /**
-     * @brief Get the name used by the native WDM driver.
-     */
-    static juce::String getNativeDriverDeviceName() { return "Virtual Loop Mic"; }
-
-    /**
-     * @brief Initialize output to a specific virtual device.
-     * @param deviceName Name of the virtual audio device.
-     * @param sampleRate Audio sample rate.
-     * @param bufferSize Buffer size in samples.
-     * @return true if successfully opened.
-     */
+    // --- Configuration (call from message thread) ---
     bool initialize(const juce::String& deviceName, double sampleRate, int bufferSize);
-
-    /**
-     * @brief Shut down the virtual mic output.
-     */
     void shutdown();
+    bool setDevice(const juce::String& deviceName);
 
-    /**
-     * @brief Write audio to the virtual microphone.
-     *
-     * Called from the real-time audio thread.
-     *
-     * @param buffer Audio data to write.
-     * @param numSamples Number of samples.
-     */
-    void writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples);
+    // --- RT-safe audio push (called from MAIN audio callback) ---
+    int writeAudio(const float* const* channelData, int numChannels, int numFrames);
 
-    /**
-     * @brief Get current status.
-     */
-    VirtualMicStatus getStatus() const { return status_.load(std::memory_order_relaxed); }
+    // --- Device enumeration ---
+    juce::StringArray getAvailableOutputDevices() const;
+    static juce::StringArray detectVirtualDevices();
 
-    /**
-     * @brief Get the name of the currently selected virtual device.
-     */
+    // --- Status queries ---
+    VirtualCableStatus getStatus() const { return status_.load(std::memory_order_relaxed); }
     juce::String getDeviceName() const { return deviceName_; }
+    bool isActive() const { return status_.load(std::memory_order_relaxed) == VirtualCableStatus::Active; }
+    int getDroppedFrames() const { return droppedFrames_.load(std::memory_order_relaxed); }
+    int getActualBufferSize() const { return actualBufferSize_.load(std::memory_order_relaxed); }
+    double getActualSampleRate() const { return actualSampleRate_.load(std::memory_order_relaxed); }
 
-    /**
-     * @brief Check if a virtual audio device is available on the system.
-     */
-    bool isVirtualDeviceAvailable() const;
-
-    /**
-     * @brief Get a user-friendly setup guide message.
-     */
+    // --- Setup guide ---
     static juce::String getSetupGuideMessage();
 
 private:
-    /**
-     * @brief Check if a device name looks like a virtual audio device.
-     */
+    // juce::AudioIODeviceCallback — virtual cable's WASAPI callback
+    void audioDeviceIOCallbackWithContext(
+        const float* const* inputChannelData, int numInputChannels,
+        float* const* outputChannelData, int numOutputChannels,
+        int numSamples,
+        const juce::AudioIODeviceCallbackContext& context) override;
+    void audioDeviceAboutToStart(juce::AudioIODevice* device) override;
+    void audioDeviceStopped() override;
+
     static bool isVirtualDeviceName(const juce::String& name);
 
-    std::atomic<VirtualMicStatus> status_{VirtualMicStatus::NotDetected};
+    AudioRingBuffer ringBuffer_;
+    std::unique_ptr<juce::AudioDeviceManager> deviceManager_;
+
     juce::String deviceName_;
-
-    // WASAPI output for virtual device
-    std::unique_ptr<juce::AudioDeviceManager> virtualDeviceManager_;
-
     double sampleRate_ = 48000.0;
-    int bufferSize_ = 128;
+    int bufferSize_ = 128;  // Low default for minimal latency
+
+    std::atomic<VirtualCableStatus> status_{VirtualCableStatus::NotConfigured};
+    std::atomic<int> droppedFrames_{0};
+    std::atomic<int> actualBufferSize_{0};
+    std::atomic<double> actualSampleRate_{0.0};
 };
 
 } // namespace directpipe

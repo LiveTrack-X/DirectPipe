@@ -10,7 +10,6 @@
 #include "Control/ActionDispatcher.h"
 #include "Control/StateBroadcaster.h"
 #include "Control/ControlManager.h"
-#include "UI/DeviceSelector.h"
 #include "UI/PluginChainEditor.h"
 #include "UI/LevelMeter.h"
 #include "UI/PresetManager.h"
@@ -19,22 +18,11 @@
 #include "UI/OutputPanel.h"
 #include "UI/ControlSettingsPanel.h"
 
+#include <array>
 #include <memory>
 
 namespace directpipe {
 
-/**
- * @brief Root UI component for the DirectPipe v3.1 application.
- *
- * Hosts the audio engine, external control system, and all UI sub-components:
- * - Device selector (input)
- * - Audio settings (sample rate, buffer, channel mode)
- * - VST plugin chain editor
- * - Level meters
- * - Output panel (Virtual Loop Mic + Monitor)
- * - Control settings (Hotkeys, MIDI, Stream Deck)
- * - Status bar with latency/CPU info
- */
 class MainComponent : public juce::Component,
                       public juce::Timer,
                       public ActionListener {
@@ -68,13 +56,15 @@ private:
     DirectPipeLookAndFeel lookAndFeel_;
 
     // UI Components
-    std::unique_ptr<DeviceSelector> deviceSelector_;
     std::unique_ptr<AudioSettings> audioSettings_;
     std::unique_ptr<PluginChainEditor> pluginChainEditor_;
     std::unique_ptr<LevelMeter> inputMeter_;
     std::unique_ptr<LevelMeter> outputMeter_;
     std::unique_ptr<OutputPanel> outputPanel_;
     std::unique_ptr<ControlSettingsPanel> controlSettingsPanel_;
+
+    // Right-column tabbed panel (Audio Settings / Output / Controls)
+    std::unique_ptr<juce::TabbedComponent> rightTabs_;
 
     // Input gain slider
     juce::Slider inputGainSlider_;
@@ -85,6 +75,13 @@ private:
     juce::TextButton loadPresetBtn_{"Load Preset"};
     std::unique_ptr<PresetManager> presetManager_;
 
+    // Quick preset slot buttons (A..E)
+    static constexpr int kNumPresetSlots = 5;
+    std::array<std::unique_ptr<juce::TextButton>, 5> slotButtons_;
+    void onSlotClicked(int slotIndex);
+    void updateSlotButtonStates();
+    void setSlotButtonsEnabled(bool enabled);
+
     // Master mute button
     juce::TextButton panicMuteBtn_{"PANIC MUTE"};
 
@@ -94,11 +91,17 @@ private:
     juce::Label formatLabel_;
     juce::Label portableLabel_;
 
-    // Section labels
+    // Section labels (left column only)
     juce::Label inputSectionLabel_;
     juce::Label vstSectionLabel_;
-    juce::Label outputSectionLabel_;
-    juce::Label controlSectionLabel_;
+
+    // Auto-save counter (ticks at 30Hz)
+    int autoSaveCounter_ = 0;
+    bool loadingSlot_ = false;
+
+    // Panic mute: remember pre-mute states for restore
+    bool preMuteVCableEnabled_ = true;
+    bool preMuteMonitorEnabled_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

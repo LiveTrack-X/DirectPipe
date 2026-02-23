@@ -1,6 +1,6 @@
 /**
  * @file OutputPanel.cpp
- * @brief Output status and control panel implementation
+ * @brief Monitor output control panel implementation
  */
 
 #include "OutputPanel.h"
@@ -17,54 +17,7 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     titleLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
     addAndMakeVisible(titleLabel_);
 
-    // ════════════════════════════════════════════════════════════════════════
-    // Virtual Loop Mic section
-    // ════════════════════════════════════════════════════════════════════════
-
-    vmicSectionLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
-    vmicSectionLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(vmicSectionLabel_);
-
-    // Status indicator
-    vmicStatusLabel_.setFont(juce::Font(12.0f));
-    vmicStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
-    addAndMakeVisible(vmicStatusLabel_);
-
-    // Driver status label
-    vmicDriverLabel_.setFont(juce::Font(11.0f));
-    vmicDriverLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
-    addAndMakeVisible(vmicDriverLabel_);
-
-    // Volume slider
-    vmicVolumeLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(vmicVolumeLabel_);
-
-    vmicVolumeSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
-    vmicVolumeSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
-    vmicVolumeSlider_.setRange(0.0, 100.0, 1.0);
-    vmicVolumeSlider_.setValue(100.0, juce::dontSendNotification);
-    vmicVolumeSlider_.setTextValueSuffix(" %");
-    vmicVolumeSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(kAccentColour));
-    vmicVolumeSlider_.setColour(juce::Slider::trackColourId, juce::Colour(kAccentColour).withAlpha(0.4f));
-    vmicVolumeSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(kSurfaceColour).brighter(0.1f));
-    vmicVolumeSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(kTextColour));
-    vmicVolumeSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    vmicVolumeSlider_.onValueChange = [this] { onVirtualMicVolumeChanged(); };
-    addAndMakeVisible(vmicVolumeSlider_);
-
-    // Mute button
-    vmicMuteButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
-    vmicMuteButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kRedColour));
-    vmicMuteButton_.onClick = [this] { onVirtualMicMuteToggled(); };
-    addAndMakeVisible(vmicMuteButton_);
-
-    // ════════════════════════════════════════════════════════════════════════
-    // Monitor section
-    // ════════════════════════════════════════════════════════════════════════
-
-    monitorSectionLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
-    monitorSectionLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(monitorSectionLabel_);
+    // ── Monitor section ──
 
     // Device selector
     monitorDeviceLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
@@ -90,7 +43,7 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorVolumeSlider_.onValueChange = [this] { onMonitorVolumeChanged(); };
     addAndMakeVisible(monitorVolumeSlider_);
 
-    // Mute button
+    // Enable button
     monitorEnableButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
     monitorEnableButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
     monitorEnableButton_.onClick = [this] { onMonitorEnableToggled(); };
@@ -99,19 +52,13 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     // ── Initial state ──
     refreshMonitorDeviceList();
 
-    // Sync volume sliders with output router
+    // Sync volume with output router
     auto& router = engine_.getOutputRouter();
-    vmicVolumeSlider_.setValue(
-        static_cast<double>(router.getVolume(OutputRouter::Output::VirtualMic)) * 100.0,
-        juce::dontSendNotification);
     monitorVolumeSlider_.setValue(
         static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0,
         juce::dontSendNotification);
 
-    // Sync mute states
-    vmicMuteButton_.setToggleState(
-        !router.isEnabled(OutputRouter::Output::VirtualMic),
-        juce::dontSendNotification);
+    // Sync enable state
     monitorEnableButton_.setToggleState(
         router.isEnabled(OutputRouter::Output::Monitor),
         juce::dontSendNotification);
@@ -131,22 +78,9 @@ void OutputPanel::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(kBgColour));
 
-    // Draw a rounded-rect surface behind the controls
     auto area = getLocalBounds().reduced(4);
     g.setColour(juce::Colour(kSurfaceColour));
     g.fillRoundedRectangle(area.toFloat(), 6.0f);
-
-    // Draw a thin separator between Virtual Mic and Monitor sections
-    auto bounds = getLocalBounds().reduced(12);
-    constexpr int rowH = 28;
-    constexpr int gap  = 8;
-
-    // Calculate Y position of the separator (after Virtual Mic section)
-    // Title + vmicSection + driver + volume + mute = 5 rows + driver row
-    int separatorY = bounds.getY() + (rowH + gap) * 5 + 22 + gap - gap / 2;
-    g.setColour(juce::Colour(kDimTextColour).withAlpha(0.3f));
-    g.drawHorizontalLine(separatorY, static_cast<float>(bounds.getX()),
-                         static_cast<float>(bounds.getRight()));
 }
 
 // ─── Layout ─────────────────────────────────────────────────────────────────
@@ -164,31 +98,6 @@ void OutputPanel::resized()
     titleLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
     y += rowH + gap;
 
-    // ── Virtual Loop Mic section ──
-    vmicSectionLabel_.setBounds(bounds.getX(), y, bounds.getWidth() / 2, rowH);
-    vmicStatusLabel_.setBounds(bounds.getX() + bounds.getWidth() / 2, y,
-                               bounds.getWidth() / 2, rowH);
-    y += rowH + gap;
-
-    // Driver status
-    vmicDriverLabel_.setBounds(bounds.getX() + labelW + gap, y,
-                                bounds.getWidth() - labelW - gap, 20);
-    y += 22 + gap;
-
-    // Virtual Mic volume
-    vmicVolumeLabel_.setBounds(bounds.getX(), y, labelW, rowH);
-    vmicVolumeSlider_.setBounds(bounds.getX() + labelW + gap, y,
-                                bounds.getWidth() - labelW - gap, rowH);
-    y += rowH + gap;
-
-    // Virtual Mic mute
-    vmicMuteButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
-    y += rowH + gap + 8; // extra gap for separator
-
-    // ── Monitor section ──
-    monitorSectionLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
-    y += rowH + gap;
-
     // Monitor device selector
     monitorDeviceLabel_.setBounds(bounds.getX(), y, labelW, rowH);
     monitorDeviceCombo_.setBounds(bounds.getX() + labelW + gap, y,
@@ -201,7 +110,7 @@ void OutputPanel::resized()
                                    bounds.getWidth() - labelW - gap, rowH);
     y += rowH + gap;
 
-    // Monitor mute
+    // Monitor enable
     monitorEnableButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
 }
 
@@ -209,69 +118,12 @@ void OutputPanel::resized()
 
 void OutputPanel::timerCallback()
 {
-    updateVirtualMicStatus();
-
-    // Sync mute/enable states with engine (reflects Panic Mute and external control)
+    // Sync enable state with engine (reflects Panic Mute and external control)
     auto& router = engine_.getOutputRouter();
-
-    bool vmicEnabled = router.isEnabled(OutputRouter::Output::VirtualMic);
-    if (vmicMuteButton_.getToggleState() == vmicEnabled) {
-        vmicMuteButton_.setToggleState(!vmicEnabled, juce::dontSendNotification);
-    }
 
     bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
     if (monitorEnableButton_.getToggleState() != monEnabled) {
         monitorEnableButton_.setToggleState(monEnabled, juce::dontSendNotification);
-    }
-}
-
-// ─── Virtual Mic status ─────────────────────────────────────────────────────
-
-void OutputPanel::updateVirtualMicStatus()
-{
-    // Check native driver installation (once, expensive operation)
-    if (!driverCheckDone_) {
-        driverCheckDone_ = true;
-        nativeDriverDetected_ = engine_.getVirtualMicOutput().isNativeDriverInstalled();
-
-        if (nativeDriverDetected_) {
-            vmicDriverLabel_.setText("Native driver installed",
-                                     juce::dontSendNotification);
-            vmicDriverLabel_.setColour(juce::Label::textColourId,
-                                        juce::Colour(kGreenColour));
-        } else {
-            // Check for third-party virtual cables
-            auto thirdParty = engine_.getVirtualMicOutput().detectVirtualDevices();
-            if (!thirdParty.isEmpty()) {
-                vmicDriverLabel_.setText("Using: " + thirdParty[0],
-                                         juce::dontSendNotification);
-                vmicDriverLabel_.setColour(juce::Label::textColourId,
-                                            juce::Colour(0xFFFFEB3B));  // Yellow
-            } else {
-                vmicDriverLabel_.setText("Driver not installed - SHM only",
-                                         juce::dontSendNotification);
-                vmicDriverLabel_.setColour(juce::Label::textColourId,
-                                            juce::Colour(kDimTextColour));
-            }
-        }
-    }
-
-    // Query shared memory connection status
-    auto& router = engine_.getOutputRouter();
-    bool connected = router.isOBSConnected();
-
-    if (connected != vmicConnected_) {
-        vmicConnected_ = connected;
-
-        if (vmicConnected_) {
-            vmicStatusLabel_.setText("SHM: Active", juce::dontSendNotification);
-            vmicStatusLabel_.setColour(juce::Label::textColourId,
-                                       juce::Colour(kGreenColour));
-        } else {
-            vmicStatusLabel_.setText("SHM: Waiting", juce::dontSendNotification);
-            vmicStatusLabel_.setColour(juce::Label::textColourId,
-                                       juce::Colour(kDimTextColour));
-        }
     }
 }
 
@@ -281,20 +133,23 @@ void OutputPanel::refreshMonitorDeviceList()
 {
     monitorDeviceCombo_.clear(juce::dontSendNotification);
 
-    auto devices = engine_.getAvailableOutputDevices();
+    // Always show Windows Audio (WASAPI) output devices for monitoring
+    auto devices = engine_.getWasapiOutputDevices();
     for (int i = 0; i < devices.size(); ++i) {
         monitorDeviceCombo_.addItem(devices[i], i + 1);
     }
 
     // Try to select the currently active output device
-    if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice()) {
-        juce::AudioDeviceManager::AudioDeviceSetup setup;
-        engine_.getDeviceManager().getAudioDeviceSetup(setup);
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    engine_.getDeviceManager().getAudioDeviceSetup(setup);
 
-        int idx = devices.indexOf(setup.outputDeviceName);
-        if (idx >= 0) {
-            monitorDeviceCombo_.setSelectedId(idx + 1, juce::dontSendNotification);
-        }
+    int idx = devices.indexOf(setup.outputDeviceName);
+    if (idx >= 0) {
+        monitorDeviceCombo_.setSelectedId(idx + 1, juce::dontSendNotification);
+    } else if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice()) {
+        int nameIdx = devices.indexOf(device->getName());
+        if (nameIdx >= 0)
+            monitorDeviceCombo_.setSelectedId(nameIdx + 1, juce::dontSendNotification);
     }
 }
 
@@ -308,22 +163,10 @@ void OutputPanel::onMonitorDeviceSelected()
     }
 }
 
-void OutputPanel::onVirtualMicVolumeChanged()
-{
-    float volume = static_cast<float>(vmicVolumeSlider_.getValue()) / 100.0f;
-    engine_.getOutputRouter().setVolume(OutputRouter::Output::VirtualMic, volume);
-}
-
 void OutputPanel::onMonitorVolumeChanged()
 {
     float volume = static_cast<float>(monitorVolumeSlider_.getValue()) / 100.0f;
     engine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, volume);
-}
-
-void OutputPanel::onVirtualMicMuteToggled()
-{
-    bool muted = vmicMuteButton_.getToggleState();
-    engine_.getOutputRouter().setEnabled(OutputRouter::Output::VirtualMic, !muted);
 }
 
 void OutputPanel::onMonitorEnableToggled()

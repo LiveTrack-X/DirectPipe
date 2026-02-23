@@ -33,6 +33,23 @@ bool AudioEngine::initialize()
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         deviceManager_.getAudioDeviceSetup(setup);
 
+        // Resolve actual device names so that settings persist correctly.
+        // initialiseWithDefaultDevices() may leave these empty on some systems.
+        if (setup.inputDeviceName.isEmpty() || setup.outputDeviceName.isEmpty()) {
+            if (auto* type = deviceManager_.getCurrentDeviceTypeObject()) {
+                if (setup.inputDeviceName.isEmpty()) {
+                    auto inputs = type->getDeviceNames(true);
+                    if (inputs.size() > 0)
+                        setup.inputDeviceName = inputs[type->getDefaultDeviceIndex(true)];
+                }
+                if (setup.outputDeviceName.isEmpty()) {
+                    auto outputs = type->getDeviceNames(false);
+                    if (outputs.size() > 0)
+                        setup.outputDeviceName = outputs[type->getDefaultDeviceIndex(false)];
+                }
+            }
+        }
+
         setup.bufferSize = currentBufferSize_;
         setup.sampleRate = currentSampleRate_;
         setup.useDefaultInputChannels = false;
@@ -49,8 +66,28 @@ bool AudioEngine::initialize()
     // Register as the audio callback
     deviceManager_.addAudioCallback(this);
 
-    // Initialize the output router
+    // Initialize the output router and wire virtual cable output
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
+    outputRouter_.setVirtualMicOutput(&virtualMicOutput_);
+
+    // Auto-detect and connect to a virtual cable device
+    auto virtualDevices = VirtualMicOutput::detectVirtualDevices();
+    if (!virtualDevices.isEmpty()) {
+        // Prefer "Hi-Fi Cable Input" if found
+        juce::String defaultDevice = "Hi-Fi Cable Input(VB-Audio Hi-Fi Cable)";
+        int idx = virtualDevices.indexOf(defaultDevice);
+        if (idx < 0) {
+            // Try partial match
+            for (int i = 0; i < virtualDevices.size(); ++i) {
+                if (virtualDevices[i].containsIgnoreCase("Hi-Fi Cable")) {
+                    idx = i;
+                    break;
+                }
+            }
+        }
+        juce::String device = (idx >= 0) ? virtualDevices[idx] : virtualDevices[0];
+        virtualMicOutput_.initialize(device, currentSampleRate_, currentBufferSize_);
+    }
 
     running_ = true;
     return true;
@@ -63,6 +100,7 @@ void AudioEngine::shutdown()
     running_ = false;
     deviceManager_.removeAudioCallback(this);
     deviceManager_.closeAudioDevice();
+    virtualMicOutput_.shutdown();
     outputRouter_.shutdown();
     vstChain_.releaseResources();
 }
@@ -93,6 +131,16 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
         return false;
     }
     return true;
+}
+
+bool AudioEngine::setVirtualCableDevice(const juce::String& deviceName)
+{
+    return virtualMicOutput_.setDevice(deviceName);
+}
+
+juce::String AudioEngine::getVirtualCableDeviceName() const
+{
+    return virtualMicOutput_.getDeviceName();
 }
 
 void AudioEngine::setBufferSize(int bufferSize)
@@ -136,6 +184,231 @@ juce::StringArray AudioEngine::getAvailableOutputDevices() const
         devices = type->getDeviceNames(false);  // output devices
     }
     return devices;
+}
+
+juce::StringArray AudioEngine::getWasapiOutputDevices()
+{
+    juce::StringArray devices;
+    for (auto* type : deviceManager_.getAvailableDeviceTypes()) {
+        if (type->getTypeName().containsIgnoreCase("Windows Audio") ||
+            type->getTypeName().containsIgnoreCase("DirectSound") ||
+            type->getTypeName().containsIgnoreCase("WASAPI")) {
+            type->scanForDevices();
+            devices = type->getDeviceNames(false);
+            if (devices.size() > 0)
+                break;
+        }
+    }
+    return devices;
+}
+
+// ─── Device type management ─────────────────────────────────────────────────
+
+bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
+{
+    auto currentType = getCurrentDeviceType();
+    if (currentType == typeName) return true;
+
+    // Remove callback before switching
+    deviceManager_.removeAudioCallback(this);
+
+    deviceManager_.setCurrentAudioDeviceType(typeName, true);
+
+    // For ASIO, pick the first available device explicitly
+    if (typeName.containsIgnoreCase("ASIO")) {
+        if (auto* type = deviceManager_.getCurrentDeviceTypeObject()) {
+            type->scanForDevices();
+            auto devices = type->getDeviceNames(false);
+            if (devices.size() > 0) {
+                juce::AudioDeviceManager::AudioDeviceSetup setup;
+                setup.inputDeviceName = devices[0];
+                setup.outputDeviceName = devices[0];
+                setup.sampleRate = currentSampleRate_;
+                setup.bufferSize = currentBufferSize_;
+                setup.useDefaultInputChannels = false;
+                setup.useDefaultOutputChannels = false;
+                setup.inputChannels.setRange(0, 2, true);
+                setup.outputChannels.setRange(0, 2, true);
+
+                auto result = deviceManager_.setAudioDeviceSetup(setup, true);
+                if (result.isNotEmpty()) {
+                    juce::Logger::writeToLog("AudioEngine: ASIO setup failed: " + result);
+                    // Try with device defaults
+                    setup.sampleRate = 0;  // let device choose
+                    setup.bufferSize = 0;
+                    result = deviceManager_.setAudioDeviceSetup(setup, true);
+                    if (result.isNotEmpty()) {
+                        juce::Logger::writeToLog("AudioEngine: ASIO fallback failed: " + result);
+                        deviceManager_.setCurrentAudioDeviceType(currentType, true);
+                        deviceManager_.initialiseWithDefaultDevices(2, 2);
+                        deviceManager_.addAudioCallback(this);
+                        return false;
+                    }
+                }
+            }
+        }
+    } else {
+        // Non-ASIO: use default initialization
+        auto result = deviceManager_.initialiseWithDefaultDevices(2, 2);
+        if (result.isNotEmpty()) {
+            juce::Logger::writeToLog("AudioEngine: Failed to switch to " + typeName + ": " + result);
+            deviceManager_.setCurrentAudioDeviceType(currentType, true);
+            deviceManager_.initialiseWithDefaultDevices(2, 2);
+            deviceManager_.addAudioCallback(this);
+            return false;
+        }
+
+        // Resolve device names and apply settings
+        if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+            juce::AudioDeviceManager::AudioDeviceSetup setup;
+            deviceManager_.getAudioDeviceSetup(setup);
+            setup.bufferSize = currentBufferSize_;
+            setup.sampleRate = currentSampleRate_;
+            setup.useDefaultInputChannels = false;
+            setup.useDefaultOutputChannels = false;
+            setup.inputChannels.setRange(0, 2, true);
+            setup.outputChannels.setRange(0, 2, true);
+            deviceManager_.setAudioDeviceSetup(setup, true);
+        }
+    }
+
+    // Update current SR/BS from actual device
+    if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+        currentSampleRate_ = device->getCurrentSampleRate();
+        currentBufferSize_ = device->getCurrentBufferSizeSamples();
+    }
+
+    deviceManager_.addAudioCallback(this);
+
+    juce::Logger::writeToLog("AudioEngine: Switched to " + typeName);
+    return true;
+}
+
+juce::String AudioEngine::getCurrentDeviceType() const
+{
+    if (auto* type = deviceManager_.getCurrentDeviceTypeObject())
+        return type->getTypeName();
+    return {};
+}
+
+juce::StringArray AudioEngine::getAvailableDeviceTypes()
+{
+    juce::StringArray types;
+    for (auto* type : deviceManager_.getAvailableDeviceTypes())
+        types.add(type->getTypeName());
+    return types;
+}
+
+juce::Array<double> AudioEngine::getAvailableSampleRates() const
+{
+    juce::Array<double> rates;
+    if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+        for (auto sr : device->getAvailableSampleRates())
+            rates.add(sr);
+    }
+    if (rates.isEmpty()) {
+        // Fallback defaults
+        rates.add(44100.0);
+        rates.add(48000.0);
+        rates.add(96000.0);
+    }
+    return rates;
+}
+
+juce::Array<int> AudioEngine::getAvailableBufferSizes() const
+{
+    juce::Array<int> sizes;
+    if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+        for (auto bs : device->getAvailableBufferSizes())
+            sizes.add(bs);
+    }
+    if (sizes.isEmpty()) {
+        // Fallback defaults including small sizes for ASIO
+        sizes.add(32);
+        sizes.add(48);
+        sizes.add(64);
+        sizes.add(96);
+        sizes.add(128);
+        sizes.add(192);
+        sizes.add(256);
+        sizes.add(480);
+        sizes.add(512);
+        sizes.add(1024);
+    }
+    return sizes;
+}
+
+bool AudioEngine::showAsioControlPanel()
+{
+    if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+        if (device->hasControlPanel()) {
+            device->showControlPanel();
+            return true;
+        }
+    }
+    return false;
+}
+
+juce::StringArray AudioEngine::getInputChannelNames() const
+{
+    if (auto* device = deviceManager_.getCurrentAudioDevice())
+        return device->getInputChannelNames();
+    return {};
+}
+
+juce::StringArray AudioEngine::getOutputChannelNames() const
+{
+    if (auto* device = deviceManager_.getCurrentAudioDevice())
+        return device->getOutputChannelNames();
+    return {};
+}
+
+bool AudioEngine::setActiveInputChannels(int firstChannel, int numChannels)
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+
+    setup.useDefaultInputChannels = false;
+    setup.inputChannels.clear();
+    setup.inputChannels.setRange(firstChannel, numChannels, true);
+
+    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
+    if (result.isNotEmpty()) {
+        juce::Logger::writeToLog("Failed to set input channels: " + result);
+        return false;
+    }
+    return true;
+}
+
+bool AudioEngine::setActiveOutputChannels(int firstChannel, int numChannels)
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+
+    setup.useDefaultOutputChannels = false;
+    setup.outputChannels.clear();
+    setup.outputChannels.setRange(firstChannel, numChannels, true);
+
+    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
+    if (result.isNotEmpty()) {
+        juce::Logger::writeToLog("Failed to set output channels: " + result);
+        return false;
+    }
+    return true;
+}
+
+int AudioEngine::getActiveInputChannelOffset() const
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+    return setup.inputChannels.findNextSetBit(0);
+}
+
+int AudioEngine::getActiveOutputChannelOffset() const
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+    return setup.outputChannels.findNextSetBit(0);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -203,7 +476,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         vstChain_.processBlock(buffer, numSamples);
     }
 
-    // 3. Route processed audio to outputs (SharedMem → Virtual Loop Mic, Monitor)
+    // 3. Route processed audio to outputs (Virtual Cable + Monitor)
     if (!muted) {
         outputRouter_.routeAudio(buffer, numSamples);
     }
@@ -269,7 +542,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     currentBufferSize_ = device->getCurrentBufferSizeSamples();
 
     // Pre-allocate work buffer to avoid heap allocation in audio callback
-    workBuffer_.setSize(2, currentBufferSize_);
+    // Use at least 2 channels, or more if device provides more
+    int maxChannels = juce::jmax(2, device->getActiveInputChannels().countNumberOfSetBits(),
+                                    device->getActiveOutputChannels().countNumberOfSetBits());
+    workBuffer_.setSize(maxChannels, currentBufferSize_);
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);

@@ -533,8 +533,8 @@ CVirtualLoopMiniport::NewStream(
         return STATUS_NOT_SUPPORTED;
     }
 
-    // Verify bit depth (16-bit PCM or 32-bit float)
-    if (wfx->wBitsPerSample != 16 && wfx->wBitsPerSample != 32)
+    // Verify bit depth (16-bit PCM, 24-bit PCM, or 32-bit float)
+    if (wfx->wBitsPerSample != 16 && wfx->wBitsPerSample != 24 && wfx->wBitsPerSample != 32)
     {
         DbgPrint("VirtualLoopMic: Unsupported bit depth %u\n", wfx->wBitsPerSample);
         return STATUS_NOT_SUPPORTED;

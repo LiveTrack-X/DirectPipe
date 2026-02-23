@@ -11,8 +11,8 @@
 
 ### For full build
 
+- **ASIO SDK** — for ASIO driver support (place in `thirdparty/asiosdk/`)
 - **Windows Driver Kit (WDK)** — for Virtual Loop Mic driver
-- **OBS Studio SDK** — for OBS plugin (optional)
 
 ### Auto-fetched dependencies
 
@@ -37,6 +37,16 @@ cmake --build build --config Release
 cd build && ctest --config Release
 ```
 
+## ASIO SDK Setup
+
+To enable ASIO driver support:
+
+1. Download ASIO SDK from [Steinberg](https://www.steinberg.net/asiosdk)
+2. Extract to `thirdparty/asiosdk/` so that `thirdparty/asiosdk/common/asio.h` exists
+3. CMake will automatically detect the SDK and enable `JUCE_ASIO=1`
+
+Without the ASIO SDK, the build will succeed but only WASAPI drivers will be available.
+
 ## Windows Build (Visual Studio)
 
 ```powershell
@@ -60,30 +70,14 @@ Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE.
 | `DIRECTPIPE_BUILD_OBS_PLUGIN` | ON | Build OBS Studio source plugin |
 | `DIRECTPIPE_BUILD_HOST` | ON | Build JUCE host application |
 
-```bash
-# Build only the core library and tests (no JUCE/OBS dependencies)
-cmake -B build -DDIRECTPIPE_BUILD_HOST=OFF -DDIRECTPIPE_BUILD_OBS_PLUGIN=OFF
-cmake --build build --config Release
-```
-
-## OBS Plugin
-
-To build the OBS plugin, set `OBS_SOURCE_DIR`:
-
-```bash
-cmake -B build -DOBS_SOURCE_DIR=/path/to/obs-studio
-```
-
 ## Virtual Loop Mic Driver
 
 The kernel driver is built separately with the WDK:
 
 ```cmd
 cd driver
-msbuild virtualloop.vcxproj /p:Configuration=Release /p:Platform=x64
+build.bat
 ```
-
-Or open `driver/virtualloop.vcxproj` in Visual Studio with WDK installed.
 
 See [driver/README.md](../driver/README.md) for signing, installation, and debugging.
 
@@ -92,17 +86,13 @@ See [driver/README.md](../driver/README.md) for signing, installation, and debug
 After a successful build:
 
 ```
-build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application (JUCE GUI)
+build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application
 build/bin/Release/directpipe-tests.exe                   Core test suite (56 tests)
-build/tests/directpipe-host-tests_artefacts/Release/     Host test suite
 build/lib/Release/directpipe-core.lib                    Core IPC static library
-build/lib/Release/obs-directpipe-source.dll              OBS plugin (if built)
-driver/Release/virtualloop.sys                           Kernel driver (separate build)
+driver/out/                                               Kernel driver (separate build)
 ```
 
 ## Test Suite
-
-The test suite covers:
 
 | Test Group | Count | Description |
 |------------|-------|-------------|
@@ -120,16 +110,3 @@ cd build && ctest --config Release --output-on-failure
 # Run specific test group
 ./bin/directpipe-tests --gtest_filter="ActionDispatcherTest.*"
 ```
-
-## Cross-Platform Development
-
-While DirectPipe is designed for Windows, the core library and tests can be built on Linux/macOS for development:
-
-```bash
-# Linux/macOS (core + tests only)
-cmake -B build -DDIRECTPIPE_BUILD_HOST=OFF -DDIRECTPIPE_BUILD_OBS_PLUGIN=OFF
-cmake --build build
-cd build && ctest
-```
-
-Windows-specific features (WASAPI, kernel driver, global hotkeys) are stubbed with platform checks.
