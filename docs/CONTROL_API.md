@@ -1,508 +1,277 @@
-# DirectPipe Control API Reference
+# DirectPipe Control API Reference / 제어 API 레퍼런스
 
-DirectPipe exposes two network interfaces for external control: a WebSocket server for real-time bidirectional communication and an HTTP REST API for simple one-shot commands.
+DirectPipe exposes two network interfaces for external control: a WebSocket server for real-time bidirectional communication and an HTTP REST API for one-shot commands.
 
-## Connection Details
+DirectPipe는 두 가지 네트워크 인터페이스를 제공한다: 실시간 양방향 통신용 WebSocket 서버와 원샷 커맨드용 HTTP REST API.
 
-| Protocol  | Default Port | Address         |
-|-----------|-------------|-----------------|
-| WebSocket | 8765        | ws://127.0.0.1  |
-| HTTP      | 8766        | http://127.0.0.1|
+## Connection Details / 연결 정보
 
-Both servers bind to `127.0.0.1` (localhost only) for security. Ports can be changed in DirectPipe settings (Settings > Control > Server Ports).
+| Protocol | Default Port | Address |
+|----------|-------------|---------|
+| WebSocket | 8765 | ws://127.0.0.1 |
+| HTTP | 8766 | http://127.0.0.1 |
 
-If the default port is unavailable, the WebSocket server will try ports 8766-8770 as fallbacks. The actual port is reported in the DirectPipe log.
+Both bind to localhost only for security. Ports configurable in Settings > Controls > Server Ports. / 보안을 위해 localhost만 바인딩. 설정에서 포트 변경 가능.
 
 ---
 
 ## WebSocket API
 
-### Connecting
+### Connecting / 연결
 
 ```javascript
 const ws = new WebSocket("ws://127.0.0.1:8765");
 ```
 
-Upon connection, the server immediately sends the current application state as a JSON message.
+On connection, the server sends the current state as a JSON message. / 연결 시 현재 상태를 JSON으로 전송.
 
-### Message Format
+### Message Format / 메시지 형식
 
-All messages are JSON objects with a `type` field.
+All messages are JSON with a `type` field. / 모든 메시지는 `type` 필드가 있는 JSON.
 
-#### Client to Server: Action Requests
-
+**Client → Server (action request):**
 ```json
-{
-  "type": "action",
-  "action": "<action_name>",
-  "params": { ... }
-}
+{ "type": "action", "action": "<action_name>", "params": { ... } }
 ```
 
-#### Server to Client: State Updates
-
+**Server → Client (state update):**
 ```json
-{
-  "type": "state",
-  "data": { ... }
-}
+{ "type": "state", "data": { ... } }
 ```
 
-State updates are pushed automatically whenever the application state changes (bypass toggled, volume adjusted, preset loaded, etc.).
+State updates are pushed automatically on every state change. / 상태 변경 시 자동 푸시.
 
 ---
 
-### Action Messages
+### Actions / 액션
 
-#### `plugin_bypass` — Toggle Plugin Bypass
+#### `plugin_bypass` — Toggle Plugin Bypass / 플러그인 Bypass 토글
 
-Toggle bypass for a specific VST plugin in the chain.
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "plugin_bypass",
-  "params": {
-    "index": 0
-  }
-}
+{ "type": "action", "action": "plugin_bypass", "params": { "index": 0 } }
 ```
 
-| Parameter | Type   | Required | Description                           |
-|-----------|--------|----------|---------------------------------------|
-| `index`   | number | No       | Plugin chain index (0-based). Default: 0 |
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `index` | number | No | Plugin chain index (0-based, default: 0) / 체인 인덱스 |
 
 ---
 
-#### `master_bypass` — Toggle Master Bypass
+#### `master_bypass` — Toggle Master Bypass / 마스터 Bypass 토글
 
-Toggle bypass for the entire VST processing chain.
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "master_bypass",
-  "params": {}
-}
+{ "type": "action", "action": "master_bypass", "params": {} }
 ```
-
-No parameters required.
 
 ---
 
-#### `set_volume` — Set Volume
+#### `set_volume` — Set Volume / 볼륨 설정
 
-Set the volume level for a specific audio target.
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "set_volume",
-  "params": {
-    "target": "monitor",
-    "value": 0.75
-  }
-}
+{ "type": "action", "action": "set_volume", "params": { "target": "monitor", "value": 0.75 } }
 ```
 
-| Parameter | Type   | Required | Description                                      |
-|-----------|--------|----------|--------------------------------------------------|
-| `target`  | string | No       | `"input"`, `"virtual_mic"`, or `"monitor"`. Default: `"monitor"` |
-| `value`   | number | Yes      | Volume level from `0.0` (silent) to `1.0` (full) |
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `target` | string | No | `"input"`, `"virtual_mic"`, or `"monitor"` (default: `"monitor"`) |
+| `value` | number | Yes | 0.0 (silent) to 1.0 (full) |
 
 ---
 
-#### `toggle_mute` — Toggle Mute
+#### `toggle_mute` — Toggle Mute / 뮤트 토글
 
-Toggle mute for a specific audio target.
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "toggle_mute",
-  "params": {
-    "target": "monitor"
-  }
-}
+{ "type": "action", "action": "toggle_mute", "params": { "target": "monitor" } }
 ```
 
-| Parameter | Type   | Required | Description                                          |
-|-----------|--------|----------|------------------------------------------------------|
-| `target`  | string | No       | `"input"`, `"virtual_mic"`, or `"monitor"`. Default: `""` (all) |
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `target` | string | No | `"input"`, `"virtual_mic"`, `"monitor"`, or `""` (all) |
 
 ---
 
-#### `load_preset` — Load Preset by Index
+#### `panic_mute` — Panic Mute / 패닉 뮤트
 
-Load a saved preset by its index.
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "load_preset",
-  "params": {
-    "index": 2
-  }
-}
+{ "type": "action", "action": "panic_mute", "params": {} }
 ```
 
-| Parameter | Type   | Required | Description              |
-|-----------|--------|----------|--------------------------|
-| `index`   | number | Yes      | Preset index (0-based)   |
+Immediately mutes all outputs. Send again to unmute. / 전체 뮤트. 재전송 시 해제.
 
 ---
 
-#### `panic_mute` — Panic Mute
+#### `input_gain` — Adjust Input Gain / 입력 게인 조절
 
-Immediately mute all audio outputs. Sending again toggles the mute off.
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "panic_mute",
-  "params": {}
-}
+{ "type": "action", "action": "input_gain", "params": { "delta": 1.0 } }
 ```
 
-No parameters required.
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `delta` | number | Yes | Gain change in dB (+louder, -quieter) / dB 단위 게인 변화 |
 
 ---
 
-#### `input_gain` — Adjust Input Gain
+#### `input_mute_toggle` — Toggle Input Mute / 입력 뮤트 토글
 
-Adjust the microphone input gain by a relative amount in dB.
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "input_gain",
-  "params": {
-    "delta": 1.0
-  }
-}
+{ "type": "action", "action": "input_mute_toggle", "params": {} }
 ```
-
-| Parameter | Type   | Required | Description                        |
-|-----------|--------|----------|------------------------------------|
-| `delta`   | number | Yes      | Gain change in dB (positive = louder, negative = quieter) |
 
 ---
 
-#### `switch_preset_slot` — Switch Preset Slot
+#### `switch_preset_slot` — Switch Preset Slot / 프리셋 슬롯 전환
 
-Switch to one of the five quick preset slots (A-E).
-
-**Request:**
 ```json
-{
-  "type": "action",
-  "action": "switch_preset_slot",
-  "params": {
-    "slot": 2
-  }
-}
+{ "type": "action", "action": "switch_preset_slot", "params": { "slot": 2 } }
 ```
 
-| Parameter | Type   | Required | Description                        |
-|-----------|--------|----------|------------------------------------|
-| `slot`    | number | Yes      | Slot index: 0=A, 1=B, 2=C, 3=D, 4=E |
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `slot` | number | Yes | 0=A, 1=B, 2=C, 3=D, 4=E |
 
 ---
 
-### State Object
+#### `load_preset` — Load Preset by Index / 프리셋 로드
 
-The state message contains a complete snapshot of the DirectPipe application state.
+```json
+{ "type": "action", "action": "load_preset", "params": { "index": 2 } }
+```
 
-**Full example:**
+---
+
+#### `next_preset` / `previous_preset` — Cycle Presets / 프리셋 순환
+
+```json
+{ "type": "action", "action": "next_preset", "params": {} }
+```
+
+---
+
+### State Object / 상태 객체
+
 ```json
 {
   "type": "state",
   "data": {
     "plugins": [
-      {
-        "name": "ReaComp",
-        "bypass": false,
-        "loaded": true
-      },
-      {
-        "name": "ReaEQ",
-        "bypass": true,
-        "loaded": true
-      }
+      { "name": "ReaComp", "bypass": false, "loaded": true },
+      { "name": "ReaEQ", "bypass": true, "loaded": true }
     ],
-    "volumes": {
-      "input": 1.0,
-      "virtual_mic": 0.8,
-      "monitor": 0.6
-    },
+    "volumes": { "input": 1.0, "virtual_mic": 0.8, "monitor": 0.6 },
     "master_bypassed": false,
     "muted": false,
     "input_muted": false,
+    "active_slot": 0,
     "preset": "Streaming Vocal",
     "latency_ms": 5.2,
     "level_db": -18.3,
     "cpu_percent": 3.1,
     "sample_rate": 48000,
     "buffer_size": 128,
-    "channel_mode": 1,
-    "virtual_cable_active": true
+    "channel_mode": 1
   }
 }
 ```
 
-#### State Fields
-
-| Field              | Type     | Description                                        |
-|--------------------|----------|----------------------------------------------------|
-| `plugins`          | array    | Array of plugin objects in the processing chain     |
-| `plugins[].name`   | string   | Plugin display name                                |
-| `plugins[].bypass` | boolean  | Whether the plugin is currently bypassed           |
-| `plugins[].loaded` | boolean  | Whether the plugin is loaded (slot is not empty)   |
-| `volumes.input`    | number   | Input gain level (0.0-1.0)                         |
-| `volumes.virtual_mic` | number | Virtual microphone output volume (0.0-1.0)      |
-| `volumes.monitor`  | number   | Monitor output volume (0.0-1.0)                    |
-| `master_bypassed`  | boolean  | Whether the entire plugin chain is bypassed        |
-| `muted`            | boolean  | Whether all outputs are muted (panic mute state)   |
-| `input_muted`      | boolean  | Whether the microphone input is muted              |
-| `preset`           | string   | Name of the currently loaded preset                |
-| `latency_ms`       | number   | Current end-to-end latency in milliseconds         |
-| `level_db`         | number   | Current input level in dBFS                        |
-| `cpu_percent`      | number   | Audio processing CPU usage percentage              |
-| `sample_rate`      | number   | Audio sample rate in Hz (e.g., 48000)              |
-| `buffer_size`      | number   | Audio buffer size in samples                       |
-| `channel_mode`     | number   | Channel mode: 1 = Mono, 2 = Stereo                |
-| `virtual_cable_active` | boolean | Whether the virtual audio driver is connected    |
+| Field | Type | Description |
+|-------|------|-------------|
+| `plugins` | array | Plugin objects in chain / 체인 내 플러그인 |
+| `plugins[].name` | string | Plugin name / 플러그인 이름 |
+| `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
+| `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
+| `volumes.input` | number | Input gain (0.0–1.0) / 입력 게인 |
+| `volumes.virtual_mic` | number | Virtual mic volume (0.0–1.0) / 가상 마이크 볼륨 |
+| `volumes.monitor` | number | Monitor volume (0.0–1.0) / 모니터 볼륨 |
+| `master_bypassed` | boolean | Entire chain bypassed / 전체 체인 Bypass |
+| `muted` | boolean | Panic mute active / 패닉 뮤트 상태 |
+| `input_muted` | boolean | Input muted / 입력 뮤트 |
+| `active_slot` | number | Active preset slot (0–4) / 활성 슬롯 |
+| `preset` | string | Current preset name / 현재 프리셋 이름 |
+| `latency_ms` | number | Latency in ms / 레이턴시 (ms) |
+| `level_db` | number | Input level in dBFS / 입력 레벨 (dBFS) |
+| `cpu_percent` | number | Audio CPU usage % / 오디오 CPU 사용률 |
+| `sample_rate` | number | Sample rate (Hz) / 샘플레이트 |
+| `buffer_size` | number | Buffer size (samples) / 버퍼 크기 |
+| `channel_mode` | number | 1=Mono, 2=Stereo |
 
 ---
 
 ## HTTP REST API
 
-The HTTP API provides simple GET endpoints that can be called from any HTTP client, including the Stream Deck's built-in "Website" action.
+Simple GET endpoints for one-shot commands. / 원샷 커맨드용 GET 엔드포인트.
 
-### Base URL
+Base URL: `http://127.0.0.1:8766`
 
-```
-http://127.0.0.1:8766
-```
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/status` | Full state (same as WebSocket state) / 전체 상태 |
+| `GET /api/bypass/:index/toggle` | Toggle plugin bypass / 플러그인 Bypass 토글 |
+| `GET /api/bypass/master/toggle` | Toggle master bypass / 마스터 Bypass 토글 |
+| `GET /api/mute/toggle` | Toggle mute / 뮤트 토글 |
+| `GET /api/mute/panic` | Panic mute / 패닉 뮤트 |
+| `GET /api/volume/:target/:value` | Set volume (target: `input`, `virtual_mic`, `monitor`; value: 0.0–1.0) / 볼륨 설정 |
+| `GET /api/preset/:index` | Load preset / 프리셋 로드 |
+| `GET /api/slot/:index` | Switch preset slot (0–4) / 슬롯 전환 |
+| `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |
+| `GET /api/gain/:delta` | Adjust input gain (dB) / 입력 게인 조절 |
 
-### Endpoints
+All responses return JSON. Success: `{ "ok": true, "action": "..." }`. Error: `{ "error": "..." }`.
 
-All endpoints return JSON responses.
-
-#### `GET /api/status`
-
-Returns the complete application state (same format as the WebSocket state message).
-
-**Response:**
-```json
-{
-  "type": "state",
-  "data": { ... }
-}
-```
+모든 응답은 JSON. 성공: `{ "ok": true }`, 에러: `{ "error": "..." }`.
 
 ---
 
-#### `GET /api/bypass/:index/toggle`
+## Examples / 예제
 
-Toggle bypass for a specific plugin.
-
-**Example:**
-```
-GET http://127.0.0.1:8766/api/bypass/0/toggle
-```
-
-**Response:**
-```json
-{ "ok": true, "action": "plugin_bypass", "index": 0 }
-```
-
----
-
-#### `GET /api/bypass/master/toggle`
-
-Toggle master bypass for the entire processing chain.
-
-**Example:**
-```
-GET http://127.0.0.1:8766/api/bypass/master/toggle
-```
-
-**Response:**
-```json
-{ "ok": true, "action": "master_bypass" }
-```
-
----
-
-#### `GET /api/mute/toggle`
-
-Toggle mute on all outputs.
-
-**Example:**
-```
-GET http://127.0.0.1:8766/api/mute/toggle
-```
-
-**Response:**
-```json
-{ "ok": true, "action": "toggle_mute" }
-```
-
----
-
-#### `GET /api/mute/panic`
-
-Trigger panic mute (immediately mute all outputs).
-
-**Example:**
-```
-GET http://127.0.0.1:8766/api/mute/panic
-```
-
-**Response:**
-```json
-{ "ok": true, "action": "panic_mute" }
-```
-
----
-
-#### `GET /api/volume/:target/:value`
-
-Set the volume for a specific target.
-
-**Example:**
-```
-GET http://127.0.0.1:8766/api/volume/monitor/0.75
-```
-
-| Parameter | Description                                   |
-|-----------|-----------------------------------------------|
-| `:target` | `input`, `virtual_mic`, or `monitor`          |
-| `:value`  | Volume level from `0.0` to `1.0`              |
-
-**Response:**
-```json
-{ "ok": true, "action": "set_volume", "target": "monitor", "value": 0.75 }
-```
-
----
-
-#### `GET /api/preset/:index`
-
-Load a preset by index.
-
-**Example:**
-```
-GET http://127.0.0.1:8766/api/preset/2
-```
-
-**Response:**
-```json
-{ "ok": true, "action": "load_preset", "index": 2 }
-```
-
----
-
-#### `GET /api/gain/:delta`
-
-Adjust input gain by a relative amount in dB.
-
-**Example:**
-```
-GET http://127.0.0.1:8766/api/gain/-1
-```
-
-**Response:**
-```json
-{ "ok": true, "action": "input_gain", "delta": -1.0 }
-```
-
----
-
-## Error Responses
-
-### WebSocket
-
-Invalid action messages are silently ignored. The server does not send error responses for unrecognized actions.
-
-### HTTP
-
-All responses return HTTP 200 with a JSON body. Check the response body for errors:
-
-```json
-{ "error": "Unknown endpoint" }
-```
-
-Successful actions return:
-```json
-{ "ok": true, "action": "..." }
-```
-
----
-
-## Usage Examples
-
-### curl (Command Line)
+### curl
 
 ```bash
-# Get current state
+# Get state / 상태 조회
 curl http://127.0.0.1:8766/api/status
 
-# Toggle bypass on first plugin
+# Toggle first plugin bypass / 첫 번째 플러그인 Bypass
 curl http://127.0.0.1:8766/api/bypass/0/toggle
 
-# Panic mute
+# Panic mute / 패닉 뮤트
 curl http://127.0.0.1:8766/api/mute/panic
 
-# Set monitor volume to 50%
+# Set monitor volume to 50% / 모니터 볼륨 50%
 curl http://127.0.0.1:8766/api/volume/monitor/0.5
+
+# Switch to slot C / 슬롯 C로 전환
+curl http://127.0.0.1:8766/api/slot/2
 ```
 
 ### Python (WebSocket)
 
 ```python
-import asyncio
-import websockets
-import json
+import asyncio, websockets, json
 
-async def control_directpipe():
+async def main():
     async with websockets.connect("ws://127.0.0.1:8765") as ws:
-        # Receive initial state
         state = json.loads(await ws.recv())
-        print("Current state:", state)
+        print("State:", state)
 
-        # Toggle master bypass
         await ws.send(json.dumps({
             "type": "action",
             "action": "master_bypass",
             "params": {}
         }))
 
-        # Listen for state updates
-        async for message in ws:
-            update = json.loads(message)
-            print("State update:", update)
+        async for msg in ws:
+            print("Update:", json.loads(msg))
 
-asyncio.run(control_directpipe())
+asyncio.run(main())
 ```
 
 ### Node.js (WebSocket)
 
 ```javascript
 const WebSocket = require("ws");
-
 const ws = new WebSocket("ws://127.0.0.1:8765");
 
 ws.on("open", () => {
-    // Set monitor volume to 80%
     ws.send(JSON.stringify({
         type: "action",
         action: "set_volume",
@@ -511,7 +280,6 @@ ws.on("open", () => {
 });
 
 ws.on("message", (data) => {
-    const state = JSON.parse(data);
-    console.log("State:", state);
+    console.log("State:", JSON.parse(data));
 });
 ```

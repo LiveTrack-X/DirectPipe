@@ -1,131 +1,122 @@
-# DirectPipe User Guide
+# DirectPipe User Guide / 사용자 가이드
 
-## What is DirectPipe?
+## What is DirectPipe? / DirectPipe란?
 
-DirectPipe lets you apply VST2/VST3 audio effects to your USB microphone and send the processed audio to Discord, Zoom, OBS, and any other application — all with ultra-low latency (13-23ms), no hardware audio interface needed.
+DirectPipe is a real-time VST2/VST3 host for Windows. It processes your microphone input through a chain of VST plugins and lets you monitor the result through headphones. You can control it remotely via hotkeys, MIDI, Stream Deck, or HTTP API while the app runs in the system tray.
 
-It replaces the "Light Host + VB-Cable" setup with a single application that includes a built-in virtual microphone driver ("Virtual Loop Mic").
+DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 VST 플러그인 체인으로 처리하고 헤드폰으로 모니터링할 수 있다. 시스템 트레이에서 실행하면서 단축키, MIDI, Stream Deck, HTTP API로 원격 제어 가능.
 
-## Quick Start
+## Quick Start / 빠른 시작
 
-1. **Install DirectPipe** (includes the Virtual Loop Mic driver)
-2. **Launch DirectPipe**
-3. **Select your driver type** — ASIO or Windows Audio (WASAPI) in the Audio tab
-4. **Select your microphone** from the device dropdown
-5. **Scan for VST plugins** — click "Scan..." to find all installed plugins
-6. **Add VST plugins** to the chain — click "+ Add Plugin" and select from the scanned list
-7. **Configure monitor output** in the Output tab if you want to hear yourself
+1. **Launch DirectPipe** / DirectPipe 실행
+2. **Select driver type** — ASIO or Windows Audio (WASAPI) in Audio tab / Audio 탭에서 드라이버 선택
+3. **Select your microphone** from the device dropdown / 마이크 선택
+4. **Scan for plugins** — click "Scan..." to discover installed VST plugins / "Scan..." 클릭으로 VST 스캔
+5. **Add plugins** to the chain — click "+ Add Plugin" / "+ Add Plugin"으로 플러그인 추가
+6. **Configure monitor output** in Output tab to hear yourself / Output 탭에서 모니터 출력 설정
 
-## Audio Settings (Audio Tab)
+## Audio Settings (Audio Tab) / 오디오 설정
 
-### Driver Type
+### Driver Type / 드라이버 타입
 
-- **Windows Audio (WASAPI)**: Default. Non-exclusive access — other apps can use your mic simultaneously. Separate input/output device selection.
-- **ASIO**: Lower latency. Single device selection. Dynamic sample rate and buffer size lists from the device. "ASIO Control Panel" button to open the driver's native settings.
+- **Windows Audio (WASAPI)** — Default. Non-exclusive access — other apps can use your mic simultaneously. Separate input/output device selection. / 기본값. 비독점 접근. 입출력 장치 개별 선택.
+- **ASIO** — Lower latency. Single device selection. Dynamic sample rate and buffer size from the device. "ASIO Control Panel" button for native driver settings. / 저지연. 단일 장치. ASIO 컨트롤 패널 버튼 제공.
 
-### Sample Rate & Buffer Size
+### Sample Rate & Buffer Size / 샘플레이트 & 버퍼 크기
 
-**WASAPI mode**: Fixed list of common values (44100, 48000 Hz; 64-2048 samples).
+**WASAPI** — Fixed list of common values (44100, 48000 Hz; 64–2048 samples). / 고정 목록.
 
-**ASIO mode**: Lists only what the device actually supports. Change via the ASIO Control Panel for best results.
+**ASIO** — Lists only what the device supports. Use the ASIO Control Panel for best results. / 장치 지원 값만 표시. ASIO 컨트롤 패널 권장.
 
-| Buffer (samples @48kHz) | Latency   | Notes |
-|--------------------------|-----------|-------|
-| 480 (default)            | ~23ms     | Stable for most systems |
-| 256                      | ~13ms     | Good balance |
-| 128                      | ~8ms      | Low latency, needs decent CPU |
-| 64                       | ~5ms      | Ultra-low, may glitch on slower systems |
+### Channel Mode / 채널 모드
 
-### Channel Mode
+- **Stereo** (default) — Channels pass through as-is. / 채널 그대로 통과.
+- **Mono** — Both channels mixed to mono. Best for voice. / 모노 믹스. 음성에 적합.
 
-- **Stereo** (default): Channels pass through as-is.
-- **Mono**: Both microphone channels are mixed to mono. Best for voice.
+## VST Plugin Chain / VST 플러그인 체인
 
-## VST Plugin Chain
+Supports both **VST2** (.dll) and **VST3** (.vst3) plugins in a serial chain. / VST2와 VST3 모두 지원.
 
-DirectPipe supports both **VST2** (.dll) and **VST3** (.vst3) plugins in a serial processing chain.
+- **Add** — Click "+ Add Plugin" and select from scanned list / 스캔된 목록에서 선택
+- **Remove** — Click **X** on a plugin row / X 버튼으로 제거
+- **Reorder** — Drag and drop a plugin row / 드래그 앤 드롭으로 순서 변경
+- **Bypass** — Click the bypass toggle to skip a plugin / Bypass 토글
+- **Edit** — Click **Edit** to open the native plugin GUI / 네이티브 GUI 열기
 
-- **Add**: Click "+ Add Plugin" and select from scanned plugins or browse for a file
-- **Remove**: Click the **X** button on a plugin row
-- **Reorder**: **Drag and drop** a plugin row to a new position
-- **Bypass**: Click the **Bypass** toggle to skip a plugin without removing it
-- **Edit**: Click **Edit** to open the plugin's native GUI window
+### Plugin State / 플러그인 상태
 
-### Plugin Internal State
+Plugin parameters (EQ curves, compressor settings, etc.) are automatically saved and restored: / 플러그인 파라미터 자동 저장/복원:
 
-Plugin parameters (EQ curves, compressor settings, etc.) are automatically saved and restored:
-- When switching between preset slots A-E
-- When closing a plugin editor window
-- On application exit
+- When switching preset slots A-E / 프리셋 슬롯 전환 시
+- When closing a plugin editor window / 에디터 창 닫을 때
+- On application exit / 앱 종료 시
 
-## Quick Preset Slots (A-E)
+## Quick Preset Slots (A-E) / 퀵 프리셋 슬롯
 
-Five quick-access slots for different VST chain configurations.
+Five quick-access slots for different VST chain configurations. / 5개 체인 구성 퀵 슬롯.
 
-- **Click a slot** to switch to it (current slot is saved first)
-- **Same plugins**: Switching is instant (only bypass and parameters change)
-- **Different plugins**: Loads asynchronously — UI stays responsive
-- **Active slot** is highlighted in purple
-- **Occupied slots** show a lighter color
-- **Empty slots** are dimmed
+- **Click a slot** to switch (current slot saved first) / 클릭으로 전환 (현재 슬롯 자동 저장)
+- **Same plugins** — Instant switch (only bypass and parameters change) / 같은 플러그인이면 즉시 전환
+- **Different plugins** — Async background loading, UI stays responsive / 다른 플러그인이면 비동기 로딩
+- **Active slot** highlighted in purple / 활성 슬롯 보라색 표시
+- **Occupied slots** shown lighter, **empty slots** dimmed / 사용 중인 슬롯은 밝게, 빈 슬롯은 어둡게
 
-Slots save **chain-only data** (plugins, order, bypass, plugin parameters). Audio settings and output configuration are NOT affected by slot switching.
+Slots save chain-only data (plugins, order, bypass, parameters). Audio and output settings are NOT affected. / 슬롯은 체인 데이터만 저장. 오디오/출력 설정은 영향 없음.
 
-## Output Settings (Output Tab)
+## Output Settings (Output Tab) / 출력 설정
 
-### Monitor Output
+### Monitor Output / 모니터 출력
 
-- **Device**: Select which output device to use for monitoring
-- **Volume**: Adjust monitor volume
-- **Enable**: Toggle monitor on/off (default: off)
+- **Device** — Select output device for monitoring / 모니터링용 출력 장치 선택
+- **Volume** — Adjust monitor volume / 모니터 볼륨 조절
+- **Enable** — Toggle monitor on/off (default: off) / 모니터 켜기/끄기
 
-Monitor output lets you hear your processed audio through headphones while streaming.
+Lets you hear your processed audio through headphones. / 헤드폰으로 처리된 오디오를 들을 수 있다.
 
-## VST Plugin Scanner
+## VST Plugin Scanner / VST 스캐너
 
-DirectPipe includes an **out-of-process VST scanner** that safely discovers all installed plugins.
+Out-of-process scanner that safely discovers all installed plugins. / 별도 프로세스에서 안전하게 플러그인 탐색.
 
-1. Click **"Scan..."** in the plugin chain area
-2. Default directories are pre-configured (VST3, VST2, Steinberg paths)
-3. Click **"Scan for Plugins"** — scanning runs in a separate process
-4. If a bad plugin crashes the scanner, it automatically retries (up to 5 times), skipping the problematic plugin
+1. Click **"Scan..."** / "Scan..." 클릭
+2. Default directories are pre-configured / 기본 경로 자동 설정
+3. Click **"Scan for Plugins"** — runs in a separate process / 별도 프로세스에서 스캔
+4. Bad plugin crashes → auto-retry (up to 5 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
 
-## System Tray
+## System Tray / 시스템 트레이
 
-- **Close button**: Minimizes to system tray (app continues running)
-- **Tray icon double-click**: Shows the main window
-- **Tray icon right-click**: Menu with "Show Window" and "Quit DirectPipe"
+- **Close button** — Minimizes to tray (app keeps running) / X 버튼 → 트레이 최소화
+- **Double-click tray icon** — Shows the main window / 더블클릭 → 창 복원
+- **Right-click tray icon** — Menu: "Show Window" / "Quit DirectPipe" / 우클릭 → 메뉴
 
-## External Control
+## External Control / 외부 제어
 
-DirectPipe can be controlled while minimized or in the background.
+DirectPipe can be controlled while minimized or in the background. / 최소화 상태에서도 제어 가능.
 
-### Keyboard Shortcuts
+### Keyboard Shortcuts / 키보드 단축키
 
-| Default Shortcut    | Action |
-|---------------------|--------|
-| Ctrl+Shift+1-3      | Toggle Plugin 1-3 Bypass |
-| Ctrl+Shift+0        | Master Bypass |
-| Ctrl+Shift+M        | Panic Mute (all outputs) |
-| Ctrl+Shift+N        | Input Mute Toggle |
-| Ctrl+Shift+Up/Down  | Input gain +/- 1dB |
-| Ctrl+Shift+F1-F8    | Load preset 1-8 |
+| Shortcut / 단축키 | Action / 동작 |
+|-------------------|---------------|
+| Ctrl+Shift+1~9 | Toggle Plugin 1-9 Bypass / 플러그인 1-9 Bypass 토글 |
+| Ctrl+Shift+0 | Master Bypass / 마스터 Bypass |
+| Ctrl+Shift+M | Panic Mute / 패닉 뮤트 |
+| Ctrl+Shift+N | Input Mute Toggle / 입력 뮤트 토글 |
+| Ctrl+Shift+F1~F5 | Preset Slot A-E / 프리셋 슬롯 A-E |
 
-### Panic Mute
+### Panic Mute / 패닉 뮤트
 
-Panic Mute immediately silences all outputs. When unmuted, the previous enable states are restored (monitor on/off, virtual cable on/off remembered from before mute).
+Immediately silences all outputs. When unmuted, previous enable states are restored. / 전체 출력 즉시 뮤트. 해제 시 이전 상태 복원.
 
-### MIDI Control
+### MIDI Control / MIDI 제어
 
-1. Open Controls tab > MIDI section
-2. Select your MIDI device
-3. Click [Learn] next to an action
-4. Move a knob/press a button on your controller
-5. The mapping is saved automatically
+1. Open Controls tab > MIDI section / Controls 탭 > MIDI 섹션
+2. Select your MIDI device / MIDI 장치 선택
+3. Click [Learn] next to an action / [Learn] 클릭
+4. Move a knob or press a button on your controller / 컨트롤러 조작
+5. Mapping saved automatically / 자동 저장
 
 ### Stream Deck
 
-See [Stream Deck Guide](STREAMDECK_GUIDE.md) for detailed setup.
+See [Stream Deck Guide](STREAMDECK_GUIDE.md). / Stream Deck 가이드 참조.
 
 ### HTTP API
 
@@ -135,29 +126,21 @@ curl http://127.0.0.1:8766/api/mute/panic
 curl http://127.0.0.1:8766/api/volume/monitor/0.5
 ```
 
-See [Control API Reference](CONTROL_API.md) for all endpoints.
+See [Control API Reference](CONTROL_API.md) for all endpoints. / 전체 엔드포인트는 Control API 참조.
 
-## Troubleshooting
+## Troubleshooting / 문제 해결
 
-**No audio input?**
-- Check the correct microphone is selected in Audio tab
-- Verify the microphone works in Windows Sound Settings
-- Try switching between WASAPI and ASIO driver types
+**No audio input? / 오디오 입력이 없나요?**
+- Check the correct microphone is selected in Audio tab / 올바른 마이크가 선택되어 있는지 확인
+- Verify the mic works in Windows Sound Settings / Windows 사운드 설정에서 마이크 확인
+- Try switching between WASAPI and ASIO / 드라이버 타입 변경 시도
 
-**Glitches or dropouts?**
-- Increase the buffer size
-- For ASIO, use the ASIO Control Panel to adjust buffer size
-- Close other audio-intensive applications
+**Glitches or dropouts? / 글리치나 끊김?**
+- Increase the buffer size / 버퍼 크기 증가
+- For ASIO, use the ASIO Control Panel to adjust / ASIO 컨트롤 패널에서 조정
+- Close other audio-intensive applications / 다른 오디오 앱 종료
 
-**Virtual Loop Mic not appearing?**
-- Ensure the driver is installed (check Device Manager)
-- Reinstall DirectPipe with the driver option enabled
-
-**Slot switching is slow?**
-- First load of different plugins takes time (plugin initialization)
-- Subsequent switches between the same plugins are instant
-- UI remains responsive during async loading
-
-**Plugin settings lost after slot switch?**
-- Plugin internal state is saved when: switching slots, closing editor, on app exit
-- If you change parameters and immediately switch, the current slot is saved first
+**Slot switching is slow? / 슬롯 전환이 느린가요?**
+- First load of different plugins takes time (plugin initialization) / 처음 다른 플러그인 로드 시 초기화 시간 필요
+- Subsequent switches between same plugins are instant / 이후 같은 플러그인 간 전환은 즉시
+- UI remains responsive during async loading / 비동기 로딩 중 UI 응답 유지

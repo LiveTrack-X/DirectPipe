@@ -1,89 +1,76 @@
-# DirectPipe — Claude Code 프로젝트 가이드 v4.1
+# DirectPipe — Claude Code Project Guide v5.0
 
-## 프로젝트 설명
-USB 마이크용 VST2/VST3 호스트 + 초저지연 루프백.
-"Virtual Loop Mic" 가상 장치로 출력. Light Host 수준 호환성.
-기존 대비 50~60% 레이턴시 감소.
-키보드 단축키, MIDI CC, Stream Deck, HTTP API로 실시간 제어.
+## Project Description
+Real-time VST2/VST3 host for Windows. Processes microphone input through a plugin chain with monitor output. Focused on external control (hotkeys, MIDI, Stream Deck, HTTP API) and fast preset switching. Similar to Light Host but with remote control capabilities.
 
-## 핵심 원칙
-1. WASAPI Shared 기본 + ASIO 지원 (원본 마이크 비독점)
-2. VST2 + VST3 호스팅
-3. 공유 메모리 → Virtual Loop Mic 드라이버 직결
-4. SR/Buffer/Channel 사용자 선택 (기본 Stereo)
-5. 외부 제어: Hotkey, MIDI, WebSocket, HTTP (모두 ActionDispatcher 경유)
-6. 시스템 트레이 상주 (닫기 = 트레이로 최소화)
-7. Quick Preset Slots A-E (체인 전용, 플러그인 내부 상태 포함)
+Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체인으로 처리. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
-## 기술 스택
+## Core Principles
+1. WASAPI Shared default + ASIO support (non-exclusive mic access)
+2. VST2 + VST3 hosting with drag-and-drop chain editing
+3. Quick Preset Slots A-E (chain-only, includes plugin internal state)
+4. External control: Hotkey, MIDI, WebSocket, HTTP → unified ActionDispatcher
+5. System tray resident (close = minimize to tray)
+6. Out-of-process VST scanner (crash-safe)
+
+## Tech Stack
 - C++17, JUCE 7.0.12, CMake 3.22+
 - WASAPI Shared Mode + ASIO (Steinberg ASIO SDK)
 - VST2 SDK 2.4 + VST3
-- WDK — Virtual Loop Mic 드라이버
-- SPSC Lock-free Ring Buffer + Windows Shared Memory
-- WebSocket 서버: JUCE StreamingSocket + RFC 6455 수동 구현 (핸드셰이크, 프레임 인코딩/디코딩, SHA-1)
-- HTTP 서버: JUCE StreamingSocket 기반 수동 HTTP 파싱
+- WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, SHA-1)
+- HTTP: JUCE StreamingSocket manual parsing
 
-## 빌드
+## Build
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-cd build && ctest --config Release
 ```
 
-## 아키텍처
+## Architecture
 ```
-USB Mic → WASAPI Shared / ASIO → [Mono/Stereo] → VSTChain → OutputRouter
-  → SharedMem → [Virtual Loop Mic Driver]
-  → WASAPI / ASIO Out → [Monitor]
+Mic → WASAPI Shared / ASIO → [Mono/Stereo] → VSTChain → Monitor Output
 
-외부 제어:
+External Control:
 Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
   → VSTChain (bypass), OutputRouter (volume), PresetManager
 ```
 
-## 주요 구현 사항
-- **ASIO + WASAPI 듀얼 드라이버**: AudioSettings에서 드라이버 타입 전환. ASIO: 단일 디바이스, 동적 SR/BS. WASAPI: 입/출력 개별, 고정 목록. ASIO Control Panel 버튼.
-- **Quick Preset Slots (A-E)**: 체인 전용 프리셋. 플러그인 내부 상태(getStateInformation) base64로 저장/복원. 비동기 로딩(replaceChainAsync)으로 UI 프리징 방지. Fast path(같은 체인)는 즉시 전환.
-- **Out-of-process VST 스캔**: `--scan` 모드로 자식 프로세스에서 스캔. 크래시 시 자동 재시도 (최대 5회), dead man's pedal로 불량 플러그인 자동 건너뜀.
-- **플러그인 체인 에디터**: 드래그 앤 드롭 순서 변경, Bypass 토글, Edit 버튼으로 네이티브 GUI 열기/닫기. 에디터 닫기 시 자동 저장.
-- **탭 UI**: 오른쪽 컬럼에 Audio/Output/Controls 탭. AudioSettings에 DeviceSelector 통합.
-- **시스템 트레이**: 닫기 → 트레이 최소화, 더블클릭 → 복원, 우클릭 → Show/Quit 메뉴.
-- **모니터 출력**: Mono 모드에서 양쪽 출력 채널에 복사, OutputRouter 볼륨 적용. 기본 OFF.
-- **Panic Mute**: 뮤트 전 상태 기억, 해제 시 복원 (preMuteVCableEnabled_, preMuteMonitorEnabled_).
-- **WaveShell 호환**: PluginDescription을 XML로 완전 직렬화하여 shell 서브 플러그인 정확히 복원.
+## Key Implementations
+- **ASIO + WASAPI dual driver**: Runtime switching. ASIO: single device, dynamic SR/BS. WASAPI: separate I/O, fixed lists.
+- **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
+- **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal.
+- **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Auto-save on editor close.
+- **Tabbed UI**: Audio/Output/Controls tabs in right column.
+- **System tray**: Close → tray, double-click → restore, right-click → Show/Quit.
+- **Panic Mute**: Remembers pre-mute enable states, restores on unmute.
+- **WebSocket server**: RFC 6455 with custom SHA-1 implementation.
+- **Stream Deck plugin**: 4 class-based actions, Property Inspector HTML, auto-reconnect.
 
-## 코딩 규칙
-- 오디오 콜백: 힙 할당 금지, 뮤텍스 금지
-- 제어 → 오디오 통신: atomic flags 또는 lock-free queue
-- GUI/제어는 같은 ActionDispatcher 사용 (통일)
-- WebSocket/HTTP는 별도 스레드, 오디오와 독립
-- UI 콜백 안에서 자기 자신 컴포넌트를 삭제할 수 있는 작업은 `juce::MessageManager::callAsync` 사용 (use-after-free 방지)
-- KnownPluginList 등 non-copyable JUCE 객체는 XML 직렬화로 스레드 간 전달
-- 슬롯 로딩 중 자동 저장 방지: `loadingSlot_` 가드 패턴
-- onChainChanged 콜백은 chainLock_ 바깥에서 호출 (데드락 방지)
+## Coding Rules
+- Audio callback: no heap alloc, no mutex
+- Control → audio: atomic flags or lock-free queue
+- GUI and control share ActionDispatcher
+- WebSocket/HTTP on separate threads
+- `juce::MessageManager::callAsync` for UI self-deletion safety
+- `loadingSlot_` guard prevents recursive auto-save during slot loading
+- onChainChanged callback outside chainLock_ scope (deadlock prevention)
 
-## 모듈
-- `core/` → IPC 라이브러리
-- `host/` → JUCE 앱
-  - `Audio/` → AudioEngine, VSTChain, OutputRouter, LatencyMonitor, VirtualMicOutput, AudioRingBuffer
-  - `Control/` → Hotkey, MIDI, WebSocket, HTTP, ActionDispatcher, StateBroadcaster
+## Modules
+- `core/` → IPC library (RingBuffer, SharedMemory)
+- `host/` → JUCE app
+  - `Audio/` → AudioEngine, VSTChain, OutputRouter, LatencyMonitor
+  - `Control/` → ActionDispatcher, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster
   - `IPC/` → SharedMemWriter
-  - `UI/` → PluginChainEditor, PluginScanner, AudioSettings (통합 디바이스+오디오 설정), OutputPanel (모니터 전용), ControlSettingsPanel, LevelMeter, PresetManager, DirectPipeLookAndFeel
-- `driver/` → Virtual Loop Mic 커널 드라이버
-- `streamdeck-plugin/` → Stream Deck 플러그인 (WebSocket)
+  - `UI/` → PluginChainEditor, PluginScanner, AudioSettings, OutputPanel, ControlSettingsPanel, LevelMeter, PresetManager
+- `driver/` → Virtual Loop Mic kernel driver (experimental)
+- `streamdeck-plugin/` → Stream Deck plugin (Node.js, SDK v2)
 
-## 개발 상태
-- Phase 0-5: 완료 (환경, Core IPC, 오디오+VST, 드라이버, 외부제어, GUI)
-- Phase 6: 진행 중 (ASIO 지원 완료, 프리셋 슬롯 완료, Stream Deck 플러그인 70%)
-
-## 알려진 주의사항
-- `ChildProcess::start()` 사용 시 커맨드라인 내 경로에 공백이 있으면 따옴표 필수
-- VST 스캔 타임아웃 300초 (5분)
-- `monitorEnabled_`는 `std::atomic<bool>` (스레드 안전)
-- `channelMode_` 기본값 2 (Stereo)
-- 플러그인 삭제 시 에디터 윈도우 자동 닫기 + editorWindows_ 벡터 정리
-- ASIO SDK 경로: `thirdparty/asiosdk/common` (CMake에서 include)
-- 프리셋 버전 4 (deviceType, activeSlot, plugin state 포함)
-- **WebSocket 서버**: RFC 6455 구현 완료. SHA-1은 자체 구현 (핸드셰이크 전용)
-- **Stream Deck 플러그인**: 4개 액션 모두 클래스 기반 구현 완료. PI HTML 3개 생성. Placeholder 이미지 에셋 포함. node_modules 제외 필요.
+## Known Notes
+- `ChildProcess::start()`: quote paths with spaces
+- VST scan timeout: 300s (5min)
+- `channelMode_` default: 2 (Stereo)
+- Plugin deletion: auto-close editor windows + cleanup editorWindows_ vector
+- ASIO SDK path: `thirdparty/asiosdk/common`
+- Preset version 4 (deviceType, activeSlot, plugin state)
+- SHA-1: custom implementation for WebSocket handshake only
+- Stream Deck: 4 actions complete, 3 PI HTMLs, placeholder images

@@ -1,113 +1,92 @@
 # DirectPipe
 
-USB 마이크용 VST2/VST3 호스트 + 초저지연 루프백 시스템.
+Windows용 실시간 VST2/VST3 호스트. 마이크 입력에 VST 플러그인 체인을 걸어 실시간으로 처리하고, 처리된 오디오를 모니터 출력으로 들을 수 있다. Light Host와 같은 VST 호스팅 앱이지만, 키보드 단축키 / MIDI CC / Stream Deck / HTTP API를 통한 외부 제어와 빠른 프리셋 전환에 초점을 맞추었다.
 
-하드웨어 오디오 인터페이스 없이 VST 이펙트를 적용하고, "Virtual Loop Mic" 가상 장치를 통해 OBS/Discord/Zoom 등 모든 앱에서 사용할 수 있는 올인원 소프트웨어. Light Host 수준의 VST 호환성 + 기존 대비 50~60% 레이턴시 감소.
+Real-time VST2/VST3 host for Windows. Processes microphone input through a VST plugin chain and routes the output to a monitor device. Similar to Light Host, but focused on external control (hotkeys, MIDI CC, Stream Deck, HTTP API) and fast preset switching.
 
-## Architecture
+## 동작 원리 / How It Works
 
 ```
-USB Mic -> WASAPI Shared / ASIO -> VST Chain (0ms added)
-  -> SharedMem -> Virtual Loop Mic Driver -> Discord/Zoom/OBS
-  -> WASAPI / ASIO Out -> Headphones (local monitor)
+Mic ─→ WASAPI Shared or ASIO ─→ VST2/VST3 Plugin Chain ─→ Monitor Output (Headphones)
 
 External Control:
-  Hotkey / MIDI / WebSocket / HTTP -> ActionDispatcher -> AudioEngine
+  Hotkeys / MIDI CC / Stream Deck / HTTP
+    → ActionDispatcher → Plugin Bypass, Volume, Preset Switch, Mute ...
 ```
 
-## Features
+## 주요 기능 / Features
 
-- **WASAPI Shared + ASIO** dual driver support (non-exclusive mic access with WASAPI, low-latency with ASIO)
-- **VST2/VST3 plugin chain** with real-time inline processing
-- **Out-of-process VST scanner** — scans plugins in a separate process; bad plugin crashes only kill the scanner. Automatic retry with dead man's pedal.
-- **Drag & drop plugin reordering** — drag plugins up/down to change processing order
-- **Plugin editor** — open/close native VST plugin GUIs; plugin internal state saved/restored per slot
-- **Quick Preset Slots (A-E)** — 5 chain-only presets for instant switching. Async loading prevents UI freeze. Plugin parameters preserved across slots.
-- **Virtual Loop Mic** kernel driver — appears as a standard microphone in Windows
-- **Shared memory IPC** — lock-free SPSC ring buffer for ultra-low latency audio transfer
-- **System tray** — close button minimizes to tray; right-click tray icon for Show/Quit
-- **Tabbed settings UI** — Audio, Output, Controls organized in tabs
-- **External control** — keyboard shortcuts, MIDI CC, Stream Deck (WebSocket), HTTP REST API
-- **Panic mute** with pre-mute state memory (remembers and restores enable states)
-- **Mono/Stereo** channel mode selection (default: Stereo)
-- **Sample rate / buffer size** user-configurable (ASIO: dynamic from device, WASAPI: fixed list)
-- **Real-time level meters** and latency monitoring
-- **Dark themed UI** (JUCE custom LookAndFeel) with custom app icon
+### VST 호스팅 / VST Hosting
 
-## Latency Comparison
+- **VST2 + VST3** 플러그인 로드 및 인라인 실시간 처리 — Load and process plugins inline in real time
+- **드래그 앤 드롭** 플러그인 체인 편집 — Drag & drop to reorder plugins, toggle bypass, open/close native plugin GUIs
+- **Out-of-process 스캐너** — Scans plugins in a separate process. Bad plugin crashes don't affect the host. Auto-retry with dead man's pedal
+- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 bypass/파라미터만 즉시 전환, 다른 체인이면 비동기 로딩 — 5 chain-only presets. Same chain = instant param switch; different chain = async background loading. Full plugin state preserved
 
-| Buffer (samples @48kHz) | Light Host + VB-Cable | DirectPipe | Reduction |
-|--------------------------|----------------------|------------|-----------|
-| 480 (default)            | ~50ms                | ~23ms      | **54%**   |
-| 256                      | ~35ms                | ~13ms      | **63%**   |
-| 128                      | ~28ms                | ~8ms       | **71%**   |
-| 64                       | ~22ms                | ~5ms       | **77%**   |
+### 오디오 / Audio
 
-## Build
+- **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
+- WASAPI Shared에서 마이크 비독점 — Non-exclusive mic access, other apps can use the mic simultaneously
+- **Mono / Stereo** 채널 모드 — Channel mode selection
+- **입력 게인** 조절 — Input gain control
+- **실시간 레벨 미터** (입력/출력 RMS) — Real-time input/output level meters
+
+### 외부 제어 / External Control
+
+- **키보드 단축키** — Ctrl+Shift+1~9 plugin bypass, Ctrl+Shift+M panic mute, Ctrl+Shift+F1~F5 preset slots
+- **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
+- **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
+- **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
+- **Stream Deck 플러그인** — Bypass Toggle, Panic Mute, Volume Control, Preset Switch
+
+### UI
+
+- **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원 — Close minimizes to tray, double-click to restore
+- **탭 설정** — Audio / Output / Controls — Tabbed settings panel
+- **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 — Mute all outputs instantly, restores previous state on unmute
+- **다크 테마** — Dark theme (custom JUCE LookAndFeel)
+
+## 빌드 / Build
 
 ```bash
-# Configure
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-
-# Build
 cmake --build build --config Release
-
-# Test (56 tests)
-cd build && ctest --config Release
 ```
 
-### Requirements
+### 요구 사항 / Requirements
 
-- **Windows 10/11** (64-bit)
-- **Visual Studio 2022** (C++ Desktop Development workload)
-- **CMake 3.22+**
-- **JUCE 7.0.12** (fetched automatically via CMake FetchContent)
-- **ASIO SDK** (in `thirdparty/asiosdk/` for ASIO driver support)
-- **Windows Driver Kit (WDK)** — for Virtual Loop Mic driver build
+- Windows 10/11 (64-bit)
+- Visual Studio 2022 (C++ Desktop Development)
+- CMake 3.22+
+- JUCE 7.0.12 (auto-fetched via CMake FetchContent)
+- ASIO SDK (`thirdparty/asiosdk/`) — ASIO 모드 사용 시 / for ASIO driver support
 
-## Project Structure
+## 프로젝트 구조 / Project Structure
 
 ```
-core/                  IPC library (SPSC ring buffer, shared memory, named events)
-host/                  JUCE host application
+host/                     JUCE host application (main)
   Source/
-    Audio/             AudioEngine, VSTChain, OutputRouter, LatencyMonitor,
-                       VirtualMicOutput, AudioRingBuffer
-    Control/           ActionDispatcher, WebSocket, HTTP, Hotkey, MIDI handlers
-    IPC/               SharedMemWriter (producer side)
-    UI/                PluginChainEditor, PluginScanner, AudioSettings,
-                       LevelMeter, OutputPanel, ControlSettingsPanel,
-                       PresetManager, DirectPipeLookAndFeel
-  Resources/           App icon (icon.png)
-driver/                Virtual Loop Mic WDM kernel driver
-streamdeck-plugin/     Elgato Stream Deck plugin (WebSocket client)
-tests/                 Unit tests (Google Test, 56 tests)
-thirdparty/            VST2 SDK headers, ASIO SDK
-docs/                  Architecture, build guide, API reference, user guide
+    Audio/                  AudioEngine, VSTChain, OutputRouter, LatencyMonitor
+    Control/                ActionDispatcher, WebSocketServer, HttpApiServer,
+                            HotkeyHandler, MidiHandler, StateBroadcaster
+    IPC/                    SharedMemWriter
+    UI/                     PluginChainEditor, PluginScanner, AudioSettings,
+                            OutputPanel, PresetManager, LevelMeter
+core/                     IPC library (RingBuffer, SharedMemory)
+driver/                   Virtual Loop Mic kernel driver (experimental)
+streamdeck-plugin/        Stream Deck plugin (Node.js, SDK v2)
+tests/                    Unit tests (Google Test)
+thirdparty/               VST2 SDK, ASIO SDK
 ```
 
-## Documentation
+## 문서 / Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) — system design, data flow, IPC protocol
-- [Build Guide](docs/BUILDING.md) — build instructions and options
-- [User Guide](docs/USER_GUIDE.md) — setup and usage
-- [Control API](docs/CONTROL_API.md) — WebSocket and HTTP API reference
-- [Stream Deck Guide](docs/STREAMDECK_GUIDE.md) — Elgato Stream Deck integration
-- [Driver README](driver/README.md) — Virtual Loop Mic kernel driver
-
-## Development Status
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 0 | Environment setup, CMake scaffolding | Done |
-| Phase 1 | Core IPC library (ring buffer, shared memory) | Done |
-| Phase 2 | Audio engine + VST2/VST3 hosting | Done |
-| Phase 3 | Virtual Loop Mic kernel driver | Done |
-| Phase 4 | External control (Hotkey, MIDI, WebSocket, HTTP) | Done |
-| Phase 5 | GUI (JUCE) | Done |
-| Phase 6 | ASIO support, preset system | Done |
-| Phase 7 | Stream Deck plugin completion | In progress |
+- [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety
+- [Build Guide](docs/BUILDING.md) — 빌드 가이드 / Build instructions and options
+- [User Guide](docs/USER_GUIDE.md) — 사용법 / Setup and usage
+- [Control API](docs/CONTROL_API.md) — WebSocket / HTTP API 레퍼런스 / API reference
+- [Stream Deck Guide](docs/STREAMDECK_GUIDE.md) — Stream Deck 플러그인 / Stream Deck integration
 
 ## License
 
-MIT License — see [LICENSE](installer/assets/license.txt)
+MIT — [LICENSE](installer/assets/license.txt)

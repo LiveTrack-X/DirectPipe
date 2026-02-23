@@ -1,112 +1,92 @@
-# Building DirectPipe
+# Building DirectPipe / 빌드 가이드
 
-## Requirements
+## Requirements / 요구 사항
 
-### Minimum
+### Minimum / 최소
 
-- **Windows 10/11** (64-bit) — primary target
+- **Windows 10/11** (64-bit)
 - **Visual Studio 2022** (C++ Desktop Development workload)
 - **CMake 3.22+**
 - **Git**
 
-### For full build
+### Optional / 선택
 
-- **ASIO SDK** — for ASIO driver support (place in `thirdparty/asiosdk/`)
-- **Windows Driver Kit (WDK)** — for Virtual Loop Mic driver
+- **ASIO SDK** — For ASIO driver support. Place in `thirdparty/asiosdk/`. / ASIO 드라이버 지원용.
 
-### Auto-fetched dependencies
+### Auto-fetched Dependencies / 자동 다운로드 의존성
 
-The following are downloaded automatically by CMake FetchContent:
+Downloaded automatically by CMake FetchContent: / CMake FetchContent로 자동 다운로드:
 
-- **JUCE 7.0.12** — audio framework
-- **Google Test 1.14.0** — unit testing
-- **VST2 SDK** — included in `thirdparty/VST2_SDK/` (interface headers only)
+- **JUCE 7.0.12** — Audio framework / 오디오 프레임워크
+- **Google Test 1.14.0** — Unit testing / 유닛 테스트
+- **VST2 SDK** — Included in `thirdparty/VST2_SDK/` (interface headers only) / 인터페이스 헤더만 포함
 
-## Quick Build
+## Quick Build / 빠른 빌드
 
 ```bash
 # Clone
 git clone https://github.com/LiveTrack-X/DirectLoopMic.git
 cd DirectLoopMic
 
-# Configure and build
+# Configure and build / 설정 및 빌드
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 
-# Run tests (56 tests)
+# Run tests / 테스트 실행
 cd build && ctest --config Release
 ```
 
-## ASIO SDK Setup
+## ASIO SDK Setup / ASIO SDK 설정
 
-To enable ASIO driver support:
+To enable ASIO driver support: / ASIO 드라이버를 사용하려면:
 
-1. Download ASIO SDK from [Steinberg](https://www.steinberg.net/asiosdk)
-2. Extract to `thirdparty/asiosdk/` so that `thirdparty/asiosdk/common/asio.h` exists
-3. CMake will automatically detect the SDK and enable `JUCE_ASIO=1`
+1. Download ASIO SDK from [Steinberg](https://www.steinberg.net/asiosdk) / Steinberg에서 다운로드
+2. Extract to `thirdparty/asiosdk/` so that `thirdparty/asiosdk/common/asio.h` exists / 경로에 맞게 압축 해제
+3. CMake will detect the SDK and enable `JUCE_ASIO=1` automatically / 자동 감지됨
 
-Without the ASIO SDK, the build will succeed but only WASAPI drivers will be available.
+Without the ASIO SDK, the build succeeds with WASAPI-only support. / ASIO SDK 없이도 빌드 가능 (WASAPI만 지원).
 
-## Windows Build (Visual Studio)
+## Visual Studio Build / Visual Studio 빌드
 
 ```powershell
-# Generate Visual Studio solution
+# Generate Visual Studio solution / VS 솔루션 생성
 cmake -B build -G "Visual Studio 17 2022" -A x64
 
-# Build
+# Build / 빌드
 cmake --build build --config Release
-
-# Test
-cd build && ctest --config Release
 ```
 
-Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE.
+Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE. / 또는 VS에서 직접 빌드.
 
-## Build Options
+## Build Options / 빌드 옵션
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `DIRECTPIPE_BUILD_TESTS` | ON | Build unit tests (Google Test) |
-| `DIRECTPIPE_BUILD_OBS_PLUGIN` | ON | Build OBS Studio source plugin |
-| `DIRECTPIPE_BUILD_HOST` | ON | Build JUCE host application |
+| `DIRECTPIPE_BUILD_TESTS` | ON | Build unit tests (Google Test) / 유닛 테스트 빌드 |
+| `DIRECTPIPE_BUILD_HOST` | ON | Build JUCE host application / 호스트 앱 빌드 |
 
-## Virtual Loop Mic Driver
-
-The kernel driver is built separately with the WDK:
-
-```cmd
-cd driver
-build.bat
-```
-
-See [driver/README.md](../driver/README.md) for signing, installation, and debugging.
-
-## Output Files
-
-After a successful build:
+## Output Files / 빌드 결과물
 
 ```
-build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application
-build/bin/Release/directpipe-tests.exe                   Core test suite (56 tests)
-build/lib/Release/directpipe-core.lib                    Core IPC static library
-driver/out/                                               Kernel driver (separate build)
+build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application / 호스트 앱
+build/bin/Release/directpipe-tests.exe                   Test suite / 테스트
+build/lib/Release/directpipe-core.lib                    Core IPC library / 코어 라이브러리
 ```
 
-## Test Suite
+## Test Suite / 테스트
 
 | Test Group | Count | Description |
 |------------|-------|-------------|
-| RingBufferTest | 11 | SPSC ring buffer correctness, concurrency |
-| SharedMemoryTest | 7 | Shared memory create/map, named events |
-| LatencyTest | 3 | Write/read latency, throughput benchmark |
-| ActionDispatcherTest | 23 | Action dispatch, listener management, thread safety |
-| IPCIntegrationTest | 12 | End-to-end IPC pipeline, data integrity |
-| **Total** | **56** | |
+| RingBufferTest | 11 | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
+| SharedMemoryTest | 7 | Shared memory create/map, named events / 공유 메모리 생성/매핑 |
+| LatencyTest | 3 | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
+| ActionDispatcherTest | 23 | Action dispatch, listener management, thread safety / 액션 디스패치, 스레드 안전 |
+| IPCIntegrationTest | 12 | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
 
 ```bash
-# Run all tests
+# Run all tests / 전체 테스트 실행
 cd build && ctest --config Release --output-on-failure
 
-# Run specific test group
+# Run specific test group / 특정 그룹만 실행
 ./bin/directpipe-tests --gtest_filter="ActionDispatcherTest.*"
 ```
