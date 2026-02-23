@@ -59,15 +59,14 @@ void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
 {
     if (!prepared_) return;
 
-    // JUCE's AudioProcessorGraph handles the routing internally
-    juce::MidiBuffer midi;
+    // Use pre-allocated empty MidiBuffer (no per-callback allocation)
+    emptyMidi_.clear();
 
-    // Resize graph buffer if needed and process
-    if (buffer.getNumSamples() != numSamples) {
-        buffer.setSize(buffer.getNumChannels(), numSamples, true, false, true);
-    }
+    // Process through the graph — buffer size must match prepareToPlay blockSize
+    // If mismatched, skip processing rather than allocating in RT thread
+    if (buffer.getNumSamples() != numSamples) return;
 
-    graph_->processBlock(buffer, midi);
+    graph_->processBlock(buffer, emptyMidi_);
 }
 
 void VSTChain::scanForPlugins(const juce::StringArray& directoriesToScan)
@@ -251,6 +250,10 @@ void VSTChain::closePluginEditor(int index)
 
 void VSTChain::rebuildGraph()
 {
+    // Suspend graph processing while rebuilding connections
+    // This prevents the RT thread from calling processBlock on a half-built graph
+    graph_->suspendProcessing(true);
+
     // Remove all existing connections only (preserve nodes)
     for (auto conn : graph_->getConnections()) {
         graph_->removeConnection(conn);
@@ -264,6 +267,7 @@ void VSTChain::rebuildGraph()
                 {outputNodeId_, ch}
             });
         }
+        graph_->suspendProcessing(false);
         return;
     }
 
@@ -287,6 +291,9 @@ void VSTChain::rebuildGraph()
             {outputNodeId_, ch}
         });
     }
+
+    // Resume processing now that the graph is fully wired
+    graph_->suspendProcessing(false);
 }
 
 std::unique_ptr<juce::AudioPluginInstance> VSTChain::loadPlugin(
