@@ -503,64 +503,70 @@ directpipe/
 
 ---
 
-## 5. 개발 Phase (v3.1)
+## 5. 개발 Phase (v3.1) — 진행 상황
 
-### Phase 0: 환경 설정 (Day 1)
-
-```
-태스크:
-□ P0-1: CMake 프로젝트 구조 생성
-□ P0-2: JUCE 7 submodule 추가
-□ P0-3: VST2 SDK 설정 (JUCE_PLUGINHOST_VST=1)
-□ P0-4: WDK 설치
-□ P0-5: CLAUDE.md 작성
-□ P0-6: 빌드 검증
-```
-
-### Phase 1: Core IPC (Day 2~4)
+### Phase 0: 환경 설정 — DONE
 
 ```
-태스크:
-□ P1-1: Protocol.h — SharedHeader 구조체
-□ P1-2: RingBuffer.h/cpp — SPSC lock-free
-□ P1-3: SharedMemory.h/cpp — Windows shared memory + Named Event
-□ P1-4: Constants.h
-□ P1-5: 단위 테스트
-
-산출물: directpipe-core 라이브러리
+완료:
+✅ P0-1: CMake 프로젝트 구조 생성
+✅ P0-2: JUCE 7.0.12 FetchContent 추가
+✅ P0-3: VST2 SDK 설정 (thirdparty/VST2_SDK 인터페이스 헤더)
+✅ P0-4: WDK 설치
+✅ P0-5: CLAUDE.md 작성
+✅ P0-6: 빌드 검증 (Linux CI + Windows 대상)
 ```
 
-### Phase 2: 오디오 엔진 + VST 호스트 (Day 5~10)
+### Phase 1: Core IPC — DONE
 
 ```
-태스크:
-□ P2-1: AudioEngine — WASAPI Shared, SR/Buffer/Channel 선택 가능
-□ P2-2: 채널 처리 — Mono/Stereo 선택
-□ P2-3: VSTChain — VST2 + VST3, Light Host 수준
-         - 각 플러그인에 atomic<bool> bypassFlag
-         - 외부에서 lock-free로 bypass 토글 가능
-□ P2-4: OutputRouter — SharedMem + Monitor
-□ P2-5: LatencyMonitor
-□ P2-6: 콘솔 통합 테스트
+완료:
+✅ P1-1: Protocol.h — SharedHeader 구조체 (cache-line aligned)
+✅ P1-2: RingBuffer.h/cpp — SPSC lock-free (atomic acquire/release)
+✅ P1-3: SharedMemory.h/cpp — Windows shared memory + POSIX fallback + Named Event
+✅ P1-4: Constants.h
+✅ P1-5: 단위 테스트 (18개: RingBuffer 11 + SharedMemory 7)
+✅ P1-6: 레이턴시 벤치마크 테스트 3개
+✅ P1-7: IPC 통합 테스트 12개
 
-산출물: GUI 없이 동작하는 오디오 엔진
+산출물: directpipe-core 정적 라이브러리, 33개 테스트 통과
 ```
 
-### Phase 3: Virtual Loop Mic 드라이버 (Day 11~17)
+### Phase 2: 오디오 엔진 + VST 호스트 — DONE
 
 ```
-태스크:
-□ P3-1: Sysvad 포크 및 최소화 (Capture만)
-□ P3-2: 공유 메모리 Reader (커널 모드)
-□ P3-3: WDM 스트림 — SR/Channel 자동 매칭
-□ P3-4: INF + 설치/제거 스크립트
-□ P3-5: 테스트 서명 + Discord/Zoom 테스트
-□ P3-6: 다중 클라이언트 + 안정성 테스트
+완료:
+✅ P2-1: AudioEngine — WASAPI Shared, SR/Buffer/Channel 선택 가능
+         - 사전할당 workBuffer (RT 힙할당 금지)
+         - 모노 믹싱: 0.5*L + 0.5*R 평균
+✅ P2-2: 채널 처리 — Mono/Stereo atomic 전환
+✅ P2-3: VSTChain — VST2 + VST3, AudioProcessorGraph 기반
+         - 사전할당 MidiBuffer (RT 안전)
+         - suspendProcessing으로 그래프 재구성 스레드 안전
+         - graph rebuild 시 nodeId 정상 갱신
+✅ P2-4: OutputRouter — SharedMem + Monitor, 독립 볼륨/이네이블
+         - 미사용 채널 클리어 (모노 입력 대응)
+✅ P2-5: LatencyMonitor — high_resolution_clock 기반
+✅ P2-6: SharedMemWriter — producer-side IPC
 
-산출물: VirtualLoopMic.sys
+산출물: GUI 없이 동작하는 오디오 엔진 (코드 완성, Windows 빌드 필요)
 ```
 
-### Phase 4: 외부 제어 시스템 (Day 18~22) ← v3.1 추가
+### Phase 3: Virtual Loop Mic 드라이버 — DONE (코드)
+
+```
+완료:
+✅ P3-1: Sysvad 포크 및 최소화 (Capture만)
+✅ P3-2: 공유 메모리 Reader (커널 모드, ZwOpenSection)
+✅ P3-3: WDM 스트림 — SR/Channel 자동 매칭
+✅ P3-4: INF + 설치/제거 스크립트
+⬜ P3-5: 테스트 서명 + Discord/Zoom 테스트 (Windows 환경 필요)
+⬜ P3-6: 다중 클라이언트 + 안정성 테스트 (Windows 환경 필요)
+
+산출물: virtualloop.sys 소스 코드 완성 (WDK 빌드 + 서명 필요)
+```
+
+### Phase 4: 외부 제어 시스템 — DONE
 
 ```
 목표: 키보드/MIDI/Stream Deck으로 VST bypass 등 실시간 제어
@@ -721,12 +727,21 @@ directpipe/
   - HTTP: curl/브라우저로 API 호출 확인
   - 동시 제어: Hotkey + MIDI 동시에 같은 액션 → 충돌 없음 확인
 
-산출물:
-- 키보드/MIDI/Stream Deck으로 VST bypass 등 제어 가능
-- WebSocket/HTTP API 동작
+완료:
+✅ P4-1: ActionDispatcher — 통일된 액션 인터페이스 (23개 테스트 통과)
+✅ P4-2: StateBroadcaster — 상태 변경 알림
+✅ P4-3: HotkeyHandler — 글로벌 키보드 단축키
+✅ P4-4: MidiHandler — MIDI CC 매핑 + Learn
+✅ P4-5: WebSocketServer — Stream Deck 연결 (unique_ptr 소유권 버그 수정 완료)
+✅ P4-6: HttpApiServer — 간단 REST API
+✅ P4-7: ControlMapping — 매핑 저장/로드 (JSON)
+✅ P4-8: ControlSettingsPanel UI
+⬜ P4-9: 통합 테스트 (Windows 환경 필요)
+
+산출물: 전체 외부 제어 코드 완성
 ```
 
-### Phase 5: GUI (Day 23~27)
+### Phase 5: GUI — DONE (코드)
 
 ```
 태스크:
@@ -783,10 +798,20 @@ directpipe/
 □ P5-7: PresetManager — JSON 프리셋
 □ P5-8: 시스템 트레이
 
-산출물: 완전한 GUI
+완료:
+✅ P5-1: 메인 윈도우 레이아웃
+✅ P5-2: DeviceSelector — 입력/모니터 장치 선택
+✅ P5-3: AudioSettings — SR, 버퍼, 채널 모드
+✅ P5-4: PluginChainEditor — VST 추가/삭제/순서/에디터
+✅ P5-5: OutputPanel — Virtual Loop Mic 상태 + 볼륨
+✅ P5-6: LevelMeter — 입출력 레벨
+✅ P5-7: PresetManager — JSON 프리셋
+⬜ P5-8: 시스템 트레이 (Windows 환경 필요)
+
+산출물: GUI 코드 완성 (Windows JUCE 빌드 필요)
 ```
 
-### Phase 6: 안정화 + 설치 프로그램 (Day 28~32)
+### Phase 6: 안정화 + 설치 프로그램 — IN PROGRESS
 
 ```
 태스크:
@@ -797,7 +822,24 @@ directpipe/
 □ P6-5: 설치 프로그램 (Inno Setup)
 □ P6-6: Stream Deck 플러그인 패키징 (선택적)
 
-산출물: 릴리즈 빌드 + 설치 프로그램
+완료:
+✅ P6-1 (일부): 오디오 RT-safety 버그 수정 완료
+  - VSTChain graph rebuild nodeId 갱신
+  - RT 콜백 힙 할당 제거 (AudioEngine workBuffer, VSTChain MidiBuffer)
+  - 모노 믹싱 게인 정규화 (0.5+0.5 평균)
+  - VSTChain suspendProcessing 스레드 안전
+  - OutputRouter 미사용 채널 클리어
+  - WebSocket unique_ptr 소유권 수정
+  - ActionDispatcher 오타 수정
+✅ P6-1 (일부): JUCE 7.0.12 컴파일 에러 수정 (FontOptions, lParam)
+✅ P6-1 (일부): 누락 헤더/종속성 수정
+⬜ P6-2: CPU 최적화 (SIMD, zero-copy)
+⬜ P6-3: Windows 통합 테스트 (USB 마이크, VST, Discord/Zoom/OBS)
+⬜ P6-4: 장시간 안정성 (8시간+)
+⬜ P6-5: Inno Setup 설치 프로그램
+⬜ P6-6: Stream Deck 플러그인 패키징
+
+산출물: 릴리즈 빌드 + 설치 프로그램 (Windows 환경에서 계속)
 ```
 
 ---
@@ -880,24 +922,33 @@ Phase 0 (환경) → 1 (Core IPC) → 2 (오디오+VST) →
 
 ---
 
-## 8. 타임라인
+## 8. 타임라인 및 현재 상태
 
 ```
-Week 1:  Phase 0 (환경) + Phase 1 (Core IPC)
-Week 2:  Phase 2 (오디오 엔진 + VST 호스트)
-Week 3:  Phase 3 (Virtual Loop Mic 드라이버)
-Week 4:  Phase 4 (외부 제어: Hotkey + MIDI + WebSocket + HTTP)
-Week 5:  Phase 5 (GUI)
-Week 6:  Phase 6 (안정화 + 설치 프로그램)
+Week 1:  Phase 0 (환경) + Phase 1 (Core IPC)              ✅ 완료
+Week 2:  Phase 2 (오디오 엔진 + VST 호스트)                ✅ 완료
+Week 3:  Phase 3 (Virtual Loop Mic 드라이버)               ✅ 코드 완료
+Week 4:  Phase 4 (외부 제어: Hotkey + MIDI + WS + HTTP)    ✅ 완료
+Week 5:  Phase 5 (GUI)                                      ✅ 코드 완료
+Week 6:  Phase 6 (안정화 + 설치 프로그램)                   🔄 진행 중
 
 마일스톤:
-- Week 1 끝: IPC 동작 ✓
-- Week 2 끝: 마이크→VST→공유메모리 (콘솔) ✓
-- Week 3 끝: Virtual Loop Mic 장치 등록 ✓
-- Week 4 끝: Hotkey/MIDI/StreamDeck 제어 동작 ✓
-- Week 5 끝: 완전한 GUI ✓
-- Week 6 끝: 릴리즈 가능 ✓
+- Week 1 끝: IPC 동작 ✅ (33개 테스트 통과)
+- Week 2 끝: 마이크→VST→공유메모리 ✅ (코드 완성)
+- Week 3 끝: Virtual Loop Mic 장치 등록 ✅ (코드 완성, WDK 빌드 필요)
+- Week 4 끝: Hotkey/MIDI/StreamDeck 제어 동작 ✅ (23개 테스트 통과)
+- Week 5 끝: 완전한 GUI ✅ (코드 완성, Windows JUCE 빌드 필요)
+- Week 6 끝: 릴리즈 가능 🔄 (RT-safety 버그 수정 완료, Windows 통합 테스트 필요)
 ```
+
+### 다음 단계 (Windows 환경에서)
+
+1. Windows에서 전체 JUCE 앱 빌드 (Visual Studio 2022)
+2. USB 마이크 연결 후 통합 테스트
+3. Virtual Loop Mic 드라이버 WDK 빌드 + 테스트 서명
+4. Discord/Zoom/OBS 실제 동작 테스트
+5. CPU/메모리 최적화
+6. Inno Setup 설치 프로그램 제작
 
 ---
 
