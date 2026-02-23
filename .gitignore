@@ -19,3 +19,6 @@ driver/out/
 
 # Third-party SDKs (downloaded locally)
 thirdparty/asiosdk/
+
+# Node.js
+node_modules/

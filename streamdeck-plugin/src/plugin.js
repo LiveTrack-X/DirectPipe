@@ -10,6 +10,8 @@
 const { DirectPipeClient } = require("./websocket-client");
 const { BypassToggleAction } = require("./actions/bypass-toggle");
 const { PanicMuteAction } = require("./actions/panic-mute");
+const { VolumeControlAction } = require("./actions/volume-control");
+const { PresetSwitchAction } = require("./actions/preset-switch");
 
 // ─── Constants ──────────────────────────────────────────────────────
 const DIRECTPIPE_WS_URL = "ws://localhost:8765";
@@ -59,53 +61,14 @@ class DirectPipePlugin {
             new BypassToggleAction(this)
         );
         this.actionHandlers.set(ACTION_PANIC_MUTE, new PanicMuteAction(this));
-
-        // Volume and preset actions use generic handlers for now
-        this.actionHandlers.set(ACTION_VOLUME_CONTROL, {
-            onKeyDown: (context, settings, payload) => {
-                const target = (settings && settings.target) || "monitor";
-                this.client.send({
-                    type: "action",
-                    action: "toggle_mute",
-                    params: { target },
-                });
-            },
-            onDialRotate: (context, settings, payload) => {
-                const target = (settings && settings.target) || "monitor";
-                const ticks = (payload && payload.ticks) || 0;
-                const delta = ticks * 0.05;
-                const current =
-                    this._getVolumeForTarget(target) || 1.0;
-                const newValue = Math.max(0, Math.min(1, current + delta));
-                this.client.send({
-                    type: "action",
-                    action: "set_volume",
-                    params: { target, value: newValue },
-                });
-            },
-            onStateUpdate: (context, state) => {
-                /* volume state reflected through title updates */
-            },
-        });
-
-        this.actionHandlers.set(ACTION_PRESET_SWITCH, {
-            onKeyDown: (context, settings, _payload) => {
-                if (settings && settings.presetIndex !== undefined) {
-                    this.client.send({
-                        type: "action",
-                        action: "load_preset",
-                        params: { index: settings.presetIndex },
-                    });
-                } else {
-                    this.client.send({
-                        type: "action",
-                        action: "next_preset",
-                        params: {},
-                    });
-                }
-            },
-            onStateUpdate: (_context, _state) => {},
-        });
+        this.actionHandlers.set(
+            ACTION_VOLUME_CONTROL,
+            new VolumeControlAction(this)
+        );
+        this.actionHandlers.set(
+            ACTION_PRESET_SWITCH,
+            new PresetSwitchAction(this)
+        );
     }
 
     /**

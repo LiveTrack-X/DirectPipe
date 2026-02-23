@@ -50,8 +50,8 @@ All external inputs funnel through a unified `ActionDispatcher`.
 - **ControlManager**: Aggregates all control sources (Hotkey, MIDI, WebSocket, HTTP).
 - **HotkeyHandler**: Windows `RegisterHotKey` API for global keyboard shortcuts.
 - **MidiHandler**: JUCE `MidiInput` for MIDI CC mapping with Learn mode.
-- **WebSocketServer**: WebSocket server (port 8765, fallback 8766-8770) for Stream Deck and external clients.
-- **HttpApiServer**: HTTP REST API (port 8766, fallback 8767-8771) for one-shot commands.
+- **WebSocketServer**: RFC 6455 WebSocket server (port 8765, fallback 8766-8770) for Stream Deck and external clients. JUCE `StreamingSocket` with manual WebSocket handshake, frame encoding/decoding, ping/pong support.
+- **HttpApiServer**: HTTP REST API (port 8766, fallback 8767-8771) for one-shot commands. Manual HTTP parsing via `StreamingSocket`.
 - **StateBroadcaster**: Pushes state changes to all connected clients.
 - **ControlMapping**: JSON-based persistence for hotkey/MIDI/server configuration. Portable mode support.
 

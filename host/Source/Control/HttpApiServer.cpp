@@ -188,6 +188,23 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
                std::to_string(delta) + "}";
     }
 
+    // GET /api/slot/:index
+    if (action == "slot" && segments.size() >= 3) {
+        int index = std::atoi(segments[2].c_str());
+        ActionEvent event;
+        event.action = Action::SwitchPresetSlot;
+        event.intParam = index;
+        dispatcher_.dispatch(event);
+        return R"({"ok": true, "action": "switch_preset_slot", "slot": )" +
+               std::to_string(index) + "}";
+    }
+
+    // GET /api/input-mute/toggle
+    if (action == "input-mute" && segments.size() >= 3 && segments[2] == "toggle") {
+        dispatcher_.inputMuteToggle();
+        return R"({"ok": true, "action": "input_mute_toggle"})";
+    }
+
     return R"({"error": "Unknown endpoint"})";
 }
 

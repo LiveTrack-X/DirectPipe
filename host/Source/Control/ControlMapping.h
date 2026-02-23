@@ -38,9 +38,9 @@ struct MidiMapping {
 /// Server configuration
 struct ServerConfig {
     int websocketPort = 8765;
-    bool websocketEnabled = false;
+    bool websocketEnabled = true;
     int httpPort = 8766;
-    bool httpEnabled = false;
+    bool httpEnabled = true;
 };
 
 /// Complete control configuration

@@ -195,6 +195,27 @@ Adjust the microphone input gain by a relative amount in dB.
 
 ---
 
+#### `switch_preset_slot` — Switch Preset Slot
+
+Switch to one of the five quick preset slots (A-E).
+
+**Request:**
+```json
+{
+  "type": "action",
+  "action": "switch_preset_slot",
+  "params": {
+    "slot": 2
+  }
+}
+```
+
+| Parameter | Type   | Required | Description                        |
+|-----------|--------|----------|------------------------------------|
+| `slot`    | number | Yes      | Slot index: 0=A, 1=B, 2=C, 3=D, 4=E |
+
+---
+
 ### State Object
 
 The state message contains a complete snapshot of the DirectPipe application state.
@@ -231,7 +252,7 @@ The state message contains a complete snapshot of the DirectPipe application sta
     "sample_rate": 48000,
     "buffer_size": 128,
     "channel_mode": 1,
-    "driver_connected": true
+    "virtual_cable_active": true
   }
 }
 ```
@@ -257,7 +278,7 @@ The state message contains a complete snapshot of the DirectPipe application sta
 | `sample_rate`      | number   | Audio sample rate in Hz (e.g., 48000)              |
 | `buffer_size`      | number   | Audio buffer size in samples                       |
 | `channel_mode`     | number   | Channel mode: 1 = Mono, 2 = Stereo                |
-| `driver_connected` | boolean  | Whether the virtual audio driver is connected      |
+| `virtual_cable_active` | boolean | Whether the virtual audio driver is connected    |
 
 ---
 
@@ -414,16 +435,15 @@ Invalid action messages are silently ignored. The server does not send error res
 
 ### HTTP
 
-| Status Code | Meaning                                  |
-|-------------|------------------------------------------|
-| 200         | Action executed successfully             |
-| 400         | Invalid request (bad parameters)         |
-| 404         | Unknown endpoint                         |
-| 500         | Internal server error                    |
+All responses return HTTP 200 with a JSON body. Check the response body for errors:
 
-**Error response format:**
 ```json
-{ "ok": false, "error": "Unknown endpoint" }
+{ "error": "Unknown endpoint" }
+```
+
+Successful actions return:
+```json
+{ "ok": true, "action": "..." }
 ```
 
 ---

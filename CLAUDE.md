@@ -1,4 +1,4 @@
-# DirectPipe — Claude Code 프로젝트 가이드 v4.0
+# DirectPipe — Claude Code 프로젝트 가이드 v4.1
 
 ## 프로젝트 설명
 USB 마이크용 VST2/VST3 호스트 + 초저지연 루프백.
@@ -21,8 +21,8 @@ USB 마이크용 VST2/VST3 호스트 + 초저지연 루프백.
 - VST2 SDK 2.4 + VST3
 - WDK — Virtual Loop Mic 드라이버
 - SPSC Lock-free Ring Buffer + Windows Shared Memory
-- WebSocket (IXWebSocket 또는 uWebSockets)
-- HTTP (cpp-httplib)
+- WebSocket 서버: JUCE StreamingSocket + RFC 6455 수동 구현 (핸드셰이크, 프레임 인코딩/디코딩, SHA-1)
+- HTTP 서버: JUCE StreamingSocket 기반 수동 HTTP 파싱
 
 ## 빌드
 ```bash
@@ -73,9 +73,9 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
 - `driver/` → Virtual Loop Mic 커널 드라이버
 - `streamdeck-plugin/` → Stream Deck 플러그인 (WebSocket)
 
-## 개발 순서
-Phase 0 (환경) → 1 (Core IPC) → 2 (오디오+VST) →
-3 (드라이버) → 4 (외부 제어) → 5 (GUI) → 6 (안정화+ASIO+프리셋)
+## 개발 상태
+- Phase 0-5: 완료 (환경, Core IPC, 오디오+VST, 드라이버, 외부제어, GUI)
+- Phase 6: 진행 중 (ASIO 지원 완료, 프리셋 슬롯 완료, Stream Deck 플러그인 70%)
 
 ## 알려진 주의사항
 - `ChildProcess::start()` 사용 시 커맨드라인 내 경로에 공백이 있으면 따옴표 필수
@@ -85,3 +85,5 @@ Phase 0 (환경) → 1 (Core IPC) → 2 (오디오+VST) →
 - 플러그인 삭제 시 에디터 윈도우 자동 닫기 + editorWindows_ 벡터 정리
 - ASIO SDK 경로: `thirdparty/asiosdk/common` (CMake에서 include)
 - 프리셋 버전 4 (deviceType, activeSlot, plugin state 포함)
+- **WebSocket 서버**: RFC 6455 구현 완료. SHA-1은 자체 구현 (핸드셰이크 전용)
+- **Stream Deck 플러그인**: 4개 액션 모두 클래스 기반 구현 완료. PI HTML 3개 생성. Placeholder 이미지 에셋 포함. node_modules 제외 필요.

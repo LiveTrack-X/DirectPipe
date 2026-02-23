@@ -1,6 +1,6 @@
 /**
  * @file WebSocketServer.h
- * @brief WebSocket server for Stream Deck integration
+ * @brief RFC 6455 WebSocket server for Stream Deck integration
  *
  * Provides a JSON-based WebSocket API for external control.
  * Stream Deck plugins connect to this server to send actions
@@ -23,45 +23,24 @@
 namespace directpipe {
 
 /**
- * @brief Lightweight WebSocket server for Stream Deck and external clients.
+ * @brief RFC 6455 WebSocket server for Stream Deck and external clients.
  *
  * Protocol:
- * - Client sends JSON action requests
+ * - HTTP Upgrade handshake (RFC 6455 Section 4)
+ * - Client sends JSON action requests in WebSocket text frames
  * - Server pushes JSON state updates on change
  * - Default port: 8765
- *
- * Uses JUCE StreamingSocket for basic WebSocket implementation.
  */
 class WebSocketServer : public StateListener {
 public:
     WebSocketServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster);
     ~WebSocketServer() override;
 
-    /**
-     * @brief Start the WebSocket server.
-     * @param port Port to listen on (default 8765).
-     * @return true if started successfully.
-     */
     bool start(int port = 8765);
-
-    /**
-     * @brief Stop the server and disconnect all clients.
-     */
     void stop();
 
-    /**
-     * @brief Check if the server is running.
-     */
     bool isRunning() const { return running_.load(std::memory_order_relaxed); }
-
-    /**
-     * @brief Get the number of connected clients.
-     */
     int getClientCount() const { return clientCount_.load(std::memory_order_relaxed); }
-
-    /**
-     * @brief Get the port the server is listening on.
-     */
     int getPort() const { return port_; }
 
     // StateListener
@@ -73,6 +52,15 @@ private:
     void processMessage(const std::string& message);
     void broadcastToClients(const std::string& message);
 
+    // RFC 6455 WebSocket helpers
+    static bool performHandshake(juce::StreamingSocket* client);
+    static void sendFrame(juce::StreamingSocket* client, const std::string& payload, uint8_t opcode = 0x1);
+    static std::string readFrame(juce::StreamingSocket* client, uint8_t& opcodeOut);
+
+    // SHA-1 for WebSocket handshake (RFC 6455 requires it)
+    static std::string sha1(const std::string& input);
+    static std::string base64Encode(const uint8_t* data, size_t len);
+
     ActionDispatcher& dispatcher_;
     StateBroadcaster& broadcaster_;
 
@@ -82,7 +70,6 @@ private:
     std::atomic<int> clientCount_{0};
     int port_ = 8765;
 
-    // Connected client sockets
     struct ClientConnection {
         std::unique_ptr<juce::StreamingSocket> socket;
         std::thread thread;

@@ -105,7 +105,8 @@ docs/                  Architecture, build guide, API reference, user guide
 | Phase 3 | Virtual Loop Mic kernel driver | Done |
 | Phase 4 | External control (Hotkey, MIDI, WebSocket, HTTP) | Done |
 | Phase 5 | GUI (JUCE) | Done |
-| Phase 6 | ASIO support, preset system, stabilization | In progress |
+| Phase 6 | ASIO support, preset system | Done |
+| Phase 7 | Stream Deck plugin completion | In progress |
 
 ## License
 

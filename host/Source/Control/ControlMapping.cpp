@@ -193,9 +193,9 @@ ControlConfig ControlMappingStore::createDefaults()
     }
 
     config.server.websocketPort = 8765;
-    config.server.websocketEnabled = false;
+    config.server.websocketEnabled = true;
     config.server.httpPort = 8766;
-    config.server.httpEnabled = false;
+    config.server.httpEnabled = true;
 
     return config;
 }
