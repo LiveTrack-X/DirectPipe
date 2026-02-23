@@ -104,7 +104,7 @@ void DirectPipeLookAndFeel::drawToggleButton(
 
     // Label text
     g.setColour(textColor_);
-    g.setFont(juce::FontOptions(13.0f));
+    g.setFont(juce::Font(13.0f));
     g.drawText(button.getButtonText(),
                static_cast<int>(toggleX + toggleSize + 6), 0,
                button.getWidth() - static_cast<int>(toggleSize + 8),

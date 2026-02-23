@@ -45,10 +45,14 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
             // Unity gain — write directly
             shmWriter_.writeAudio(buffer, numSamples);
         } else if (vol > 0.001f) {
-            // Apply volume
+            // Apply volume — only copy channels that exist in source
             for (int ch = 0; ch < numChannels; ++ch) {
                 scaledBuffer_.copyFrom(ch, 0, buffer, ch, 0, numSamples);
                 scaledBuffer_.applyGain(ch, 0, numSamples, vol);
+            }
+            // Clear unused channels to avoid stale data
+            for (int ch = numChannels; ch < scaledBuffer_.getNumChannels(); ++ch) {
+                scaledBuffer_.clear(ch, 0, numSamples);
             }
             shmWriter_.writeAudio(scaledBuffer_, numSamples);
         }

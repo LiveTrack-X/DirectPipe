@@ -156,19 +156,26 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     const float gain = inputGain_.load(std::memory_order_relaxed);
     const bool muted = muted_.load(std::memory_order_relaxed);
 
-    // 1. Copy input data into a working buffer
+    // 1. Copy input data into the pre-allocated work buffer (no heap allocation)
     int workChannels = juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels));
-    juce::AudioBuffer<float> buffer(workChannels, numSamples);
+    auto& buffer = workBuffer_;
+    if (buffer.getNumChannels() < workChannels || buffer.getNumSamples() < numSamples) {
+        // Only resize if the pre-allocated buffer is too small (should not happen normally)
+        buffer.setSize(workChannels, numSamples, false, false, true);
+    }
     buffer.clear();
 
     if (chMode == 1) {
-        // Mono mode: mix all input channels to channel 0
+        // Mono mode: mix all input channels to channel 0 with equal gain
         if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
-            buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
-        }
-        if (numInputChannels > 1 && inputChannelData[1] != nullptr) {
-            buffer.addFrom(0, 0, inputChannelData[1], numSamples, 0.5f);
-            buffer.applyGain(0, 0, numSamples, 0.5f);
+            if (numInputChannels > 1 && inputChannelData[1] != nullptr) {
+                // Two channels: average them (0.5 * ch0 + 0.5 * ch1)
+                buffer.copyFrom(0, 0, inputChannelData[0], numSamples, 0.5f);
+                buffer.addFrom(0, 0, inputChannelData[1], numSamples, 0.5f);
+            } else {
+                // Single channel: copy as-is
+                buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
+            }
         }
     } else {
         // Stereo mode: copy channels as-is
@@ -216,7 +223,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     }
 
     // Measure output level
-    if (numOutputChannels > 0) {
+    if (numOutputChannels > 0 && buffer.getNumChannels() > 0) {
         float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
         outputLevel_.store(rms, std::memory_order_relaxed);
     }
@@ -230,6 +237,9 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     currentSampleRate_ = device->getCurrentSampleRate();
     currentBufferSize_ = device->getCurrentBufferSizeSamples();
+
+    // Pre-allocate work buffer to avoid heap allocation in audio callback
+    workBuffer_.setSize(2, currentBufferSize_);
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);

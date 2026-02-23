@@ -4,6 +4,7 @@
  */
 
 #include "ActionDispatcher.h"
+#include <algorithm>
 
 namespace directpipe {
 
@@ -59,9 +60,9 @@ void ActionDispatcher::panicMute()
     dispatch({Action::PanicMute, 0, 0.0f, ""});
 }
 
-void ActionDispatcher::inputGainAdjust(float deltaDq)
+void ActionDispatcher::inputGainAdjust(float deltaDb)
 {
-    dispatch({Action::InputGainAdjust, 0, deltaDq, ""});
+    dispatch({Action::InputGainAdjust, 0, deltaDb, ""});
 }
 
 void ActionDispatcher::inputMuteToggle()

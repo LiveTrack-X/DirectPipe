@@ -1,10 +1,16 @@
 # DirectPipe Tests
 
+include(GoogleTest)
+
+# ─── Core IPC Tests (no JUCE dependency) ────────────────────────
 # Core + ActionDispatcher tests (no JUCE dependency)
 add_executable(directpipe-tests
     test_ring_buffer.cpp
     test_shared_memory.cpp
     test_latency.cpp
+    test_action_dispatcher.cpp
+    test_ipc_integration.cpp
+    # ActionDispatcher source compiled directly (no JUCE dependency)
     test_ipc_integration.cpp
     test_action_dispatcher.cpp
     # ActionDispatcher no longer depends on JUCE, compile it directly
@@ -25,9 +31,16 @@ if(WIN32)
     target_link_libraries(directpipe-tests PRIVATE kernel32)
 endif()
 
-include(GoogleTest)
 gtest_discover_tests(directpipe-tests)
 
+# ─── Host Tests (requires JUCE) ────────────────────────────────
+if(DIRECTPIPE_BUILD_HOST)
+    juce_add_console_app(directpipe-host-tests
+        PRODUCT_NAME "DirectPipeHostTests"
+    )
+
+    target_sources(directpipe-host-tests PRIVATE
+        test_websocket_protocol.cpp
 # Host-dependent tests (require JUCE for StateBroadcaster JSON, etc.)
 if(DIRECTPIPE_BUILD_HOST)
     add_executable(directpipe-host-tests

@@ -69,7 +69,7 @@ public:
 
 private:
     void serverThread();
-    void clientThread(std::unique_ptr<juce::StreamingSocket> client);
+    void clientThread(juce::StreamingSocket* client);
     void processMessage(const std::string& message);
     void broadcastToClients(const std::string& message);
 

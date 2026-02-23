@@ -94,7 +94,7 @@ void LevelMeter::paint(juce::Graphics& g)
     // Label
     if (label_.isNotEmpty()) {
         g.setColour(juce::Colours::white.withAlpha(0.6f));
-        g.setFont(juce::FontOptions(10.0f));
+        g.setFont(juce::Font(10.0f));
         g.drawText(label_, getLocalBounds(), juce::Justification::centred);
     }
 }

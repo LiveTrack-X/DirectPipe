@@ -86,8 +86,9 @@ void WebSocketServer::serverThread()
                 if (accepted) {
                     auto conn = std::make_unique<ClientConnection>();
                     conn->socket = std::unique_ptr<juce::StreamingSocket>(accepted);
-                    conn->thread = std::thread([this, rawPtr = conn.get()] {
-                        clientThread(std::move(rawPtr->socket));
+                    auto* socketPtr = conn->socket.get();
+                    conn->thread = std::thread([this, socketPtr] {
+                        clientThread(socketPtr);
                     });
 
                     std::lock_guard<std::mutex> lock(clientsMutex_);
@@ -101,7 +102,7 @@ void WebSocketServer::serverThread()
     }
 }
 
-void WebSocketServer::clientThread(std::unique_ptr<juce::StreamingSocket> client)
+void WebSocketServer::clientThread(juce::StreamingSocket* client)
 {
     if (!client) return;
 
@@ -122,7 +123,6 @@ void WebSocketServer::clientThread(std::unique_ptr<juce::StreamingSocket> client
         }
     }
 
-    client->close();
     clientCount_.fetch_sub(1, std::memory_order_relaxed);
     juce::Logger::writeToLog("WebSocket: Client disconnected");
 }

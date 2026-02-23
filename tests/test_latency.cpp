@@ -19,6 +19,7 @@
 #include <numeric>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 using namespace directpipe;
 using Clock = std::chrono::high_resolution_clock;

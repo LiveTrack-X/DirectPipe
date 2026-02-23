@@ -84,7 +84,7 @@ public:
     void toggleMute(const std::string& target);
     void loadPreset(int presetIndex);
     void panicMute();
-    void inputGainAdjust(float deltaDq);
+    void inputGainAdjust(float deltaDb);
     void inputMuteToggle();
 
 private:
