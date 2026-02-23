@@ -21,7 +21,7 @@ Class       = MEDIA
 ClassGUID   = {4d36e96c-e325-11ce-bfc1-08002be10318}
 Provider    = %ManufacturerName%
 CatalogFile = virtualloop.cat
-DriverVer   = 02/22/2026,3.1.0.0
+DriverVer   = 02/23/2026,3.3.0.0
 PnpLockdown = 1
 
 ; ---- Supported OS versions ------------------------------------------------
@@ -69,21 +69,13 @@ VirtualLoop_CopyFiles = 13        ; Driver Store directory (DIRID 13)
 virtualloop.sys = 1
 
 ; ---- Registry entries ------------------------------------------------------
-; Register the device interfaces and audio endpoint properties.
+; Register the device interfaces.
 [VirtualLoop_AddReg]
 ; Create a device interface for the capture endpoint
 HKR, "Interfaces\{6994AD04-93EF-11D0-A3CC-00A0C9223196}", "AutoAttach", 1, 01, 00, 00, 00
 
 ; Register the KS filter factory name (matches adapter.cpp PcRegisterSubdevice name)
 HKR, "VirtualLoopCapture", "FriendlyName", , %DeviceName%
-
-; Audio endpoint properties
-; PKEY_AudioEndpoint_Association — associates this endpoint with the audio adapter
-HKR, "EP\\0", %PKEY_AudioEndpoint_Association%, %REG_BINARY%, \
-    01, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00
-
-; PKEY_AudioEndpoint_Supports_EventDriven_Mode — enable event-driven WASAPI
-HKR, "EP\\0", %PKEY_AudioEndpoint_Supports_EventDriven_Mode%, %REG_DWORD%, 0x00000001
 
 ; ---- WDF co-installer (not needed for WDM, but included for completeness) --
 [VirtualLoop_Install.Wdf]
@@ -103,6 +95,14 @@ AddReg = VirtualLoop_CaptureInterface_AddReg
 HKR,, "FriendlyName", , %DeviceName%
 HKR,, "CLSID", , "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"     ; KSProxy.ax
 
+; Audio endpoint properties (must be under device interface key, not hardware key)
+; PKEY_AudioEndpoint_Association — associates this endpoint with the audio adapter
+HKR, "EP\\0", %PKEY_AudioEndpoint_Association%, , %KSNODETYPE_ANY%
+
+; PKEY_AudioEndpoint_Supports_EventDriven_Mode — enable event-driven WASAPI
+HKR, "EP\\0", %PKEY_AudioEndpoint_Supports_EventDriven_Mode%, %REG_DWORD%, 0x00000001
+
+
 ; ============================================================================
 ; Strings
 ; ============================================================================
@@ -118,6 +118,7 @@ DiskName         = "Virtual Loop Mic Driver Installation Disk"
 KSCATEGORY_AUDIO   = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
 KSCATEGORY_CAPTURE = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
 KSNAME_VirtualLoopCapture = "VirtualLoopCapture"
+KSNODETYPE_ANY            = "{00000000-0000-0000-0000-000000000000}"
 
 ; Property keys (PKEY format)
 PKEY_AudioEndpoint_Association                  = "{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},2"

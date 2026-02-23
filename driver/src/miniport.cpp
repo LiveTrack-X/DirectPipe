@@ -17,6 +17,7 @@ extern "C" {
 }
 
 #include <portcls.h>
+#include <stdunk.h>
 #include <ksdebug.h>
 #include <ks.h>
 #include <ksmedia.h>
@@ -57,14 +58,12 @@ extern NTSTATUS CreateVirtualLoopStream(
  *
  *   Sample Rate  | Channels | Bit Depth     | Format Tag
  *   -------------|----------|---------------|--------------------
- *   48000 Hz     | 1 (mono) | 16-bit PCM    | KSDATAFORMAT_SUBTYPE_PCM
- *   48000 Hz     | 2 (stereo)| 16-bit PCM   | KSDATAFORMAT_SUBTYPE_PCM
- *   48000 Hz     | 1 (mono) | 32-bit float  | KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
- *   48000 Hz     | 2 (stereo)| 32-bit float | KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
- *   44100 Hz     | 1 (mono) | 16-bit PCM    | KSDATAFORMAT_SUBTYPE_PCM
- *   44100 Hz     | 2 (stereo)| 16-bit PCM   | KSDATAFORMAT_SUBTYPE_PCM
- *   44100 Hz     | 1 (mono) | 32-bit float  | KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
- *   44100 Hz     | 2 (stereo)| 32-bit float | KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+ *   48000 Hz     | 1-2 ch   | 16-bit PCM    | KSDATAFORMAT_SUBTYPE_PCM
+ *   48000 Hz     | 1-2 ch   | 24-bit PCM    | KSDATAFORMAT_SUBTYPE_PCM
+ *   48000 Hz     | 1-2 ch   | 32-bit float  | KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+ *   44100 Hz     | 1-2 ch   | 16-bit PCM    | KSDATAFORMAT_SUBTYPE_PCM
+ *   44100 Hz     | 1-2 ch   | 24-bit PCM    | KSDATAFORMAT_SUBTYPE_PCM
+ *   44100 Hz     | 1-2 ch   | 32-bit float  | KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
  */
 
 /// Pin data ranges for the capture pin.
@@ -85,6 +84,24 @@ static KSDATARANGE_AUDIO CaptureDataRanges[] =
         2,      // MaximumChannels
         16,     // MinimumBitsPerSample
         16,     // MaximumBitsPerSample
+        48000,  // MinimumSampleFrequency
+        48000   // MaximumSampleFrequency
+    },
+
+    // ---- 48000 Hz, 24-bit PCM, 1-2 channels ----
+    {
+        {
+            sizeof(KSDATARANGE_AUDIO),
+            0,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
+        2,      // MaximumChannels
+        24,     // MinimumBitsPerSample
+        24,     // MaximumBitsPerSample
         48000,  // MinimumSampleFrequency
         48000   // MaximumSampleFrequency
     },
@@ -125,6 +142,24 @@ static KSDATARANGE_AUDIO CaptureDataRanges[] =
         44100   // MaximumSampleFrequency
     },
 
+    // ---- 44100 Hz, 24-bit PCM, 1-2 channels ----
+    {
+        {
+            sizeof(KSDATARANGE_AUDIO),
+            0,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
+        2,      // MaximumChannels
+        24,     // MinimumBitsPerSample
+        24,     // MaximumBitsPerSample
+        44100,  // MinimumSampleFrequency
+        44100   // MaximumSampleFrequency
+    },
+
     // ---- 44100 Hz, 32-bit float, 1-2 channels ----
     {
         {
@@ -149,7 +184,9 @@ static PKSDATARANGE CaptureDataRangePointers[] =
     PKSDATARANGE(&CaptureDataRanges[0]),
     PKSDATARANGE(&CaptureDataRanges[1]),
     PKSDATARANGE(&CaptureDataRanges[2]),
-    PKSDATARANGE(&CaptureDataRanges[3])
+    PKSDATARANGE(&CaptureDataRanges[3]),
+    PKSDATARANGE(&CaptureDataRanges[4]),
+    PKSDATARANGE(&CaptureDataRanges[5])
 };
 
 // ---------------------------------------------------------------------------
@@ -165,7 +202,8 @@ static PKSDATARANGE CaptureDataRangePointers[] =
  */
 static PCPIN_DESCRIPTOR CapturePinDescriptors[] =
 {
-    // Pin 0: Capture (bridge pin — not directly accessible by clients)
+    // Pin 0: Bridge pin (represents the physical microphone source)
+    // DataFlow IN = data enters the filter from the external source
     {
         0, 0, 0,
         nullptr,
@@ -176,14 +214,15 @@ static PCPIN_DESCRIPTOR CapturePinDescriptors[] =
             nullptr,
             SIZEOF_ARRAY(CaptureDataRangePointers),
             CaptureDataRangePointers,
-            KSPIN_DATAFLOW_OUT,
-            KSPIN_COMMUNICATION_NONE,
-            &KSCATEGORY_AUDIO,
+            KSPIN_DATAFLOW_IN,              // Data flows IN from "hardware"
+            KSPIN_COMMUNICATION_BRIDGE,     // Bridge pin (not client-accessible)
+            &KSNODETYPE_MICROPHONE,         // Physical source = microphone
             nullptr,
             0
         }
     },
-    // Pin 1: Capture (host pin — clients connect here)
+    // Pin 1: Host pin (audio engine connects here to read captured audio)
+    // DataFlow OUT = data flows OUT from filter to audio engine
     {
         1, 1, 0,                // MaxGlobal, MaxPerFilter, MinPerFilter
         nullptr,                // AutomationTable
@@ -194,9 +233,9 @@ static PCPIN_DESCRIPTOR CapturePinDescriptors[] =
             nullptr,
             SIZEOF_ARRAY(CaptureDataRangePointers),
             CaptureDataRangePointers,
-            KSPIN_DATAFLOW_OUT,
-            KSPIN_COMMUNICATION_SINK,
-            &KSNODETYPE_MICROPHONE,         // Category: microphone device
+            KSPIN_DATAFLOW_OUT,             // Data flows OUT to audio engine
+            KSPIN_COMMUNICATION_SINK,       // Clients connect here
+            &KSCATEGORY_AUDIO,              // Generic audio category
             nullptr,                         // Name GUID (use default)
             0
         }
@@ -218,7 +257,8 @@ static PCPIN_DESCRIPTOR CapturePinDescriptors[] =
 static PCNODE_DESCRIPTOR CaptureNodeDescriptors[] =
 {
     {
-        0,                          // AutomationTable
+        0,                          // Flags
+        nullptr,                    // AutomationTable
         &KSNODETYPE_ADC,            // Type: ADC node
         nullptr                     // Name
     }
@@ -346,6 +386,20 @@ public:
         _Out_ PPCFILTER_DESCRIPTOR* OutFilterDescriptor
     );
 
+    STDMETHODIMP_(NTSTATUS) DataRangeIntersection(
+        _In_  ULONG       PinId,
+        _In_  PKSDATARANGE DataRange,
+        _In_  PKSDATARANGE MatchingDataRange,
+        _In_  ULONG       OutputBufferLength,
+        _Out_writes_bytes_to_opt_(OutputBufferLength, *ResultantFormatLength)
+              PVOID       ResultantFormat,
+        _Out_ PULONG      ResultantFormatLength
+    );
+
+    STDMETHODIMP_(NTSTATUS) GetDeviceDescription(
+        _Out_ PDEVICE_DESCRIPTION DeviceDescription
+    );
+
 private:
     /// Back-pointer to the WaveRT port driver.
     PPORTWAVERT port_ = nullptr;
@@ -364,17 +418,6 @@ NTSTATUS CVirtualLoopMiniport_QueryInterface(
 );
 
 #pragma code_seg("PAGE")
-
-/**
- * @brief Constructor — zero-initializes all members via CUnknown.
- */
-CVirtualLoopMiniport::CVirtualLoopMiniport(
-    _In_ PUNKNOWN  UnknownOuter,
-    _In_ POOL_TYPE PoolType
-) : CUnknown(UnknownOuter, PoolType)
-{
-    PAGED_CODE();
-}
 
 /**
  * @brief Destructor — releases the port reference.
@@ -538,6 +581,55 @@ CVirtualLoopMiniport::GetDescription(
     return STATUS_SUCCESS;
 }
 
+// ---------------------------------------------------------------------------
+// IMiniport::DataRangeIntersection
+// ---------------------------------------------------------------------------
+
+STDMETHODIMP_(NTSTATUS)
+CVirtualLoopMiniport::DataRangeIntersection(
+    _In_  ULONG       PinId,
+    _In_  PKSDATARANGE DataRange,
+    _In_  PKSDATARANGE MatchingDataRange,
+    _In_  ULONG       OutputBufferLength,
+    _Out_writes_bytes_to_opt_(OutputBufferLength, *ResultantFormatLength)
+          PVOID       ResultantFormat,
+    _Out_ PULONG      ResultantFormatLength
+)
+{
+    PAGED_CODE();
+
+    UNREFERENCED_PARAMETER(PinId);
+    UNREFERENCED_PARAMETER(DataRange);
+    UNREFERENCED_PARAMETER(MatchingDataRange);
+    UNREFERENCED_PARAMETER(OutputBufferLength);
+    UNREFERENCED_PARAMETER(ResultantFormat);
+    UNREFERENCED_PARAMETER(ResultantFormatLength);
+
+    // Return STATUS_NOT_IMPLEMENTED to let PortCls handle
+    // the default data range intersection logic.
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+// ---------------------------------------------------------------------------
+// IMiniportWaveRT::GetDeviceDescription
+// ---------------------------------------------------------------------------
+
+STDMETHODIMP_(NTSTATUS)
+CVirtualLoopMiniport::GetDeviceDescription(
+    _Out_ PDEVICE_DESCRIPTION DeviceDescription
+)
+{
+    PAGED_CODE();
+
+    RtlZeroMemory(DeviceDescription, sizeof(DEVICE_DESCRIPTION));
+    DeviceDescription->Version  = DEVICE_DESCRIPTION_VERSION;
+    DeviceDescription->Master   = TRUE;
+    DeviceDescription->Dma32BitAddresses = TRUE;
+    DeviceDescription->MaximumLength = 0x10000;  // 64KB
+
+    return STATUS_SUCCESS;
+}
+
 #pragma code_seg()
 
 // ---------------------------------------------------------------------------
@@ -609,7 +701,7 @@ CreateVirtualLoopMiniport(
     UNREFERENCED_PARAMETER(ClassId);
 
     CVirtualLoopMiniport* miniport = new(PoolType, 'PLVD')
-        CVirtualLoopMiniport(UnknownOuter, PoolType);
+        CVirtualLoopMiniport(UnknownOuter);
 
     if (!miniport)
     {

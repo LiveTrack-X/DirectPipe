@@ -162,8 +162,8 @@ KernelShmReaderOpen(_Out_ PKERNEL_SHM_READER* OutReader)
     // Allocate the reader context structure
     // -----------------------------------------------------------------
     PKERNEL_SHM_READER reader = static_cast<PKERNEL_SHM_READER>(
-        ExAllocatePool2(
-            POOL_FLAG_NON_PAGED,
+        ExAllocatePoolWithTag(
+            NonPagedPoolNx,
             sizeof(KERNEL_SHM_READER),
             SHM_READER_POOLTAG
         )

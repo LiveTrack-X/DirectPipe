@@ -16,6 +16,7 @@ extern "C" {
 #include <ntddk.h>
 }
 
+#include <initguid.h>
 #include <portcls.h>
 #include <ksdebug.h>
 #include <ntstrsafe.h>
@@ -283,7 +284,7 @@ CreateWaveRTCaptureMiniport(
     PAGED_CODE();
 
     NTSTATUS  status      = STATUS_SUCCESS;
-    PUNKNOWN  unknownPort = nullptr;
+    PPORT     unknownPort = nullptr;
     PUNKNOWN  unknownMiniport = nullptr;
 
     // -----------------------------------------------------------------
@@ -352,7 +353,9 @@ CreateWaveRTCaptureMiniport(
         // Initialize the port with our miniport
         status = portWaveRT->Init(
             DeviceObject,
-            miniportWaveRT,
+            Irp,
+            (PUNKNOWN)miniportWaveRT,
+            nullptr,        // UnknownAdapter
             ResourceList
         );
 

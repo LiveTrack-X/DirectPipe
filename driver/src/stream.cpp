@@ -24,6 +24,7 @@ extern "C" {
 }
 
 #include <portcls.h>
+#include <stdunk.h>
 #include <ksdebug.h>
 #include <ks.h>
 #include <ksmedia.h>
@@ -44,14 +45,14 @@ typedef struct _KERNEL_SHM_READER KERNEL_SHM_READER, *PKERNEL_SHM_READER;
  * @param OutReader  Receives the reader handle on success.
  * @return STATUS_SUCCESS on success, or an error code.
  */
-extern NTSTATUS KernelShmReaderOpen(_Out_ PKERNEL_SHM_READER* OutReader);
+extern "C" NTSTATUS KernelShmReaderOpen(_Out_ PKERNEL_SHM_READER* OutReader);
 
 /**
  * @brief Close the shared memory reader and release all resources.
  *
  * @param Reader  The reader handle to close.
  */
-extern VOID KernelShmReaderClose(_In_opt_ PKERNEL_SHM_READER Reader);
+extern "C" VOID KernelShmReaderClose(_In_opt_ PKERNEL_SHM_READER Reader);
 
 /**
  * @brief Read frames from the shared memory ring buffer.
@@ -64,7 +65,7 @@ extern VOID KernelShmReaderClose(_In_opt_ PKERNEL_SHM_READER Reader);
  * @param MaxFrames  Maximum number of frames to read.
  * @return Number of frames actually read.
  */
-extern ULONG KernelShmReaderRead(
+extern "C" ULONG KernelShmReaderRead(
     _In_  PKERNEL_SHM_READER Reader,
     _Out_ float*             Buffer,
     _In_  ULONG              MaxFrames
@@ -73,17 +74,17 @@ extern ULONG KernelShmReaderRead(
 /**
  * @brief Get the sample rate from the shared memory header.
  */
-extern ULONG KernelShmReaderGetSampleRate(_In_ PKERNEL_SHM_READER Reader);
+extern "C" ULONG KernelShmReaderGetSampleRate(_In_ PKERNEL_SHM_READER Reader);
 
 /**
  * @brief Get the channel count from the shared memory header.
  */
-extern ULONG KernelShmReaderGetChannels(_In_ PKERNEL_SHM_READER Reader);
+extern "C" ULONG KernelShmReaderGetChannels(_In_ PKERNEL_SHM_READER Reader);
 
 /**
  * @brief Check if the reader is connected and the shared memory is valid.
  */
-extern BOOLEAN KernelShmReaderIsConnected(_In_opt_ PKERNEL_SHM_READER Reader);
+extern "C" BOOLEAN KernelShmReaderIsConnected(_In_opt_ PKERNEL_SHM_READER Reader);
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -118,8 +119,7 @@ extern BOOLEAN KernelShmReaderIsConnected(_In_opt_ PKERNEL_SHM_READER Reader);
  *      into the WaveRT buffer at the current write position.
  *   5. SetState(KSSTATE_STOP) stops the timer. The stream is released.
  */
-class CVirtualLoopStream : public IMiniportWaveRTStream,
-                            public IMiniportWaveRTStreamNotification,
+class CVirtualLoopStream : public IMiniportWaveRTStreamNotification,
                             public CUnknown
 {
 public:
@@ -128,15 +128,6 @@ public:
 
     ~CVirtualLoopStream();
 
-    /**
-     * @brief Initialize the stream.
-     *
-     * @param PortStream   Port stream interface for buffer allocation.
-     * @param Pin          Pin number.
-     * @param Capture      Must be TRUE.
-     * @param DataFormat   The audio format for this stream.
-     * @return STATUS_SUCCESS on success.
-     */
     NTSTATUS Init(
         _In_ IPortWaveRTStream* PortStream,
         _In_ ULONG              Pin,
@@ -144,7 +135,46 @@ public:
         _In_ PKSDATAFORMAT      DataFormat
     );
 
-    // ---- IMiniportWaveRTStream ----
+    // ---- IMiniportWaveRTStream (base interface) ----
+
+    STDMETHODIMP_(NTSTATUS) SetFormat(
+        _In_ PKSDATAFORMAT DataFormat
+    );
+
+    STDMETHODIMP_(NTSTATUS) SetState(
+        _In_ KSSTATE State
+    );
+
+    STDMETHODIMP_(NTSTATUS) GetPosition(
+        _Out_ KSAUDIO_POSITION* Position
+    );
+
+    STDMETHODIMP_(NTSTATUS) AllocateAudioBuffer(
+        _In_  ULONG              RequestedSize,
+        _Out_ PMDL*              AudioBufferMdl,
+        _Out_ ULONG*             ActualSize,
+        _Out_ ULONG*             OffsetFromFirstPage,
+        _Out_ MEMORY_CACHING_TYPE* CacheType
+    );
+
+    STDMETHODIMP_(VOID) FreeAudioBuffer(
+        _In_opt_ PMDL AudioBufferMdl,
+        _In_ ULONG BufferSize
+    );
+
+    STDMETHODIMP_(VOID) GetHWLatency(
+        _Out_ KSRTAUDIO_HWLATENCY* hwLatency
+    );
+
+    STDMETHODIMP_(NTSTATUS) GetPositionRegister(
+        _Out_ PKSRTAUDIO_HWREGISTER Register
+    );
+
+    STDMETHODIMP_(NTSTATUS) GetClockRegister(
+        _Out_ PKSRTAUDIO_HWREGISTER Register
+    );
+
+    // ---- IMiniportWaveRTStreamNotification ----
 
     STDMETHODIMP_(NTSTATUS) AllocateBufferWithNotification(
         _In_  ULONG              NotificationCount,
@@ -160,37 +190,12 @@ public:
         _In_ ULONG BufferSize
     );
 
-    STDMETHODIMP_(NTSTATUS) GetClockRegister(
-        _Out_ PKSRTAUDIO_HWREGISTER Register
-    );
-
-    STDMETHODIMP_(NTSTATUS) GetPositionRegister(
-        _Out_ PKSRTAUDIO_HWREGISTER Register
-    );
-
-    STDMETHODIMP_(NTSTATUS) SetState(
-        _In_ KSSTATE State
-    );
-
-    STDMETHODIMP_(NTSTATUS) GetPosition(
-        _Out_ KSAUDIO_POSITION* Position
-    );
-
-    // ---- IMiniportWaveRTStreamNotification ----
-
     STDMETHODIMP_(NTSTATUS) RegisterNotificationEvent(
         _In_ PKEVENT NotificationEvent
     );
 
     STDMETHODIMP_(NTSTATUS) UnregisterNotificationEvent(
         _In_ PKEVENT NotificationEvent
-    );
-
-    // ---- IUnknown ----
-
-    STDMETHODIMP_(NTSTATUS) NonDelegatingQueryInterface(
-        _In_ REFIID Interface,
-        _Out_ PVOID* Object
     );
 
 private:
@@ -231,6 +236,22 @@ private:
      */
     static void ConvertFloat32ToInt16(
         _Out_ INT16*       dst,
+        _In_  const float* src,
+        _In_  ULONG        count
+    );
+
+    /**
+     * @brief Convert float32 PCM samples to 24-bit PCM (packed 3 bytes).
+     *
+     * Used when the client requests 24-bit PCM but the shared memory
+     * contains float32 data. Outputs little-endian packed 24-bit.
+     *
+     * @param dst    Destination buffer (3 bytes per sample).
+     * @param src    Source buffer (float32 samples).
+     * @param count  Number of samples (frames * channels).
+     */
+    static void ConvertFloat32ToInt24(
+        _Out_ BYTE*        dst,
         _In_  const float* src,
         _In_  ULONG        count
     );
@@ -286,14 +307,6 @@ private:
 // ---------------------------------------------------------------------------
 
 #pragma code_seg("PAGE")
-
-CVirtualLoopStream::CVirtualLoopStream(
-    _In_ PUNKNOWN  UnknownOuter,
-    _In_ POOL_TYPE PoolType
-) : CUnknown(UnknownOuter, PoolType)
-{
-    PAGED_CODE();
-}
 
 CVirtualLoopStream::~CVirtualLoopStream()
 {
@@ -377,8 +390,8 @@ CVirtualLoopStream::Init(
     // Shared memory always contains float32; we may need to convert.
     // -----------------------------------------------------------------
     tempBuffer_ = static_cast<float*>(
-        ExAllocatePool2(
-            POOL_FLAG_NON_PAGED,
+        ExAllocatePoolWithTag(
+            NonPagedPoolNx,
             MAX_TEMP_FRAMES * channels_ * sizeof(float),
             STREAM_POOLTAG
         )
@@ -473,12 +486,10 @@ CVirtualLoopStream::AllocateBufferWithNotification(
     }
 
     // Allocate pages for the buffer
-    PHYSICAL_ADDRESS lowAddr  = { 0 };
     PHYSICAL_ADDRESS highAddr = { 0 };
-    highAddr.QuadPart = MAXULONG64;
+    highAddr.QuadPart = (LONGLONG)0x7FFFFFFFFFFFFFFF;
 
     dmaBufferMdl_ = portStream_->AllocatePagesForMdl(
-        lowAddr,
         highAddr,
         allocSize
     );
@@ -585,6 +596,74 @@ CVirtualLoopStream::GetPositionRegister(
 {
     UNREFERENCED_PARAMETER(Register);
     return STATUS_NOT_SUPPORTED;
+}
+
+// ---------------------------------------------------------------------------
+// SetFormat
+// ---------------------------------------------------------------------------
+
+STDMETHODIMP_(NTSTATUS)
+CVirtualLoopStream::SetFormat(
+    _In_ PKSDATAFORMAT DataFormat
+)
+{
+    UNREFERENCED_PARAMETER(DataFormat);
+    // Format changes after stream creation are not supported.
+    return STATUS_NOT_SUPPORTED;
+}
+
+// ---------------------------------------------------------------------------
+// AllocateAudioBuffer (non-notification version)
+// ---------------------------------------------------------------------------
+
+#pragma code_seg("PAGE")
+STDMETHODIMP_(NTSTATUS)
+CVirtualLoopStream::AllocateAudioBuffer(
+    _In_  ULONG              RequestedSize,
+    _Out_ PMDL*              AudioBufferMdl,
+    _Out_ ULONG*             ActualSize,
+    _Out_ ULONG*             OffsetFromFirstPage,
+    _Out_ MEMORY_CACHING_TYPE* CacheType
+)
+{
+    PAGED_CODE();
+
+    // Delegate to the notification version with notification count = 0
+    return AllocateBufferWithNotification(
+        0, RequestedSize, AudioBufferMdl, ActualSize, OffsetFromFirstPage, CacheType);
+}
+#pragma code_seg()
+
+// ---------------------------------------------------------------------------
+// FreeAudioBuffer (non-notification version)
+// ---------------------------------------------------------------------------
+
+#pragma code_seg("PAGE")
+STDMETHODIMP_(VOID)
+CVirtualLoopStream::FreeAudioBuffer(
+    _In_opt_ PMDL AudioBufferMdl,
+    _In_ ULONG BufferSize
+)
+{
+    PAGED_CODE();
+
+    FreeBufferWithNotification(AudioBufferMdl, BufferSize);
+}
+#pragma code_seg()
+
+// ---------------------------------------------------------------------------
+// GetHWLatency
+// ---------------------------------------------------------------------------
+
+STDMETHODIMP_(VOID)
+CVirtualLoopStream::GetHWLatency(
+    _Out_ KSRTAUDIO_HWLATENCY* hwLatency
+)
+{
+    // Virtual device has no hardware latency
+    hwLatency->ChipsetDelay = 0;
+    hwLatency->CodecDelay   = 0;
+    hwLatency->FifoSize     = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -875,13 +954,10 @@ CVirtualLoopStream::OnTimerDpc()
         else if (!isFloat_ && bitsPerSample_ == 16)
         {
             // Need to convert float32 -> int16
-            // Convert in place to a local buffer on the stack if small enough,
-            // otherwise use a portion of tempBuffer_ (after the float data)
             const ULONG sampleCount = framesRead * channels_;
             const ULONG copyBytes = framesRead * bytesPerFrame_;  // int16 size
 
-            // We'll convert directly into the DMA buffer to avoid extra copy
-            // Handle the cyclic wrap
+            // Convert directly into the DMA buffer, handle cyclic wrap
             const ULONG firstChunkBytes = min(copyBytes, dmaBufferSize_ - pos);
             const ULONG firstChunkSamples = firstChunkBytes / sizeof(INT16);
 
@@ -904,10 +980,38 @@ CVirtualLoopStream::OnTimerDpc()
 
             bytesWritten = copyBytes;
         }
+        else if (!isFloat_ && bitsPerSample_ == 24)
+        {
+            // Need to convert float32 -> 24-bit packed PCM (3 bytes/sample)
+            const ULONG sampleCount = framesRead * channels_;
+            const ULONG copyBytes = framesRead * bytesPerFrame_;  // 3 bytes per sample
+
+            // Convert directly into the DMA buffer, handle cyclic wrap
+            const ULONG firstChunkBytes = min(copyBytes, dmaBufferSize_ - pos);
+            const ULONG firstChunkSamples = firstChunkBytes / 3;
+
+            ConvertFloat32ToInt24(
+                dmaBuffer_ + pos,
+                tempBuffer_,
+                firstChunkSamples
+            );
+
+            if (firstChunkBytes < copyBytes)
+            {
+                // Wrap: convert remaining samples into the start of the buffer
+                const ULONG remainingSamples = sampleCount - firstChunkSamples;
+                ConvertFloat32ToInt24(
+                    dmaBuffer_,
+                    tempBuffer_ + firstChunkSamples,
+                    remainingSamples
+                );
+            }
+
+            bytesWritten = copyBytes;
+        }
         else
         {
-            // TODO: Handle other format combinations if needed
-            // For now, fill with silence for unsupported conversions
+            // Unsupported format combination — fill with silence
             framesRead = 0;
         }
     }
@@ -982,6 +1086,41 @@ CVirtualLoopStream::ConvertFloat32ToInt16(
     }
 }
 
+/**
+ * @brief Convert float32 samples to 24-bit packed PCM with clamping.
+ *
+ * Outputs 3 bytes per sample in little-endian order.
+ * Clamps to [-1.0, 1.0] range before scaling to 24-bit range.
+ *
+ * @param dst    Output buffer (3 bytes per sample).
+ * @param src    Input float32 samples.
+ * @param count  Number of individual samples to convert.
+ */
+void
+CVirtualLoopStream::ConvertFloat32ToInt24(
+    _Out_ BYTE*        dst,
+    _In_  const float* src,
+    _In_  ULONG        count
+)
+{
+    for (ULONG i = 0; i < count; ++i)
+    {
+        float sample = src[i];
+
+        // Clamp to [-1.0, 1.0]
+        if (sample > 1.0f)  sample = 1.0f;
+        if (sample < -1.0f) sample = -1.0f;
+
+        // Scale to 24-bit range (-8388608 to 8388607)
+        INT32 val = static_cast<INT32>(sample * 8388607.0f);
+
+        // Write 3 bytes little-endian
+        dst[i * 3 + 0] = static_cast<BYTE>(val & 0xFF);
+        dst[i * 3 + 1] = static_cast<BYTE>((val >> 8) & 0xFF);
+        dst[i * 3 + 2] = static_cast<BYTE>((val >> 16) & 0xFF);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Factory function (called from miniport.cpp)
 // ---------------------------------------------------------------------------
@@ -1009,7 +1148,7 @@ CreateVirtualLoopStream(
     PAGED_CODE();
 
     CVirtualLoopStream* stream = new(NonPagedPoolNx, STREAM_POOLTAG)
-        CVirtualLoopStream(nullptr, NonPagedPoolNx);
+        CVirtualLoopStream(nullptr);
 
     if (!stream)
     {
