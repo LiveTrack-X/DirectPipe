@@ -199,6 +199,13 @@ MainComponent::MainComponent()
         portableLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6C63FF));
     }
 
+    // Credit label
+    creditLabel_.setFont(juce::Font(11.0f));
+    creditLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF666680));
+    creditLabel_.setText("Created by LiveTrack", juce::dontSendNotification);
+    creditLabel_.setJustificationType(juce::Justification::centredRight);
+    addAndMakeVisible(creditLabel_);
+
     // Start UI update timer (30 Hz)
     startTimerHz(30);
 
@@ -461,6 +468,7 @@ void MainComponent::resized()
     cpuLabel_.setBounds(statusW, statusY, statusW, 24);
     formatLabel_.setBounds(statusW * 2, statusY, statusW, 24);
     portableLabel_.setBounds(statusW * 3, statusY, statusW, 24);
+    creditLabel_.setBounds(getWidth() - 160, statusY, 150, 24);
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────────────

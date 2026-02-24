@@ -91,6 +91,7 @@ private:
     juce::Label cpuLabel_;
     juce::Label formatLabel_;
     juce::Label portableLabel_;
+    juce::Label creditLabel_;
 
     // Section labels (left column only)
     juce::Label inputSectionLabel_;

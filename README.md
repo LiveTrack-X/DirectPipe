@@ -90,4 +90,4 @@ thirdparty/               VST2 SDK, ASIO SDK
 
 ## License
 
-MIT — [LICENSE](installer/assets/license.txt)
+GPL v3 — [LICENSE](LICENSE)
