@@ -40,8 +40,9 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
 - **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal.
 - **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Auto-save on editor close.
-- **Tabbed UI**: Audio/Output/Controls tabs in right column.
-- **System tray**: Close → tray, double-click → restore, right-click → Show/Quit.
+- **Tabbed UI**: Audio/Output/Controls tabs in right column. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General.
+- **Start with Windows**: Registry-based (`HKCU\...\Run`). Toggle in tray menu + Controls > General tab.
+- **System tray**: Close → tray, double-click → restore, right-click → Show/Quit/Start with Windows.
 - **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute. Virtual Cable always forced ON.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
 - **WebSocket server**: RFC 6455 with custom SHA-1 implementation.
@@ -77,3 +78,5 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
 - Stream Deck: SDK v3, 4 actions with manifestId, 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
 - Virtual Cable always ON unless Panic Mute (ignore saved virtualCableEnabled)
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), onSettingsChanged callbacks
+- License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
+- Credit label "Created by LiveTrack" at bottom-right of main UI

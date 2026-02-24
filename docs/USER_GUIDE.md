@@ -87,7 +87,11 @@ Out-of-process scanner that safely discovers all installed plugins. / 별도 프
 
 - **Close button** — Minimizes to tray (app keeps running) / X 버튼 → 트레이 최소화
 - **Double-click tray icon** — Shows the main window / 더블클릭 → 창 복원
-- **Right-click tray icon** — Menu: "Show Window" / "Quit DirectPipe" / 우클릭 → 메뉴
+- **Right-click tray icon** — Menu: "Show Window" / "Start with Windows" / "Quit DirectPipe" / 우클릭 → 메뉴
+
+### Start with Windows / 시작 프로그램
+
+Toggle via tray menu or Controls > General tab. Registers DirectPipe in Windows startup (HKCU Run registry). / 트레이 메뉴 또는 Controls > General 탭에서 설정. Windows 시작 시 자동 실행.
 
 ## External Control / 외부 제어
 

@@ -54,7 +54,8 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 - **PluginScanner** — Out-of-process VST scanner with auto-retry and dead man's pedal. / 별도 프로세스 VST 스캐너.
 - **OutputPanel** — Monitor output controls (device selector, volume, enable). / 모니터 출력 제어.
 - **PresetManager** — Full preset save/load (JSON) + Quick Preset Slots A-E. Plugin state saved via `getStateInformation()` as base64. Async slot loading. / 프리셋 관리 + 퀵 슬롯 A-E.
-- **ControlSettingsPanel** — Hotkey, MIDI, server configuration UI. / 단축키/MIDI/서버 설정.
+- **ControlSettingsPanel** — Hotkey, MIDI, server, general settings (4 sub-tabs). / 단축키/MIDI/서버/일반 설정.
+- **GeneralTab** — App-level settings: Start with Windows (registry toggle). / 앱 설정: 시작 프로그램 등록.
 - **LevelMeter** — Real-time input/output RMS level display. / 실시간 레벨 미터.
 - **DirectPipeLookAndFeel** — Custom dark theme. / 다크 테마.
 
