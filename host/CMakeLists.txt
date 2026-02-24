@@ -6,6 +6,7 @@ juce_add_gui_app(DirectPipe
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon_48.png"
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     PLUGIN_MANUFACTURER_CODE DPip
@@ -66,6 +67,9 @@ juce_add_binary_data(DirectPipeBinaryData
     NAMESPACE BinaryData
     SOURCES
         Resources/icon.png
+        Resources/icon_16.png
+        Resources/icon_32.png
+        Resources/icon_48.png
 )
 
 juce_generate_juce_header(DirectPipe)

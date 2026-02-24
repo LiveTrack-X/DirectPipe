@@ -244,16 +244,13 @@ private:
         explicit DirectPipeTrayIcon(DirectPipeApplication& app)
             : app_(app)
         {
-            // Load icon from embedded binary data
-            auto fullIcon = juce::ImageFileFormat::loadFrom(
-                BinaryData::icon_png, BinaryData::icon_pngSize);
-
-            // Scale to 16x16 for tray icon
-            juce::Image icon(juce::Image::ARGB, 16, 16, true);
-            juce::Graphics g(icon);
-            g.drawImageWithin(fullIcon, 0, 0, 16, 16,
-                              juce::RectanglePlacement::centred);
-            setIconImage(icon, icon);
+            // Load pre-rendered 16x16 icon for tray (crisp, no runtime scaling)
+            auto smallIcon = juce::ImageFileFormat::loadFrom(
+                BinaryData::icon_16_png, BinaryData::icon_16_pngSize);
+            // Load 32x32 for high-DPI tray
+            auto largeIcon = juce::ImageFileFormat::loadFrom(
+                BinaryData::icon_32_png, BinaryData::icon_32_pngSize);
+            setIconImage(smallIcon, largeIcon);
             setIconTooltip("DirectPipe - Running");
         }
 
