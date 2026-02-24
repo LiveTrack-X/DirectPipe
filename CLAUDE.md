@@ -1,24 +1,26 @@
-# DirectPipe — Claude Code Project Guide v5.0
+# DirectPipe — Claude Code Project Guide v6.0
 
 ## Project Description
-Real-time VST2/VST3 host for Windows. Processes microphone input through a plugin chain with monitor output. Focused on external control (hotkeys, MIDI, Stream Deck, HTTP API) and fast preset switching. Similar to Light Host but with remote control capabilities.
+Real-time VST2/VST3 host for Windows. Processes microphone input through a plugin chain with dual output: monitor (headphones) and virtual cable (OBS, Discord, etc.). Focused on external control (hotkeys, MIDI, Stream Deck, HTTP API) and fast preset switching. Similar to Light Host but with remote control capabilities.
 
-Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체인으로 처리. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
+Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체인으로 처리하고 모니터 + 가상 케이블 듀얼 출력. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
 ## Core Principles
 1. WASAPI Shared default + ASIO support (non-exclusive mic access)
 2. VST2 + VST3 hosting with drag-and-drop chain editing
-3. Quick Preset Slots A-E (chain-only, includes plugin internal state)
-4. External control: Hotkey, MIDI, WebSocket, HTTP → unified ActionDispatcher
-5. System tray resident (close = minimize to tray)
-6. Out-of-process VST scanner (crash-safe)
+3. Dual output: Monitor (headphones) + Virtual Cable (VB-Audio etc.) via OutputRouter
+4. Quick Preset Slots A-E (chain-only, includes plugin internal state)
+5. External control: Hotkey, MIDI, WebSocket, HTTP -> unified ActionDispatcher
+6. System tray resident (close = minimize to tray)
+7. Out-of-process VST scanner (crash-safe)
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.1.0
 - WASAPI Shared Mode + ASIO (Steinberg ASIO SDK)
 - VST2 SDK 2.4 + VST3
-- WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, SHA-1)
+- WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)
 - HTTP: JUCE StreamingSocket manual parsing
+- Stream Deck: @elgato/streamdeck SDK v2.0.1, Node.js 20
 
 ## Build
 ```bash
@@ -28,43 +30,54 @@ cmake --build build --config Release
 
 ## Architecture
 ```
-Mic → WASAPI Shared / ASIO → [Mono/Stereo] → VSTChain → Monitor Output
+Mic -> WASAPI Shared / ASIO -> [Mono/Stereo] -> VSTChain -> OutputRouter
+                                                              /      \
+                                                   Virtual Cable   Monitor
+                                                   (VB-Audio)     (Headphones)
 
 External Control:
-Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
-  → VSTChain (bypass), OutputRouter (volume), PresetManager
+Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
+  -> VSTChain (bypass), OutputRouter (volume), PresetManager
 ```
 
 ## Key Implementations
-- **ASIO + WASAPI dual driver**: Runtime switching. ASIO: single device, dynamic SR/BS. WASAPI: separate I/O, fixed lists.
+- **ASIO + WASAPI dual driver**: Runtime switching. ASIO: single device, dynamic SR/BS, channel routing. WASAPI: separate I/O, fixed lists.
+- **Dual output**: OutputRouter distributes to Monitor + VirtualMicOutput. VirtualMicOutput uses separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer bridge.
+- **Virtual Cable output**: Manually configured in Output settings. Uses separate WASAPI AudioDeviceManager + lock-free ring buffer.
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
-- **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal.
-- **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Auto-save on editor close.
+- **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal. Blacklist for crashed plugins. Log: `%AppData%/DirectPipe/scanner-log.txt`.
+- **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Safe deletion via callAsync.
 - **Tabbed UI**: Audio/Output/Controls tabs in right column. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General.
 - **Start with Windows**: Registry-based (`HKCU\...\Run`). Toggle in tray menu + Controls > General tab.
-- **System tray**: Close → tray, double-click → restore, right-click → Show/Quit/Start with Windows.
-- **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute. Virtual Cable always forced ON.
+- **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
+- **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
-- **WebSocket server**: RFC 6455 with custom SHA-1 implementation.
-- **Stream Deck plugin**: SDK v2, 4 SingletonAction subclasses, Property Inspector HTML, auto-reconnect, SVG icons with @2x.
+- **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765.
+- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766.
+- **Stream Deck plugin**: SDK v2, 4 SingletonAction subclasses, Property Inspector HTML (sdpi-components v4), auto-reconnect (2s->30s), SVG icons with @2x. Pending message queue (cap 50).
 
 ## Coding Rules
-- Audio callback: no heap alloc, no mutex
-- Control → audio: atomic flags or lock-free queue
+- Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.
+- Control -> audio: atomic flags or lock-free queue
 - GUI and control share ActionDispatcher
+- MainComponent::onAction() checks thread, uses callAsync if not on message thread
 - WebSocket/HTTP on separate threads
-- `juce::MessageManager::callAsync` for UI self-deletion safety
-- `loadingSlot_` guard prevents recursive auto-save during slot loading
+- `juce::MessageManager::callAsync` for UI self-deletion safety (PluginChainEditor remove button etc.)
+- `loadingSlot_` (std::atomic<bool>) guard prevents recursive auto-save during slot loading
 - onChainChanged callback outside chainLock_ scope (deadlock prevention)
+- MidiBuffer pre-allocated in prepareToPlay, cleared after processBlock
+- VSTChain removes old I/O nodes before adding new ones in prepareToPlay
 
 ## Modules
-- `core/` → IPC library (RingBuffer, SharedMemory)
-- `host/` → JUCE app
-  - `Audio/` → AudioEngine, VSTChain, OutputRouter, LatencyMonitor
-  - `Control/` → ActionDispatcher, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster
-  - `IPC/` → SharedMemWriter
-  - `UI/` → PluginChainEditor, PluginScanner, AudioSettings, OutputPanel, ControlSettingsPanel, LevelMeter, PresetManager
-- `streamdeck-plugin/` → Stream Deck plugin (Node.js, SDK v2)
+- `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants)
+- `host/` -> JUCE app
+  - `Audio/` -> AudioEngine, VSTChain, OutputRouter, VirtualMicOutput, AudioRingBuffer, LatencyMonitor
+  - `Control/` -> ActionDispatcher, ControlManager, ControlMapping, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster
+  - `IPC/` -> SharedMemWriter
+  - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel, PluginChainEditor, PluginScanner, PresetManager, LevelMeter, DirectPipeLookAndFeel
+- `streamdeck-plugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v2)
+- `tests/` -> Google Test (core tests + host tests)
+- `dist/` -> Packaged .streamDeckPlugin + marketplace assets
 
 ## Known Notes
 - `ChildProcess::start()`: quote paths with spaces
@@ -74,8 +87,9 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: SDK v2, 4 actions with manifestId, 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
-- Virtual Cable always ON unless Panic Mute (ignore saved virtualCableEnabled)
+- Stream Deck: SDK v2.0.1, 4 actions, 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), onSettingsChanged callbacks
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
 - Credit label "Created by LiveTrack" at bottom-right of main UI
+- Process priority: HIGH_PRIORITY_CLASS at startup
+- Portable mode: `portable.flag` next to exe -> config stored in `./config/`

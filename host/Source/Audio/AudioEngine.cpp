@@ -70,25 +70,6 @@ bool AudioEngine::initialize()
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     outputRouter_.setVirtualMicOutput(&virtualMicOutput_);
 
-    // Auto-detect and connect to a virtual cable device
-    auto virtualDevices = VirtualMicOutput::detectVirtualDevices();
-    if (!virtualDevices.isEmpty()) {
-        // Prefer "Hi-Fi Cable Input" if found
-        juce::String defaultDevice = "Hi-Fi Cable Input(VB-Audio Hi-Fi Cable)";
-        int idx = virtualDevices.indexOf(defaultDevice);
-        if (idx < 0) {
-            // Try partial match
-            for (int i = 0; i < virtualDevices.size(); ++i) {
-                if (virtualDevices[i].containsIgnoreCase("Hi-Fi Cable")) {
-                    idx = i;
-                    break;
-                }
-            }
-        }
-        juce::String device = (idx >= 0) ? virtualDevices[idx] : virtualDevices[0];
-        virtualMicOutput_.initialize(device, currentSampleRate_, currentBufferSize_);
-    }
-
     running_ = true;
     return true;
 }

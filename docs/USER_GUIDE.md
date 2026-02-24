@@ -2,9 +2,9 @@
 
 ## What is DirectPipe? / DirectPipe란?
 
-DirectPipe is a real-time VST2/VST3 host for Windows. It processes your microphone input through a chain of VST plugins and lets you monitor the result through headphones. You can control it remotely via hotkeys, MIDI, Stream Deck, or HTTP API while the app runs in the system tray.
+DirectPipe is a real-time VST2/VST3 host for Windows. It processes your microphone input through a chain of VST plugins and routes the result to two outputs: headphone monitor and virtual cable (for OBS, Discord, etc.). You can control it remotely via hotkeys, MIDI, Stream Deck, or HTTP API while the app runs in the system tray.
 
-DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 VST 플러그인 체인으로 처리하고 헤드폰으로 모니터링할 수 있다. 시스템 트레이에서 실행하면서 단축키, MIDI, Stream Deck, HTTP API로 원격 제어 가능.
+DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 VST 플러그인 체인으로 처리하고 두 가지 출력으로 라우팅한다: 헤드폰 모니터 + 가상 케이블 (OBS, Discord 등). 시스템 트레이에서 실행하면서 단축키, MIDI, Stream Deck, HTTP API로 원격 제어 가능.
 
 ## Quick Start / 빠른 시작
 
@@ -20,11 +20,11 @@ DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 V
 ### Driver Type / 드라이버 타입
 
 - **Windows Audio (WASAPI)** — Default. Non-exclusive access — other apps can use your mic simultaneously. Separate input/output device selection. / 기본값. 비독점 접근. 입출력 장치 개별 선택.
-- **ASIO** — Lower latency. Single device selection. Dynamic sample rate and buffer size from the device. "ASIO Control Panel" button for native driver settings. / 저지연. 단일 장치. ASIO 컨트롤 패널 버튼 제공.
+- **ASIO** — Lower latency. Single device selection. Dynamic sample rate and buffer size from the device. "ASIO Control Panel" button for native driver settings. ASIO channel routing (input/output pair selection). / 저지연. 단일 장치. ASIO 컨트롤 패널 + 채널 라우팅.
 
 ### Sample Rate & Buffer Size / 샘플레이트 & 버퍼 크기
 
-**WASAPI** — Fixed list of common values (44100, 48000 Hz; 64–2048 samples). / 고정 목록.
+**WASAPI** — Fixed list of common values (44100, 48000 Hz; 64-2048 samples). / 고정 목록.
 
 **ASIO** — Lists only what the device supports. Use the ASIO Control Panel for best results. / 장치 지원 값만 표시. ASIO 컨트롤 패널 권장.
 
@@ -68,11 +68,18 @@ Slots save chain-only data (plugins, order, bypass, parameters). Audio and outpu
 
 ### Monitor Output / 모니터 출력
 
-- **Device** — Select output device for monitoring / 모니터링용 출력 장치 선택
+- **Device** — Select output device for monitoring (headphones) / 모니터링용 출력 장치 선택 (헤드폰)
 - **Volume** — Adjust monitor volume / 모니터 볼륨 조절
-- **Enable** — Toggle monitor on/off (default: off) / 모니터 켜기/끄기
+- **Enable** — Toggle monitor on/off / 모니터 켜기/끄기
 
-Lets you hear your processed audio through headphones. / 헤드폰으로 처리된 오디오를 들을 수 있다.
+### Virtual Cable Output / 가상 케이블 출력
+
+DirectPipe routes processed audio to a virtual audio cable (e.g., VB-Audio Hi-Fi Cable) through a separate WASAPI output device. This allows OBS, Discord, and other apps to receive your processed audio.
+
+DirectPipe는 처리된 오디오를 별도의 WASAPI 출력 장치를 통해 가상 오디오 케이블(예: VB-Audio Hi-Fi Cable)로 라우팅한다. OBS, Discord 등에서 처리된 오디오를 수신할 수 있다.
+
+- Select the virtual cable device in Output settings / Output 설정에서 가상 케이블 장치 선택
+- Lock-free ring buffer bridge between audio threads / 오디오 스레드 간 락프리 링 버퍼 브리지
 
 ## VST Plugin Scanner / VST 스캐너
 
@@ -81,17 +88,22 @@ Out-of-process scanner that safely discovers all installed plugins. / 별도 프
 1. Click **"Scan..."** / "Scan..." 클릭
 2. Default directories are pre-configured / 기본 경로 자동 설정
 3. Click **"Scan for Plugins"** — runs in a separate process / 별도 프로세스에서 스캔
-4. Bad plugin crashes → auto-retry (up to 5 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
+4. Bad plugin crashes -> auto-retry (up to 5 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
+5. Scanner logs: `%AppData%/DirectPipe/scanner-log.txt` / 스캐너 로그 경로
 
 ## System Tray / 시스템 트레이
 
-- **Close button** — Minimizes to tray (app keeps running) / X 버튼 → 트레이 최소화
-- **Double-click tray icon** — Shows the main window / 더블클릭 → 창 복원
-- **Right-click tray icon** — Menu: "Show Window" / "Start with Windows" / "Quit DirectPipe" / 우클릭 → 메뉴
+- **Close button** — Minimizes to tray (app keeps running) / X 버튼 -> 트레이 최소화
+- **Double-click tray icon** — Shows the main window / 더블클릭 -> 창 복원
+- **Right-click tray icon** — Menu: "Show Window" / "Start with Windows" / "Quit DirectPipe" / 우클릭 -> 메뉴
 
 ### Start with Windows / 시작 프로그램
 
 Toggle via tray menu or Controls > General tab. Registers DirectPipe in Windows startup (HKCU Run registry). / 트레이 메뉴 또는 Controls > General 탭에서 설정. Windows 시작 시 자동 실행.
+
+### Portable Mode / 포터블 모드
+
+Place a file named `portable.flag` next to `DirectPipe.exe` to store all configuration in `./config/` instead of `%AppData%/DirectPipe/`. / exe 옆에 `portable.flag` 파일을 두면 설정이 `./config/`에 저장된다.
 
 ## External Control / 외부 제어
 
@@ -107,9 +119,11 @@ DirectPipe can be controlled while minimized or in the background. / 최소화 �
 | Ctrl+Shift+N | Input Mute Toggle / 입력 뮤트 토글 |
 | Ctrl+Shift+F1~F5 | Preset Slot A-E / 프리셋 슬롯 A-E |
 
+Shortcuts are customizable in Controls > Hotkey tab. / Controls > Hotkey 탭에서 단축키 변경 가능.
+
 ### Panic Mute / 패닉 뮤트
 
-Immediately silences all outputs. When unmuted, previous monitor enable state is restored. Virtual Cable output is always kept ON. / 전체 출력 즉시 뮤트. 해제 시 모니터 상태 복원. Virtual Cable은 항상 ON 유지.
+Immediately silences all outputs. When unmuted, previous monitor enable state is restored. / 전체 출력 즉시 뮤트. 해제 시 모니터 상태 복원.
 
 ### MIDI Control / MIDI 제어
 
@@ -118,6 +132,8 @@ Immediately silences all outputs. When unmuted, previous monitor enable state is
 3. Click [Learn] next to an action / [Learn] 클릭
 4. Move a knob or press a button on your controller / 컨트롤러 조작
 5. Mapping saved automatically / 자동 저장
+
+Supports 4 mapping types: Toggle, Momentary, Continuous, NoteOnOff. Hot-plug detection with [Rescan] button. / 4가지 매핑 타입 지원. [Rescan]으로 핫플러그 감지.
 
 ### Stream Deck
 
@@ -149,3 +165,8 @@ See [Control API Reference](CONTROL_API.md) for all endpoints. / 전체 엔드�
 - First load of different plugins takes time (plugin initialization) / 처음 다른 플러그인 로드 시 초기화 시간 필요
 - Subsequent switches between same plugins are instant / 이후 같은 플러그인 간 전환은 즉시
 - UI remains responsive during async loading / 비동기 로딩 중 UI 응답 유지
+
+**Virtual Cable not working? / 가상 케이블이 안 되나요?**
+- Install a virtual audio cable driver (e.g., VB-Audio Hi-Fi Cable) / 가상 오디오 케이블 드라이버 설치 (예: VB-Audio)
+- Ensure the virtual device appears in Windows Sound Settings / Windows 사운드 설정에서 가상 장치 확인
+- Select the virtual cable device manually in Output settings / Output 설정에서 수동으로 가상 케이블 장치 선택

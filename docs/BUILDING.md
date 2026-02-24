@@ -25,8 +25,8 @@ Downloaded automatically by CMake FetchContent: / CMake FetchContent로 자동 �
 
 ```bash
 # Clone
-git clone https://github.com/LiveTrack-X/DirectLoopMic.git
-cd DirectLoopMic
+git clone https://github.com/LiveTrack-X/DirectPipe.git
+cd DirectPipe
 
 # Configure and build / 설정 및 빌드
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -71,7 +71,8 @@ Note: `JUCE_DISPLAY_SPLASH_SCREEN=0` is set in CMakeLists.txt (GPL v3 license). 
 
 ```
 build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application / 호스트 앱
-build/bin/Release/directpipe-tests.exe                   Test suite / 테스트
+build/bin/Release/directpipe-tests.exe                   Core test suite / 코어 테스트
+build/bin/Release/directpipe-host-tests.exe              Host test suite / 호스트 테스트
 build/lib/Release/directpipe-core.lib                    Core IPC library / 코어 라이브러리
 dist/com.directpipe.directpipe.streamDeckPlugin          Stream Deck plugin package
 ```
@@ -81,7 +82,7 @@ dist/com.directpipe.directpipe.streamDeckPlugin          Stream Deck plugin pack
 ```bash
 cd streamdeck-plugin
 npm install                  # Install dependencies / 의존성 설치
-npm run icons                # Generate PNG icons from SVG / SVG → PNG 생성
+npm run icons                # Generate PNG icons from SVG / SVG -> PNG 생성
 streamdeck validate .        # Validate structure / 구조 검증
 streamdeck pack . --output ../dist/ --force  # Package / 패키징
 ```
@@ -90,18 +91,30 @@ Requires `@elgato/cli` (`npm install -g @elgato/cli`). / `@elgato/cli` 필요.
 
 ## Test Suite / 테스트
 
-| Test Group | Count | Description |
-|------------|-------|-------------|
-| RingBufferTest | 11 | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
-| SharedMemoryTest | 7 | Shared memory create/map, named events / 공유 메모리 생성/매핑 |
-| LatencyTest | 3 | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
-| ActionDispatcherTest | 23 | Action dispatch, listener management, thread safety / 액션 디스패치, 스레드 안전 |
-| IPCIntegrationTest | 12 | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
+Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE).
+
+두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요).
+
+### directpipe-tests (Core)
+
+| Test Group | Description |
+|------------|-------------|
+| RingBufferTest | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
+| SharedMemoryTest | Shared memory create/map, named events / 공유 메모리 생성/매핑 |
+| LatencyTest | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
+| ActionDispatcherTest | Action dispatch, listener management, thread safety / 액션 디스패치, 스레드 안전 |
+| IPCIntegrationTest | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
+
+### directpipe-host-tests (Host)
+
+| Test Group | Description |
+|------------|-------------|
+| WebSocketProtocolTest | JSON protocol parsing, state serialization / JSON 프로토콜 파싱, 상태 직렬화 |
 
 ```bash
 # Run all tests / 전체 테스트 실행
 cd build && ctest --config Release --output-on-failure
 
 # Run specific test group / 특정 그룹만 실행
-./bin/directpipe-tests --gtest_filter="ActionDispatcherTest.*"
+./bin/Release/directpipe-tests --gtest_filter="ActionDispatcherTest.*"
 ```

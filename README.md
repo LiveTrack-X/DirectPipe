@@ -1,17 +1,22 @@
 # DirectPipe
 
-Windows용 실시간 VST2/VST3 호스트. 마이크 입력에 VST 플러그인 체인을 걸어 실시간으로 처리하고, 처리된 오디오를 모니터 출력으로 들을 수 있다. Light Host와 같은 VST 호스팅 앱이지만, 키보드 단축키 / MIDI CC / Stream Deck / HTTP API를 통한 외부 제어와 빠른 프리셋 전환에 초점을 맞추었다.
+Windows용 실시간 VST2/VST3 호스트. 마이크 입력에 VST 플러그인 체인을 걸어 실시간으로 처리하고, 처리된 오디오를 모니터 출력과 가상 케이블로 라우팅한다. Light Host와 비슷하지만 키보드 단축키 / MIDI CC / Stream Deck / HTTP API를 통한 외부 제어와 빠른 프리셋 전환에 초점을 맞추었다.
 
-Real-time VST2/VST3 host for Windows. Processes microphone input through a VST plugin chain and routes the output to a monitor device. Similar to Light Host, but focused on external control (hotkeys, MIDI CC, Stream Deck, HTTP API) and fast preset switching.
+Real-time VST2/VST3 host for Windows. Processes microphone input through a VST plugin chain, routing output to monitor headphones and virtual cable. Similar to Light Host, but focused on external control (hotkeys, MIDI CC, Stream Deck, HTTP API) and fast preset switching.
 
 ## 동작 원리 / How It Works
 
 ```
-Mic ─→ WASAPI Shared or ASIO ─→ VST2/VST3 Plugin Chain ─→ Monitor Output (Headphones)
+Mic -> WASAPI Shared / ASIO -> VST2/VST3 Plugin Chain
+                                    |
+                              OutputRouter
+                               /        \
+                    Virtual Cable     Monitor Output
+                    (VB-Audio etc.)   (Headphones)
 
 External Control:
-  Hotkeys / MIDI CC / Stream Deck / HTTP
-    → ActionDispatcher → Plugin Bypass, Volume, Preset Switch, Mute ...
+  Hotkeys / MIDI CC / Stream Deck / HTTP / WebSocket
+    -> ActionDispatcher -> Plugin Bypass, Volume, Preset Switch, Mute ...
 ```
 
 ## 주요 기능 / Features
@@ -19,14 +24,15 @@ External Control:
 ### VST 호스팅 / VST Hosting
 
 - **VST2 + VST3** 플러그인 로드 및 인라인 실시간 처리 — Load and process plugins inline in real time
-- **드래그 앤 드롭** 플러그인 체인 편집 — Drag & drop to reorder plugins, toggle bypass, open/close native plugin GUIs
-- **Out-of-process 스캐너** — Scans plugins in a separate process. Bad plugin crashes don't affect the host. Auto-retry with dead man's pedal
-- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 bypass/파라미터만 즉시 전환, 다른 체인이면 비동기 로딩 — 5 chain-only presets. Same chain = instant param switch; different chain = async background loading. Full plugin state preserved
+- **드래그 앤 드롭** 플러그인 체인 편집 — Drag & drop to reorder plugins, toggle bypass, open native plugin GUIs
+- **Out-of-process 스캐너** — Scans plugins in a separate process; bad plugin crashes don't affect the host (auto-retry with dead man's pedal)
+- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 bypass/파라미터만 즉시 전환, 다른 체인이면 비동기 로딩 — 5 chain-only presets with instant or async switching
 
 ### 오디오 / Audio
 
 - **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
-- WASAPI Shared에서 마이크 비독점 — Non-exclusive mic access, other apps can use the mic simultaneously
+- WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
+- **듀얼 출력 라우팅** — Monitor (headphones) + Virtual Cable (VB-Audio 등) 동시 출력
 - **Mono / Stereo** 채널 모드 — Channel mode selection
 - **입력 게인** 조절 — Input gain control
 - **실시간 레벨 미터** (입력/출력 RMS) — Real-time input/output level meters
@@ -37,13 +43,13 @@ External Control:
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
-- **Stream Deck 플러그인** (SDK v2) — Bypass Toggle, Panic Mute, Volume Control (±모드), Preset Switch
+- **Stream Deck 플러그인** (SDK v2) — Bypass Toggle, Panic Mute, Volume Control, Preset Switch
 
 ### UI
 
 - **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록 — Close minimizes to tray, double-click to restore, Start with Windows toggle
 - **탭 설정** — Audio / Output / Controls (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
-- **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 (Virtual Cable은 항상 ON) — Mute all outputs instantly, restores previous state on unmute (Virtual Cable always forced ON)
+- **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 — Mute all outputs instantly, restores previous state on unmute
 - **다크 테마** — Dark theme (custom JUCE LookAndFeel)
 
 ## 빌드 / Build
@@ -53,30 +59,35 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
+자세한 내용은 [Build Guide](docs/BUILDING.md) 참조 / See Build Guide for details.
+
 ### 요구 사항 / Requirements
 
 - Windows 10/11 (64-bit)
 - Visual Studio 2022 (C++ Desktop Development)
 - CMake 3.22+
-- JUCE 7.0.12 (auto-fetched via CMake FetchContent)
-- ASIO SDK (`thirdparty/asiosdk/`) — ASIO 모드 사용 시 / for ASIO driver support
+- JUCE 7.0.12 (CMake FetchContent 자동 다운로드 / auto-fetched)
+- ASIO SDK (`thirdparty/asiosdk/`) — ASIO 모드 사용 시 / for ASIO driver support (optional)
 
 ## 프로젝트 구조 / Project Structure
 
 ```
 host/                     JUCE host application (main)
   Source/
-    Audio/                  AudioEngine, VSTChain, OutputRouter, LatencyMonitor
-    Control/                ActionDispatcher, WebSocketServer, HttpApiServer,
+    Audio/                  AudioEngine, VSTChain, OutputRouter,
+                            VirtualMicOutput, LatencyMonitor
+    Control/                ActionDispatcher, ControlManager, ControlMapping,
+                            WebSocketServer, HttpApiServer,
                             HotkeyHandler, MidiHandler, StateBroadcaster
     IPC/                    SharedMemWriter
-    UI/                     PluginChainEditor, PluginScanner, AudioSettings,
-                            OutputPanel, PresetManager, LevelMeter
-core/                     IPC library (RingBuffer, SharedMemory)
+    UI/                     AudioSettings, OutputPanel, ControlSettingsPanel,
+                            PluginChainEditor, PluginScanner, PresetManager,
+                            LevelMeter, DirectPipeLookAndFeel
+core/                     IPC library (RingBuffer, SharedMemory, Protocol)
 streamdeck-plugin/        Stream Deck plugin (Node.js, SDK v2)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)
-thirdparty/               VST2 SDK, ASIO SDK
+thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 ```
 
 ## 문서 / Documentation

@@ -169,44 +169,13 @@ juce::StringArray VirtualMicOutput::getAvailableOutputDevices() const
     return devices;
 }
 
-juce::StringArray VirtualMicOutput::detectVirtualDevices()
-{
-    juce::StringArray virtualDevices;
-
-    juce::AudioDeviceManager temp;
-    temp.setCurrentAudioDeviceType("Windows Audio", true);
-    temp.initialiseWithDefaultDevices(0, 2);
-
-    if (auto* type = temp.getCurrentDeviceTypeObject()) {
-        for (const auto& name : type->getDeviceNames(false)) {
-            if (isVirtualDeviceName(name))
-                virtualDevices.add(name);
-        }
-    }
-
-    return virtualDevices;
-}
-
-bool VirtualMicOutput::isVirtualDeviceName(const juce::String& name)
-{
-    auto lower = name.toLowerCase();
-
-    return lower.contains("vb-audio") ||
-           lower.contains("vb-cable") ||
-           lower.contains("cable input") ||
-           lower.contains("cable output") ||
-           lower.contains("virtual audio") ||
-           lower.contains("virtual cable") ||
-           lower.contains("voicemeeter") ||
-           lower.contains("hi-fi cable");
-}
-
 juce::String VirtualMicOutput::getSetupGuideMessage()
 {
-    return "Virtual audio cable not detected.\n\n"
+    return "Virtual audio cable not configured.\n\n"
            "Recommended: Install VB-Audio Hi-Fi Cable\n"
            "  - Download from vb-audio.com/Cable\n"
            "  - Install and restart DirectPipe\n"
+           "  - Select the virtual cable device in Output settings\n"
            "  - Select 'Hi-Fi Cable Output' as mic input in Discord/Zoom/OBS\n\n"
            "Other supported virtual cables:\n"
            "  - VB-Cable, VoiceMeeter, Virtual Audio Cable";

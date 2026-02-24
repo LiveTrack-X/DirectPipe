@@ -17,9 +17,9 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 
 ## Prerequisites / 요구 사항
 
-- **DirectPipe** running / DirectPipe 실행 중
+- **DirectPipe** running with WebSocket server enabled (port 8765) / DirectPipe 실행 중 (WebSocket 서버 활성화)
 - **Elgato Stream Deck** software v6.9+ / Stream Deck 소프트웨어 v6.9+
-- **Node.js** v20+ / Node.js v20+
+- **Node.js** v20+ (bundled with Stream Deck software) / Node.js v20+
 
 ---
 
@@ -58,6 +58,7 @@ If DirectPipe is not running, the plugin reconnects automatically: / DirectPipe 
 - Initial delay: 2s / 초기 딜레이: 2초
 - Max delay: 30s / 최대 딜레이: 30초
 - Backoff factor: 1.5x / 백오프 팩터: 1.5배
+- Pending message queue (cap 50) while disconnected / 연결 해제 중 대기 큐 (최대 50)
 
 While disconnected, all buttons show an alert indicator. / 연결 해제 시 모든 버튼에 경고 표시.
 
@@ -77,12 +78,13 @@ const DIRECTPIPE_WS_URL = "ws://localhost:8770";
 
 **UUID:** `com.directpipe.directpipe.bypass-toggle`
 
-- **Short press** — Toggle bypass for configured plugin index / 짧게 누름 → 설정된 플러그인 Bypass
-- **Long press** (>500ms) — Toggle master bypass / 길게 누름 → 마스터 Bypass
+- **Short press** — Toggle bypass for configured plugin index / 짧게 누름 -> 설정된 플러그인 Bypass
+- **Long press** (>500ms) — Toggle master bypass / 길게 누름 -> 마스터 Bypass
 
 **Display:** Plugin name + "Bypassed" or "Active". Master bypass shows "MASTER Bypassed". / 플러그인 이름 + 상태 표시.
 
-**Settings:** `pluginIndex` (number, default: 0) — Set via Property Inspector / PI에서 설정
+**Settings (Property Inspector):**
+- `pluginNumber` — Plugin number (1-based in PI, converted to 0-based internally) / 플러그인 번호 (PI에서 1부터 시작)
 
 ---
 
@@ -102,17 +104,24 @@ No settings required. / 설정 불필요.
 
 **UUID:** `com.directpipe.directpipe.volume-control`
 
-- **Mute Toggle mode** — Press to toggle mute for target / 뮤트 토글 모드 — 대상 뮤트 토글
-- **Volume Up mode** — Press to increase volume by step size / 볼륨 Up 모드 — 스텝만큼 증가
-- **Volume Down mode** — Press to decrease volume by step size / 볼륨 Down 모드 — 스텝만큼 감소
-- **Dial rotate** (Stream Deck+) — Adjust volume ±5% per tick / 다이얼로 볼륨 ±5% 조절
+Supports both Keypad and SD+ Encoder (dial). / 키패드와 SD+ 인코더 (다이얼) 모두 지원.
 
-**Display:** Target name + volume % or "MUTED". Volume Up/Down shows +/- indicator. / 대상 이름 + 볼륨 % 또는 "MUTED". Up/Down 시 +/- 표시.
+**Keypad modes:**
+- **Mute Toggle mode** — Press to toggle mute for target / 뮤트 토글 모드
+- **Volume Up mode** — Press to increase volume by step size / 볼륨 Up 모드
+- **Volume Down mode** — Press to decrease volume by step size / 볼륨 Down 모드
 
-**Settings:**
-- `target` — `"monitor"`, `"input"`, or `"virtual_mic"` / 대상 선택
+**Encoder (Stream Deck+):**
+- **Dial rotate** — Adjust volume +/-5% per tick / 다이얼 회전 -> 볼륨 +-5% 조절
+
+**Display:** Target name + volume % or "MUTED". Volume Up/Down shows +/- indicator. / 대상 이름 + 볼륨 % 또는 "MUTED".
+
+**Settings (Property Inspector):**
+- `target` — `"monitor"` (default), `"input"`, or `"virtual_mic"` / 대상 선택
 - `mode` — `"mute"` (default), `"volume_up"`, or `"volume_down"` / 버튼 동작 모드
-- `step` — 1–25% (default: 5%) / 볼륨 스텝 크기
+- `step` — 1-25% (default: 5%) / 볼륨 스텝 크기
+
+**Input mute detection:** When target is `"input"`, checks both `muted` and `input_muted` fields from state. / 입력 대상일 때 `muted`와 `input_muted` 모두 확인.
 
 ---
 
@@ -120,12 +129,33 @@ No settings required. / 설정 불필요.
 
 **UUID:** `com.directpipe.directpipe.preset-switch`
 
-- **With slot configured** — Switch to specific slot / 슬롯 설정 시 → 해당 슬롯으로 전환
-- **Without config** — Cycle to next preset / 미설정 시 → 다음 프리셋 순환
+- **With slot configured** — Switch to specific slot (A-E) / 슬롯 설정 시 -> 해당 슬롯으로 전환
+- **With "cycle" or no config** — Cycle to next preset / 미설정 또는 "cycle" -> 다음 프리셋 순환
+- **With preset index** — Load preset by index / 프리셋 인덱스로 로드
 
-**Display:** Slot label (A-E) with active indicator / 슬롯 라벨 + 활성 표시
+**Display:** Slot label (A-E) with "[A] Active" for active slot / 슬롯 라벨 + 활성 표시
 
-**Settings:** `slotIndex` (0–4 for A-E, or "cycle"). Set via Property Inspector. / PI에서 슬롯 선택.
+**Settings (Property Inspector):**
+- `slotIndex` — 0-4 for specific slot (A-E), or `"cycle"` for cycling / 슬롯 번호 또는 "cycle"
+
+---
+
+## Technical Details / 기술 세부사항
+
+### SDK Version
+
+Built with `@elgato/streamdeck` SDK v2.0.1. Uses `SingletonAction` class-based architecture. / SDK v2.0.1 기반. SingletonAction 클래스 기반 아키텍처.
+
+### WebSocket Client (`websocket-client.js`)
+
+- EventEmitter-based: `connected`, `disconnected`, `state`, `error`, `message` events / 이벤트 기반
+- Ping keepalive every 15s / 15초마다 핑 유지
+- Pending message queue (cap 50) during disconnection / 연결 해제 중 대기 큐 (최대 50)
+- Auto-reconnect with exponential backoff / 지수 백오프 자동 재연결
+
+### Async Settings
+
+All actions use `await action.getSettings()` (async) for thread-safe settings access. / 모든 액션에서 `await action.getSettings()`으로 스레드 안전 설정 접근.
 
 ---
 
@@ -142,7 +172,7 @@ streamdeck-plugin/
     actions/
       bypass-toggle.js        Bypass toggle SingletonAction / Bypass 토글 액션
       panic-mute.js           Panic mute SingletonAction / 패닉 뮤트 액션
-      volume-control.js       Volume control SingletonAction (mute/up/down modes) / 볼륨 제어 액션
+      volume-control.js       Volume control SingletonAction / 볼륨 제어 액션
       preset-switch.js        Preset switch SingletonAction / 프리셋 전환 액션
     inspectors/
       bypass-pi.html          Bypass settings (sdpi-components v4) / Bypass 설정 UI
@@ -151,7 +181,7 @@ streamdeck-plugin/
   images/                     Button icons (PNG + @2x) / 버튼 아이콘
   icons-src/                  SVG icon sources / SVG 아이콘 원본
   scripts/
-    generate-icons.mjs        SVG → PNG generation script (sharp) / 아이콘 생성 스크립트
+    generate-icons.mjs        SVG -> PNG generation script (sharp) / 아이콘 생성 스크립트
 dist/
   com.directpipe.directpipe.streamDeckPlugin   Packaged plugin / 패키지 파일
 ```
@@ -163,11 +193,16 @@ dist/
 **All buttons show alert? / 모든 버튼에 경고 표시?**
 - DirectPipe is not running or WebSocket connection failed. / DirectPipe 미실행 또는 WebSocket 연결 실패.
 - Check WebSocket port (default: 8765). / 포트 확인.
+- Ensure WebSocket server is enabled in DirectPipe Controls > StreamDeck tab. / Controls > StreamDeck 탭에서 서버 활성화 확인.
 
 **Plugin keeps restarting? / 플러그인이 계속 재시작?**
 - Check logs: `%APPDATA%\Elgato\StreamDeck\logs\` / 로그 확인
 - Ensure `node_modules/` exists in the installed plugin folder. / 설치 폴더에 node_modules 확인.
 - Node.js v20+ required. / Node.js v20+ 필요.
+
+**Bypass shows wrong plugin? / Bypass가 잘못된 플러그인을 표시?**
+- Plugin number in Property Inspector is 1-based (Plugin #1 = first). / PI에서 플러그인 번호는 1부터 시작.
+- Internally converted to 0-based index. / 내부적으로 0-based 인덱스로 변환.
 
 ---
 
@@ -177,7 +212,7 @@ dist/
 
 ```bash
 cd streamdeck-plugin
-npm run icons    # SVG → PNG generation (requires sharp)
+npm run icons    # SVG -> PNG generation (requires sharp)
 ```
 
 ### Package Plugin / 플러그인 패키징

@@ -11,7 +11,7 @@ DirectPipe는 두 가지 네트워크 인터페이스를 제공한다: 실시간
 | WebSocket | 8765 | ws://127.0.0.1 |
 | HTTP | 8766 | http://127.0.0.1 |
 
-Both bind to localhost only for security. Ports configurable in Settings > Controls > Server Ports. / 보안을 위해 localhost만 바인딩. 설정에서 포트 변경 가능.
+Both bind to localhost only for security. Ports configurable in Settings > Controls > StreamDeck tab. / 보안을 위해 localhost만 바인딩. 설정에서 포트 변경 가능.
 
 ---
 
@@ -29,17 +29,23 @@ On connection, the server sends the current state as a JSON message. / 연결 �
 
 All messages are JSON with a `type` field. / 모든 메시지는 `type` 필드가 있는 JSON.
 
-**Client → Server (action request):**
+**Client -> Server (action request):**
 ```json
 { "type": "action", "action": "<action_name>", "params": { ... } }
 ```
 
-**Server → Client (state update):**
+**Server -> Client (state update):**
 ```json
 { "type": "state", "data": { ... } }
 ```
 
 State updates are pushed automatically on every state change. / 상태 변경 시 자동 푸시.
+
+### Connection Notes / 연결 참고
+
+- Server implements RFC 6455 with custom SHA-1 handshake / RFC 6455 구현 (커스텀 SHA-1)
+- Dead clients are automatically cleaned up during broadcast / 브로드캐스트 시 죽은 클라이언트 자동 정리
+- Multiple clients can connect simultaneously / 다중 클라이언트 동시 연결 가능
 
 ---
 
@@ -96,7 +102,7 @@ State updates are pushed automatically on every state change. / 상태 변경 �
 { "type": "action", "action": "panic_mute", "params": {} }
 ```
 
-Immediately mutes all outputs. Send again to unmute. / 전체 뮤트. 재전송 시 해제.
+Immediately mutes all outputs. Send again to unmute (previous monitor enable state is restored). / 전체 뮤트. 재전송 시 해제 (이전 모니터 상태 복원).
 
 ---
 
@@ -140,11 +146,23 @@ Immediately mutes all outputs. Send again to unmute. / 전체 뮤트. 재전송 
 
 ---
 
-#### `next_preset` / `previous_preset` — Cycle Presets / 프리셋 순환
+#### `next_preset` — Next Preset / 다음 프리셋
 
 ```json
 { "type": "action", "action": "next_preset", "params": {} }
 ```
+
+Cycles forward to the next occupied preset slot. / 다음 사용 중인 프리셋 슬롯으로 이동.
+
+---
+
+#### `previous_preset` — Previous Preset / 이전 프리셋
+
+```json
+{ "type": "action", "action": "previous_preset", "params": {} }
+```
+
+Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프리셋 슬롯으로 이동.
 
 ---
 
@@ -169,7 +187,8 @@ Immediately mutes all outputs. Send again to unmute. / 전체 뮤트. 재전송 
     "cpu_percent": 3.1,
     "sample_rate": 48000,
     "buffer_size": 128,
-    "channel_mode": 1
+    "channel_mode": 2,
+    "virtual_cable_active": true
   }
 }
 ```
@@ -180,45 +199,50 @@ Immediately mutes all outputs. Send again to unmute. / 전체 뮤트. 재전송 
 | `plugins[].name` | string | Plugin name / 플러그인 이름 |
 | `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
 | `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
-| `volumes.input` | number | Input gain (0.0–1.0) / 입력 게인 |
-| `volumes.virtual_mic` | number | Virtual mic volume (0.0–1.0) / 가상 마이크 볼륨 |
-| `volumes.monitor` | number | Monitor volume (0.0–1.0) / 모니터 볼륨 |
+| `volumes.input` | number | Input gain (0.0-1.0) / 입력 게인 |
+| `volumes.virtual_mic` | number | Virtual mic volume (0.0-1.0) / 가상 마이크 볼륨 |
+| `volumes.monitor` | number | Monitor volume (0.0-1.0) / 모니터 볼륨 |
 | `master_bypassed` | boolean | Entire chain bypassed / 전체 체인 Bypass |
 | `muted` | boolean | Panic mute active / 패닉 뮤트 상태 |
 | `input_muted` | boolean | Input muted / 입력 뮤트 |
-| `active_slot` | number | Active preset slot (0–4) / 활성 슬롯 |
+| `active_slot` | number | Active preset slot (0-4 = A-E) / 활성 슬롯 |
 | `preset` | string | Current preset name / 현재 프리셋 이름 |
 | `latency_ms` | number | Latency in ms / 레이턴시 (ms) |
 | `level_db` | number | Input level in dBFS / 입력 레벨 (dBFS) |
 | `cpu_percent` | number | Audio CPU usage % / 오디오 CPU 사용률 |
 | `sample_rate` | number | Sample rate (Hz) / 샘플레이트 |
 | `buffer_size` | number | Buffer size (samples) / 버퍼 크기 |
-| `channel_mode` | number | 1=Mono, 2=Stereo |
+| `channel_mode` | number | 1=Mono, 2=Stereo (default: 2) |
+| `virtual_cable_active` | boolean | Virtual cable output status / 가상 케이블 상태 |
 
 ---
 
 ## HTTP REST API
 
-Simple GET endpoints for one-shot commands. / 원샷 커맨드용 GET 엔드포인트.
+Simple GET endpoints for one-shot commands. All responses return JSON. / 원샷 커맨드용 GET 엔드포인트. 모든 응답은 JSON.
 
 Base URL: `http://127.0.0.1:8766`
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/status` | Full state (same as WebSocket state) / 전체 상태 |
-| `GET /api/bypass/:index/toggle` | Toggle plugin bypass / 플러그인 Bypass 토글 |
+| `GET /api/status` | Full state (same as WebSocket state object) / 전체 상태 |
+| `GET /api/bypass/:index/toggle` | Toggle plugin bypass (0-based index) / 플러그인 Bypass 토글 |
 | `GET /api/bypass/master/toggle` | Toggle master bypass / 마스터 Bypass 토글 |
-| `GET /api/mute/toggle` | Toggle mute / 뮤트 토글 |
+| `GET /api/mute/toggle` | Toggle mute (all outputs) / 뮤트 토글 (전체) |
 | `GET /api/mute/panic` | Panic mute / 패닉 뮤트 |
-| `GET /api/volume/:target/:value` | Set volume (target: `input`, `virtual_mic`, `monitor`; value: 0.0–1.0) / 볼륨 설정 |
+| `GET /api/volume/:target/:value` | Set volume (target: `input`, `virtual_mic`, `monitor`; value: 0.0-1.0) / 볼륨 설정 |
 | `GET /api/preset/:index` | Load preset / 프리셋 로드 |
-| `GET /api/slot/:index` | Switch preset slot (0–4) / 슬롯 전환 |
+| `GET /api/slot/:index` | Switch preset slot (0-4 = A-E) / 슬롯 전환 |
 | `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |
 | `GET /api/gain/:delta` | Adjust input gain (dB) / 입력 게인 조절 |
 
-All responses return JSON. Success: `{ "ok": true, "action": "..." }`. Error: `{ "error": "..." }`.
+**Success response:** `{ "ok": true, "action": "..." }`
 
-모든 응답은 JSON. 성공: `{ "ok": true }`, 에러: `{ "error": "..." }`.
+**Error response:** `{ "error": "..." }`
+
+CORS header `Access-Control-Allow-Origin: *` is included in all responses. / 모든 응답에 CORS 헤더 포함.
+
+Read timeout: 3 seconds. / 읽기 타임아웃: 3초.
 
 ---
 
@@ -241,6 +265,9 @@ curl http://127.0.0.1:8766/api/volume/monitor/0.5
 
 # Switch to slot C / 슬롯 C로 전환
 curl http://127.0.0.1:8766/api/slot/2
+
+# Toggle input mute / 입력 뮤트 토글
+curl http://127.0.0.1:8766/api/input-mute/toggle
 ```
 
 ### Python (WebSocket)

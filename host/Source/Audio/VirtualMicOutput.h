@@ -44,7 +44,6 @@ public:
 
     // --- Device enumeration ---
     juce::StringArray getAvailableOutputDevices() const;
-    static juce::StringArray detectVirtualDevices();
 
     // --- Status queries ---
     VirtualCableStatus getStatus() const { return status_.load(std::memory_order_relaxed); }
@@ -66,8 +65,6 @@ private:
         const juce::AudioIODeviceCallbackContext& context) override;
     void audioDeviceAboutToStart(juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
-
-    static bool isVirtualDeviceName(const juce::String& name);
 
     AudioRingBuffer ringBuffer_;
     std::unique_ptr<juce::AudioDeviceManager> deviceManager_;
