@@ -57,7 +57,13 @@ void VSTChain::prepareToPlay(double sampleRate, int blockSize)
     graph_->setPlayConfigDetails(2, 2, sampleRate, blockSize);
     graph_->prepareToPlay(sampleRate, blockSize);
 
-    // Add I/O nodes
+    // Remove old I/O nodes to prevent accumulation on repeated prepareToPlay calls
+    if (inputNodeId_.uid != 0)
+        graph_->removeNode(inputNodeId_);
+    if (outputNodeId_.uid != 0)
+        graph_->removeNode(outputNodeId_);
+
+    // Add fresh I/O nodes
     auto inputNode = graph_->addNode(
         std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
             juce::AudioProcessorGraph::AudioGraphIOProcessor::audioInputNode));
@@ -69,6 +75,10 @@ void VSTChain::prepareToPlay(double sampleRate, int blockSize)
         inputNodeId_ = inputNode->nodeID;
         outputNodeId_ = outputNode->nodeID;
     }
+
+    // Pre-allocate MidiBuffer to avoid RT allocation
+    emptyMidi_.ensureSize(256);
+    emptyMidi_.clear();
 
     rebuildGraph();
     prepared_ = true;
@@ -84,14 +94,15 @@ void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
 {
     if (!prepared_) return;
 
-    // Use pre-allocated empty MidiBuffer (no per-callback allocation)
-    emptyMidi_.clear();
-
     // Process through the graph — buffer size must match prepareToPlay blockSize
     // If mismatched, skip processing rather than allocating in RT thread
     if (buffer.getNumSamples() != numSamples) return;
 
     graph_->processBlock(buffer, emptyMidi_);
+
+    // Clear immediately after processing to prevent MIDI output accumulation
+    // (avoids heap growth if plugins write MIDI into the buffer)
+    emptyMidi_.clear();
 }
 
 void VSTChain::scanForPlugins(const juce::StringArray& directoriesToScan)

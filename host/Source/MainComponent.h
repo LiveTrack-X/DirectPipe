@@ -35,6 +35,7 @@ public:
 
     // ActionListener
     void onAction(const ActionEvent& event) override;
+    void handleAction(const ActionEvent& event);
 
     /** @brief Refresh all UI components to match engine state. */
     void refreshUI();
@@ -100,7 +101,7 @@ private:
     // Dirty-flag auto-save (debounce: save ~1s after last change)
     bool settingsDirty_ = false;
     int dirtyCooldown_ = 0;   // ticks remaining before save (30Hz)
-    bool loadingSlot_ = false;
+    std::atomic<bool> loadingSlot_ { false };
 
     // Panic mute: remember pre-mute monitor state for restore
     // Virtual Cable always restores to ON (only Panic Mute disables it)

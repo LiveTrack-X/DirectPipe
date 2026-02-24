@@ -54,9 +54,9 @@ class VolumeControlAction extends SingletonAction {
         if (state) this._updateDisplay(ev.action, ev.payload.settings, state);
     }
 
-    updateAllFromState(state) {
+    async updateAllFromState(state) {
         for (const action of this.actions) {
-            const settings = action.getSettings?.() ?? {};
+            const settings = await action.getSettings().catch(() => ({}));
             this._updateDisplay(action, settings, state);
         }
     }

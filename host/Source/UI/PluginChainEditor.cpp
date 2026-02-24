@@ -32,9 +32,9 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
 
     removeButton_.onClick = [this] {
         int idx = rowIndex_;
-        auto& chain = owner_.vstChain_;
-        juce::MessageManager::callAsync([&chain, idx] {
-            chain.removePlugin(idx);
+        auto* chainPtr = &owner_.vstChain_;
+        juce::MessageManager::callAsync([chainPtr, idx] {
+            chainPtr->removePlugin(idx);
         });
     };
 

@@ -77,7 +77,7 @@ Shared static library for IPC. / IPC용 정적 라이브러리.
 
 ### 3. Stream Deck Plugin (`streamdeck-plugin/`) / 스트림 덱 플러그인
 
-Optional Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v3). / 선택적 Stream Deck 플러그인 (SDK v3).
+Optional Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v2). / 선택적 Stream Deck 플러그인 (SDK v2).
 
 - Connects via WebSocket (`ws://localhost:8765`) / WebSocket으로 연결
 - 4 SingletonAction subclasses: Bypass Toggle, Panic Mute, Volume Control, Preset Switch / 4개 SingletonAction 액션

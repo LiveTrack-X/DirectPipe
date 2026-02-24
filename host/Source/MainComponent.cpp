@@ -237,6 +237,16 @@ MainComponent::~MainComponent()
 
 void MainComponent::onAction(const ActionEvent& event)
 {
+    // Dispatch to message thread — onAction may be called from WebSocket/MIDI threads
+    if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
+        juce::MessageManager::callAsync([this, event] { handleAction(event); });
+        return;
+    }
+    handleAction(event);
+}
+
+void MainComponent::handleAction(const ActionEvent& event)
+{
     switch (event.action) {
         case Action::PluginBypass: {
             auto* slot = audioEngine_.getVSTChain().getPluginSlot(event.intParam);

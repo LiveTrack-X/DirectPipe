@@ -7,7 +7,7 @@
 - **Property Inspector**: Updated Bypass Toggle settings to use 1-based "Plugin #" field for clarity
 
 ### Improvements
-- **SDK v3 Migration**: Fully migrated to `@elgato/streamdeck` SDK v3 with `SingletonAction` class-based architecture
+- **SDK v2 Migration**: Fully migrated to `@elgato/streamdeck` SDK v2 with `SingletonAction` class-based architecture
 - **WebSocket Client**: Auto-reconnect with exponential backoff (1s → 30s max) for reliable DirectPipe connection
 - **State Sync**: Real-time state broadcast — all buttons update instantly when DirectPipe state changes
 - **Connection Alert**: Visual alert on all action buttons when DirectPipe is disconnected

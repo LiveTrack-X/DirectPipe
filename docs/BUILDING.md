@@ -12,6 +12,7 @@
 ### Optional / 선택
 
 - **ASIO SDK** — For ASIO driver support. Place in `thirdparty/asiosdk/`. / ASIO 드라이버 지원용.
+- **VST2 SDK** — Place VST2 interface headers in `thirdparty/VST2_SDK/pluginterfaces/vst2.x/` (`aeffect.h`, `aeffectx.h`). Not included in the repository due to Steinberg licensing. / Steinberg 라이선스로 인해 저장소에 미포함. 직접 배치 필요.
 
 ### Auto-fetched Dependencies / 자동 다운로드 의존성
 
@@ -19,7 +20,6 @@ Downloaded automatically by CMake FetchContent: / CMake FetchContent로 자동 �
 
 - **JUCE 7.0.12** — Audio framework / 오디오 프레임워크
 - **Google Test 1.14.0** — Unit testing / 유닛 테스트
-- **VST2 SDK** — Included in `thirdparty/VST2_SDK/` (interface headers only) / 인터페이스 헤더만 포함
 
 ## Quick Build / 빠른 빌드
 
@@ -64,6 +64,7 @@ Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE. / 또는
 |--------|---------|-------------|
 | `DIRECTPIPE_BUILD_TESTS` | ON | Build unit tests (Google Test) / 유닛 테스트 빌드 |
 | `DIRECTPIPE_BUILD_HOST` | ON | Build JUCE host application / 호스트 앱 빌드 |
+| `DIRECTPIPE_BUILD_OBS_PLUGIN` | ON | Build OBS Studio plugin (requires OBS SDK; skipped if not found) / OBS 플러그인 빌드 (SDK 없으면 자동 스킵) |
 
 Note: `JUCE_DISPLAY_SPLASH_SCREEN=0` is set in CMakeLists.txt (GPL v3 license). / GPL v3 라이선스로 JUCE 스플래시 비활성화.
 

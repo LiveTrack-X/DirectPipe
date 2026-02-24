@@ -133,7 +133,7 @@ No settings required. / 설정 불필요.
 
 ```
 streamdeck-plugin/
-  manifest.json               SDK v3 plugin manifest / 플러그인 매니페스트
+  manifest.json               SDK v2 plugin manifest / 플러그인 매니페스트
   package.json                Node.js package (@elgato/streamdeck, ws)
   .sdignore                   Files excluded from packaging / 패키징 제외 파일
   src/

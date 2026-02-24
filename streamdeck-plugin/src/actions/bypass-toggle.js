@@ -48,9 +48,9 @@ class BypassToggleAction extends SingletonAction {
     }
 
     /** Broadcast from plugin.js on DirectPipe state change */
-    updateAllFromState(state) {
+    async updateAllFromState(state) {
         for (const action of this.actions) {
-            const settings = action.getSettings?.() ?? {};
+            const settings = await action.getSettings().catch(() => ({}));
             this._updateDisplay(action, settings, state);
         }
     }

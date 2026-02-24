@@ -430,12 +430,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     const bool muted = muted_.load(std::memory_order_relaxed);
 
     // 1. Copy input data into the pre-allocated work buffer (no heap allocation)
-    int workChannels = juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels));
     auto& buffer = workBuffer_;
-    if (buffer.getNumChannels() < workChannels || buffer.getNumSamples() < numSamples) {
-        // Only resize if the pre-allocated buffer is too small (should not happen normally)
-        buffer.setSize(workChannels, numSamples, false, false, true);
-    }
+    int workChannels = juce::jmin(
+        juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels)),
+        buffer.getNumChannels());
+    numSamples = juce::jmin(numSamples, buffer.getNumSamples());
     buffer.clear();
 
     if (chMode == 1) {
@@ -541,9 +540,9 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     currentSampleRate_ = device->getCurrentSampleRate();
     currentBufferSize_ = device->getCurrentBufferSizeSamples();
 
-    // Pre-allocate work buffer to avoid heap allocation in audio callback
-    // Use at least 2 channels, or more if device provides more
-    int maxChannels = juce::jmax(2, device->getActiveInputChannels().countNumberOfSetBits(),
+    // Pre-allocate work buffer conservatively to avoid heap allocation in audio callback
+    // Use 8 channels minimum to handle any device channel configuration
+    int maxChannels = juce::jmax(8, device->getActiveInputChannels().countNumberOfSetBits(),
                                     device->getActiveOutputChannels().countNumberOfSetBits());
     workBuffer_.setSize(maxChannels, currentBufferSize_);
 

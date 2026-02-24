@@ -37,7 +37,7 @@ External Control:
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
-- **Stream Deck 플러그인** (SDK v3) — Bypass Toggle, Panic Mute, Volume Control (±모드), Preset Switch
+- **Stream Deck 플러그인** (SDK v2) — Bypass Toggle, Panic Mute, Volume Control (±모드), Preset Switch
 
 ### UI
 
@@ -74,7 +74,7 @@ host/                     JUCE host application (main)
                             OutputPanel, PresetManager, LevelMeter
 core/                     IPC library (RingBuffer, SharedMemory)
 driver/                   Virtual Loop Mic kernel driver (experimental)
-streamdeck-plugin/        Stream Deck plugin (Node.js, SDK v3)
+streamdeck-plugin/        Stream Deck plugin (Node.js, SDK v2)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)
 thirdparty/               VST2 SDK, ASIO SDK
