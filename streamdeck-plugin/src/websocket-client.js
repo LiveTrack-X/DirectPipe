@@ -136,8 +136,11 @@ class DirectPipeClient extends EventEmitter {
             return true;
         }
 
-        // Queue message for when connection is restored
+        // Queue message for when connection is restored (cap at 50 to prevent memory growth)
         this._pendingMessages.push(json);
+        if (this._pendingMessages.length > 50) {
+            this._pendingMessages.shift(); // drop oldest
+        }
         return false;
     }
 

@@ -75,7 +75,9 @@ class VolumeControlAction extends SingletonAction {
         if (!volumes) return;
 
         const volume = volumes[target];
-        const isMuted = state.data.muted === true;
+        // Global panic mute, or input-specific mute for input target
+        const isMuted = state.data.muted === true ||
+            (target === "input" && state.data.input_muted === true);
         const displayName = TARGET_NAMES[target] || target;
 
         let title;

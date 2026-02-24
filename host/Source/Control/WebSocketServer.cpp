@@ -4,6 +4,7 @@
  */
 
 #include "WebSocketServer.h"
+#include <algorithm>
 #include <cstring>
 #include <sstream>
 
@@ -428,6 +429,20 @@ void WebSocketServer::processMessage(const std::string& message)
 void WebSocketServer::broadcastToClients(const std::string& message)
 {
     std::lock_guard<std::mutex> lock(clientsMutex_);
+
+    // Sweep dead connections before broadcasting
+    clients_.erase(
+        std::remove_if(clients_.begin(), clients_.end(),
+            [](const std::unique_ptr<ClientConnection>& conn) {
+                if (!conn->socket || !conn->socket->isConnected()) {
+                    if (conn->thread.joinable())
+                        conn->thread.join();
+                    return true;
+                }
+                return false;
+            }),
+        clients_.end());
+
     for (auto& conn : clients_) {
         if (conn->socket && conn->socket->isConnected()) {
             sendFrame(conn->socket.get(), message);

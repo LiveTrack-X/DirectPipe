@@ -77,6 +77,9 @@ void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
 {
     if (!client || !client->isConnected()) return;
 
+    // Timeout: wait up to 3 seconds for data to prevent blocking the accept loop
+    if (client->waitUntilReady(true, 3000) <= 0) return;
+
     char buffer[4096] = {};
     int bytesRead = client->read(buffer, sizeof(buffer) - 1, false);
     if (bytesRead <= 0) return;
