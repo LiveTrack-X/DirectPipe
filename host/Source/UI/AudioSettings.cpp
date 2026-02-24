@@ -295,6 +295,8 @@ void AudioSettings::onDriverTypeChanged()
         outputChLabel_.setVisible(asio);
         outputChCombo_.setVisible(asio);
         resized();
+
+        if (onSettingsChanged) onSettingsChanged();
     }
 }
 
@@ -332,6 +334,8 @@ void AudioSettings::onInputDeviceChanged()
     rebuildSampleRateList();
     rebuildBufferSizeList();
     updateLatencyDisplay();
+
+    if (onSettingsChanged) onSettingsChanged();
 }
 
 void AudioSettings::onOutputDeviceChanged()
@@ -368,6 +372,8 @@ void AudioSettings::onOutputDeviceChanged()
     rebuildSampleRateList();
     rebuildBufferSizeList();
     updateLatencyDisplay();
+
+    if (onSettingsChanged) onSettingsChanged();
 }
 
 void AudioSettings::onInputChannelChanged()
@@ -378,6 +384,8 @@ void AudioSettings::onInputChannelChanged()
     int firstChannel = (id - 1) * 2;  // pairs: 0-1, 2-3, 4-5, ...
     int numCh = stereoButton_.getToggleState() ? 2 : 1;
     engine_.setActiveInputChannels(firstChannel, numCh);
+
+    if (onSettingsChanged) onSettingsChanged();
 }
 
 void AudioSettings::onOutputChannelChanged()
@@ -388,6 +396,8 @@ void AudioSettings::onOutputChannelChanged()
     int firstChannel = (id - 1) * 2;
     int numCh = stereoButton_.getToggleState() ? 2 : 1;
     engine_.setActiveOutputChannels(firstChannel, numCh);
+
+    if (onSettingsChanged) onSettingsChanged();
 }
 
 void AudioSettings::onSampleRateChanged()
@@ -399,6 +409,8 @@ void AudioSettings::onSampleRateChanged()
     if (id - 1 < rates.size()) {
         engine_.setSampleRate(rates[id - 1]);
         updateLatencyDisplay();
+
+        if (onSettingsChanged) onSettingsChanged();
     }
 }
 
@@ -411,6 +423,8 @@ void AudioSettings::onBufferSizeChanged()
     if (id - 1 < sizes.size()) {
         engine_.setBufferSize(sizes[id - 1]);
         updateLatencyDisplay();
+
+        if (onSettingsChanged) onSettingsChanged();
     }
 }
 
@@ -419,6 +433,8 @@ void AudioSettings::onChannelModeChanged()
     int channels = stereoButton_.getToggleState() ? 2 : 1;
     engine_.setChannelMode(channels);
     updateChannelModeDescription();
+
+    if (onSettingsChanged) onSettingsChanged();
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

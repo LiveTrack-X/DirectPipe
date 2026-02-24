@@ -8,6 +8,7 @@ const { SingletonAction } = require("@elgato/streamdeck");
 const LONG_PRESS_THRESHOLD_MS = 500;
 
 class BypassToggleAction extends SingletonAction {
+    manifestId = "com.directpipe.directpipe.bypass-toggle";
     /** @type {Map<string, number>} keyDown timestamps per action id */
     _keyDownTimes = new Map();
 
@@ -89,6 +90,6 @@ class BypassToggleAction extends SingletonAction {
     }
 }
 
-BypassToggleAction.UUID = "com.directpipe.bypass-toggle";
+BypassToggleAction.UUID = "com.directpipe.directpipe.bypass-toggle";
 
 module.exports = { BypassToggleAction };

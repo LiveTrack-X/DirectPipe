@@ -22,6 +22,7 @@ MainComponent::MainComponent()
 
     // ── Audio Settings ──
     audioSettings_ = std::make_unique<AudioSettings>(audioEngine_);
+    audioSettings_->onSettingsChanged = [this] { markSettingsDirty(); };
 
     // ── Plugin Chain Editor ──
     pluginChainEditor_ = std::make_unique<PluginChainEditor>(audioEngine_.getVSTChain());
@@ -43,11 +44,13 @@ MainComponent::MainComponent()
     inputGainSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
     inputGainSlider_.onValueChange = [this] {
         audioEngine_.setInputGain(static_cast<float>(inputGainSlider_.getValue()));
+        markSettingsDirty();
     };
     addAndMakeVisible(inputGainSlider_);
 
     // ── Output Panel ──
     outputPanel_ = std::make_unique<OutputPanel>(audioEngine_);
+    outputPanel_->onSettingsChanged = [this] { markSettingsDirty(); };
 
     // ── Control Settings Panel ──
     controlSettingsPanel_ = std::make_unique<ControlSettingsPanel>(*controlManager_);
@@ -79,6 +82,7 @@ MainComponent::MainComponent()
         int slot = presetManager_->getActiveSlot();
         if (slot >= 0)
             presetManager_->saveSlot(slot);
+        markSettingsDirty();
     };
 
     // Auto-save when a plugin editor window is closed (captures parameter changes)
@@ -86,6 +90,7 @@ MainComponent::MainComponent()
         int slot = presetManager_->getActiveSlot();
         if (slot >= 0)
             presetManager_->saveSlot(slot);
+        markSettingsDirty();
     };
 
     savePresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
@@ -150,19 +155,19 @@ MainComponent::MainComponent()
         audioEngine_.setMuted(muted);
         auto& router = audioEngine_.getOutputRouter();
         if (muted) {
-            preMuteVCableEnabled_ = router.isEnabled(OutputRouter::Output::VirtualCable);
             preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
             router.setEnabled(OutputRouter::Output::VirtualCable, false);
             router.setEnabled(OutputRouter::Output::Monitor, false);
             audioEngine_.setMonitorEnabled(false);
         } else {
-            router.setEnabled(OutputRouter::Output::VirtualCable, preMuteVCableEnabled_);
+            router.setEnabled(OutputRouter::Output::VirtualCable, true);  // Always ON
             router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
             audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
         }
         panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
         panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                                 juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+        markSettingsDirty();
     };
     addAndMakeVisible(panicMuteBtn_);
 
@@ -248,6 +253,7 @@ void MainComponent::onAction(const ActionEvent& event)
             int activeSlot = presetManager_->getActiveSlot();
             if (activeSlot >= 0)
                 presetManager_->saveSlot(activeSlot);
+            markSettingsDirty();
             break;
         }
 
@@ -258,25 +264,26 @@ void MainComponent::onAction(const ActionEvent& event)
             audioEngine_.setMuted(muted);
             auto& router = audioEngine_.getOutputRouter();
             if (muted) {
-                preMuteVCableEnabled_ = router.isEnabled(OutputRouter::Output::VirtualCable);
                 preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
                 router.setEnabled(OutputRouter::Output::VirtualCable, false);
                 router.setEnabled(OutputRouter::Output::Monitor, false);
                 audioEngine_.setMonitorEnabled(false);
             } else {
-                router.setEnabled(OutputRouter::Output::VirtualCable, preMuteVCableEnabled_);
+                router.setEnabled(OutputRouter::Output::VirtualCable, true);  // Always ON
                 router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
                 audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
             }
             panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
             panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                                     juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+            markSettingsDirty();
             break;
         }
 
         case Action::InputGainAdjust:
             audioEngine_.setInputGain(audioEngine_.getInputGain() + event.floatParam * 0.1f);
             inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
+            markSettingsDirty();
             break;
 
         case Action::SetVolume:
@@ -284,6 +291,7 @@ void MainComponent::onAction(const ActionEvent& event)
                 audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
             else if (event.stringParam == "vmic")
                 audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::VirtualCable, event.floatParam);
+            markSettingsDirty();
             break;
 
         case Action::SwitchPresetSlot: {
@@ -300,6 +308,7 @@ void MainComponent::onAction(const ActionEvent& event)
                 setSlotButtonsEnabled(true);
                 refreshUI();
                 updateSlotButtonStates();
+                markSettingsDirty();
             });
             break;
         }
@@ -483,13 +492,22 @@ void MainComponent::timerCallback()
         inputGainSlider_.setValue(currentGain, juce::dontSendNotification);
     }
 
-    if (++autoSaveCounter_ >= 900) {
-        autoSaveCounter_ = 0;
-        saveSettings();
+    // Dirty-flag auto-save with 1-second debounce (30 ticks at 30Hz)
+    if (settingsDirty_ && dirtyCooldown_ > 0) {
+        if (--dirtyCooldown_ == 0) {
+            settingsDirty_ = false;
+            saveSettings();
+        }
     }
 }
 
 // ─── Settings auto-save/load ─────────────────────────────────────────────────
+
+void MainComponent::markSettingsDirty()
+{
+    settingsDirty_ = true;
+    dirtyCooldown_ = 30;  // reset debounce: save after ~1 second of inactivity
+}
 
 void MainComponent::saveSettings()
 {

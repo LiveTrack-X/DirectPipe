@@ -8,6 +8,8 @@ const { SingletonAction } = require("@elgato/streamdeck");
 const SLOT_LABELS = ["A", "B", "C", "D", "E"];
 
 class PresetSwitchAction extends SingletonAction {
+    manifestId = "com.directpipe.directpipe.preset-switch";
+
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
         const settings = ev.payload.settings ?? {};
@@ -62,6 +64,6 @@ class PresetSwitchAction extends SingletonAction {
     }
 }
 
-PresetSwitchAction.UUID = "com.directpipe.preset-switch";
+PresetSwitchAction.UUID = "com.directpipe.directpipe.preset-switch";
 
 module.exports = { PresetSwitchAction };

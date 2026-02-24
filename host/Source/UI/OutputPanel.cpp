@@ -160,6 +160,7 @@ void OutputPanel::onMonitorDeviceSelected()
     auto selectedText = monitorDeviceCombo_.getText();
     if (selectedText.isNotEmpty()) {
         engine_.setOutputDevice(selectedText);
+        if (onSettingsChanged) onSettingsChanged();
     }
 }
 
@@ -167,6 +168,7 @@ void OutputPanel::onMonitorVolumeChanged()
 {
     float volume = static_cast<float>(monitorVolumeSlider_.getValue()) / 100.0f;
     engine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, volume);
+    if (onSettingsChanged) onSettingsChanged();
 }
 
 void OutputPanel::onMonitorEnableToggled()
@@ -174,6 +176,7 @@ void OutputPanel::onMonitorEnableToggled()
     bool enabled = monitorEnableButton_.getToggleState();
     engine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, enabled);
     engine_.setMonitorEnabled(enabled);
+    if (onSettingsChanged) onSettingsChanged();
 }
 
 } // namespace directpipe

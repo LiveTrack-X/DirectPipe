@@ -1,6 +1,6 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
-  "SDKVersion": 2,
+  "SDKVersion": 3,
   "UUID": "com.directpipe.directpipe",
   "Author": "DirectPipe",
   "CodePath": "src/plugin.js",
@@ -16,17 +16,16 @@
     }
   ],
   "Software": {
-    "MinimumVersion": "6.6"
+    "MinimumVersion": "6.9"
   },
   "Nodejs": {
-    "Version": "20",
-    "Debug": "enabled"
+    "Version": "20"
   },
-  "Category": "DirectPipe Audio",
+  "Category": "DirectPipe",
   "CategoryIcon": "images/category",
   "Actions": [
     {
-      "UUID": "com.directpipe.bypass-toggle",
+      "UUID": "com.directpipe.directpipe.bypass-toggle",
       "Name": "Bypass Toggle",
       "Tooltip": "Toggle VST plugin bypass on/off. Long-press for master bypass.",
       "Icon": "images/bypass",
@@ -35,13 +34,13 @@
         {
           "Image": "images/bypass-active",
           "TitleAlignment": "middle",
-          "FontSize": "10",
+          "FontSize": 10,
           "Title": "Bypass"
         },
         {
           "Image": "images/bypass-off",
           "TitleAlignment": "middle",
-          "FontSize": "10",
+          "FontSize": 10,
           "Title": "Active"
         }
       ],
@@ -49,7 +48,7 @@
       "PropertyInspectorPath": "src/inspectors/bypass-pi.html"
     },
     {
-      "UUID": "com.directpipe.volume-control",
+      "UUID": "com.directpipe.directpipe.volume-control",
       "Name": "Volume Control",
       "Tooltip": "Adjust volume for input or monitor. Press to toggle mute, rotate dial to adjust level.",
       "Icon": "images/volume",
@@ -58,13 +57,13 @@
         {
           "Image": "images/volume-on",
           "TitleAlignment": "bottom",
-          "FontSize": "9",
+          "FontSize": 9,
           "Title": "Volume"
         },
         {
           "Image": "images/volume-muted",
           "TitleAlignment": "bottom",
-          "FontSize": "9",
+          "FontSize": 9,
           "Title": "Muted"
         }
       ],
@@ -81,7 +80,7 @@
       }
     },
     {
-      "UUID": "com.directpipe.preset-switch",
+      "UUID": "com.directpipe.directpipe.preset-switch",
       "Name": "Preset Switch",
       "Tooltip": "Switch to a preset slot (A-E), or cycle through presets.",
       "Icon": "images/preset",
@@ -90,7 +89,7 @@
         {
           "Image": "images/preset-active",
           "TitleAlignment": "middle",
-          "FontSize": "9",
+          "FontSize": 9,
           "Title": "Preset"
         }
       ],
@@ -98,7 +97,7 @@
       "PropertyInspectorPath": "src/inspectors/preset-pi.html"
     },
     {
-      "UUID": "com.directpipe.panic-mute",
+      "UUID": "com.directpipe.directpipe.panic-mute",
       "Name": "Panic Mute",
       "Tooltip": "Immediately mute all DirectPipe audio outputs. Press again to unmute.",
       "Icon": "images/panic",
@@ -107,14 +106,14 @@
         {
           "Image": "images/panic-off",
           "TitleAlignment": "middle",
-          "FontSize": "12",
+          "FontSize": 12,
           "FontStyle": "Bold",
           "Title": "MUTE"
         },
         {
           "Image": "images/panic-on",
           "TitleAlignment": "middle",
-          "FontSize": "12",
+          "FontSize": 12,
           "FontStyle": "Bold",
           "Title": "MUTED"
         }

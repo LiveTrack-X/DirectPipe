@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node src/plugin.js",
     "dev": "node --watch src/plugin.js",
+    "icons": "node scripts/generate-icons.mjs",
+    "validate": "streamdeck validate .",
+    "pack": "streamdeck pack . --output ../dist/ --force",
     "lint": "eslint src/",
     "test": "node --test src/**/*.test.js"
   },
@@ -23,7 +26,8 @@
     "ws": "^8.16.0"
   },
   "devDependencies": {
-    "eslint": "^8.56.0"
+    "eslint": "^8.56.0",
+    "sharp": "^0.34.5"
   },
   "engines": {
     "node": ">=20.0.0"

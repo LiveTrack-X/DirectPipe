@@ -35,6 +35,9 @@ public:
      */
     void refreshMonitorDeviceList();
 
+    /** Called when the user changes any output setting. */
+    std::function<void()> onSettingsChanged;
+
 private:
     void timerCallback() override;
 

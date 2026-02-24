@@ -37,6 +37,9 @@ public:
      */
     void refreshFromEngine();
 
+    /** Called when the user changes any audio setting. */
+    std::function<void()> onSettingsChanged;
+
 private:
     // ChangeListener for device manager notifications
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;

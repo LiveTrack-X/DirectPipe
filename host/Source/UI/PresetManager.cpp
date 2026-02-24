@@ -104,8 +104,7 @@ juce::String PresetManager::exportToJSON()
     auto outputs = std::make_unique<juce::DynamicObject>();
     outputs->setProperty("virtualCableVolume",
         static_cast<double>(router.getVolume(OutputRouter::Output::VirtualCable)));
-    outputs->setProperty("virtualCableEnabled",
-        router.isEnabled(OutputRouter::Output::VirtualCable));
+    outputs->setProperty("virtualCableEnabled", true);  // Always save as ON
     outputs->setProperty("virtualCableDevice",
         engine_.getVirtualMicOutput().getDeviceName());
     outputs->setProperty("monitorVolume",
@@ -194,12 +193,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 router.setVolume(OutputRouter::Output::VirtualCable,
                                  static_cast<float>((double)outputs->getProperty("vmicVolume")));
 
-            if (outputs->hasProperty("virtualCableEnabled"))
-                router.setEnabled(OutputRouter::Output::VirtualCable,
-                                  outputs->getProperty("virtualCableEnabled"));
-            else if (outputs->hasProperty("vmicEnabled"))
-                router.setEnabled(OutputRouter::Output::VirtualCable,
-                                  outputs->getProperty("vmicEnabled"));
+            // Virtual Cable is always ON unless Panic Mute is active.
+            // Ignore saved virtualCableEnabled — force ON at load.
+            router.setEnabled(OutputRouter::Output::VirtualCable, true);
 
             if (outputs->hasProperty("virtualCableDevice")) {
                 juce::String vcDevice = outputs->getProperty("virtualCableDevice").toString();
@@ -210,9 +206,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (outputs->hasProperty("monitorVolume"))
                 router.setVolume(OutputRouter::Output::Monitor,
                                  static_cast<float>((double)outputs->getProperty("monitorVolume")));
-            if (outputs->hasProperty("monitorEnabled"))
-                router.setEnabled(OutputRouter::Output::Monitor,
-                                  outputs->getProperty("monitorEnabled"));
+            if (outputs->hasProperty("monitorEnabled")) {
+                bool monEnabled = static_cast<bool>(outputs->getProperty("monitorEnabled"));
+                router.setEnabled(OutputRouter::Output::Monitor, monEnabled);
+                engine_.setMonitorEnabled(monEnabled);
+            }
         }
     }
 

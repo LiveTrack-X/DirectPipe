@@ -10,7 +10,8 @@ namespace directpipe {
 
 OutputRouter::OutputRouter()
 {
-    // Monitor output disabled by default (user enables explicitly)
+    // VirtualCable: ON by default (struct default enabled{true})
+    // Monitor: OFF by default (user enables explicitly in Output tab)
     outputs_[static_cast<int>(Output::Monitor)].enabled.store(false, std::memory_order_relaxed);
 }
 

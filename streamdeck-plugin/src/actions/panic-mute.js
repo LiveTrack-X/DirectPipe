@@ -6,6 +6,8 @@
 const { SingletonAction } = require("@elgato/streamdeck");
 
 class PanicMuteAction extends SingletonAction {
+    manifestId = "com.directpipe.directpipe.panic-mute";
+
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
         dpClient.sendAction("panic_mute");
@@ -37,6 +39,6 @@ class PanicMuteAction extends SingletonAction {
     }
 }
 
-PanicMuteAction.UUID = "com.directpipe.panic-mute";
+PanicMuteAction.UUID = "com.directpipe.directpipe.panic-mute";
 
 module.exports = { PanicMuteAction };

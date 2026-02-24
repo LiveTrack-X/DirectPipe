@@ -43,6 +43,7 @@ private:
     void timerCallback() override;
     void saveSettings();
     void loadSettings();
+    void markSettingsDirty();
 
     // Audio engine (core)
     AudioEngine audioEngine_;
@@ -95,12 +96,13 @@ private:
     juce::Label inputSectionLabel_;
     juce::Label vstSectionLabel_;
 
-    // Auto-save counter (ticks at 30Hz)
-    int autoSaveCounter_ = 0;
+    // Dirty-flag auto-save (debounce: save ~1s after last change)
+    bool settingsDirty_ = false;
+    int dirtyCooldown_ = 0;   // ticks remaining before save (30Hz)
     bool loadingSlot_ = false;
 
-    // Panic mute: remember pre-mute states for restore
-    bool preMuteVCableEnabled_ = true;
+    // Panic mute: remember pre-mute monitor state for restore
+    // Virtual Cable always restores to ON (only Panic Mute disables it)
     bool preMuteMonitorEnabled_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
