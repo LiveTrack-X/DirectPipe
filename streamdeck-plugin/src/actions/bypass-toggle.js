@@ -25,8 +25,9 @@ class BypassToggleAction extends SingletonAction {
         if (duration >= LONG_PRESS_THRESHOLD_MS) {
             dpClient.sendAction("master_bypass");
         } else {
-            const { pluginIndex = 0 } = ev.payload.settings ?? {};
-            dpClient.sendAction("plugin_bypass", { index: pluginIndex });
+            const settings = ev.payload.settings ?? {};
+            const index = (Number(settings.pluginNumber) || 1) - 1;
+            dpClient.sendAction("plugin_bypass", { index });
         }
     }
 
@@ -62,7 +63,7 @@ class BypassToggleAction extends SingletonAction {
 
     _updateDisplay(action, settings, state) {
         if (!state?.data) return;
-        const pluginIndex = settings?.pluginIndex ?? 0;
+        const pluginIndex = (Number(settings?.pluginNumber) || 1) - 1;
         const plugins = state.data.plugins;
         const masterBypassed = state.data.master_bypassed;
 
