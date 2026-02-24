@@ -17,7 +17,6 @@ endif()
 
 # Options
 option(DIRECTPIPE_BUILD_TESTS "Build unit tests" ON)
-option(DIRECTPIPE_BUILD_OBS_PLUGIN "Build OBS Studio plugin" ON)
 option(DIRECTPIPE_BUILD_HOST "Build JUCE host application" ON)
 
 # Output directories
@@ -58,17 +57,12 @@ endif()
 
 # ─── Sub-projects ───
 
-# Core library (shared between host and OBS plugin)
+# Core library
 add_subdirectory(core)
 
 # JUCE Host application
 if(DIRECTPIPE_BUILD_HOST)
     add_subdirectory(host)
-endif()
-
-# OBS Plugin
-if(DIRECTPIPE_BUILD_OBS_PLUGIN)
-    add_subdirectory(obs-plugin)
 endif()
 
 # Tests

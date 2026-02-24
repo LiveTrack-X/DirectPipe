@@ -64,7 +64,6 @@ Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE. / 또는
 |--------|---------|-------------|
 | `DIRECTPIPE_BUILD_TESTS` | ON | Build unit tests (Google Test) / 유닛 테스트 빌드 |
 | `DIRECTPIPE_BUILD_HOST` | ON | Build JUCE host application / 호스트 앱 빌드 |
-| `DIRECTPIPE_BUILD_OBS_PLUGIN` | ON | Build OBS Studio plugin (requires OBS SDK; skipped if not found) / OBS 플러그인 빌드 (SDK 없으면 자동 스킵) |
 
 Note: `JUCE_DISPLAY_SPLASH_SCREEN=0` is set in CMakeLists.txt (GPL v3 license). / GPL v3 라이선스로 JUCE 스플래시 비활성화.
 

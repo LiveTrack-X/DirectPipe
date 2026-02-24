@@ -73,7 +73,6 @@ host/                     JUCE host application (main)
     UI/                     PluginChainEditor, PluginScanner, AudioSettings,
                             OutputPanel, PresetManager, LevelMeter
 core/                     IPC library (RingBuffer, SharedMemory)
-driver/                   Virtual Loop Mic kernel driver (experimental)
 streamdeck-plugin/        Stream Deck plugin (Node.js, SDK v2)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)

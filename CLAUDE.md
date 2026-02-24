@@ -64,7 +64,6 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
   - `Control/` → ActionDispatcher, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster
   - `IPC/` → SharedMemWriter
   - `UI/` → PluginChainEditor, PluginScanner, AudioSettings, OutputPanel, ControlSettingsPanel, LevelMeter, PresetManager
-- `driver/` → Virtual Loop Mic kernel driver (experimental)
 - `streamdeck-plugin/` → Stream Deck plugin (Node.js, SDK v2)
 
 ## Known Notes
