@@ -245,10 +245,6 @@ private:
     juce::Label httpStatusValueLabel_{"", "Stopped"};
     juce::TextButton httpToggleButton_{"Start"};
 
-    // ── General section ──
-    juce::Label generalSectionLabel_{"", "General"};
-    juce::ToggleButton startupToggle_{"Start with Windows"};
-
     // Info text
     juce::Label infoLabel_{"", "Stream Deck plugins connect via WebSocket.\n"
                                 "HTTP API is available for custom integrations."};
@@ -263,6 +259,37 @@ private:
     static constexpr juce::uint32 kDimTextColour   = 0xFF8888AA;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StreamDeckTab)
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GeneralTab — App-level settings (startup, etc.)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * @brief Tab content for general application settings.
+ *
+ * Contains app-level settings such as "Start with Windows" that don't
+ * belong to a specific control source.
+ */
+class GeneralTab : public juce::Component {
+public:
+    GeneralTab();
+    ~GeneralTab() override = default;
+
+    void paint(juce::Graphics& g) override;
+    void resized() override;
+
+private:
+    juce::Label headerLabel_{"", "Application"};
+    juce::ToggleButton startupToggle_{"Start with Windows"};
+    juce::Label startupInfoLabel_{"", "Launch DirectPipe automatically when you log in to Windows."};
+
+    static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;
+    static constexpr juce::uint32 kAccentColour   = 0xFF6C63FF;
+    static constexpr juce::uint32 kTextColour     = 0xFFE0E0E0;
+    static constexpr juce::uint32 kDimTextColour  = 0xFF8888AA;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GeneralTab)
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -302,6 +329,7 @@ private:
     std::unique_ptr<HotkeyTab> hotkeyTab_;
     std::unique_ptr<MidiTab> midiTab_;
     std::unique_ptr<StreamDeckTab> streamDeckTab_;
+    std::unique_ptr<GeneralTab> generalTab_;
 
     // Theme colours (dark)
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;

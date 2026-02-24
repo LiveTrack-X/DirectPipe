@@ -5,6 +5,11 @@
 
 #include "ControlSettingsPanel.h"
 
+#if JUCE_WINDOWS
+extern bool isStartupEnabled();
+extern void setStartupEnabled(bool enable);
+#endif
+
 namespace directpipe {
 
 static juce::String actionToDisplayName(const ActionEvent& event)
@@ -726,25 +731,6 @@ StreamDeckTab::StreamDeckTab(ControlManager& manager)
     };
     addAndMakeVisible(httpToggleButton_);
 
-    // ── General section ──
-    generalSectionLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
-    generalSectionLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(generalSectionLabel_);
-
-    startupToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
-    startupToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
-#if JUCE_WINDOWS
-    // Forward-declared in Main.cpp, link-time resolved
-    extern bool isStartupEnabled();
-    extern void setStartupEnabled(bool);
-    startupToggle_.setToggleState(isStartupEnabled(), juce::dontSendNotification);
-    startupToggle_.onClick = [this] {
-        extern void setStartupEnabled(bool);
-        setStartupEnabled(startupToggle_.getToggleState());
-    };
-#endif
-    addAndMakeVisible(startupToggle_);
-
     // ── Info text ──
     infoLabel_.setFont(juce::Font(11.0f));
     infoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
@@ -766,20 +752,15 @@ void StreamDeckTab::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(kBgColour));
 
+    // Separator between WebSocket and HTTP sections
     auto bounds = getLocalBounds().reduced(8);
     constexpr int rowH = 28;
     constexpr int gap  = 6;
 
+    // After WS section: header + port + status + clients + button = 5 rows
+    int separatorY = bounds.getY() + (rowH + gap) * 5 - gap / 2;
     g.setColour(juce::Colour(kDimTextColour).withAlpha(0.3f));
-
-    // Separator between WebSocket and HTTP sections (after 5 rows)
-    int sep1Y = bounds.getY() + (rowH + gap) * 5 - gap / 2;
-    g.drawHorizontalLine(sep1Y, static_cast<float>(bounds.getX()),
-                         static_cast<float>(bounds.getRight()));
-
-    // Separator between HTTP and General sections (after 5 + 4 rows + 8px gaps)
-    int sep2Y = sep1Y + 8 + (rowH + gap) * 4 - gap / 2;
-    g.drawHorizontalLine(sep2Y, static_cast<float>(bounds.getX()),
+    g.drawHorizontalLine(separatorY, static_cast<float>(bounds.getX()),
                          static_cast<float>(bounds.getRight()));
 }
 
@@ -828,13 +809,6 @@ void StreamDeckTab::resized()
     httpToggleButton_.setBounds(bounds.getX(), y, btnW, rowH);
     y += rowH + gap + 8;
 
-    // ── General section ──
-    generalSectionLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
-    y += rowH + gap;
-
-    startupToggle_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
-    y += rowH + gap + 8;
-
     // Info text fills remaining space
     infoLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), bounds.getBottom() - y);
 }
@@ -879,6 +853,53 @@ void StreamDeckTab::updateStatus()
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  GeneralTab implementation
+// ═════════════════════════════════════════════════════════════════════════════
+
+GeneralTab::GeneralTab()
+{
+    headerLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
+    headerLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(headerLabel_);
+
+    startupToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    startupToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+#if JUCE_WINDOWS
+    startupToggle_.setToggleState(::isStartupEnabled(), juce::dontSendNotification);
+    startupToggle_.onClick = [this] {
+        ::setStartupEnabled(startupToggle_.getToggleState());
+    };
+#endif
+    addAndMakeVisible(startupToggle_);
+
+    startupInfoLabel_.setFont(juce::Font(11.0f));
+    startupInfoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(startupInfoLabel_);
+}
+
+void GeneralTab::paint(juce::Graphics& g)
+{
+    g.fillAll(juce::Colour(kBgColour));
+}
+
+void GeneralTab::resized()
+{
+    auto bounds = getLocalBounds().reduced(8);
+    constexpr int rowH = 28;
+    constexpr int gap  = 6;
+
+    int y = bounds.getY();
+
+    headerLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    y += rowH + gap;
+
+    startupToggle_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    y += rowH + gap;
+
+    startupInfoLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  ControlSettingsPanel implementation (top-level tabbed container)
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -889,6 +910,7 @@ ControlSettingsPanel::ControlSettingsPanel(ControlManager& manager)
     hotkeyTab_     = std::make_unique<HotkeyTab>(manager_);
     midiTab_       = std::make_unique<MidiTab>(manager_);
     streamDeckTab_ = std::make_unique<StreamDeckTab>(manager_);
+    generalTab_    = std::make_unique<GeneralTab>();
 
     // Configure the tabbed component
     tabbedComponent_.setTabBarDepth(30);
@@ -899,6 +921,7 @@ ControlSettingsPanel::ControlSettingsPanel(ControlManager& manager)
     tabbedComponent_.addTab("Hotkeys",     juce::Colour(kTabBarColour), hotkeyTab_.get(),     false);
     tabbedComponent_.addTab("MIDI",        juce::Colour(kTabBarColour), midiTab_.get(),       false);
     tabbedComponent_.addTab("Stream Deck", juce::Colour(kTabBarColour), streamDeckTab_.get(), false);
+    tabbedComponent_.addTab("General",     juce::Colour(kTabBarColour), generalTab_.get(),    false);
 
     // Style the tab bar
     auto& tabBar = tabbedComponent_.getTabbedButtonBar();
