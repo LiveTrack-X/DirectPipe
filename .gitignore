@@ -1,0 +1,28 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Driver build output
+driver/out/
+
+# Third-party SDKs (downloaded locally)
+thirdparty/asiosdk/
+thirdparty/VST2_SDK/
+
+# Node.js
+node_modules/
+
+# Temporary screenshots
+dist/스크린샷*

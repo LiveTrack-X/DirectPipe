@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Preset Switch Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Preset Slot">
+        <sdpi-select setting="slotIndex">
+            <option value="cycle">Cycle (next preset)</option>
+            <option value="0">Slot A</option>
+            <option value="1">Slot B</option>
+            <option value="2">Slot C</option>
+            <option value="3">Slot D</option>
+            <option value="4">Slot E</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="">
+        <details>
+            <summary>Help</summary>
+            <p>Select a specific slot or cycle through all slots.</p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

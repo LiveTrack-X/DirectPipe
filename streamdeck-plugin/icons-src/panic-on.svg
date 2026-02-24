@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: Panic ON (muted, emergency) - red background -->
+  <rect width="144" height="144" rx="16" fill="#b71c1c"/>
+  <!-- Speaker icon muted -->
+  <polygon points="38,52 54,52 74,36 74,88 54,72 38,72" fill="none" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
+  <!-- X mark over speaker -->
+  <line x1="88" y1="48" x2="112" y2="96" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <line x1="112" y1="48" x2="88" y2="96" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+</svg>
