@@ -31,7 +31,7 @@ JUCE 7.0.12 기반 데스크톱 앱. 메인 오디오 처리 엔진.
 
 - **AudioEngine** — Dual driver support (WASAPI Shared + ASIO). Manages the audio device callback. Pre-allocated work buffers. Mono mixing or stereo passthrough. Runtime device type switching, sample rate/buffer size queries. / 듀얼 드라이버. 오디오 콜백 관리. 사전 할당 버퍼. Mono/Stereo 처리.
 - **VSTChain** — `AudioProcessorGraph`-based VST2/VST3 plugin chain. `suspendProcessing()` during graph rebuild. Async chain replacement (`replaceChainAsync`) loads plugins on background thread. Editor windows tracked per-plugin. / VST2/VST3 플러그인 체인. 비동기 체인 교체로 UI 프리즈 방지.
-- **OutputRouter** — Distributes processed audio to monitor output. Independent atomic volume and enable controls. / 모니터 출력으로 오디오 분배. 독립적 볼륨/활성화 제어.
+- **OutputRouter** — Distributes processed audio to monitor output. Independent atomic volume and enable controls. Virtual Cable always ON (forced at load, save, and Panic Mute unmute). / 모니터 출력으로 오디오 분배. 독립적 볼륨/활성화 제어. Virtual Cable 항상 ON.
 - **LatencyMonitor** — High-resolution timer-based latency measurement. / 고해상도 타이머 기반 레이턴시 측정.
 
 #### Control Module (`host/Source/Control/`) / 제어 모듈
@@ -62,8 +62,8 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 
 - Two-column layout: left (input + VST chain + slot buttons), right (tabbed panel: Audio/Output/Controls) / 2컬럼 레이아웃
 - Quick Preset Slot buttons A-E with visual active state / 퀵 프리셋 슬롯 버튼
-- Auto-save on chain change, editor close, slot switch / 자동 저장
-- Panic mute remembers and restores pre-mute enable states / Panic Mute 이전 상태 기억/복원
+- Auto-save via dirty-flag + 1-second debounce (not periodic timer). `onSettingsChanged` callbacks from AudioSettings and OutputPanel trigger `markSettingsDirty()`. / dirty-flag + 1초 디바운스 자동 저장
+- Panic mute remembers pre-mute monitor enable state, restores on unmute. Virtual Cable always forced ON. / Panic Mute 모니터 상태 기억/복원, Virtual Cable 항상 ON
 
 ### 2. Core Library (`core/`) / 코어 라이브러리
 
@@ -76,12 +76,16 @@ Shared static library for IPC. / IPC용 정적 라이브러리.
 
 ### 3. Stream Deck Plugin (`streamdeck-plugin/`) / 스트림 덱 플러그인
 
-Optional Elgato Stream Deck plugin (Node.js, SDK v2). / 선택적 Stream Deck 플러그인.
+Optional Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v3). / 선택적 Stream Deck 플러그인 (SDK v3).
 
 - Connects via WebSocket (`ws://localhost:8765`) / WebSocket으로 연결
-- 4 actions: Bypass Toggle, Panic Mute, Volume Control, Preset Switch / 4개 액션
+- 4 SingletonAction subclasses: Bypass Toggle, Panic Mute, Volume Control, Preset Switch / 4개 SingletonAction 액션
+- Volume Control supports 3 modes: Mute Toggle, Volume Up (+), Volume Down (-) with configurable step size / 볼륨 제어: 뮤트 토글, 볼륨 +/- 모드 (스텝 사이즈 설정)
+- SD+ dial support for smooth volume adjustment / SD+ 다이얼 지원
 - Auto-reconnect with exponential backoff (2s → 30s) / 지수 백오프 자동 재연결
-- Property Inspector HTML for each action / 각 액션별 설정 UI
+- Property Inspector HTML (sdpi-components v4) for each action / 각 액션별 설정 UI
+- SVG icon sources in `icons-src/`, PNG generation via `scripts/generate-icons.mjs` / SVG 원본 + PNG 생성 스크립트
+- Packaged as `.streamDeckPlugin` in `dist/` / dist/에 패키징
 
 ## Data Flow (Audio Thread) / 데이터 흐름 (오디오 스레드)
 
@@ -119,7 +123,7 @@ Optional Elgato Stream Deck plugin (Node.js, SDK v2). / 선택적 Stream Deck �
 - Audio/output settings are NOT affected by slot switching / 오디오/출력 설정 영향 없음
 - Same-chain fast path: bypass + state update only (instant) / 동일 체인: 즉시 전환
 - Different-chain slow path: async background loading / 다른 체인: 비동기 로딩
-- Auto-save on chain change, editor close, slot switch / 자동 저장
+- Auto-save on any change (dirty-flag + 1s debounce), editor close, slot switch / 변경 시 자동 저장 (dirty-flag + 1초 디바운스)
 
 ### Plugin State Serialization / 플러그인 상태 직렬화
 
@@ -138,3 +142,4 @@ Optional Elgato Stream Deck plugin (Node.js, SDK v2). / 선택적 Stream Deck �
 7. **WebSocket/HTTP** — Separate threads, communicate via ActionDispatcher / 별도 스레드
 8. **UI component self-deletion** — Use `juce::MessageManager::callAsync` / callAsync 사용
 9. **Slot auto-save guard** — `loadingSlot_` flag prevents recursive saves / 재귀 저장 방지
+10. **Dirty-flag auto-save** — `settingsDirty_` + `dirtyCooldown_` debounce (1s). `onSettingsChanged` callbacks trigger `markSettingsDirty()` / dirty-flag 디바운스 자동 저장

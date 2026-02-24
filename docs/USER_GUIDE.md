@@ -47,6 +47,7 @@ Supports both **VST2** (.dll) and **VST3** (.vst3) plugins in a serial chain. / 
 
 Plugin parameters (EQ curves, compressor settings, etc.) are automatically saved and restored: / 플러그인 파라미터 자동 저장/복원:
 
+- When any setting changes (1-second debounce auto-save) / 설정 변경 시 (1초 디바운스 자동 저장)
 - When switching preset slots A-E / 프리셋 슬롯 전환 시
 - When closing a plugin editor window / 에디터 창 닫을 때
 - On application exit / 앱 종료 시
@@ -104,7 +105,7 @@ DirectPipe can be controlled while minimized or in the background. / 최소화 �
 
 ### Panic Mute / 패닉 뮤트
 
-Immediately silences all outputs. When unmuted, previous enable states are restored. / 전체 출력 즉시 뮤트. 해제 시 이전 상태 복원.
+Immediately silences all outputs. When unmuted, previous monitor enable state is restored. Virtual Cable output is always kept ON. / 전체 출력 즉시 뮤트. 해제 시 모니터 상태 복원. Virtual Cable은 항상 ON 유지.
 
 ### MIDI Control / MIDI 제어
 

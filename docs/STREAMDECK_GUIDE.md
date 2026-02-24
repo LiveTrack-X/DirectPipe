@@ -10,7 +10,7 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 |---------------|-------------------|
 | **Bypass Toggle** | Toggle VST plugin bypass. Long-press for master bypass. / 플러그인 Bypass 토글. 길게 누르면 마스터 Bypass. |
 | **Panic Mute** | Mute all outputs instantly. / 전체 출력 즉시 뮤트. |
-| **Volume Control** | Press to toggle mute, dial to adjust volume. / 눌러서 뮤트 토글, 다이얼로 볼륨 조절. |
+| **Volume Control** | Mute toggle, volume up/down, or dial adjust. / 뮤트 토글, 볼륨 +/-, 다이얼 조절. |
 | **Preset Switch** | Switch preset slot (A-E) or cycle presets. / 프리셋 슬롯 전환 또는 순환. |
 
 ---
@@ -18,21 +18,28 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 ## Prerequisites / 요구 사항
 
 - **DirectPipe** running / DirectPipe 실행 중
-- **Elgato Stream Deck** software v6.4+ / Stream Deck 소프트웨어 v6.4+
-- **Node.js** v18+ / Node.js v18+
+- **Elgato Stream Deck** software v6.9+ / Stream Deck 소프트웨어 v6.9+
+- **Node.js** v20+ / Node.js v20+
 
 ---
 
 ## Installation / 설치
 
+### Option A: Packaged Plugin / 패키지 설치
+
+1. Double-click `dist/com.directpipe.directpipe.streamDeckPlugin` / 패키지 파일 더블클릭
+2. Stream Deck software installs it automatically / 자동 설치
+
+### Option B: Manual Install / 수동 설치
+
 1. Copy `streamdeck-plugin/` folder to the Stream Deck plugins directory: / 플러그인 디렉토리에 복사:
    ```
-   %APPDATA%\Elgato\StreamDeck\Plugins\com.directpipe.sdPlugin
+   %APPDATA%\Elgato\StreamDeck\Plugins\com.directpipe.directpipe.sdPlugin
    ```
 
 2. Install dependencies: / 의존성 설치:
    ```bash
-   cd com.directpipe.sdPlugin
+   cd com.directpipe.directpipe.sdPlugin
    npm install
    ```
 
@@ -68,7 +75,7 @@ const DIRECTPIPE_WS_URL = "ws://localhost:8770";
 
 ### Bypass Toggle
 
-**UUID:** `com.directpipe.bypass-toggle`
+**UUID:** `com.directpipe.directpipe.bypass-toggle`
 
 - **Short press** — Toggle bypass for configured plugin index / 짧게 누름 → 설정된 플러그인 Bypass
 - **Long press** (>500ms) — Toggle master bypass / 길게 누름 → 마스터 Bypass
@@ -81,7 +88,7 @@ const DIRECTPIPE_WS_URL = "ws://localhost:8770";
 
 ### Panic Mute / 패닉 뮤트
 
-**UUID:** `com.directpipe.panic-mute`
+**UUID:** `com.directpipe.directpipe.panic-mute`
 
 - **Press** — Toggle panic mute on all outputs / 전체 출력 뮤트 토글
 
@@ -93,20 +100,25 @@ No settings required. / 설정 불필요.
 
 ### Volume Control / 볼륨 제어
 
-**UUID:** `com.directpipe.volume-control`
+**UUID:** `com.directpipe.directpipe.volume-control`
 
-- **Press** — Toggle mute for target / 대상 뮤트 토글
+- **Mute Toggle mode** — Press to toggle mute for target / 뮤트 토글 모드 — 대상 뮤트 토글
+- **Volume Up mode** — Press to increase volume by step size / 볼륨 Up 모드 — 스텝만큼 증가
+- **Volume Down mode** — Press to decrease volume by step size / 볼륨 Down 모드 — 스텝만큼 감소
 - **Dial rotate** (Stream Deck+) — Adjust volume ±5% per tick / 다이얼로 볼륨 ±5% 조절
 
-**Display:** Target name + volume % or "MUTED" / 대상 이름 + 볼륨 % 또는 "MUTED"
+**Display:** Target name + volume % or "MUTED". Volume Up/Down shows +/- indicator. / 대상 이름 + 볼륨 % 또는 "MUTED". Up/Down 시 +/- 표시.
 
-**Settings:** `target` — `"monitor"`, `"input"`, or `"virtual_mic"`. Set via Property Inspector. / PI에서 대상 선택.
+**Settings:**
+- `target` — `"monitor"`, `"input"`, or `"virtual_mic"` / 대상 선택
+- `mode` — `"mute"` (default), `"volume_up"`, or `"volume_down"` / 버튼 동작 모드
+- `step` — 1–25% (default: 5%) / 볼륨 스텝 크기
 
 ---
 
 ### Preset Switch / 프리셋 전환
 
-**UUID:** `com.directpipe.preset-switch`
+**UUID:** `com.directpipe.directpipe.preset-switch`
 
 - **With slot configured** — Switch to specific slot / 슬롯 설정 시 → 해당 슬롯으로 전환
 - **Without config** — Cycle to next preset / 미설정 시 → 다음 프리셋 순환
@@ -121,21 +133,27 @@ No settings required. / 설정 불필요.
 
 ```
 streamdeck-plugin/
-  manifest.json               SDK v2 plugin manifest / 플러그인 매니페스트
-  package.json                Node.js package (ws v8.16.0)
+  manifest.json               SDK v3 plugin manifest / 플러그인 매니페스트
+  package.json                Node.js package (@elgato/streamdeck, ws)
+  .sdignore                   Files excluded from packaging / 패키징 제외 파일
   src/
-    plugin.js                 Main entry, routes SD events to handlers / 메인 진입점
+    plugin.js                 Main entry, streamDeck.connect() + DirectPipeClient / 메인 진입점
     websocket-client.js       WebSocket client with auto-reconnect / 자동 재연결 WS 클라이언트
     actions/
-      bypass-toggle.js        Bypass toggle action / Bypass 토글 액션
-      panic-mute.js           Panic mute action / 패닉 뮤트 액션
-      volume-control.js       Volume control action / 볼륨 제어 액션
-      preset-switch.js        Preset switch action / 프리셋 전환 액션
+      bypass-toggle.js        Bypass toggle SingletonAction / Bypass 토글 액션
+      panic-mute.js           Panic mute SingletonAction / 패닉 뮤트 액션
+      volume-control.js       Volume control SingletonAction (mute/up/down modes) / 볼륨 제어 액션
+      preset-switch.js        Preset switch SingletonAction / 프리셋 전환 액션
     inspectors/
-      bypass-pi.html          Bypass settings UI / Bypass 설정 UI
-      volume-pi.html          Volume settings UI / 볼륨 설정 UI
-      preset-pi.html          Preset settings UI / 프리셋 설정 UI
-  images/                     Button icons (72x72 PNG) / 버튼 아이콘
+      bypass-pi.html          Bypass settings (sdpi-components v4) / Bypass 설정 UI
+      volume-pi.html          Volume settings (target, mode, step) / 볼륨 설정 UI
+      preset-pi.html          Preset settings (slot selector) / 프리셋 설정 UI
+  images/                     Button icons (PNG + @2x) / 버튼 아이콘
+  icons-src/                  SVG icon sources / SVG 아이콘 원본
+  scripts/
+    generate-icons.mjs        SVG → PNG generation script (sharp) / 아이콘 생성 스크립트
+dist/
+  com.directpipe.directpipe.streamDeckPlugin   Packaged plugin / 패키지 파일
 ```
 
 ---
@@ -148,8 +166,37 @@ streamdeck-plugin/
 
 **Plugin keeps restarting? / 플러그인이 계속 재시작?**
 - Check logs: `%APPDATA%\Elgato\StreamDeck\logs\` / 로그 확인
-- Run `npm install` if dependencies are missing. / 의존성 누락 시 `npm install` 실행.
-- Node.js v18+ required. / Node.js v18+ 필요.
+- Ensure `node_modules/` exists in the installed plugin folder. / 설치 폴더에 node_modules 확인.
+- Node.js v20+ required. / Node.js v20+ 필요.
+
+---
+
+## Packaging / 패키징
+
+### Build Icons / 아이콘 빌드
+
+```bash
+cd streamdeck-plugin
+npm run icons    # SVG → PNG generation (requires sharp)
+```
+
+### Package Plugin / 플러그인 패키징
+
+```bash
+npm install -g @elgato/cli
+cd streamdeck-plugin
+streamdeck validate .          # Validate manifest and structure
+streamdeck pack . --output ../dist/ --force  # Create .streamDeckPlugin
+```
+
+Output: `dist/com.directpipe.directpipe.streamDeckPlugin`
+
+### Maker Console Submission / Maker Console 제출
+
+The `dist/` folder contains marketplace assets: / `dist/` 폴더에 마켓플레이스 에셋 포함:
+- `directpipe-marketplace-288x288.png` — Marketplace icon / 마켓플레이스 아이콘
+- `directpipe-thumbnail-1920x960.png` — Thumbnail / 썸네일
+- `gallery-1-bypass.png`, `gallery-2-volume.png`, `gallery-3-presets.png` — Gallery images / 갤러리 이미지
 
 ---
 

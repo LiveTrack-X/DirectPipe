@@ -71,7 +71,20 @@ Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE. / 또는
 build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application / 호스트 앱
 build/bin/Release/directpipe-tests.exe                   Test suite / 테스트
 build/lib/Release/directpipe-core.lib                    Core IPC library / 코어 라이브러리
+dist/com.directpipe.directpipe.streamDeckPlugin          Stream Deck plugin package
 ```
+
+## Stream Deck Plugin Build / Stream Deck 플러그인 빌드
+
+```bash
+cd streamdeck-plugin
+npm install                  # Install dependencies / 의존성 설치
+npm run icons                # Generate PNG icons from SVG / SVG → PNG 생성
+streamdeck validate .        # Validate structure / 구조 검증
+streamdeck pack . --output ../dist/ --force  # Package / 패키징
+```
+
+Requires `@elgato/cli` (`npm install -g @elgato/cli`). / `@elgato/cli` 필요.
 
 ## Test Suite / 테스트
 

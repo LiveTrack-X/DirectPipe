@@ -42,9 +42,10 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
 - **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Auto-save on editor close.
 - **Tabbed UI**: Audio/Output/Controls tabs in right column.
 - **System tray**: Close → tray, double-click → restore, right-click → Show/Quit.
-- **Panic Mute**: Remembers pre-mute enable states, restores on unmute.
+- **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute. Virtual Cable always forced ON.
+- **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
 - **WebSocket server**: RFC 6455 with custom SHA-1 implementation.
-- **Stream Deck plugin**: 4 class-based actions, Property Inspector HTML, auto-reconnect.
+- **Stream Deck plugin**: SDK v3, 4 SingletonAction subclasses, Property Inspector HTML, auto-reconnect, SVG icons with @2x.
 
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex
@@ -63,7 +64,7 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
   - `IPC/` → SharedMemWriter
   - `UI/` → PluginChainEditor, PluginScanner, AudioSettings, OutputPanel, ControlSettingsPanel, LevelMeter, PresetManager
 - `driver/` → Virtual Loop Mic kernel driver (experimental)
-- `streamdeck-plugin/` → Stream Deck plugin (Node.js, SDK v2)
+- `streamdeck-plugin/` → Stream Deck plugin (Node.js, SDK v3)
 
 ## Known Notes
 - `ChildProcess::start()`: quote paths with spaces
@@ -73,4 +74,6 @@ Hotkey/MIDI/WebSocket/HTTP → ControlManager → ActionDispatcher
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: 4 actions complete, 3 PI HTMLs, placeholder images
+- Stream Deck: SDK v3, 4 actions with manifestId, 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
+- Virtual Cable always ON unless Panic Mute (ignore saved virtualCableEnabled)
+- Auto-save: dirty-flag + 1s debounce (not periodic timer), onSettingsChanged callbacks
