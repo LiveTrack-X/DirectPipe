@@ -8,6 +8,49 @@
 #include "MainComponent.h"
 
 // ═══════════════════════════════════════════════════════════════════
+// Windows startup (Run registry) helpers
+// ═══════════════════════════════════════════════════════════════════
+
+#if JUCE_WINDOWS
+#include <Windows.h>
+
+static const wchar_t* kRunKeyPath = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+static const wchar_t* kRunValueName = L"DirectPipe";
+
+bool isStartupEnabled()
+{
+    HKEY hKey = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return false;
+
+    DWORD type = 0;
+    DWORD size = 0;
+    bool exists = (RegQueryValueExW(hKey, kRunValueName, nullptr, &type, nullptr, &size) == ERROR_SUCCESS);
+    RegCloseKey(hKey);
+    return exists;
+}
+
+void setStartupEnabled(bool enable)
+{
+    HKEY hKey = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS)
+        return;
+
+    if (enable) {
+        auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                           .getFullPathName();
+        auto wPath = exePath.toWideCharPointer();
+        RegSetValueExW(hKey, kRunValueName, 0, REG_SZ,
+                       reinterpret_cast<const BYTE*>(wPath),
+                       static_cast<DWORD>((wcslen(wPath) + 1) * sizeof(wchar_t)));
+    } else {
+        RegDeleteValueW(hKey, kRunValueName);
+    }
+    RegCloseKey(hKey);
+}
+#endif
+
+// ═══════════════════════════════════════════════════════════════════
 // Out-of-process plugin scanner mode
 // When launched with "--scan <searchPaths> <outputFile> <pedalFile>",
 // DirectPipe acts as a headless scanner process.
@@ -234,6 +277,11 @@ private:
             juce::PopupMenu menu;
             menu.addItem(1, "Show Window");
             menu.addSeparator();
+        #if JUCE_WINDOWS
+            menu.addItem(3, "Start with Windows",
+                         true, isStartupEnabled());
+        #endif
+            menu.addSeparator();
             menu.addItem(2, "Quit DirectPipe");
 
             menu.showMenuAsync(juce::PopupMenu::Options(),
@@ -243,6 +291,11 @@ private:
                     } else if (result == 2) {
                         juce::JUCEApplication::getInstance()->systemRequestedQuit();
                     }
+                #if JUCE_WINDOWS
+                    else if (result == 3) {
+                        setStartupEnabled(!isStartupEnabled());
+                    }
+                #endif
                 });
         }
 

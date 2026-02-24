@@ -726,6 +726,25 @@ StreamDeckTab::StreamDeckTab(ControlManager& manager)
     };
     addAndMakeVisible(httpToggleButton_);
 
+    // ── General section ──
+    generalSectionLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
+    generalSectionLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(generalSectionLabel_);
+
+    startupToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    startupToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+#if JUCE_WINDOWS
+    // Forward-declared in Main.cpp, link-time resolved
+    extern bool isStartupEnabled();
+    extern void setStartupEnabled(bool);
+    startupToggle_.setToggleState(isStartupEnabled(), juce::dontSendNotification);
+    startupToggle_.onClick = [this] {
+        extern void setStartupEnabled(bool);
+        setStartupEnabled(startupToggle_.getToggleState());
+    };
+#endif
+    addAndMakeVisible(startupToggle_);
+
     // ── Info text ──
     infoLabel_.setFont(juce::Font(11.0f));
     infoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
@@ -747,15 +766,20 @@ void StreamDeckTab::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(kBgColour));
 
-    // Separator between WebSocket and HTTP sections
     auto bounds = getLocalBounds().reduced(8);
     constexpr int rowH = 28;
     constexpr int gap  = 6;
 
-    // After WS section: header + port + status + clients + button = 5 rows
-    int separatorY = bounds.getY() + (rowH + gap) * 5 - gap / 2;
     g.setColour(juce::Colour(kDimTextColour).withAlpha(0.3f));
-    g.drawHorizontalLine(separatorY, static_cast<float>(bounds.getX()),
+
+    // Separator between WebSocket and HTTP sections (after 5 rows)
+    int sep1Y = bounds.getY() + (rowH + gap) * 5 - gap / 2;
+    g.drawHorizontalLine(sep1Y, static_cast<float>(bounds.getX()),
+                         static_cast<float>(bounds.getRight()));
+
+    // Separator between HTTP and General sections (after 5 + 4 rows + 8px gaps)
+    int sep2Y = sep1Y + 8 + (rowH + gap) * 4 - gap / 2;
+    g.drawHorizontalLine(sep2Y, static_cast<float>(bounds.getX()),
                          static_cast<float>(bounds.getRight()));
 }
 
@@ -802,6 +826,13 @@ void StreamDeckTab::resized()
     y += rowH + gap;
 
     httpToggleButton_.setBounds(bounds.getX(), y, btnW, rowH);
+    y += rowH + gap + 8;
+
+    // ── General section ──
+    generalSectionLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    y += rowH + gap;
+
+    startupToggle_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
     y += rowH + gap + 8;
 
     // Info text fills remaining space

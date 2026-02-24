@@ -245,6 +245,10 @@ private:
     juce::Label httpStatusValueLabel_{"", "Stopped"};
     juce::TextButton httpToggleButton_{"Start"};
 
+    // ── General section ──
+    juce::Label generalSectionLabel_{"", "General"};
+    juce::ToggleButton startupToggle_{"Start with Windows"};
+
     // Info text
     juce::Label infoLabel_{"", "Stream Deck plugins connect via WebSocket.\n"
                                 "HTTP API is available for custom integrations."};
