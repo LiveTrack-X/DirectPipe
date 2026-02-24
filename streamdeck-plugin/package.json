@@ -20,7 +20,7 @@
     "websocket"
   ],
   "author": "DirectPipe",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "dependencies": {
     "@elgato/streamdeck": "^2.0.1",
     "ws": "^8.16.0"
