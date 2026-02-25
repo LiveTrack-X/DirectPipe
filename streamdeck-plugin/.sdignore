@@ -1,6 +1,10 @@
 node_modules/
-*.log
-.git
+src/
 icons-src/
 scripts/
+*.log
+.git
 package-lock.json
+rollup.config.mjs
+package.json
+.sdignore

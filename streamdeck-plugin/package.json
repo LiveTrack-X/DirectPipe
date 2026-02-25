@@ -6,9 +6,10 @@
   "scripts": {
     "start": "node src/plugin.js",
     "dev": "node --watch src/plugin.js",
+    "build": "rollup -c rollup.config.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "validate": "streamdeck validate .",
-    "pack": "streamdeck pack . --output ../dist/ --force",
+    "package": "node scripts/package.mjs",
     "lint": "eslint src/",
     "test": "node --test src/**/*.test.js"
   },
@@ -26,7 +27,10 @@
     "ws": "^8.16.0"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
     "eslint": "^8.56.0",
+    "rollup": "^4.59.0",
     "sharp": "^0.34.5"
   },
   "engines": {

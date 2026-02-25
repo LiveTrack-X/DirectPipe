@@ -24,5 +24,8 @@ thirdparty/VST2_SDK/
 # Node.js
 node_modules/
 
+# Stream Deck plugin build output
+streamdeck-plugin/bin/
+
 # Temporary screenshots
 dist/스크린샷*

@@ -3,7 +3,7 @@
   "SDKVersion": 2,
   "UUID": "com.directpipe.directpipe",
   "Author": "DirectPipe",
-  "CodePath": "src/plugin.js",
+  "CodePath": "bin/plugin.js",
   "Description": "Control DirectPipe audio processing from your Stream Deck. Toggle VST bypass, adjust volumes, switch presets, and panic mute.",
   "Name": "DirectPipe",
   "Icon": "images/directpipe",
