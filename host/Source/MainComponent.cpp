@@ -497,15 +497,20 @@ void MainComponent::timerCallback()
     // Main output latency: input buffer + processing + output buffer
     double mainLatency = monitor.getTotalLatencyVirtualMicMs();
 
-    // Monitor output latency: main latency + ring buffer hop + monitor device buffer
+    // Monitor output latency
     auto& monOut = audioEngine_.getMonitorOutput();
+    auto& router = audioEngine_.getOutputRouter();
+    bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
+
     juce::String latencyText = "Latency: " + juce::String(mainLatency, 1) + "ms";
-    if (monOut.isActive()) {
-        double monDeviceBufMs = 0.0;
-        double monSR = monOut.getActualSampleRate();
-        if (monSR > 0.0)
-            monDeviceBufMs = (static_cast<double>(monOut.getActualBufferSize()) / monSR) * 1000.0;
-        double monitorLatency = mainLatency + monDeviceBufMs;
+    if (monEnabled) {
+        double monitorLatency = mainLatency;
+        if (monOut.isActive()) {
+            // Separate monitor device: add its buffer latency
+            double monSR = monOut.getActualSampleRate();
+            if (monSR > 0.0)
+                monitorLatency += (static_cast<double>(monOut.getActualBufferSize()) / monSR) * 1000.0;
+        }
         latencyText += " | Mon: " + juce::String(monitorLatency, 1) + "ms";
     }
 
@@ -527,7 +532,6 @@ void MainComponent::timerCallback()
     }
 
     // Broadcast state to WebSocket clients (Stream Deck, etc.)
-    auto& router = audioEngine_.getOutputRouter();
     auto& chain = audioEngine_.getVSTChain();
     broadcaster_.updateState([&](AppState& s) {
         s.inputGain = audioEngine_.getInputGain();
@@ -536,11 +540,14 @@ void MainComponent::timerCallback()
         s.inputMuted = muted;
         s.masterBypassed = false;
         s.latencyMs = static_cast<float>(mainLatency);
-        if (monOut.isActive()) {
-            double monSR2 = monOut.getActualSampleRate();
-            double monBufMs = monSR2 > 0.0
-                ? (static_cast<double>(monOut.getActualBufferSize()) / monSR2) * 1000.0 : 0.0;
-            s.monitorLatencyMs = static_cast<float>(mainLatency + monBufMs);
+        if (monEnabled) {
+            double monitorLat = mainLatency;
+            if (monOut.isActive()) {
+                double monSR2 = monOut.getActualSampleRate();
+                if (monSR2 > 0.0)
+                    monitorLat += (static_cast<double>(monOut.getActualBufferSize()) / monSR2) * 1000.0;
+            }
+            s.monitorLatencyMs = static_cast<float>(monitorLat);
         } else {
             s.monitorLatencyMs = 0.0f;
         }
