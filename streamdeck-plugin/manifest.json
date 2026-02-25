@@ -7,7 +7,7 @@
   "Description": "Control DirectPipe audio processing from your Stream Deck. Toggle VST bypass, adjust volumes, switch presets, and panic mute.",
   "Name": "DirectPipe",
   "Icon": "images/directpipe",
-  "URL": "https://github.com/LiveTrack-X/DirectLoopMic",
+  "URL": "https://github.com/LiveTrack-X/DirectPipe",
   "Version": "1.1.0.0",
   "OS": [
     {
