@@ -425,47 +425,51 @@ void MainComponent::resized()
     auto bounds = getLocalBounds().reduced(10);
     int halfW = bounds.getWidth() / 2 - 5;
 
-    // ═══ Left Column: Input + VST Chain ═══
-    int y = bounds.getY();
+    // ═══ Left Column: Input Meter (left edge) + Controls ═══
+    int lx = bounds.getX();
+    int ly = bounds.getY();
+
+    // Input meter: full height on left edge (like output meter on right)
+    int meterAreaBottom = bounds.getBottom() - 34;
+    inputMeter_->setBounds(lx, ly, kMeterWidth, meterAreaBottom - ly);
+
+    // Content area starts after the meter
+    int cx = lx + kMeterWidth + 8;
+    int cw = halfW - kMeterWidth - 8;
+    int y = ly;
 
     // ── INPUT Section ──
-    inputSectionLabel_.setBounds(bounds.getX(), y, 100, 24);
+    inputSectionLabel_.setBounds(cx, y, 100, 24);
     y += 26;
 
-    int inputStartY = y;
-
     // Input gain row
-    inputGainLabel_.setBounds(bounds.getX(), y, 40, 24);
-    inputGainSlider_.setBounds(bounds.getX() + 44, y, halfW - 94, 24);
+    inputGainLabel_.setBounds(cx, y, 40, 24);
+    inputGainSlider_.setBounds(cx + 44, y, cw - 44, 24);
     y += 30;
 
-    // Input meter
-    int inputMeterH = y - inputStartY;
-    inputMeter_->setBounds(bounds.getX() + halfW - (kMeterWidth + 5), inputStartY, kMeterWidth, inputMeterH);
-
     // ── VST CHAIN Section ──
-    vstSectionLabel_.setBounds(bounds.getX(), y, 120, 24);
+    vstSectionLabel_.setBounds(cx, y, 120, 24);
 
-    int presetBtnX = bounds.getX() + 125;
+    int presetBtnX = cx + 125;
     savePresetBtn_.setBounds(presetBtnX, y, 90, 24);
     loadPresetBtn_.setBounds(presetBtnX + 94, y, 90, 24);
     y += 26;
 
     // Quick preset slot buttons (A..E)
     {
-        int slotBtnW = (halfW - kSlotBtnGap * (kNumPresetSlots - 1)) / kNumPresetSlots;
+        int slotBtnW = (cw - kSlotBtnGap * (kNumPresetSlots - 1)) / kNumPresetSlots;
         for (int i = 0; i < kNumPresetSlots; ++i) {
             slotButtons_[static_cast<size_t>(i)]->setBounds(
-                bounds.getX() + i * (slotBtnW + kSlotBtnGap), y, slotBtnW, 26);
+                cx + i * (slotBtnW + kSlotBtnGap), y, slotBtnW, 26);
         }
         y += 30;
     }
 
     int vstH = bounds.getBottom() - y - 40;
-    pluginChainEditor_->setBounds(bounds.getX(), y, halfW, vstH - 34);
+    pluginChainEditor_->setBounds(cx, y, cw, vstH - 34);
     y += vstH - 30;
 
-    panicMuteBtn_.setBounds(bounds.getX(), y, halfW, 28);
+    panicMuteBtn_.setBounds(cx, y, cw, 28);
 
     // ═══ Right Column: Tabbed Panel + Output Meter ═══
     int rx = bounds.getX() + halfW + 10;
