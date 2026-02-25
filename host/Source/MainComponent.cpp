@@ -485,7 +485,7 @@ void MainComponent::resized()
     rightTabs_->setBounds(rx, ry, rw - 50, tabH);
 
     // ── Status Bar ──
-    int statusY = getHeight() - kStatusBarHeight + 2;
+    int statusY = getHeight() - kStatusBarHeight + 3;
     int sw = getWidth();
     latencyLabel_.setBounds(5, statusY, sw * 3 / 10, 24);
     cpuLabel_.setBounds(sw * 3 / 10, statusY, sw / 6, 24);
