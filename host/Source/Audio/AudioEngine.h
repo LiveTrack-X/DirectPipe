@@ -76,8 +76,13 @@ public:
     /** @brief Get the first active output channel index. */
     int getActiveOutputChannelOffset() const;
 
-    void setMonitorEnabled(bool enabled) { monitorEnabled_.store(enabled, std::memory_order_relaxed); }
-    bool isMonitorEnabled() const { return monitorEnabled_.load(std::memory_order_relaxed); }
+    void setMonitorEnabled(bool enabled) { outputRouter_.setEnabled(OutputRouter::Output::Monitor, enabled); }
+    bool isMonitorEnabled() const { return outputRouter_.isEnabled(OutputRouter::Output::Monitor); }
+
+    /** Set the monitor output WASAPI device (independent of main driver). */
+    bool setMonitorDevice(const juce::String& deviceName);
+    juce::String getMonitorDeviceName() const { return monitorOutput_.getDeviceName(); }
+    VirtualMicOutput& getMonitorOutput() { return monitorOutput_; }
 
     void setChannelMode(int channels);
     int getChannelMode() const { return channelMode_.load(std::memory_order_relaxed); }
@@ -122,9 +127,9 @@ private:
     OutputRouter outputRouter_;
     LatencyMonitor latencyMonitor_;
     VirtualMicOutput virtualMicOutput_;
+    VirtualMicOutput monitorOutput_;
 
     bool running_ = false;
-    std::atomic<bool> monitorEnabled_{false};
 
     std::atomic<float> inputLevel_{0.0f};
     std::atomic<float> outputLevel_{0.0f};

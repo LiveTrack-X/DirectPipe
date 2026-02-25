@@ -1,5 +1,22 @@
 # DirectPipe Stream Deck Plugin — Release Notes
 
+## v1.2.0.0 (2026-02-25)
+
+### New Features
+- **Monitor Toggle**: New action to toggle monitor output (headphones) on/off from Stream Deck
+- **State Broadcasting**: Real-time state sync — monitor_enabled, volumes, mute status pushed to Stream Deck via WebSocket
+
+### Actions
+| Action | Description |
+|--------|-------------|
+| **Bypass Toggle** | Toggle individual VST plugin bypass. Long-press (>500ms) for master bypass. |
+| **Volume Control** | Mute toggle / volume up / volume down modes. SD+ dial support (+-5% per tick). |
+| **Preset Switch** | Switch between Quick Preset Slots (A-E) or cycle through presets. |
+| **Monitor Toggle** | Toggle monitor output on/off. Visual state indicator (green=ON, gray=OFF). |
+| **Panic Mute** | Instantly mute all DirectPipe audio outputs. Press again to unmute. |
+
+---
+
 ## v1.1.0.0 (2026-02-25)
 
 ### Bug Fixes

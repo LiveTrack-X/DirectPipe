@@ -208,6 +208,14 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
         return R"({"ok": true, "action": "input_mute_toggle"})";
     }
 
+    // GET /api/monitor/toggle
+    if (action == "monitor" && segments.size() >= 3 && segments[2] == "toggle") {
+        ActionEvent event;
+        event.action = Action::MonitorToggle;
+        dispatcher_.dispatch(event);
+        return R"({"ok": true, "action": "monitor_toggle"})";
+    }
+
     return R"({"error": "Unknown endpoint"})";
 }
 

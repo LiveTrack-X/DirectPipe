@@ -76,11 +76,35 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
         }
     }
 
-    // ── Output 2: Monitor → Headphones ──
-    // Actual write happens in AudioEngine::audioDeviceIOCallbackWithContext.
-    // Here we only track the level.
-    if (outputs_[static_cast<int>(Output::Monitor)].enabled.load(std::memory_order_relaxed)) {
+    // ── Output 2: Monitor → Headphones (separate WASAPI device) ──
+    if (outputs_[static_cast<int>(Output::Monitor)].enabled.load(std::memory_order_relaxed)
+        && monitorOutput_ != nullptr)
+    {
         float vol = outputs_[static_cast<int>(Output::Monitor)].volume.load(std::memory_order_relaxed);
+
+        if (vol > 0.001f) {
+            if (std::abs(vol - 1.0f) < 0.001f) {
+                const float* channels[2] = {
+                    buffer.getReadPointer(0),
+                    numChannels > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0)
+                };
+                monitorOutput_->writeAudio(channels, 2, numSamples);
+            } else {
+                for (int ch = 0; ch < numChannels; ++ch) {
+                    scaledBuffer_.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+                    scaledBuffer_.applyGain(ch, 0, numSamples, vol);
+                }
+                for (int ch = numChannels; ch < 2; ++ch)
+                    scaledBuffer_.clear(ch, 0, numSamples);
+
+                const float* channels[2] = {
+                    scaledBuffer_.getReadPointer(0),
+                    scaledBuffer_.getReadPointer(1)
+                };
+                monitorOutput_->writeAudio(channels, 2, numSamples);
+            }
+        }
+
         if (numChannels > 0) {
             float rms = buffer.getRMSLevel(0, 0, numSamples) * vol;
             outputs_[static_cast<int>(Output::Monitor)].level.store(rms, std::memory_order_relaxed);
@@ -129,6 +153,11 @@ float OutputRouter::getLevel(Output output) const
 bool OutputRouter::isVirtualCableActive() const
 {
     return virtualMicOutput_ != nullptr && virtualMicOutput_->isActive();
+}
+
+bool OutputRouter::isMonitorOutputActive() const
+{
+    return monitorOutput_ != nullptr && monitorOutput_->isActive();
 }
 
 } // namespace directpipe

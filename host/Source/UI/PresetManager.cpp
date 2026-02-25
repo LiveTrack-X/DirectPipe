@@ -111,6 +111,8 @@ juce::String PresetManager::exportToJSON()
         static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)));
     outputs->setProperty("monitorEnabled",
         router.isEnabled(OutputRouter::Output::Monitor));
+    outputs->setProperty("monitorDevice",
+        engine_.getMonitorDeviceName());
     root->setProperty("outputs", juce::var(outputs.release()));
 
     return juce::JSON::toString(juce::var(root.release()), true);
@@ -160,9 +162,10 @@ bool PresetManager::importFromJSON(const juce::String& json)
             engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
         }
     }
+    // Restore output device only for WASAPI mode (ASIO uses single device for I/O)
     if (root->hasProperty("outputDevice")) {
         juce::String outputDev = root->getProperty("outputDevice").toString();
-        if (outputDev.isNotEmpty()) {
+        if (outputDev.isNotEmpty() && engine_.getCurrentDeviceType() != "ASIO") {
             engine_.setOutputDevice(outputDev);
         }
     }
@@ -210,6 +213,12 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 bool monEnabled = static_cast<bool>(outputs->getProperty("monitorEnabled"));
                 router.setEnabled(OutputRouter::Output::Monitor, monEnabled);
                 engine_.setMonitorEnabled(monEnabled);
+            }
+
+            if (outputs->hasProperty("monitorDevice")) {
+                juce::String monDevice = outputs->getProperty("monitorDevice").toString();
+                if (monDevice.isNotEmpty())
+                    engine_.setMonitorDevice(monDevice);
             }
         }
     }

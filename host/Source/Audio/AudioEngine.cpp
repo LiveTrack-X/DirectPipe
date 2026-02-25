@@ -66,9 +66,10 @@ bool AudioEngine::initialize()
     // Register as the audio callback
     deviceManager_.addAudioCallback(this);
 
-    // Initialize the output router and wire virtual cable output
+    // Initialize the output router and wire outputs
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     outputRouter_.setVirtualMicOutput(&virtualMicOutput_);
+    outputRouter_.setMonitorOutput(&monitorOutput_);
 
     running_ = true;
     return true;
@@ -82,6 +83,7 @@ void AudioEngine::shutdown()
     deviceManager_.removeAudioCallback(this);
     deviceManager_.closeAudioDevice();
     virtualMicOutput_.shutdown();
+    monitorOutput_.shutdown();
     outputRouter_.shutdown();
     vstChain_.releaseResources();
 }
@@ -117,6 +119,11 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
 bool AudioEngine::setVirtualCableDevice(const juce::String& deviceName)
 {
     return virtualMicOutput_.setDevice(deviceName);
+}
+
+bool AudioEngine::setMonitorDevice(const juce::String& deviceName)
+{
+    return monitorOutput_.setDevice(deviceName);
 }
 
 juce::String AudioEngine::getVirtualCableDeviceName() const
@@ -461,48 +468,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         outputRouter_.routeAudio(buffer, numSamples);
     }
 
-    // 4. Local monitor output (copy to this callback's output)
-    if (monitorEnabled_.load(std::memory_order_relaxed) && !muted) {
-        float monVol = outputRouter_.getVolume(OutputRouter::Output::Monitor);
-        bool monEnabled = outputRouter_.isEnabled(OutputRouter::Output::Monitor);
-
-        if (monEnabled && monVol > 0.001f) {
-            if (chMode == 1 && buffer.getNumChannels() >= 1) {
-                // Mono mode: copy channel 0 to ALL output channels
-                for (int ch = 0; ch < numOutputChannels; ++ch) {
-                    std::memcpy(outputChannelData[ch],
-                                buffer.getReadPointer(0),
-                                sizeof(float) * static_cast<size_t>(numSamples));
-                    if (std::abs(monVol - 1.0f) > 0.001f) {
-                        juce::FloatVectorOperations::multiply(
-                            outputChannelData[ch], monVol, numSamples);
-                    }
-                }
-            } else {
-                // Stereo mode: copy matching channels
-                for (int ch = 0; ch < numOutputChannels; ++ch) {
-                    int srcCh = juce::jmin(ch, buffer.getNumChannels() - 1);
-                    std::memcpy(outputChannelData[ch],
-                                buffer.getReadPointer(srcCh),
-                                sizeof(float) * static_cast<size_t>(numSamples));
-                    if (std::abs(monVol - 1.0f) > 0.001f) {
-                        juce::FloatVectorOperations::multiply(
-                            outputChannelData[ch], monVol, numSamples);
-                    }
-                }
-            }
-        } else {
-            // Monitor muted or volume zero
-            for (int ch = 0; ch < numOutputChannels; ++ch) {
-                std::memset(outputChannelData[ch], 0,
-                            sizeof(float) * static_cast<size_t>(numSamples));
-            }
-        }
-    } else {
-        for (int ch = 0; ch < numOutputChannels; ++ch) {
-            std::memset(outputChannelData[ch], 0,
-                        sizeof(float) * static_cast<size_t>(numSamples));
-        }
+    // 4. Silence main callback output (monitor now uses separate WASAPI device via OutputRouter)
+    for (int ch = 0; ch < numOutputChannels; ++ch) {
+        std::memset(outputChannelData[ch], 0,
+                    sizeof(float) * static_cast<size_t>(numSamples));
     }
 
     // Measure output level

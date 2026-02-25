@@ -311,6 +311,15 @@ void MainComponent::handleAction(const ActionEvent& event)
             markSettingsDirty();
             break;
 
+        case Action::MonitorToggle: {
+            auto& router = audioEngine_.getOutputRouter();
+            bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
+            router.setEnabled(OutputRouter::Output::Monitor, enabled);
+            audioEngine_.setMonitorEnabled(enabled);
+            markSettingsDirty();
+            break;
+        }
+
         case Action::SwitchPresetSlot: {
             if (loadingSlot_) break;
             int slot = event.intParam;
@@ -509,6 +518,40 @@ void MainComponent::timerCallback()
     if (std::abs(static_cast<float>(inputGainSlider_.getValue()) - currentGain) > 0.01f) {
         inputGainSlider_.setValue(currentGain, juce::dontSendNotification);
     }
+
+    // Broadcast state to WebSocket clients (Stream Deck, etc.)
+    auto& router = audioEngine_.getOutputRouter();
+    auto& chain = audioEngine_.getVSTChain();
+    broadcaster_.updateState([&](AppState& s) {
+        s.inputGain = audioEngine_.getInputGain();
+        s.virtualMicVolume = router.getVolume(OutputRouter::Output::VirtualCable);
+        s.monitorVolume = router.getVolume(OutputRouter::Output::Monitor);
+        s.muted = muted;
+        s.inputMuted = muted;
+        s.masterBypassed = false;
+        s.latencyMs = static_cast<float>(monitor.getTotalLatencyVirtualMicMs());
+        s.inputLevelDb = audioEngine_.getInputLevel();
+        s.cpuPercent = static_cast<float>(monitor.getCpuUsagePercent());
+        s.sampleRate = monitor.getSampleRate();
+        s.bufferSize = monitor.getBufferSize();
+        s.channelMode = audioEngine_.getChannelMode();
+        s.virtualCableActive = router.isVirtualCableActive();
+        s.monitorEnabled = router.isEnabled(OutputRouter::Output::Monitor);
+        s.activeSlot = presetManager_ ? presetManager_->getActiveSlot() : 0;
+
+        s.plugins.clear();
+        for (int i = 0; i < chain.getPluginCount(); ++i) {
+            auto* slot = chain.getPluginSlot(i);
+            if (slot) {
+                AppState::PluginState ps;
+                ps.name = slot->name.toStdString();
+                ps.bypassed = slot->bypassed;
+                ps.loaded = slot->instance != nullptr;
+                s.plugins.push_back(ps);
+                if (!ps.bypassed && ps.loaded) s.masterBypassed = false;
+            }
+        }
+    });
 
     // Dirty-flag auto-save with 1-second debounce (30 ticks at 30Hz)
     if (settingsDirty_ && dirtyCooldown_ > 0) {

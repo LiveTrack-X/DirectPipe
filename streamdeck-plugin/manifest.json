@@ -4,11 +4,11 @@
   "UUID": "com.directpipe.directpipe",
   "Author": "DirectPipe",
   "CodePath": "bin/plugin.js",
-  "Description": "Control DirectPipe audio processing from your Stream Deck. Toggle VST bypass, adjust volumes, switch presets, and panic mute.",
+  "Description": "Control DirectPipe audio processing from your Stream Deck. Toggle VST bypass, adjust volumes, monitor output, switch presets, and panic mute.",
   "Name": "DirectPipe",
   "Icon": "images/directpipe",
   "URL": "https://github.com/LiveTrack-X/DirectPipe",
-  "Version": "1.1.0.0",
+  "Version": "1.2.0.0",
   "OS": [
     {
       "Platform": "windows",
@@ -102,6 +102,30 @@
       ],
       "SupportedInMultiActions": true,
       "PropertyInspectorPath": "src/inspectors/preset-pi.html"
+    },
+    {
+      "UUID": "com.directpipe.directpipe.monitor-toggle",
+      "Name": "Monitor Toggle",
+      "Tooltip": "Toggle monitor output (headphones) on/off.",
+      "Icon": "images/monitor",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "images/monitor-on",
+          "TitleAlignment": "middle",
+          "FontSize": 9,
+          "Title": "MON ON"
+        },
+        {
+          "Image": "images/monitor-off",
+          "TitleAlignment": "middle",
+          "FontSize": 9,
+          "Title": "MON OFF"
+        }
+      ],
+      "SupportedInMultiActions": true
     },
     {
       "UUID": "com.directpipe.directpipe.panic-mute",

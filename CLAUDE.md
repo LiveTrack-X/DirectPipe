@@ -15,7 +15,7 @@ Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체�
 7. Out-of-process VST scanner (crash-safe)
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.1.0
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.2.0
 - WASAPI Shared Mode + ASIO (Steinberg ASIO SDK)
 - VST2 SDK 2.4 + VST3
 - WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)
@@ -42,7 +42,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 
 ## Key Implementations
 - **ASIO + WASAPI dual driver**: Runtime switching. ASIO: single device, dynamic SR/BS, channel routing. WASAPI: separate I/O, fixed lists.
-- **Dual output**: OutputRouter distributes to Monitor + VirtualMicOutput. VirtualMicOutput uses separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer bridge.
+- **Dual output**: OutputRouter distributes to Monitor + VirtualCable. Both use independent WASAPI AudioDeviceManager + lock-free AudioRingBuffer (works regardless of ASIO/WASAPI main driver).
 - **Virtual Cable output**: Manually configured in Output settings. Uses separate WASAPI AudioDeviceManager + lock-free ring buffer.
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
 - **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal. Blacklist for crashed plugins. Log: `%AppData%/DirectPipe/scanner-log.txt`.
@@ -54,7 +54,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
 - **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765.
 - **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766.
-- **Stream Deck plugin**: SDK v2, 4 SingletonAction subclasses, Property Inspector HTML (sdpi-components v4), auto-reconnect (2s->30s), SVG icons with @2x. Pending message queue (cap 50).
+- **Stream Deck plugin**: SDK v2, 5 SingletonAction subclasses, Property Inspector HTML (sdpi-components v4), auto-reconnect (2s->30s), SVG icons with @2x. Pending message queue (cap 50).
 
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.
@@ -87,7 +87,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: SDK v2.0.1, 4 actions, 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
+- Stream Deck: SDK v2.0.1, 5 actions (Bypass/Volume/Preset/Monitor/Panic), 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), onSettingsChanged callbacks
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
 - Credit label "Created by LiveTrack" at bottom-right of main UI

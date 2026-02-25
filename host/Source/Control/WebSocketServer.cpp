@@ -419,6 +419,8 @@ void WebSocketServer::processMessage(const std::string& message)
         event.action = Action::NextPreset;
     } else if (actionStr == "previous_preset") {
         event.action = Action::PreviousPreset;
+    } else if (actionStr == "monitor_toggle") {
+        event.action = Action::MonitorToggle;
     } else {
         return;  // Unknown action
     }

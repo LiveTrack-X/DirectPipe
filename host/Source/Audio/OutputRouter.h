@@ -50,8 +50,14 @@ public:
     /** Wire the virtual cable output (non-owning pointer). */
     void setVirtualMicOutput(VirtualMicOutput* vmo) { virtualMicOutput_ = vmo; }
 
+    /** Wire the monitor output (non-owning pointer, separate WASAPI device). */
+    void setMonitorOutput(VirtualMicOutput* mo) { monitorOutput_ = mo; }
+
     /** Check if virtual cable is active and receiving audio. */
     bool isVirtualCableActive() const;
+
+    /** Check if monitor output is active and receiving audio. */
+    bool isMonitorOutputActive() const;
 
 private:
     static constexpr int kOutputCount = static_cast<int>(Output::Count);
@@ -65,6 +71,7 @@ private:
     OutputState outputs_[kOutputCount];
 
     VirtualMicOutput* virtualMicOutput_ = nullptr;
+    VirtualMicOutput* monitorOutput_ = nullptr;
 
     // Temporary buffer for volume-scaled output (pre-allocated)
     juce::AudioBuffer<float> scaledBuffer_;

@@ -30,6 +30,7 @@ enum class Action {
     PreviousPreset,     ///< Switch to previous preset
     InputMuteToggle,    ///< Toggle microphone input mute
     SwitchPresetSlot,   ///< Switch to preset slot (intParam = 0..4 for A..E)
+    MonitorToggle,      ///< Toggle monitor output on/off
 };
 
 /// Carries an action with its parameters

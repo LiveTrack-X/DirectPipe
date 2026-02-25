@@ -34,6 +34,7 @@ const icons = [
   { src: 'panic.svg', out: 'panic', size: 20, x2: 40 },
   { src: 'volume.svg', out: 'volume', size: 20, x2: 40 },
   { src: 'preset.svg', out: 'preset', size: 20, x2: 40 },
+  { src: 'monitor.svg', out: 'monitor', size: 20, x2: 40 },
 
   // State images (72 + 144@2x) — shown on Stream Deck keys
   { src: 'bypass-active.svg', out: 'bypass-active', size: 72, x2: 144 },
@@ -43,6 +44,8 @@ const icons = [
   { src: 'volume-on.svg', out: 'volume-on', size: 72, x2: 144 },
   { src: 'volume-muted.svg', out: 'volume-muted', size: 72, x2: 144 },
   { src: 'preset-active.svg', out: 'preset-active', size: 72, x2: 144 },
+  { src: 'monitor-on.svg', out: 'monitor-on', size: 72, x2: 144 },
+  { src: 'monitor-off.svg', out: 'monitor-off', size: 72, x2: 144 },
 ];
 
 async function generateIcon({ src, out, size, x2 }) {

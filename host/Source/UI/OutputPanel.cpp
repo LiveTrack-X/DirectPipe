@@ -133,23 +133,17 @@ void OutputPanel::refreshMonitorDeviceList()
 {
     monitorDeviceCombo_.clear(juce::dontSendNotification);
 
-    // Always show Windows Audio (WASAPI) output devices for monitoring
-    auto devices = engine_.getWasapiOutputDevices();
+    // Always show WASAPI output devices (independent of main driver type)
+    auto devices = engine_.getMonitorOutput().getAvailableOutputDevices();
     for (int i = 0; i < devices.size(); ++i) {
         monitorDeviceCombo_.addItem(devices[i], i + 1);
     }
 
-    // Try to select the currently active output device
-    juce::AudioDeviceManager::AudioDeviceSetup setup;
-    engine_.getDeviceManager().getAudioDeviceSetup(setup);
-
-    int idx = devices.indexOf(setup.outputDeviceName);
+    // Select current monitor device
+    auto currentDevice = engine_.getMonitorDeviceName();
+    int idx = devices.indexOf(currentDevice);
     if (idx >= 0) {
         monitorDeviceCombo_.setSelectedId(idx + 1, juce::dontSendNotification);
-    } else if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice()) {
-        int nameIdx = devices.indexOf(device->getName());
-        if (nameIdx >= 0)
-            monitorDeviceCombo_.setSelectedId(nameIdx + 1, juce::dontSendNotification);
     }
 }
 
@@ -159,7 +153,7 @@ void OutputPanel::onMonitorDeviceSelected()
 {
     auto selectedText = monitorDeviceCombo_.getText();
     if (selectedText.isNotEmpty()) {
-        engine_.setOutputDevice(selectedText);
+        engine_.setMonitorDevice(selectedText);
         if (onSettingsChanged) onSettingsChanged();
     }
 }
