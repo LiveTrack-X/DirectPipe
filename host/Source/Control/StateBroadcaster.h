@@ -29,7 +29,6 @@ struct AppState {
 
     std::vector<PluginState> plugins;
     float inputGain = 1.0f;
-    float virtualMicVolume = 1.0f;
     float monitorVolume = 1.0f;
     bool masterBypassed = false;
     bool muted = false;
@@ -41,7 +40,6 @@ struct AppState {
     double sampleRate = 48000.0;
     int bufferSize = 480;
     int channelMode = 1;  // 1 = Mono, 2 = Stereo
-    bool virtualCableActive = false;
     bool monitorEnabled = false;
     int activeSlot = 0;   // Quick preset slot index: 0=A, 1=B, 2=C, 3=D, 4=E
 };

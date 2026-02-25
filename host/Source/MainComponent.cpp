@@ -156,11 +156,9 @@ MainComponent::MainComponent()
         auto& router = audioEngine_.getOutputRouter();
         if (muted) {
             preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-            router.setEnabled(OutputRouter::Output::VirtualCable, false);
             router.setEnabled(OutputRouter::Output::Monitor, false);
             audioEngine_.setMonitorEnabled(false);
         } else {
-            router.setEnabled(OutputRouter::Output::VirtualCable, true);  // Always ON
             router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
             audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
         }
@@ -282,11 +280,9 @@ void MainComponent::handleAction(const ActionEvent& event)
             auto& router = audioEngine_.getOutputRouter();
             if (muted) {
                 preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-                router.setEnabled(OutputRouter::Output::VirtualCable, false);
                 router.setEnabled(OutputRouter::Output::Monitor, false);
                 audioEngine_.setMonitorEnabled(false);
             } else {
-                router.setEnabled(OutputRouter::Output::VirtualCable, true);  // Always ON
                 router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
                 audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
             }
@@ -306,8 +302,6 @@ void MainComponent::handleAction(const ActionEvent& event)
         case Action::SetVolume:
             if (event.stringParam == "monitor")
                 audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
-            else if (event.stringParam == "vmic")
-                audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::VirtualCable, event.floatParam);
             markSettingsDirty();
             break;
 
@@ -524,7 +518,6 @@ void MainComponent::timerCallback()
     auto& chain = audioEngine_.getVSTChain();
     broadcaster_.updateState([&](AppState& s) {
         s.inputGain = audioEngine_.getInputGain();
-        s.virtualMicVolume = router.getVolume(OutputRouter::Output::VirtualCable);
         s.monitorVolume = router.getVolume(OutputRouter::Output::Monitor);
         s.muted = muted;
         s.inputMuted = muted;
@@ -535,7 +528,6 @@ void MainComponent::timerCallback()
         s.sampleRate = monitor.getSampleRate();
         s.bufferSize = monitor.getBufferSize();
         s.channelMode = audioEngine_.getChannelMode();
-        s.virtualCableActive = router.isVirtualCableActive();
         s.monitorEnabled = router.isEnabled(OutputRouter::Output::Monitor);
         s.activeSlot = presetManager_ ? presetManager_->getActiveSlot() : 0;
 

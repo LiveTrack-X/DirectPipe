@@ -2,9 +2,9 @@
 
 ## What is DirectPipe? / DirectPipe란?
 
-DirectPipe is a real-time VST2/VST3 host for Windows. It processes your microphone input through a chain of VST plugins and routes the result to two outputs: headphone monitor and virtual cable (for OBS, Discord, etc.). You can control it remotely via hotkeys, MIDI, Stream Deck, or HTTP API while the app runs in the system tray.
+DirectPipe is a real-time VST2/VST3 host for Windows. It processes your microphone input through a chain of VST plugins. The main output goes to the AudioSettings Output device (e.g., VB-Audio virtual cable for OBS/Discord). An optional separate WASAPI monitor output sends to headphones. You can control it remotely via hotkeys, MIDI, Stream Deck, or HTTP API while the app runs in the system tray.
 
-DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 VST 플러그인 체인으로 처리하고 두 가지 출력으로 라우팅한다: 헤드폰 모니터 + 가상 케이블 (OBS, Discord 등). 시스템 트레이에서 실행하면서 단축키, MIDI, Stream Deck, HTTP API로 원격 제어 가능.
+DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 VST 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치로 직접 전송 (예: VB-Audio 가상 케이블 → OBS, Discord). 별도 WASAPI 모니터 출력(헤드폰) 선택적 사용 가능. 시스템 트레이에서 실행하면서 단축키, MIDI, Stream Deck, HTTP API로 원격 제어 가능.
 
 ## Quick Start / 빠른 시작
 
@@ -72,14 +72,13 @@ Slots save chain-only data (plugins, order, bypass, parameters). Audio and outpu
 - **Volume** — Adjust monitor volume / 모니터 볼륨 조절
 - **Enable** — Toggle monitor on/off / 모니터 켜기/끄기
 
-### Virtual Cable Output / 가상 케이블 출력
+### Main Output / 메인 출력
 
-DirectPipe routes processed audio to a virtual audio cable (e.g., VB-Audio Hi-Fi Cable) through a separate WASAPI output device. This allows OBS, Discord, and other apps to receive your processed audio.
+The main processed audio goes directly to the AudioSettings Output device. To send audio to OBS, Discord, etc., select a virtual audio cable (e.g., VB-Audio Hi-Fi Cable) as the Output device in the Audio tab.
 
-DirectPipe는 처리된 오디오를 별도의 WASAPI 출력 장치를 통해 가상 오디오 케이블(예: VB-Audio Hi-Fi Cable)로 라우팅한다. OBS, Discord 등에서 처리된 오디오를 수신할 수 있다.
+처리된 오디오는 AudioSettings Output 장치로 직접 전송된다. OBS, Discord 등에 보내려면 Audio 탭에서 가상 오디오 케이블(예: VB-Audio Hi-Fi Cable)을 Output 장치로 선택.
 
-- Select the virtual cable device in Output settings / Output 설정에서 가상 케이블 장치 선택
-- Lock-free ring buffer bridge between audio threads / 오디오 스레드 간 락프리 링 버퍼 브리지
+The monitor output (headphones) uses a separate WASAPI device configured in the Output tab, so you can listen while routing to a different device. / 모니터 출력(헤드폰)은 Output 탭에서 설정하는 별도 WASAPI 장치를 사용하므로, 다른 장치로 라우팅하면서 동시에 청취 가능.
 
 ## VST Plugin Scanner / VST 스캐너
 
@@ -166,7 +165,12 @@ See [Control API Reference](CONTROL_API.md) for all endpoints. / 전체 엔드�
 - Subsequent switches between same plugins are instant / 이후 같은 플러그인 간 전환은 즉시
 - UI remains responsive during async loading / 비동기 로딩 중 UI 응답 유지
 
-**Virtual Cable not working? / 가상 케이블이 안 되나요?**
-- Install a virtual audio cable driver (e.g., VB-Audio Hi-Fi Cable) / 가상 오디오 케이블 드라이버 설치 (예: VB-Audio)
-- Ensure the virtual device appears in Windows Sound Settings / Windows 사운드 설정에서 가상 장치 확인
-- Select the virtual cable device manually in Output settings / Output 설정에서 수동으로 가상 케이블 장치 선택
+**No monitor output? / 모니터 출력이 안 되나요?**
+- Check the monitor device is selected in Output tab / Output 탭에서 모니터 장치가 선택되어 있는지 확인
+- Ensure "Enable" is toggled on / "Enable"이 켜져 있는지 확인
+- The monitor uses a separate WASAPI device — it works even when main driver is ASIO / 모니터는 별도 WASAPI 장치를 사용 — ASIO 모드에서도 동작
+
+**Want to send audio to OBS/Discord? / OBS/Discord로 보내고 싶나요?**
+- Install a virtual audio cable driver (e.g., VB-Audio Hi-Fi Cable) / 가상 오디오 케이블 드라이버 설치
+- Select it as the Output device in the Audio tab / Audio 탭에서 Output 장치로 선택
+- Set your headphones as the monitor device in the Output tab / Output 탭에서 헤드폰을 모니터 장치로 설정

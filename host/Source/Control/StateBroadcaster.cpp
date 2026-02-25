@@ -75,7 +75,6 @@ std::string StateBroadcaster::toJSON() const
     // Volumes
     auto volumes = new juce::DynamicObject();
     volumes->setProperty("input", static_cast<double>(state.inputGain));
-    volumes->setProperty("virtual_mic", static_cast<double>(state.virtualMicVolume));
     volumes->setProperty("monitor", static_cast<double>(state.monitorVolume));
     data->setProperty("volumes", juce::var(volumes));
 
@@ -90,7 +89,6 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("sample_rate", state.sampleRate);
     data->setProperty("buffer_size", state.bufferSize);
     data->setProperty("channel_mode", state.channelMode);
-    data->setProperty("virtual_cable_active", state.virtualCableActive);
     data->setProperty("monitor_enabled", state.monitorEnabled);
     data->setProperty("active_slot", state.activeSlot);
 

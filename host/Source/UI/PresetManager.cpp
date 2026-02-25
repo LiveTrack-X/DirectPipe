@@ -99,14 +99,9 @@ juce::String PresetManager::exportToJSON()
     }
     root->setProperty("plugins", plugins);
 
-    // Output settings
+    // Output settings (monitor only — main output uses AudioSettings)
     auto& router = engine_.getOutputRouter();
     auto outputs = std::make_unique<juce::DynamicObject>();
-    outputs->setProperty("virtualCableVolume",
-        static_cast<double>(router.getVolume(OutputRouter::Output::VirtualCable)));
-    outputs->setProperty("virtualCableEnabled", true);  // Always save as ON
-    outputs->setProperty("virtualCableDevice",
-        engine_.getVirtualMicOutput().getDeviceName());
     outputs->setProperty("monitorVolume",
         static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)));
     outputs->setProperty("monitorEnabled",
@@ -180,29 +175,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
     }
 
-    // Output settings
+    // Output settings (monitor only — main output uses AudioSettings)
     if (root->hasProperty("outputs")) {
         auto* outputs = root->getProperty("outputs").getDynamicObject();
         if (outputs) {
             auto& router = engine_.getOutputRouter();
-
-            // Virtual cable settings (with backward compat from vmicVolume)
-            if (outputs->hasProperty("virtualCableVolume"))
-                router.setVolume(OutputRouter::Output::VirtualCable,
-                                 static_cast<float>((double)outputs->getProperty("virtualCableVolume")));
-            else if (outputs->hasProperty("vmicVolume"))
-                router.setVolume(OutputRouter::Output::VirtualCable,
-                                 static_cast<float>((double)outputs->getProperty("vmicVolume")));
-
-            // Virtual Cable is always ON unless Panic Mute is active.
-            // Ignore saved virtualCableEnabled — force ON at load.
-            router.setEnabled(OutputRouter::Output::VirtualCable, true);
-
-            if (outputs->hasProperty("virtualCableDevice")) {
-                juce::String vcDevice = outputs->getProperty("virtualCableDevice").toString();
-                if (vcDevice.isNotEmpty())
-                    engine_.setVirtualCableDevice(vcDevice);
-            }
 
             if (outputs->hasProperty("monitorVolume"))
                 router.setVolume(OutputRouter::Output::Monitor,

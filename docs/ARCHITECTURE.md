@@ -2,15 +2,14 @@
 
 ## System Overview / 시스템 개요
 
-DirectPipe is a real-time VST2/VST3 host that processes microphone input through a plugin chain and routes the output to a monitor device and virtual cable. External control sources (hotkeys, MIDI, WebSocket, HTTP) all funnel through a unified ActionDispatcher.
+DirectPipe is a real-time VST2/VST3 host that processes microphone input through a plugin chain. Main output goes directly to the AudioSettings Output device (WASAPI/ASIO). An optional separate WASAPI monitor output sends to headphones. External control sources (hotkeys, MIDI, WebSocket, HTTP) all funnel through a unified ActionDispatcher.
 
-DirectPipe는 마이크 입력을 VST 플러그인 체인으로 실시간 처리하고 모니터 출력 및 가상 케이블로 라우팅하는 VST 호스트다. 모든 외부 제어(단축키, MIDI, WebSocket, HTTP)는 ActionDispatcher를 통해 통합된다.
+DirectPipe는 마이크 입력을 VST 플러그인 체인으로 실시간 처리하는 VST 호스트다. 메인 출력은 AudioSettings Output 장치(WASAPI/ASIO)로 직접 전송. 별도 WASAPI 모니터 출력(헤드폰)을 선택적으로 사용 가능. 모든 외부 제어(단축키, MIDI, WebSocket, HTTP)는 ActionDispatcher를 통해 통합된다.
 
 ```
-Mic -> WASAPI Shared / ASIO -> VST2/VST3 Chain -> OutputRouter
-                                                     /      \
-                                          Virtual Cable   Monitor Output
-                                          (VB-Audio etc.) (Headphones)
+Mic -> WASAPI Shared / ASIO -> VST2/VST3 Chain -> Main Output (outputChannelData)
+                                                     \
+                                                OutputRouter -> Monitor Output (Headphones, separate WASAPI)
 
 External Control:
   Hotkey / MIDI / WebSocket / HTTP -> ControlManager -> ActionDispatcher
@@ -21,7 +20,7 @@ External Control:
 - **WASAPI Shared** — Non-exclusive mic access. Other apps can use the mic simultaneously. / 비독점 마이크 접근. 다른 앱과 동시 사용 가능.
 - **ASIO** — Lower latency for ASIO-compatible interfaces. / ASIO 호환 인터페이스로 저지연.
 - Runtime switching between driver types. UI adapts dynamically. / 드라이버 타입 런타임 전환. UI 자동 적응.
-- **Dual output** — Monitor for local listening + Virtual Cable for routing to OBS/Discord/etc. / 모니터 로컬 청취 + 가상 케이블로 OBS/Discord 등에 라우팅.
+- **Main + Monitor output** — Main output goes directly to AudioSettings device (e.g., VB-Audio for OBS/Discord). Monitor uses a separate WASAPI device for headphones. / 메인 출력은 AudioSettings 장치로 직접 전송. 모니터는 별도 WASAPI 장치로 헤드폰 출력.
 
 ## Components / 컴포넌트
 
@@ -35,8 +34,8 @@ JUCE 7.0.12 기반 데스크톱 앱. 메인 오디오 처리 엔진.
 
 - **AudioEngine** — Dual driver support (WASAPI Shared + ASIO). Manages the audio device callback. Pre-allocated work buffers (8ch). Mono mixing or stereo passthrough. Runtime device type switching, sample rate/buffer size queries. Input gain (atomic), master mute, RMS level measurement. / 듀얼 드라이버. 오디오 콜백 관리. 사전 할당 버퍼. Mono/Stereo 처리. 입력 게인, 마스터 뮤트, RMS 레벨 측정.
 - **VSTChain** — `AudioProcessorGraph`-based VST2/VST3 plugin chain. `suspendProcessing()` during graph rebuild. Async chain replacement (`replaceChainAsync`) loads plugins on background thread. Editor windows tracked per-plugin. Pre-allocated MidiBuffer. / VST2/VST3 플러그인 체인. 비동기 체인 교체로 UI 프리즈 방지. MidiBuffer 사전 할당.
-- **OutputRouter** — Distributes processed audio to 2 destinations: Virtual Cable and Monitor. Independent atomic volume and enable controls per output. Pre-allocated scaled buffer. / 2개 출력(Virtual Cable, Monitor)으로 오디오 분배. 독립적 볼륨/활성화 제어.
-- **VirtualMicOutput** — Second WASAPI AudioDeviceManager for virtual cable output. Lock-free `AudioRingBuffer` bridge between two callback threads. Manually configured in Output settings. / 별도 WASAPI 디바이스로 가상 케이블 출력. 락프리 링버퍼 브리지. Output 설정에서 수동 구성.
+- **OutputRouter** — Routes processed audio to the monitor output (separate WASAPI device). Independent atomic volume and enable controls. Pre-allocated scaled buffer. Main output goes directly through outputChannelData. / 모니터 출력(별도 WASAPI 장치)으로 오디오 라우팅. 메인 출력은 outputChannelData로 직접 전송.
+- **VirtualMicOutput** — Second WASAPI AudioDeviceManager used for the monitor output. Lock-free `AudioRingBuffer` bridge between two audio callback threads. Configured in Output tab. / 모니터 출력용 별도 WASAPI AudioDeviceManager. 락프리 링버퍼 브리지. Output 탭에서 구성.
 - **AudioRingBuffer** — Header-only SPSC lock-free ring buffer for inter-device audio transfer. / 디바이스 간 오디오 전송용 헤더 전용 SPSC 락프리 링 버퍼.
 - **LatencyMonitor** — High-resolution timer-based latency measurement. / 고해상도 타이머 기반 레이턴시 측정.
 
@@ -44,7 +43,7 @@ JUCE 7.0.12 기반 데스크톱 앱. 메인 오디오 처리 엔진.
 
 All external inputs funnel through a unified ActionDispatcher. / 모든 외부 입력은 통합된 ActionDispatcher를 거친다.
 
-- **ActionDispatcher** — Central action routing. 11 actions: `PluginBypass`, `MasterBypass`, `SetVolume`, `ToggleMute`, `LoadPreset`, `PanicMute`, `InputGainAdjust`, `NextPreset`, `PreviousPreset`, `InputMuteToggle`, `SwitchPresetSlot`. Thread-safe dispatch via `callAsync`. / 중앙 액션 라우팅. 11개 액션. callAsync를 통한 스레드 안전 디스패치.
+- **ActionDispatcher** — Central action routing. 12 actions: `PluginBypass`, `MasterBypass`, `SetVolume`, `ToggleMute`, `LoadPreset`, `PanicMute`, `InputGainAdjust`, `NextPreset`, `PreviousPreset`, `InputMuteToggle`, `SwitchPresetSlot`, `MonitorToggle`. Thread-safe dispatch via `callAsync`. / 중앙 액션 라우팅. 12개 액션. callAsync를 통한 스레드 안전 디스패치.
 - **ControlManager** — Aggregates all control sources (Hotkey, MIDI, WebSocket, HTTP). Initialize/shutdown lifecycle. / 모든 제어 소스 통합 관리.
 - **HotkeyHandler** — Windows `RegisterHotKey` API for global keyboard shortcuts. Recording mode for key capture. / 글로벌 키보드 단축키. 키 녹화 모드.
 - **MidiHandler** — JUCE `MidiInput` for MIDI CC/note mapping with Learn mode. LED feedback via MidiOutput. Hot-plug detection. / MIDI CC 매핑 + Learn 모드. LED 피드백. 핫플러그 감지.
@@ -99,7 +98,7 @@ Shared static library for IPC. No JUCE dependency. / IPC용 정적 라이브러�
 Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v2). / Stream Deck 플러그인 (SDK v2).
 
 - Connects via WebSocket (`ws://localhost:8765`) / WebSocket으로 연결
-- 4 SingletonAction subclasses: Bypass Toggle, Panic Mute, Volume Control, Preset Switch / 4개 액션
+- 5 SingletonAction subclasses: Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle / 5개 액션
 - Volume Control supports 3 modes: Mute Toggle, Volume Up (+), Volume Down (-) with configurable step size / 볼륨 제어: 뮤트 토글, 볼륨 +/- 모드
 - SD+ dial support for volume adjustment / SD+ 다이얼 지원
 - Auto-reconnect with exponential backoff (2s -> 30s) / 지수 백오프 자동 재연결 (2초 -> 30초)
@@ -123,13 +122,13 @@ Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v2). / Stream Deck 
    입력 RMS 레벨 측정
 6. Process through VST chain (graph->processBlock, inline, pre-allocated MidiBuffer)
    VST 체인 처리 (인라인, 사전 할당된 MidiBuffer)
-7. OutputRouter distributes to:
-   OutputRouter가 분배:
-   a. Virtual Cable -> lock-free AudioRingBuffer -> VirtualMicOutput (WASAPI)
-      가상 케이블 -> 락프리 링버퍼 -> VirtualMicOutput
-   b. Monitor output -> scaled copy to device output channels
-      모니터 출력 -> 스케일링 후 디바이스 출력 채널에 복사
-8. Measure output RMS level
+7. Copy processed audio to main output (outputChannelData)
+   처리된 오디오를 메인 출력(outputChannelData)에 복사
+8. OutputRouter routes to monitor (if enabled):
+   OutputRouter가 모니터로 라우팅 (활성화 시):
+   Monitor -> volume scale -> lock-free AudioRingBuffer -> VirtualMicOutput (separate WASAPI)
+   모니터 -> 볼륨 스케일링 -> 락프리 링버퍼 -> VirtualMicOutput (별도 WASAPI)
+9. Measure output RMS level
    출력 RMS 레벨 측정
 ```
 

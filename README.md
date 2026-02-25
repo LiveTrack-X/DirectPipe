@@ -1,18 +1,17 @@
 # DirectPipe
 
-Windows용 실시간 VST2/VST3 호스트. 마이크 입력에 VST 플러그인 체인을 걸어 실시간으로 처리하고, 처리된 오디오를 모니터 출력과 가상 케이블로 라우팅한다. Light Host와 비슷하지만 키보드 단축키 / MIDI CC / Stream Deck / HTTP API를 통한 외부 제어와 빠른 프리셋 전환에 초점을 맞추었다.
+Windows용 실시간 VST2/VST3 호스트. 마이크 입력에 VST 플러그인 체인을 걸어 실시간으로 처리하고, 메인 출력(AudioSettings Output 장치)으로 직접 전송한다. 별도 WASAPI 장치를 통한 모니터 출력(헤드폰)도 지원. Light Host와 비슷하지만 키보드 단축키 / MIDI CC / Stream Deck / HTTP API를 통한 외부 제어와 빠른 프리셋 전환에 초점을 맞추었다.
 
-Real-time VST2/VST3 host for Windows. Processes microphone input through a VST plugin chain, routing output to monitor headphones and virtual cable. Similar to Light Host, but focused on external control (hotkeys, MIDI CC, Stream Deck, HTTP API) and fast preset switching.
+Real-time VST2/VST3 host for Windows. Processes microphone input through a VST plugin chain, with main output going directly to the AudioSettings Output device. Optional separate WASAPI monitor output for headphones. Similar to Light Host, but focused on external control (hotkeys, MIDI CC, Stream Deck, HTTP API) and fast preset switching.
 
 ## 동작 원리 / How It Works
 
 ```
 Mic -> WASAPI Shared / ASIO -> VST2/VST3 Plugin Chain
                                     |
-                              OutputRouter
-                               /        \
-                    Virtual Cable     Monitor Output
-                    (VB-Audio etc.)   (Headphones)
+                              Main Output (AudioSettings Output device)
+                                    \
+                               OutputRouter -> Monitor Output (Headphones, separate WASAPI)
 
 External Control:
   Hotkeys / MIDI CC / Stream Deck / HTTP / WebSocket
@@ -32,7 +31,7 @@ External Control:
 
 - **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
 - WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
-- **듀얼 출력 라우팅** — Monitor (headphones) + Virtual Cable (VB-Audio 등) 동시 출력
+- **메인 출력 + 모니터** — Main output to AudioSettings device + optional monitor (headphones) via separate WASAPI
 - **Mono / Stereo** 채널 모드 — Channel mode selection
 - **입력 게인** 조절 — Input gain control
 - **실시간 레벨 미터** (입력/출력 RMS) — Real-time input/output level meters
@@ -43,7 +42,7 @@ External Control:
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
-- **Stream Deck 플러그인** (SDK v2) — Bypass Toggle, Panic Mute, Volume Control, Preset Switch
+- **Stream Deck 플러그인** (SDK v2) — Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle
 
 ### UI
 
@@ -74,8 +73,8 @@ cmake --build build --config Release
 ```
 host/                     JUCE host application (main)
   Source/
-    Audio/                  AudioEngine, VSTChain, OutputRouter,
-                            VirtualMicOutput, LatencyMonitor
+    Audio/                  AudioEngine, VSTChain, OutputRouter, VirtualMicOutput,
+                            AudioRingBuffer, LatencyMonitor
     Control/                ActionDispatcher, ControlManager, ControlMapping,
                             WebSocketServer, HttpApiServer,
                             HotkeyHandler, MidiHandler, StateBroadcaster

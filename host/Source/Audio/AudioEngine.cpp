@@ -68,7 +68,6 @@ bool AudioEngine::initialize()
 
     // Initialize the output router and wire outputs
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
-    outputRouter_.setVirtualMicOutput(&virtualMicOutput_);
     outputRouter_.setMonitorOutput(&monitorOutput_);
 
     running_ = true;
@@ -82,7 +81,6 @@ void AudioEngine::shutdown()
     running_ = false;
     deviceManager_.removeAudioCallback(this);
     deviceManager_.closeAudioDevice();
-    virtualMicOutput_.shutdown();
     monitorOutput_.shutdown();
     outputRouter_.shutdown();
     vstChain_.releaseResources();
@@ -116,19 +114,9 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
     return true;
 }
 
-bool AudioEngine::setVirtualCableDevice(const juce::String& deviceName)
-{
-    return virtualMicOutput_.setDevice(deviceName);
-}
-
 bool AudioEngine::setMonitorDevice(const juce::String& deviceName)
 {
     return monitorOutput_.setDevice(deviceName);
-}
-
-juce::String AudioEngine::getVirtualCableDeviceName() const
-{
-    return virtualMicOutput_.getDeviceName();
 }
 
 void AudioEngine::setBufferSize(int bufferSize)
@@ -463,15 +451,20 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         vstChain_.processBlock(buffer, numSamples);
     }
 
-    // 3. Route processed audio to outputs (Virtual Cable + Monitor)
+    // 3. Route processed audio to monitor (separate WASAPI device)
     if (!muted) {
         outputRouter_.routeAudio(buffer, numSamples);
     }
 
-    // 4. Silence main callback output (monitor now uses separate WASAPI device via OutputRouter)
+    // 4. Copy processed audio to main output (AudioSettings Output device)
     for (int ch = 0; ch < numOutputChannels; ++ch) {
-        std::memset(outputChannelData[ch], 0,
-                    sizeof(float) * static_cast<size_t>(numSamples));
+        if (ch < buffer.getNumChannels() && !muted) {
+            std::memcpy(outputChannelData[ch], buffer.getReadPointer(ch),
+                        sizeof(float) * static_cast<size_t>(numSamples));
+        } else {
+            std::memset(outputChannelData[ch], 0,
+                        sizeof(float) * static_cast<size_t>(numSamples));
+        }
     }
 
     // Measure output level

@@ -1,14 +1,14 @@
 # DirectPipe — Claude Code Project Guide v6.0
 
 ## Project Description
-Real-time VST2/VST3 host for Windows. Processes microphone input through a plugin chain with dual output: monitor (headphones) and virtual cable (OBS, Discord, etc.). Focused on external control (hotkeys, MIDI, Stream Deck, HTTP API) and fast preset switching. Similar to Light Host but with remote control capabilities.
+Real-time VST2/VST3 host for Windows. Processes microphone input through a plugin chain. Main output goes to AudioSettings Output device (WASAPI/ASIO), with optional separate monitor output (headphones) via independent WASAPI device. Focused on external control (hotkeys, MIDI, Stream Deck, HTTP API) and fast preset switching. Similar to Light Host but with remote control capabilities.
 
-Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체인으로 처리하고 모니터 + 가상 케이블 듀얼 출력. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
+Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치(WASAPI/ASIO)로 직접 전송, 별도 WASAPI 모니터 출력(헤드폰) 옵션. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
 ## Core Principles
 1. WASAPI Shared default + ASIO support (non-exclusive mic access)
 2. VST2 + VST3 hosting with drag-and-drop chain editing
-3. Dual output: Monitor (headphones) + Virtual Cable (VB-Audio etc.) via OutputRouter
+3. Main output via AudioSettings Output device + optional Monitor (headphones) via separate WASAPI
 4. Quick Preset Slots A-E (chain-only, includes plugin internal state)
 5. External control: Hotkey, MIDI, WebSocket, HTTP -> unified ActionDispatcher
 6. System tray resident (close = minimize to tray)
@@ -30,10 +30,9 @@ cmake --build build --config Release
 
 ## Architecture
 ```
-Mic -> WASAPI Shared / ASIO -> [Mono/Stereo] -> VSTChain -> OutputRouter
-                                                              /      \
-                                                   Virtual Cable   Monitor
-                                                   (VB-Audio)     (Headphones)
+Mic -> WASAPI Shared / ASIO -> [Mono/Stereo] -> VSTChain -> Main Output (outputChannelData)
+                                                              \
+                                                         OutputRouter -> Monitor (Headphones, separate WASAPI)
 
 External Control:
 Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
@@ -42,8 +41,8 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 
 ## Key Implementations
 - **ASIO + WASAPI dual driver**: Runtime switching. ASIO: single device, dynamic SR/BS, channel routing. WASAPI: separate I/O, fixed lists.
-- **Dual output**: OutputRouter distributes to Monitor + VirtualCable. Both use independent WASAPI AudioDeviceManager + lock-free AudioRingBuffer (works regardless of ASIO/WASAPI main driver).
-- **Virtual Cable output**: Manually configured in Output settings. Uses separate WASAPI AudioDeviceManager + lock-free ring buffer.
+- **Main output**: Processed audio written directly to outputChannelData (AudioSettings Output device). Works with both WASAPI and ASIO.
+- **Monitor output**: Separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer for headphone monitoring. Independent of main driver type (works even with ASIO). Configured in Output tab.
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
 - **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal. Blacklist for crashed plugins. Log: `%AppData%/DirectPipe/scanner-log.txt`.
 - **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Safe deletion via callAsync.
@@ -54,7 +53,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
 - **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765.
 - **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766.
-- **Stream Deck plugin**: SDK v2, 5 SingletonAction subclasses, Property Inspector HTML (sdpi-components v4), auto-reconnect (2s->30s), SVG icons with @2x. Pending message queue (cap 50).
+- **Stream Deck plugin**: SDK v2, 5 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic), Property Inspector HTML (sdpi-components v4), auto-reconnect (2s->30s), SVG icons with @2x. Pending message queue (cap 50).
 
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.

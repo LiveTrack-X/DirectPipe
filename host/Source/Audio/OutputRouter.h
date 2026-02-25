@@ -1,10 +1,9 @@
 /**
  * @file OutputRouter.h
- * @brief Audio output distribution to 2 destinations
+ * @brief Audio output routing to monitor (headphones)
  *
- * Routes processed audio to:
- * 1. Virtual Cable (second WASAPI device) → Discord/Zoom/OBS
- * 2. Local Monitor → Headphones
+ * Routes processed audio to a separate WASAPI monitor device (headphones).
+ * Main output goes through the AudioSettings Output device directly.
  */
 #pragma once
 
@@ -24,8 +23,7 @@ class OutputRouter {
 public:
     /// Output destination identifiers
     enum class Output {
-        VirtualCable = 0,  ///< Virtual cable (Discord/Zoom/OBS)
-        Monitor,           ///< Local monitoring (headphones)
+        Monitor = 0,       ///< Local monitoring (headphones, separate WASAPI device)
         Count
     };
 
@@ -47,14 +45,8 @@ public:
     bool isEnabled(Output output) const;
     float getLevel(Output output) const;
 
-    /** Wire the virtual cable output (non-owning pointer). */
-    void setVirtualMicOutput(VirtualMicOutput* vmo) { virtualMicOutput_ = vmo; }
-
     /** Wire the monitor output (non-owning pointer, separate WASAPI device). */
     void setMonitorOutput(VirtualMicOutput* mo) { monitorOutput_ = mo; }
-
-    /** Check if virtual cable is active and receiving audio. */
-    bool isVirtualCableActive() const;
 
     /** Check if monitor output is active and receiving audio. */
     bool isMonitorOutputActive() const;
@@ -70,7 +62,6 @@ private:
 
     OutputState outputs_[kOutputCount];
 
-    VirtualMicOutput* virtualMicOutput_ = nullptr;
     VirtualMicOutput* monitorOutput_ = nullptr;
 
     // Temporary buffer for volume-scaled output (pre-allocated)

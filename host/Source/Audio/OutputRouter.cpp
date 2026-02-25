@@ -10,7 +10,6 @@ namespace directpipe {
 
 OutputRouter::OutputRouter()
 {
-    // VirtualCable: ON by default (struct default enabled{true})
     // Monitor: OFF by default (user enables explicitly in Output tab)
     outputs_[static_cast<int>(Output::Monitor)].enabled.store(false, std::memory_order_relaxed);
 }
@@ -38,45 +37,10 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
 {
     const int numChannels = juce::jmin(buffer.getNumChannels(), 2);
 
-    // ── Output 1: Virtual Cable (second WASAPI device) ──
-    if (outputs_[static_cast<int>(Output::VirtualCable)].enabled.load(std::memory_order_relaxed)
-        && virtualMicOutput_ != nullptr)
-    {
-        float vol = outputs_[static_cast<int>(Output::VirtualCable)].volume.load(std::memory_order_relaxed);
+    // Main output goes directly through the audio callback's outputChannelData.
+    // OutputRouter only handles additional routing to separate WASAPI devices.
 
-        if (vol > 0.001f) {
-            if (std::abs(vol - 1.0f) < 0.001f) {
-                // Unity gain — write directly from buffer's channel pointers
-                const float* channels[2] = {
-                    buffer.getReadPointer(0),
-                    numChannels > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0)
-                };
-                virtualMicOutput_->writeAudio(channels, 2, numSamples);
-            } else {
-                // Apply volume to scaled buffer
-                for (int ch = 0; ch < numChannels; ++ch) {
-                    scaledBuffer_.copyFrom(ch, 0, buffer, ch, 0, numSamples);
-                    scaledBuffer_.applyGain(ch, 0, numSamples, vol);
-                }
-                for (int ch = numChannels; ch < 2; ++ch)
-                    scaledBuffer_.clear(ch, 0, numSamples);
-
-                const float* channels[2] = {
-                    scaledBuffer_.getReadPointer(0),
-                    scaledBuffer_.getReadPointer(1)
-                };
-                virtualMicOutput_->writeAudio(channels, 2, numSamples);
-            }
-        }
-
-        // Update level meter
-        if (numChannels > 0) {
-            float rms = buffer.getRMSLevel(0, 0, numSamples) * vol;
-            outputs_[static_cast<int>(Output::VirtualCable)].level.store(rms, std::memory_order_relaxed);
-        }
-    }
-
-    // ── Output 2: Monitor → Headphones (separate WASAPI device) ──
+    // ── Monitor → Headphones (separate WASAPI device) ──
     if (outputs_[static_cast<int>(Output::Monitor)].enabled.load(std::memory_order_relaxed)
         && monitorOutput_ != nullptr)
     {
@@ -148,11 +112,6 @@ float OutputRouter::getLevel(Output output) const
     if (idx >= 0 && idx < kOutputCount)
         return outputs_[idx].level.load(std::memory_order_relaxed);
     return 0.0f;
-}
-
-bool OutputRouter::isVirtualCableActive() const
-{
-    return virtualMicOutput_ != nullptr && virtualMicOutput_->isActive();
 }
 
 bool OutputRouter::isMonitorOutputActive() const

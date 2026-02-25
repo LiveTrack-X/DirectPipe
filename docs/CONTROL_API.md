@@ -79,7 +79,7 @@ State updates are pushed automatically on every state change. / 상태 변경 �
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `target` | string | No | `"input"`, `"virtual_mic"`, or `"monitor"` (default: `"monitor"`) |
+| `target` | string | No | `"input"` or `"monitor"` (default: `"monitor"`) |
 | `value` | number | Yes | 0.0 (silent) to 1.0 (full) |
 
 ---
@@ -92,7 +92,7 @@ State updates are pushed automatically on every state change. / 상태 변경 �
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `target` | string | No | `"input"`, `"virtual_mic"`, `"monitor"`, or `""` (all) |
+| `target` | string | No | `"input"`, `"monitor"`, or `""` (all) |
 
 ---
 
@@ -123,6 +123,16 @@ Immediately mutes all outputs. Send again to unmute (previous monitor enable sta
 ```json
 { "type": "action", "action": "input_mute_toggle", "params": {} }
 ```
+
+---
+
+#### `monitor_toggle` — Toggle Monitor Output / 모니터 출력 토글
+
+```json
+{ "type": "action", "action": "monitor_toggle", "params": {} }
+```
+
+Toggles the monitor output (headphones) on/off. / 모니터 출력(헤드폰) 켜기/끄기 토글.
 
 ---
 
@@ -176,7 +186,7 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
       { "name": "ReaComp", "bypass": false, "loaded": true },
       { "name": "ReaEQ", "bypass": true, "loaded": true }
     ],
-    "volumes": { "input": 1.0, "virtual_mic": 0.8, "monitor": 0.6 },
+    "volumes": { "input": 1.0, "monitor": 0.6 },
     "master_bypassed": false,
     "muted": false,
     "input_muted": false,
@@ -188,7 +198,7 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
     "sample_rate": 48000,
     "buffer_size": 128,
     "channel_mode": 2,
-    "virtual_cable_active": true
+    "monitor_enabled": true
   }
 }
 ```
@@ -200,7 +210,6 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
 | `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
 | `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
 | `volumes.input` | number | Input gain (0.0-1.0) / 입력 게인 |
-| `volumes.virtual_mic` | number | Virtual mic volume (0.0-1.0) / 가상 마이크 볼륨 |
 | `volumes.monitor` | number | Monitor volume (0.0-1.0) / 모니터 볼륨 |
 | `master_bypassed` | boolean | Entire chain bypassed / 전체 체인 Bypass |
 | `muted` | boolean | Panic mute active / 패닉 뮤트 상태 |
@@ -213,7 +222,7 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
 | `sample_rate` | number | Sample rate (Hz) / 샘플레이트 |
 | `buffer_size` | number | Buffer size (samples) / 버퍼 크기 |
 | `channel_mode` | number | 1=Mono, 2=Stereo (default: 2) |
-| `virtual_cable_active` | boolean | Virtual cable output status / 가상 케이블 상태 |
+| `monitor_enabled` | boolean | Monitor output enabled / 모니터 출력 활성화 |
 
 ---
 
@@ -230,7 +239,8 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/bypass/master/toggle` | Toggle master bypass / 마스터 Bypass 토글 |
 | `GET /api/mute/toggle` | Toggle mute (all outputs) / 뮤트 토글 (전체) |
 | `GET /api/mute/panic` | Panic mute / 패닉 뮤트 |
-| `GET /api/volume/:target/:value` | Set volume (target: `input`, `virtual_mic`, `monitor`; value: 0.0-1.0) / 볼륨 설정 |
+| `GET /api/volume/:target/:value` | Set volume (target: `input`, `monitor`; value: 0.0-1.0) / 볼륨 설정 |
+| `GET /api/monitor/toggle` | Toggle monitor output on/off / 모니터 출력 토글 |
 | `GET /api/preset/:index` | Load preset / 프리셋 로드 |
 | `GET /api/slot/:index` | Switch preset slot (0-4 = A-E) / 슬롯 전환 |
 | `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |

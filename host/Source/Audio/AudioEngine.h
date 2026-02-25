@@ -24,7 +24,7 @@ namespace directpipe {
  * Coordinates:
  * 1. WASAPI Shared mode input from USB microphone (non-exclusive)
  * 2. VST plugin chain processing with atomic bypass flags
- * 3. Output routing to virtual cable and monitor
+ * 3. Output routing to monitor (headphones via separate WASAPI device)
  * 4. Mono/Stereo channel mode selection
  */
 class AudioEngine : public juce::AudioIODeviceCallback {
@@ -39,8 +39,6 @@ public:
     VSTChain& getVSTChain() { return vstChain_; }
     OutputRouter& getOutputRouter() { return outputRouter_; }
     LatencyMonitor& getLatencyMonitor() { return latencyMonitor_; }
-    VirtualMicOutput& getVirtualMicOutput() { return virtualMicOutput_; }
-
     // Device type (ASIO / Windows Audio)
     bool setAudioDeviceType(const juce::String& typeName);
     juce::String getCurrentDeviceType() const;
@@ -49,9 +47,6 @@ public:
     // Device selection
     bool setInputDevice(const juce::String& deviceName);
     bool setOutputDevice(const juce::String& deviceName);
-    bool setVirtualCableDevice(const juce::String& deviceName);
-    juce::String getVirtualCableDeviceName() const;
-
     // Dynamic capabilities (depends on current device type and device)
     juce::Array<double> getAvailableSampleRates() const;
     juce::Array<int> getAvailableBufferSizes() const;
@@ -126,7 +121,6 @@ private:
     VSTChain vstChain_;
     OutputRouter outputRouter_;
     LatencyMonitor latencyMonitor_;
-    VirtualMicOutput virtualMicOutput_;
     VirtualMicOutput monitorOutput_;
 
     bool running_ = false;

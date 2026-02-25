@@ -5,7 +5,7 @@
 
 const { SingletonAction } = require("@elgato/streamdeck");
 
-const TARGET_NAMES = { input: "Input", monitor: "Monitor", virtual_mic: "V-Mic" };
+const TARGET_NAMES = { input: "Input", monitor: "Monitor" };
 
 class VolumeControlAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.volume-control";
