@@ -476,11 +476,11 @@ void MainComponent::resized()
 
     // ── Status Bar ──
     int statusY = getHeight() - 28;
-    int statusW = getWidth() / 4;
-    latencyLabel_.setBounds(5, statusY, statusW, 24);
-    cpuLabel_.setBounds(statusW, statusY, statusW, 24);
-    formatLabel_.setBounds(statusW * 2, statusY, statusW, 24);
-    portableLabel_.setBounds(statusW * 3, statusY, statusW, 24);
+    int sw = getWidth();
+    latencyLabel_.setBounds(5, statusY, sw * 3 / 10, 24);
+    cpuLabel_.setBounds(sw * 3 / 10, statusY, sw / 6, 24);
+    formatLabel_.setBounds(sw * 3 / 10 + sw / 6, statusY, sw * 3 / 10, 24);
+    portableLabel_.setBounds(sw * 3 / 10 + sw / 6 + sw * 3 / 10, statusY, sw / 6, 24);
     creditLabel_.setBounds(getWidth() - 160, statusY, 150, 24);
 }
 
@@ -494,9 +494,22 @@ void MainComponent::timerCallback()
     inputMeter_->setLevel(audioEngine_.getInputLevel());
     outputMeter_->setLevel(muted ? 0.0f : audioEngine_.getOutputLevel());
 
-    latencyLabel_.setText(
-        "Latency: " + juce::String(monitor.getTotalLatencyVirtualMicMs(), 1) + "ms",
-        juce::dontSendNotification);
+    // Main output latency: input buffer + processing + output buffer
+    double mainLatency = monitor.getTotalLatencyVirtualMicMs();
+
+    // Monitor output latency: main latency + ring buffer hop + monitor device buffer
+    auto& monOut = audioEngine_.getMonitorOutput();
+    juce::String latencyText = "Latency: " + juce::String(mainLatency, 1) + "ms";
+    if (monOut.isActive()) {
+        double monDeviceBufMs = 0.0;
+        double monSR = monOut.getActualSampleRate();
+        if (monSR > 0.0)
+            monDeviceBufMs = (static_cast<double>(monOut.getActualBufferSize()) / monSR) * 1000.0;
+        double monitorLatency = mainLatency + monDeviceBufMs;
+        latencyText += " | Mon: " + juce::String(monitorLatency, 1) + "ms";
+    }
+
+    latencyLabel_.setText(latencyText, juce::dontSendNotification);
 
     cpuLabel_.setText(
         "CPU: " + juce::String(monitor.getCpuUsagePercent(), 1) + "%",
@@ -522,7 +535,15 @@ void MainComponent::timerCallback()
         s.muted = muted;
         s.inputMuted = muted;
         s.masterBypassed = false;
-        s.latencyMs = static_cast<float>(monitor.getTotalLatencyVirtualMicMs());
+        s.latencyMs = static_cast<float>(mainLatency);
+        if (monOut.isActive()) {
+            double monSR2 = monOut.getActualSampleRate();
+            double monBufMs = monSR2 > 0.0
+                ? (static_cast<double>(monOut.getActualBufferSize()) / monSR2) * 1000.0 : 0.0;
+            s.monitorLatencyMs = static_cast<float>(mainLatency + monBufMs);
+        } else {
+            s.monitorLatencyMs = 0.0f;
+        }
         s.inputLevelDb = audioEngine_.getInputLevel();
         s.cpuPercent = static_cast<float>(monitor.getCpuUsagePercent());
         s.sampleRate = monitor.getSampleRate();

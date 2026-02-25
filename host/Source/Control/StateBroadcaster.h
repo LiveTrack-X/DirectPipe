@@ -35,6 +35,7 @@ struct AppState {
     bool inputMuted = false;
     std::string currentPreset;
     float latencyMs = 0.0f;
+    float monitorLatencyMs = 0.0f;
     float inputLevelDb = -60.0f;
     float cpuPercent = 0.0f;
     double sampleRate = 48000.0;

@@ -84,6 +84,7 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("input_muted", state.inputMuted);
     data->setProperty("preset", juce::String(state.currentPreset));
     data->setProperty("latency_ms", static_cast<double>(state.latencyMs));
+    data->setProperty("monitor_latency_ms", static_cast<double>(state.monitorLatencyMs));
     data->setProperty("level_db", static_cast<double>(state.inputLevelDb));
     data->setProperty("cpu_percent", static_cast<double>(state.cpuPercent));
     data->setProperty("sample_rate", state.sampleRate);
