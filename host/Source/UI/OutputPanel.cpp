@@ -1,6 +1,6 @@
 /**
  * @file OutputPanel.cpp
- * @brief Monitor output control panel implementation
+ * @brief Output routing control panel — VirtualCable + Monitor
  */
 
 #include "OutputPanel.h"
@@ -12,58 +12,72 @@ namespace directpipe {
 OutputPanel::OutputPanel(AudioEngine& engine)
     : engine_(engine)
 {
-    // ── Section title ──
-    titleLabel_.setFont(juce::Font(16.0f, juce::Font::bold));
-    titleLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(titleLabel_);
+    auto styleTitle = [this](juce::Label& label) {
+        label.setFont(juce::Font(14.0f, juce::Font::bold));
+        label.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+        addAndMakeVisible(label);
+    };
+    auto styleLabel = [this](juce::Label& label) {
+        label.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+        addAndMakeVisible(label);
+    };
+    auto styleSlider = [this](juce::Slider& slider) {
+        slider.setSliderStyle(juce::Slider::LinearHorizontal);
+        slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
+        slider.setRange(0.0, 100.0, 1.0);
+        slider.setValue(100.0, juce::dontSendNotification);
+        slider.setTextValueSuffix(" %");
+        slider.setColour(juce::Slider::thumbColourId, juce::Colour(kAccentColour));
+        slider.setColour(juce::Slider::trackColourId, juce::Colour(kAccentColour).withAlpha(0.4f));
+        slider.setColour(juce::Slider::backgroundColourId, juce::Colour(kSurfaceColour).brighter(0.1f));
+        slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(kTextColour));
+        slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        addAndMakeVisible(slider);
+    };
+
+    // ── Virtual Cable section ──
+    styleTitle(vcTitleLabel_);
+    styleLabel(vcDeviceLabel_);
+    vcDeviceCombo_.onChange = [this] { onVCDeviceSelected(); };
+    addAndMakeVisible(vcDeviceCombo_);
+
+    styleLabel(vcVolumeLabel_);
+    styleSlider(vcVolumeSlider_);
+    vcVolumeSlider_.onValueChange = [this] { onVCVolumeChanged(); };
 
     // ── Monitor section ──
+    styleTitle(monTitleLabel_);
+    styleLabel(monDeviceLabel_);
+    monDeviceCombo_.onChange = [this] { onMonitorDeviceSelected(); };
+    addAndMakeVisible(monDeviceCombo_);
 
-    // Device selector
-    monitorDeviceLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(monitorDeviceLabel_);
+    styleLabel(monVolumeLabel_);
+    styleSlider(monVolumeSlider_);
+    monVolumeSlider_.onValueChange = [this] { onMonitorVolumeChanged(); };
 
-    monitorDeviceCombo_.onChange = [this] { onMonitorDeviceSelected(); };
-    addAndMakeVisible(monitorDeviceCombo_);
-
-    // Volume slider
-    monitorVolumeLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(monitorVolumeLabel_);
-
-    monitorVolumeSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
-    monitorVolumeSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
-    monitorVolumeSlider_.setRange(0.0, 100.0, 1.0);
-    monitorVolumeSlider_.setValue(100.0, juce::dontSendNotification);
-    monitorVolumeSlider_.setTextValueSuffix(" %");
-    monitorVolumeSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(kAccentColour));
-    monitorVolumeSlider_.setColour(juce::Slider::trackColourId, juce::Colour(kAccentColour).withAlpha(0.4f));
-    monitorVolumeSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(kSurfaceColour).brighter(0.1f));
-    monitorVolumeSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(kTextColour));
-    monitorVolumeSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    monitorVolumeSlider_.onValueChange = [this] { onMonitorVolumeChanged(); };
-    addAndMakeVisible(monitorVolumeSlider_);
-
-    // Enable button
-    monitorEnableButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
-    monitorEnableButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
-    monitorEnableButton_.onClick = [this] { onMonitorEnableToggled(); };
-    addAndMakeVisible(monitorEnableButton_);
+    monEnableButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    monEnableButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+    monEnableButton_.onClick = [this] { onMonitorEnableToggled(); };
+    addAndMakeVisible(monEnableButton_);
 
     // ── Initial state ──
-    refreshMonitorDeviceList();
+    refreshDeviceLists();
 
-    // Sync volume with output router
     auto& router = engine_.getOutputRouter();
-    monitorVolumeSlider_.setValue(
-        static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0,
+
+    // VirtualCable volume
+    vcVolumeSlider_.setValue(
+        static_cast<double>(router.getVolume(OutputRouter::Output::VirtualCable)) * 100.0,
         juce::dontSendNotification);
 
-    // Sync enable state
-    monitorEnableButton_.setToggleState(
+    // Monitor volume + enable
+    monVolumeSlider_.setValue(
+        static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0,
+        juce::dontSendNotification);
+    monEnableButton_.setToggleState(
         router.isEnabled(OutputRouter::Output::Monitor),
         juce::dontSendNotification);
 
-    // Start periodic status polling at 4 Hz
     startTimerHz(4);
 }
 
@@ -94,64 +108,103 @@ void OutputPanel::resized()
 
     int y = bounds.getY();
 
-    // Panel title
-    titleLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    // ── Virtual Cable title ──
+    vcTitleLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
     y += rowH + gap;
 
-    // Monitor device selector
-    monitorDeviceLabel_.setBounds(bounds.getX(), y, labelW, rowH);
-    monitorDeviceCombo_.setBounds(bounds.getX() + labelW + gap, y,
-                                  bounds.getWidth() - labelW - gap, rowH);
+    // VC device
+    vcDeviceLabel_.setBounds(bounds.getX(), y, labelW, rowH);
+    vcDeviceCombo_.setBounds(bounds.getX() + labelW + gap, y,
+                             bounds.getWidth() - labelW - gap, rowH);
+    y += rowH + gap;
+
+    // VC volume
+    vcVolumeLabel_.setBounds(bounds.getX(), y, labelW, rowH);
+    vcVolumeSlider_.setBounds(bounds.getX() + labelW + gap, y,
+                              bounds.getWidth() - labelW - gap, rowH);
+    y += rowH + gap + 8;
+
+    // ── Monitor title ──
+    monTitleLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    y += rowH + gap;
+
+    // Monitor device
+    monDeviceLabel_.setBounds(bounds.getX(), y, labelW, rowH);
+    monDeviceCombo_.setBounds(bounds.getX() + labelW + gap, y,
+                              bounds.getWidth() - labelW - gap, rowH);
     y += rowH + gap;
 
     // Monitor volume
-    monitorVolumeLabel_.setBounds(bounds.getX(), y, labelW, rowH);
-    monitorVolumeSlider_.setBounds(bounds.getX() + labelW + gap, y,
-                                   bounds.getWidth() - labelW - gap, rowH);
+    monVolumeLabel_.setBounds(bounds.getX(), y, labelW, rowH);
+    monVolumeSlider_.setBounds(bounds.getX() + labelW + gap, y,
+                               bounds.getWidth() - labelW - gap, rowH);
     y += rowH + gap;
 
     // Monitor enable
-    monitorEnableButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
+    monEnableButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
 }
 
 // ─── Timer callback ─────────────────────────────────────────────────────────
 
 void OutputPanel::timerCallback()
 {
-    // Sync enable state with engine (reflects Panic Mute and external control)
     auto& router = engine_.getOutputRouter();
 
     bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
-    if (monitorEnableButton_.getToggleState() != monEnabled) {
-        monitorEnableButton_.setToggleState(monEnabled, juce::dontSendNotification);
-    }
+    if (monEnableButton_.getToggleState() != monEnabled)
+        monEnableButton_.setToggleState(monEnabled, juce::dontSendNotification);
 }
 
-// ─── Monitor device list ────────────────────────────────────────────────────
+// ─── Device lists ───────────────────────────────────────────────────────────
 
-void OutputPanel::refreshMonitorDeviceList()
+void OutputPanel::refreshDeviceLists()
 {
-    monitorDeviceCombo_.clear(juce::dontSendNotification);
+    // VirtualCable — always WASAPI devices
+    vcDeviceCombo_.clear(juce::dontSendNotification);
+    auto vcDevices = engine_.getVirtualMicOutput().getAvailableOutputDevices();
+    for (int i = 0; i < vcDevices.size(); ++i)
+        vcDeviceCombo_.addItem(vcDevices[i], i + 1);
 
-    // Always show WASAPI output devices (independent of main driver type)
-    auto devices = engine_.getMonitorOutput().getAvailableOutputDevices();
-    for (int i = 0; i < devices.size(); ++i) {
-        monitorDeviceCombo_.addItem(devices[i], i + 1);
-    }
+    auto currentVC = engine_.getVirtualCableDeviceName();
+    int vcIdx = vcDevices.indexOf(currentVC);
+    if (vcIdx >= 0)
+        vcDeviceCombo_.setSelectedId(vcIdx + 1, juce::dontSendNotification);
 
-    // Select current monitor device
-    auto currentDevice = engine_.getMonitorDeviceName();
-    int idx = devices.indexOf(currentDevice);
-    if (idx >= 0) {
-        monitorDeviceCombo_.setSelectedId(idx + 1, juce::dontSendNotification);
+    // Monitor — always WASAPI devices
+    monDeviceCombo_.clear(juce::dontSendNotification);
+    auto monDevices = engine_.getMonitorOutput().getAvailableOutputDevices();
+    for (int i = 0; i < monDevices.size(); ++i)
+        monDeviceCombo_.addItem(monDevices[i], i + 1);
+
+    auto currentMon = engine_.getMonitorDeviceName();
+    int monIdx = monDevices.indexOf(currentMon);
+    if (monIdx >= 0)
+        monDeviceCombo_.setSelectedId(monIdx + 1, juce::dontSendNotification);
+}
+
+// ─── VirtualCable callbacks ─────────────────────────────────────────────────
+
+void OutputPanel::onVCDeviceSelected()
+{
+    auto selectedText = vcDeviceCombo_.getText();
+    if (selectedText.isNotEmpty()) {
+        engine_.setVirtualCableDevice(selectedText);
+        if (onSettingsChanged) onSettingsChanged();
     }
 }
 
-// ─── Callbacks ──────────────────────────────────────────────────────────────
+void OutputPanel::onVCVolumeChanged()
+{
+    float volume = static_cast<float>(vcVolumeSlider_.getValue()) / 100.0f;
+    engine_.getOutputRouter().setVolume(OutputRouter::Output::VirtualCable, volume);
+    if (onSettingsChanged) onSettingsChanged();
+}
+
+// ─── Monitor callbacks ──────────────────────────────────────────────────────
 
 void OutputPanel::onMonitorDeviceSelected()
 {
-    auto selectedText = monitorDeviceCombo_.getText();
+    auto selectedText = monDeviceCombo_.getText();
     if (selectedText.isNotEmpty()) {
         engine_.setMonitorDevice(selectedText);
         if (onSettingsChanged) onSettingsChanged();
@@ -160,14 +213,14 @@ void OutputPanel::onMonitorDeviceSelected()
 
 void OutputPanel::onMonitorVolumeChanged()
 {
-    float volume = static_cast<float>(monitorVolumeSlider_.getValue()) / 100.0f;
+    float volume = static_cast<float>(monVolumeSlider_.getValue()) / 100.0f;
     engine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, volume);
     if (onSettingsChanged) onSettingsChanged();
 }
 
 void OutputPanel::onMonitorEnableToggled()
 {
-    bool enabled = monitorEnableButton_.getToggleState();
+    bool enabled = monEnableButton_.getToggleState();
     engine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, enabled);
     engine_.setMonitorEnabled(enabled);
     if (onSettingsChanged) onSettingsChanged();

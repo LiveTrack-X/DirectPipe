@@ -1,7 +1,8 @@
 /**
  * @file OutputPanel.h
- * @brief Output control panel for Monitor output
+ * @brief Output routing control panel — VirtualCable + Monitor
  *
+ * VirtualCable: device selector, volume
  * Monitor: device selector, volume, enable toggle
  */
 #pragma once
@@ -12,9 +13,12 @@
 namespace directpipe {
 
 /**
- * @brief UI component showing monitor output controls.
+ * @brief UI component showing output routing controls.
  *
  * Layout (top to bottom):
+ * - Virtual Cable section
+ *     - Output device selector combo box
+ *     - Volume slider  (0 .. 100 %)
  * - Monitor section
  *     - Output device selector combo box
  *     - Volume slider  (0 .. 100 %)
@@ -29,11 +33,7 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    /**
-     * @brief Force a refresh of the monitor device list.
-     * Call after an external device change notification.
-     */
-    void refreshMonitorDeviceList();
+    void refreshDeviceLists();
 
     /** Called when the user changes any output setting. */
     std::function<void()> onSettingsChanged;
@@ -41,6 +41,11 @@ public:
 private:
     void timerCallback() override;
 
+    // VirtualCable callbacks
+    void onVCDeviceSelected();
+    void onVCVolumeChanged();
+
+    // Monitor callbacks
     void onMonitorDeviceSelected();
     void onMonitorVolumeChanged();
     void onMonitorEnableToggled();
@@ -48,15 +53,20 @@ private:
     // ─── Data ───
     AudioEngine& engine_;
 
-    // Section title
-    juce::Label titleLabel_{"", "Monitor Output"};
+    // ── Virtual Cable section ──
+    juce::Label vcTitleLabel_{"", "Virtual Cable"};
+    juce::Label vcDeviceLabel_{"", "Device:"};
+    juce::ComboBox vcDeviceCombo_;
+    juce::Slider vcVolumeSlider_;
+    juce::Label vcVolumeLabel_{"", "Volume:"};
 
     // ── Monitor section ──
-    juce::Label monitorDeviceLabel_{"", "Device:"};
-    juce::ComboBox monitorDeviceCombo_;
-    juce::Slider monitorVolumeSlider_;
-    juce::Label monitorVolumeLabel_{"", "Volume:"};
-    juce::ToggleButton monitorEnableButton_{"Enable"};
+    juce::Label monTitleLabel_{"", "Monitor Output"};
+    juce::Label monDeviceLabel_{"", "Device:"};
+    juce::ComboBox monDeviceCombo_;
+    juce::Slider monVolumeSlider_;
+    juce::Label monVolumeLabel_{"", "Volume:"};
+    juce::ToggleButton monEnableButton_{"Enable"};
 
     // Theme colours (dark)
     static constexpr juce::uint32 kBgColour       = 0xFF1E1E2E;

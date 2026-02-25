@@ -604,7 +604,7 @@ void MainComponent::refreshUI()
         pluginChainEditor_->refreshList();
 
     if (auto* outputComp = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
-        outputComp->refreshMonitorDeviceList();
+        outputComp->refreshDeviceLists();
 
     bool muted = audioEngine_.isMuted();
     panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");

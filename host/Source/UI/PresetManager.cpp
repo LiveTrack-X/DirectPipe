@@ -162,12 +162,10 @@ bool PresetManager::importFromJSON(const juce::String& json)
             engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
         }
     }
-    // Restore output device only for WASAPI mode (ASIO uses single device for I/O)
     if (root->hasProperty("outputDevice")) {
         juce::String outputDev = root->getProperty("outputDevice").toString();
-        if (outputDev.isNotEmpty() && engine_.getCurrentDeviceType() != "ASIO") {
+        if (outputDev.isNotEmpty())
             engine_.setOutputDevice(outputDev);
-        }
     }
 
     // VST Chain — load plugins (with fast-path for identical chain)
