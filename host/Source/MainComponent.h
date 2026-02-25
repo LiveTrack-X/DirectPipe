@@ -77,6 +77,13 @@ private:
     juce::TextButton loadPresetBtn_{"Load Preset"};
     std::unique_ptr<PresetManager> presetManager_;
 
+    // Layout constants
+    static constexpr int kDefaultWidth  = 800;
+    static constexpr int kDefaultHeight = 700;
+    static constexpr int kStatusBarHeight = 30;
+    static constexpr int kSlotBtnGap = 4;
+    static constexpr int kMeterWidth = 40;
+
     // Quick preset slot buttons (A..E)
     static constexpr int kNumPresetSlots = 5;
     std::array<std::unique_ptr<juce::TextButton>, 5> slotButtons_;
@@ -103,8 +110,7 @@ private:
     int dirtyCooldown_ = 0;   // ticks remaining before save (30Hz)
     std::atomic<bool> loadingSlot_ { false };
 
-    // Panic mute: remember pre-mute monitor state for restore
-    // Virtual Cable always restores to ON (only Panic Mute disables it)
+    // Panic mute: remember pre-mute monitor state for restore on unmute
     bool preMuteMonitorEnabled_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)

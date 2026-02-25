@@ -383,6 +383,9 @@ void AudioSettings::onInputChannelChanged()
 
     int firstChannel = (id - 1) * 2;  // pairs: 0-1, 2-3, 4-5, ...
     int numCh = stereoButton_.getToggleState() ? 2 : 1;
+    int totalChannels = engine_.getInputChannelNames().size();
+    if (totalChannels > 0 && firstChannel + numCh > totalChannels)
+        return;
     engine_.setActiveInputChannels(firstChannel, numCh);
 
     if (onSettingsChanged) onSettingsChanged();
@@ -395,6 +398,9 @@ void AudioSettings::onOutputChannelChanged()
 
     int firstChannel = (id - 1) * 2;
     int numCh = stereoButton_.getToggleState() ? 2 : 1;
+    int totalChannels = engine_.getOutputChannelNames().size();
+    if (totalChannels > 0 && firstChannel + numCh > totalChannels)
+        return;
     engine_.setActiveOutputChannels(firstChannel, numCh);
 
     if (onSettingsChanged) onSettingsChanged();

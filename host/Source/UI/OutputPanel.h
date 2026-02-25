@@ -41,6 +41,7 @@ private:
     juce::Slider monitorVolumeSlider_;
     juce::Label monitorVolumeLabel_{"", "Volume:"};
     juce::ToggleButton monitorEnableButton_{"Enable"};
+    juce::Label monitorStatusLabel_;
 
     static constexpr juce::uint32 kBgColour       = 0xFF1E1E2E;
     static constexpr juce::uint32 kSurfaceColour   = 0xFF2A2A40;

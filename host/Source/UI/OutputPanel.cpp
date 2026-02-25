@@ -41,6 +41,10 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorEnableButton_.onClick = [this] { onMonitorEnableToggled(); };
     addAndMakeVisible(monitorEnableButton_);
 
+    monitorStatusLabel_.setFont(juce::Font(11.0f));
+    monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+    addAndMakeVisible(monitorStatusLabel_);
+
     refreshDeviceLists();
 
     auto& router = engine_.getOutputRouter();
@@ -90,6 +94,9 @@ void OutputPanel::resized()
     y += rowH + gap;
 
     monitorEnableButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
+    y += rowH + gap;
+
+    monitorStatusLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 18);
 }
 
 void OutputPanel::timerCallback()
@@ -98,6 +105,23 @@ void OutputPanel::timerCallback()
     bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
     if (monitorEnableButton_.getToggleState() != monEnabled)
         monitorEnableButton_.setToggleState(monEnabled, juce::dontSendNotification);
+
+    // Show monitor device status
+    auto& monOut = engine_.getMonitorOutput();
+    auto status = monOut.getStatus();
+    if (status == VirtualCableStatus::Active) {
+        monitorStatusLabel_.setText("Active: " + monOut.getDeviceName(), juce::dontSendNotification);
+        monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF4CAF50));
+    } else if (status == VirtualCableStatus::Error) {
+        monitorStatusLabel_.setText("Error: device unavailable", juce::dontSendNotification);
+        monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFE05050));
+    } else {
+        if (monEnabled)
+            monitorStatusLabel_.setText("No device selected — using main output", juce::dontSendNotification);
+        else
+            monitorStatusLabel_.setText("", juce::dontSendNotification);
+        monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
+    }
 }
 
 void OutputPanel::refreshDeviceLists()

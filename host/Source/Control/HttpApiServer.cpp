@@ -169,6 +169,8 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
     // GET /api/volume/:target/:value
     if (action == "volume" && segments.size() >= 4) {
         float value = static_cast<float>(std::atof(segments[3].c_str()));
+        if (value < 0.0f || value > 1.0f)
+            return R"({"error": "value must be 0.0-1.0"})";
         dispatcher_.setVolume(segments[2], value);
         return R"({"ok": true, "action": "set_volume", "target": ")" +
                segments[2] + R"(", "value": )" +

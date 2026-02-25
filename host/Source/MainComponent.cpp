@@ -63,7 +63,7 @@ MainComponent::MainComponent()
     // Tab colours
     auto tabBg = juce::Colour(0xFF2A2A40);
     rightTabs_->addTab("Audio",    tabBg, audioSettings_.release(), true);
-    rightTabs_->addTab("Output",   tabBg, outputPanel_.release(), true);
+    rightTabs_->addTab("Monitor",  tabBg, outputPanel_.release(), true);
     rightTabs_->addTab("Controls", tabBg, controlSettingsPanel_.release(), true);
 
     // Re-acquire raw pointers (TabbedComponent owns the components now)
@@ -207,7 +207,7 @@ MainComponent::MainComponent()
     // Start UI update timer (30 Hz)
     startTimerHz(30);
 
-    setSize(800, 700);
+    setSize(kDefaultWidth, kDefaultHeight);
 
     // Auto-load last saved settings
     loadSettings();
@@ -389,7 +389,7 @@ void MainComponent::updateSlotButtonStates()
             btn->setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFCCCCCC));
         } else {
             btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A2A40));
-            btn->setColour(juce::TextButton::textColourOffId, juce::Colour(0xFF666666));
+            btn->setColour(juce::TextButton::textColourOffId, juce::Colour(0xFF999999));
         }
         btn->repaint();
     }
@@ -397,8 +397,14 @@ void MainComponent::updateSlotButtonStates()
 
 void MainComponent::setSlotButtonsEnabled(bool enabled)
 {
-    for (int i = 0; i < kNumPresetSlots; ++i)
-        slotButtons_[static_cast<size_t>(i)]->setEnabled(enabled);
+    for (int i = 0; i < kNumPresetSlots; ++i) {
+        auto* btn = slotButtons_[static_cast<size_t>(i)].get();
+        btn->setEnabled(enabled);
+        if (!enabled)
+            btn->setAlpha(0.5f);
+        else
+            btn->setAlpha(1.0f);
+    }
 }
 
 // ─── Paint ──────────────────────────────────────────────────────────────────
@@ -409,7 +415,7 @@ void MainComponent::paint(juce::Graphics& g)
 
     // Status bar background
     g.setColour(juce::Colour(0xFF15152A));
-    g.fillRect(0, getHeight() - 30, getWidth(), 30);
+    g.fillRect(0, getHeight() - kStatusBarHeight, getWidth(), kStatusBarHeight);
 }
 
 // ─── Layout ─────────────────────────────────────────────────────────────────
@@ -435,7 +441,7 @@ void MainComponent::resized()
 
     // Input meter
     int inputMeterH = y - inputStartY;
-    inputMeter_->setBounds(bounds.getX() + halfW - 45, inputStartY, 40, inputMeterH);
+    inputMeter_->setBounds(bounds.getX() + halfW - (kMeterWidth + 5), inputStartY, kMeterWidth, inputMeterH);
 
     // ── VST CHAIN Section ──
     vstSectionLabel_.setBounds(bounds.getX(), y, 120, 24);
@@ -447,10 +453,10 @@ void MainComponent::resized()
 
     // Quick preset slot buttons (A..E)
     {
-        int slotBtnW = (halfW - 4 * 4) / kNumPresetSlots;
+        int slotBtnW = (halfW - kSlotBtnGap * (kNumPresetSlots - 1)) / kNumPresetSlots;
         for (int i = 0; i < kNumPresetSlots; ++i) {
             slotButtons_[static_cast<size_t>(i)]->setBounds(
-                bounds.getX() + i * (slotBtnW + 4), y, slotBtnW, 26);
+                bounds.getX() + i * (slotBtnW + kSlotBtnGap), y, slotBtnW, 26);
         }
         y += 30;
     }
@@ -469,13 +475,13 @@ void MainComponent::resized()
     int tabH = bounds.getBottom() - ry - 34;
 
     // Output meter alongside tabs
-    outputMeter_->setBounds(rx + rw - 45, ry + 30, 40, tabH - 30);
+    outputMeter_->setBounds(rx + rw - (kMeterWidth + 5), ry + 30, kMeterWidth, tabH - 30);
 
     // Tabbed panel (leaves space for output meter)
     rightTabs_->setBounds(rx, ry, rw - 50, tabH);
 
     // ── Status Bar ──
-    int statusY = getHeight() - 28;
+    int statusY = getHeight() - kStatusBarHeight + 2;
     int sw = getWidth();
     latencyLabel_.setBounds(5, statusY, sw * 3 / 10, 24);
     cpuLabel_.setBounds(sw * 3 / 10, statusY, sw / 6, 24);
