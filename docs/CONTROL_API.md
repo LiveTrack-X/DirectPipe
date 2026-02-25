@@ -239,7 +239,7 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/bypass/master/toggle` | Toggle master bypass / 마스터 Bypass 토글 |
 | `GET /api/mute/toggle` | Toggle mute (all outputs) / 뮤트 토글 (전체) |
 | `GET /api/mute/panic` | Panic mute / 패닉 뮤트 |
-| `GET /api/volume/:target/:value` | Set volume (target: `input`, `monitor`; value: 0.0-1.0) / 볼륨 설정 |
+| `GET /api/volume/:target/:value` | Set volume (target: `input`, `monitor`; value: 0.0-1.0, validated) / 볼륨 설정 (범위 검증) |
 | `GET /api/monitor/toggle` | Toggle monitor output on/off / 모니터 출력 토글 |
 | `GET /api/preset/:index` | Load preset / 프리셋 로드 |
 | `GET /api/slot/:index` | Switch preset slot (0-4 = A-E) / 슬롯 전환 |

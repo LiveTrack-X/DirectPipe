@@ -34,7 +34,7 @@ External Control:
 - **메인 출력 + 모니터** — Main output to AudioSettings device + optional monitor (headphones) via separate WASAPI
 - **Mono / Stereo** 채널 모드 — Channel mode selection
 - **입력 게인** 조절 — Input gain control
-- **실시간 레벨 미터** (입력/출력 RMS) — Real-time input/output level meters
+- **실시간 레벨 미터** (입력/출력 RMS, 좌우 대칭 배치) — Real-time input/output level meters (symmetric vertical layout)
 
 ### 외부 제어 / External Control
 
@@ -47,7 +47,7 @@ External Control:
 ### UI
 
 - **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록 — Close minimizes to tray, double-click to restore, Start with Windows toggle
-- **탭 설정** — Audio / Output / Controls (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
+- **탭 설정** — Audio / Monitor / Controls (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 — Mute all outputs instantly, restores previous state on unmute
 - **다크 테마** — Dark theme (custom JUCE LookAndFeel)
 

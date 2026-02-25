@@ -35,7 +35,7 @@ JUCE 7.0.12 기반 데스크톱 앱. 메인 오디오 처리 엔진.
 - **AudioEngine** — Dual driver support (WASAPI Shared + ASIO). Manages the audio device callback. Pre-allocated work buffers (8ch). Mono mixing or stereo passthrough. Runtime device type switching, sample rate/buffer size queries. Input gain (atomic), master mute, RMS level measurement. / 듀얼 드라이버. 오디오 콜백 관리. 사전 할당 버퍼. Mono/Stereo 처리. 입력 게인, 마스터 뮤트, RMS 레벨 측정.
 - **VSTChain** — `AudioProcessorGraph`-based VST2/VST3 plugin chain. `suspendProcessing()` during graph rebuild. Async chain replacement (`replaceChainAsync`) loads plugins on background thread. Editor windows tracked per-plugin. Pre-allocated MidiBuffer. / VST2/VST3 플러그인 체인. 비동기 체인 교체로 UI 프리즈 방지. MidiBuffer 사전 할당.
 - **OutputRouter** — Routes processed audio to the monitor output (separate WASAPI device). Independent atomic volume and enable controls. Pre-allocated scaled buffer. Main output goes directly through outputChannelData. / 모니터 출력(별도 WASAPI 장치)으로 오디오 라우팅. 메인 출력은 outputChannelData로 직접 전송.
-- **VirtualMicOutput** — Second WASAPI AudioDeviceManager used for the monitor output. Lock-free `AudioRingBuffer` bridge between two audio callback threads. Configured in Output tab. / 모니터 출력용 별도 WASAPI AudioDeviceManager. 락프리 링버퍼 브리지. Output 탭에서 구성.
+- **VirtualMicOutput** — Second WASAPI AudioDeviceManager used for the monitor output. Lock-free `AudioRingBuffer` bridge between two audio callback threads. Configured in Monitor tab. Status tracking (Active/Error/NotConfigured). / 모니터 출력용 별도 WASAPI AudioDeviceManager. 락프리 링버퍼 브리지. Monitor 탭에서 구성. 상태 추적.
 - **AudioRingBuffer** — Header-only SPSC lock-free ring buffer for inter-device audio transfer. / 디바이스 간 오디오 전송용 헤더 전용 SPSC 락프리 링 버퍼.
 - **LatencyMonitor** — High-resolution timer-based latency measurement. / 고해상도 타이머 기반 레이턴시 측정.
 
@@ -48,7 +48,7 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 - **HotkeyHandler** — Windows `RegisterHotKey` API for global keyboard shortcuts. Recording mode for key capture. / 글로벌 키보드 단축키. 키 녹화 모드.
 - **MidiHandler** — JUCE `MidiInput` for MIDI CC/note mapping with Learn mode. LED feedback via MidiOutput. Hot-plug detection. / MIDI CC 매핑 + Learn 모드. LED 피드백. 핫플러그 감지.
 - **WebSocketServer** — RFC 6455 WebSocket server (port 8765). Custom SHA-1 implementation for handshake. JUCE `StreamingSocket` with frame encoding/decoding, ping/pong. Dead client cleanup sweep on broadcast. / RFC 6455 WebSocket 서버. 커스텀 SHA-1 핸드셰이크. 죽은 클라이언트 자동 정리.
-- **HttpApiServer** — HTTP REST API (port 8766) for one-shot GET commands. CORS enabled. 3-second read timeout. / HTTP REST API. CORS 활성화. 3초 읽기 타임아웃.
+- **HttpApiServer** — HTTP REST API (port 8766) for one-shot GET commands. CORS enabled. 3-second read timeout. Volume range validation (0.0-1.0). / HTTP REST API. CORS 활성화. 3초 읽기 타임아웃. 볼륨 범위 검증.
 - **StateBroadcaster** — Pushes AppState changes to all connected StateListeners as JSON. / 상태 변경을 JSON으로 모든 리스너에 푸시.
 - **ControlMapping** — JSON-based persistence for hotkey/MIDI/server config. Portable mode support (`portable.flag` next to exe). / JSON 기반 설정 저장. 포터블 모드 지원.
 
@@ -61,7 +61,7 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 - **AudioSettings** — Driver type selector (WASAPI/ASIO), device selection, ASIO channel routing (input/output pair), sample rate, buffer size, channel mode (Mono/Stereo), latency display, ASIO Control Panel button. / 오디오 설정 패널.
 - **PluginChainEditor** — Drag-and-drop reordering, bypass toggle, edit button (native GUI), remove button. Safe deletion via `callAsync`. / 드래그 앤 드롭 플러그인 체인 편집. callAsync를 통한 안전 삭제.
 - **PluginScanner** — Out-of-process VST scanner with auto-retry (5x) and dead man's pedal. Blacklist for crashed plugins. / 별도 프로세스 VST 스캐너. 자동 재시도 5회. 블랙리스트.
-- **OutputPanel** — Monitor output controls: device selector, volume slider, enable toggle. / 모니터 출력 제어.
+- **OutputPanel** — Monitor output controls: device selector, volume slider, enable toggle, device status indicator (Active/Error/No device). / 모니터 출력 제어 + 디바이스 상태 표시.
 - **PresetManager** — Full preset save/load (JSON, `.dppreset`) + Quick Preset Slots A-E. Plugin state via `getStateInformation()`/base64. Async slot loading. / 프리셋 관리 + 퀵 슬롯 A-E. 비동기 슬롯 로딩.
 - **ControlSettingsPanel** — 4 sub-tabs: Hotkey, MIDI, StreamDeck (server status), General (Start with Windows). / 4개 서브탭: 단축키, MIDI, StreamDeck, 일반.
 - **LevelMeter** — Real-time RMS level display with peak hold, clipping indicator. dB log scale. / 실시간 RMS 레벨 미터. 피크 홀드. dB 로그 스케일.
@@ -69,8 +69,8 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 
 #### Main Application (`host/Source/MainComponent.cpp`)
 
-- Two-column layout: left (input section + VST chain + slot buttons), right (tabbed panel: Audio/Output/Controls) / 2컬럼 레이아웃
-- Quick Preset Slot buttons A-E with visual active/occupied state / 퀵 프리셋 슬롯 버튼 (활성/사용중 시각 구분)
+- Two-column layout: left (input meter + gain + VST chain + slot buttons), right (tabbed panel: Audio/Monitor/Controls + output meter) / 2컬럼 레이아웃, 좌우 대칭 미터
+- Quick Preset Slot buttons A-E with visual active/occupied state. Loading feedback (dimmed buttons). / 퀵 프리셋 슬롯 버튼 (활성/사용중 시각 구분, 로딩 중 피드백)
 - Auto-save via dirty-flag + 1-second debounce. `onSettingsChanged` callbacks trigger `markSettingsDirty()`. / dirty-flag + 1초 디바운스 자동 저장
 - Panic mute remembers pre-mute monitor enable state, restores on unmute / Panic Mute 모니터 상태 기억/복원
 - Status bar: latency, CPU, format, portable mode, "Created by LiveTrack" / 상태 바

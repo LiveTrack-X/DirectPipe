@@ -13,7 +13,7 @@ DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 V
 3. **Select your microphone** from the device dropdown / 마이크 선택
 4. **Scan for plugins** — click "Scan..." to discover installed VST plugins / "Scan..." 클릭으로 VST 스캔
 5. **Add plugins** to the chain — click "+ Add Plugin" / "+ Add Plugin"으로 플러그인 추가
-6. **Configure monitor output** in Output tab to hear yourself / Output 탭에서 모니터 출력 설정
+6. **Configure monitor output** in Monitor tab to hear yourself / Monitor 탭에서 모니터 출력 설정
 
 ## Audio Settings (Audio Tab) / 오디오 설정
 
@@ -64,13 +64,14 @@ Five quick-access slots for different VST chain configurations. / 5개 체인 �
 
 Slots save chain-only data (plugins, order, bypass, parameters). Audio and output settings are NOT affected. / 슬롯은 체인 데이터만 저장. 오디오/출력 설정은 영향 없음.
 
-## Output Settings (Output Tab) / 출력 설정
+## Monitor Settings (Monitor Tab) / 모니터 설정
 
 ### Monitor Output / 모니터 출력
 
 - **Device** — Select output device for monitoring (headphones) / 모니터링용 출력 장치 선택 (헤드폰)
 - **Volume** — Adjust monitor volume / 모니터 볼륨 조절
 - **Enable** — Toggle monitor on/off / 모니터 켜기/끄기
+- **Status** — Shows device state: Active (green), Error (red), or "No device selected" / 디바이스 상태 표시: Active(녹색), Error(빨강), 미선택 안내
 
 ### Main Output / 메인 출력
 
@@ -78,7 +79,7 @@ The main processed audio goes directly to the AudioSettings Output device. To se
 
 처리된 오디오는 AudioSettings Output 장치로 직접 전송된다. OBS, Discord 등에 보내려면 Audio 탭에서 가상 오디오 케이블(예: VB-Audio Hi-Fi Cable)을 Output 장치로 선택.
 
-The monitor output (headphones) uses a separate WASAPI device configured in the Output tab, so you can listen while routing to a different device. / 모니터 출력(헤드폰)은 Output 탭에서 설정하는 별도 WASAPI 장치를 사용하므로, 다른 장치로 라우팅하면서 동시에 청취 가능.
+The monitor output (headphones) uses a separate WASAPI device configured in the Monitor tab, so you can listen while routing to a different device. / 모니터 출력(헤드폰)은 Monitor 탭에서 설정하는 별도 WASAPI 장치를 사용하므로, 다른 장치로 라우팅하면서 동시에 청취 가능.
 
 ## VST Plugin Scanner / VST 스캐너
 
@@ -166,11 +167,11 @@ See [Control API Reference](CONTROL_API.md) for all endpoints. / 전체 엔드�
 - UI remains responsive during async loading / 비동기 로딩 중 UI 응답 유지
 
 **No monitor output? / 모니터 출력이 안 되나요?**
-- Check the monitor device is selected in Output tab / Output 탭에서 모니터 장치가 선택되어 있는지 확인
+- Check the monitor device is selected in Monitor tab / Monitor 탭에서 모니터 장치가 선택되어 있는지 확인
 - Ensure "Enable" is toggled on / "Enable"이 켜져 있는지 확인
 - The monitor uses a separate WASAPI device — it works even when main driver is ASIO / 모니터는 별도 WASAPI 장치를 사용 — ASIO 모드에서도 동작
 
 **Want to send audio to OBS/Discord? / OBS/Discord로 보내고 싶나요?**
 - Install a virtual audio cable driver (e.g., VB-Audio Hi-Fi Cable) / 가상 오디오 케이블 드라이버 설치
 - Select it as the Output device in the Audio tab / Audio 탭에서 Output 장치로 선택
-- Set your headphones as the monitor device in the Output tab / Output 탭에서 헤드폰을 모니터 장치로 설정
+- Set your headphones as the monitor device in the Monitor tab / Monitor 탭에서 헤드폰을 모니터 장치로 설정

@@ -42,17 +42,17 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 ## Key Implementations
 - **ASIO + WASAPI dual driver**: Runtime switching. ASIO: single device, dynamic SR/BS, channel routing. WASAPI: separate I/O, fixed lists.
 - **Main output**: Processed audio written directly to outputChannelData (AudioSettings Output device). Works with both WASAPI and ASIO.
-- **Monitor output**: Separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer for headphone monitoring. Independent of main driver type (works even with ASIO). Configured in Output tab.
+- **Monitor output**: Separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer for headphone monitoring. Independent of main driver type (works even with ASIO). Configured in Monitor tab. Status indicator (Active/Error/No device).
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
 - **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal. Blacklist for crashed plugins. Log: `%AppData%/DirectPipe/scanner-log.txt`.
 - **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Safe deletion via callAsync.
-- **Tabbed UI**: Audio/Output/Controls tabs in right column. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General.
+- **Tabbed UI**: Audio/Monitor/Controls tabs in right column. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General.
 - **Start with Windows**: Registry-based (`HKCU\...\Run`). Toggle in tray menu + Controls > General tab.
 - **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
 - **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
 - **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765.
-- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766.
+- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0).
 - **Stream Deck plugin**: SDK v2, 5 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic), Property Inspector HTML (sdpi-components v4), auto-reconnect (2s->30s), SVG icons with @2x. Pending message queue (cap 50).
 
 ## Coding Rules
