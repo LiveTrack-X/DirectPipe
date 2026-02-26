@@ -95,7 +95,9 @@ class VolumeControlAction extends SingletonAction {
             title = displayName;
         }
 
-        action.setState(isMuted ? 1 : 0);
+        if (typeof action.setState === "function") {
+            action.setState(isMuted ? 1 : 0);
+        }
         action.setTitle(title);
     }
 }

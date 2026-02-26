@@ -30,7 +30,11 @@ function broadcastState(state) {
     if (!state) return;
     for (const action of allActions) {
         if (typeof action.updateAllFromState === "function") {
-            action.updateAllFromState(state);
+            try {
+                action.updateAllFromState(state);
+            } catch (err) {
+                streamDeck.logger.error(`Error updating ${action.manifestId}: ${err.message}`);
+            }
         }
     }
 }

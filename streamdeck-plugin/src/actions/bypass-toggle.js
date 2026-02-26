@@ -86,7 +86,9 @@ class BypassToggleAction extends SingletonAction {
             title = `Slot ${pluginIndex + 1}\nEmpty`;
         }
 
-        action.setState(isBypassed ? 0 : 1);
+        if (typeof action.setState === "function") {
+            action.setState(isBypassed ? 0 : 1);
+        }
         action.setTitle(title);
     }
 }

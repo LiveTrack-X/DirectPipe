@@ -34,7 +34,9 @@ class MonitorToggleAction extends SingletonAction {
     _updateDisplay(action, state) {
         if (!state?.data) return;
         const enabled = state.data.monitor_enabled === true;
-        action.setState(enabled ? 0 : 1);
+        if (typeof action.setState === "function") {
+            action.setState(enabled ? 0 : 1);
+        }
         action.setTitle(enabled ? "MON ON" : "MON OFF");
     }
 }

@@ -34,7 +34,9 @@ class PanicMuteAction extends SingletonAction {
     _updateDisplay(action, state) {
         if (!state?.data) return;
         const isMuted = state.data.muted === true;
-        action.setState(isMuted ? 1 : 0);
+        if (typeof action.setState === "function") {
+            action.setState(isMuted ? 1 : 0);
+        }
         action.setTitle(isMuted ? "MUTED" : "MUTE");
     }
 }
