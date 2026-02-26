@@ -140,6 +140,12 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 
 ## FAQ
 
+**Q: 처음 실행할 때 "Windows의 PC 보호" 경고가 뜹니다 / Windows SmartScreen warning on first run**
+
+A: DirectPipe는 오픈소스 프로젝트로, 코드 서명 인증서가 없어 Windows SmartScreen이 경고를 표시합니다. 이것은 정상이며 악성 소프트웨어가 아닙니다. **"추가 정보"** 를 클릭한 뒤 **"실행"** 버튼을 누르면 됩니다. 이후에는 경고가 다시 뜨지 않습니다. 소스 코드는 이 저장소에서 직접 확인하고 빌드할 수 있습니다.
+
+This is normal for open-source software without a code signing certificate. Click **"More info"** then **"Run anyway"**. The warning only appears once. You can review and build the source code yourself from this repository.
+
 **Q: 다른 앱에서 처리된 마이크 소리를 쓸 수 있나요? / Can other apps use the processed mic audio?**
 
 A: 네. Output을 [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) 같은 가상 장치로 설정하면, Discord·Zoom·OBS 등에서 그 가상 장치를 마이크로 선택할 수 있습니다. — Yes. Set the Output to a virtual cable device, then select it as a mic in your app. See [Usage](#사용-예시-가상-케이블로-discordobs에-보이스-이펙트-적용--usage-voice-effects-with-virtual-cable) above.
