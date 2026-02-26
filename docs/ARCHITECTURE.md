@@ -47,7 +47,7 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 - **ControlManager** — Aggregates all control sources (Hotkey, MIDI, WebSocket, HTTP). Initialize/shutdown lifecycle. / 모든 제어 소스 통합 관리.
 - **HotkeyHandler** — Windows `RegisterHotKey` API for global keyboard shortcuts. Recording mode for key capture. / 글로벌 키보드 단축키. 키 녹화 모드.
 - **MidiHandler** — JUCE `MidiInput` for MIDI CC/note mapping with Learn mode. LED feedback via MidiOutput. Hot-plug detection. / MIDI CC 매핑 + Learn 모드. LED 피드백. 핫플러그 감지.
-- **WebSocketServer** — RFC 6455 WebSocket server (port 8765). Custom SHA-1 implementation for handshake. JUCE `StreamingSocket` with frame encoding/decoding, ping/pong. Dead client cleanup sweep on broadcast. / RFC 6455 WebSocket 서버. 커스텀 SHA-1 핸드셰이크. 죽은 클라이언트 자동 정리.
+- **WebSocketServer** — RFC 6455 WebSocket server (port 8765). Custom SHA-1 implementation for handshake. JUCE `StreamingSocket` with frame encoding/decoding, ping/pong. Dead client cleanup sweep on broadcast. UDP discovery broadcast on port 8767 at startup for instant Stream Deck connection. / RFC 6455 WebSocket 서버. 커스텀 SHA-1 핸드셰이크. 죽은 클라이언트 자동 정리. 시작 시 UDP 8767 디스커버리 브로드캐스트로 Stream Deck 즉시 연결.
 - **HttpApiServer** — HTTP REST API (port 8766) for one-shot GET commands. CORS enabled. 3-second read timeout. Volume range validation (0.0-1.0). / HTTP REST API. CORS 활성화. 3초 읽기 타임아웃. 볼륨 범위 검증.
 - **StateBroadcaster** — Pushes AppState changes to all connected StateListeners as JSON. / 상태 변경을 JSON으로 모든 리스너에 푸시.
 - **ControlMapping** — JSON-based persistence for hotkey/MIDI/server config. Portable mode support (`portable.flag` next to exe). / JSON 기반 설정 저장. 포터블 모드 지원.
@@ -101,7 +101,7 @@ Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v2). / Stream Deck 
 - 5 SingletonAction subclasses: Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle / 5개 액션
 - Volume Control supports 3 modes: Mute Toggle, Volume Up (+), Volume Down (-) with configurable step size / 볼륨 제어: 뮤트 토글, 볼륨 +/- 모드
 - SD+ dial support for volume adjustment / SD+ 다이얼 지원
-- Auto-reconnect with exponential backoff (2s -> 30s) / 지수 백오프 자동 재연결 (2초 -> 30초)
+- Event-driven reconnection: UDP discovery (port 8767) + user-action trigger (no polling) / 이벤트 기반 재연결: UDP 디스커버리 + 사용자 조작 트리거 (폴링 없음)
 - Pending message queue (cap 50) while disconnected / 연결 해제 중 대기 큐 (최대 50)
 - Property Inspector HTML (sdpi-components v4) for each action / 각 액션별 설정 UI
 - SVG icon sources in `icons-src/`, PNG generation via `scripts/generate-icons.mjs` / SVG 원본 + PNG 생성 스크립트

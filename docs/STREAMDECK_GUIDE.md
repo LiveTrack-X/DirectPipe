@@ -54,11 +54,11 @@ Connects via WebSocket on `ws://localhost:8765`. / WebSocket으로 연결.
 
 ### Auto-Reconnect / 자동 재연결
 
-If DirectPipe is not running, the plugin reconnects automatically: / DirectPipe 미실행 시 자동 재연결:
+Fully event-driven — no periodic polling: / 완전 이벤트 기반 — 주기적 폴링 없음:
 
-- Initial delay: 2s / 초기 딜레이: 2초
-- Max delay: 30s / 최대 딜레이: 30초
-- Backoff factor: 1.5x / 백오프 팩터: 1.5배
+- **UDP Discovery**: DirectPipe broadcasts `DIRECTPIPE_READY` on UDP port 8767 when its WebSocket server starts. The plugin listens and connects instantly. / DirectPipe가 WebSocket 서버 시작 시 UDP 8767로 알림 전송. 플러그인이 즉시 연결.
+- **User action trigger**: Pressing any button or rotating a dial while disconnected triggers an immediate reconnection attempt. / 연결 해제 상태에서 버튼/다이얼 조작 시 즉시 재연결 시도.
+- **Startup**: Initial `connect()` on plugin load — connects immediately if DirectPipe is already running. / 플러그인 시작 시 1회 연결 시도 — DirectPipe가 이미 실행 중이면 즉시 연결.
 - Pending message queue (cap 50) while disconnected / 연결 해제 중 대기 큐 (최대 50)
 
 While disconnected, all buttons show an alert indicator. / 연결 해제 시 모든 버튼에 경고 표시.
@@ -166,7 +166,7 @@ Built with `@elgato/streamdeck` SDK v2.0.1. Uses `SingletonAction` class-based a
 - EventEmitter-based: `connected`, `disconnected`, `state`, `error`, `message` events / 이벤트 기반
 - Ping keepalive every 15s / 15초마다 핑 유지
 - Pending message queue (cap 50) during disconnection / 연결 해제 중 대기 큐 (최대 50)
-- Auto-reconnect with exponential backoff / 지수 백오프 자동 재연결
+- Event-driven reconnection via `reconnectNow()` — triggered by UDP discovery or user action (no polling) / UDP 디스커버리 또는 사용자 조작으로 즉시 재연결 (폴링 없음)
 
 ### Settings Cache / 설정 캐시
 
@@ -185,7 +185,7 @@ streamdeck-plugin/
   .sdignore                   Files excluded from packaging / 패키징 제외 파일
   src/
     plugin.js                 Main entry, streamDeck.connect() + DirectPipeClient / 메인 진입점
-    websocket-client.js       WebSocket client with auto-reconnect / 자동 재연결 WS 클라이언트
+    websocket-client.js       WebSocket client with event-driven reconnect / 이벤트 기반 재연결 WS 클라이언트
     actions/
       bypass-toggle.js        Bypass toggle SingletonAction / Bypass 토글 액션
       panic-mute.js           Panic mute SingletonAction / 패닉 뮤트 액션

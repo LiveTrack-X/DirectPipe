@@ -51,9 +51,9 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
 - **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
-- **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765.
+- **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765. UDP discovery broadcast (port 8767) at startup for instant Stream Deck connection.
 - **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0).
-- **Stream Deck plugin**: SDK v2, 5 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic), Property Inspector HTML (sdpi-components v4), auto-reconnect (2s->30s), SVG icons with @2x. Pending message queue (cap 50).
+- **Stream Deck plugin**: SDK v2, 5 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50).
 
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.
