@@ -149,7 +149,11 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 2. 아래에 나타나는 **"실행"** 버튼을 누르세요
 3. 한 번만 하면 이후로는 경고 없이 실행됩니다
 
-> This is expected for open-source software. Click **"More info"** → **"Run anyway"**. It only appears once.
+This is normal! DirectPipe is open-source and does not have a code signing certificate, so Windows SmartScreen shows a warning. It is not malware.
+
+1. Click the **"More info"** text
+2. Click the **"Run anyway"** button that appears
+3. You only need to do this once — the warning won't appear again
 </details>
 
 <details>
@@ -165,7 +169,17 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 
 설치 후 DirectPipe에서 **"Scan..."** 버튼으로 플러그인 폴더를 스캔하면 목록에 나타납니다.
 
-> VST plugins are audio effect processors. After installing them, click **"Scan..."** in DirectPipe to detect them.
+---
+
+VST plugins are software that add audio effects to your signal — noise removal, EQ, compressor, reverb, and more.
+
+**Free recommended plugins:**
+- [ReaPlugs](https://www.reaper.fm/reaplugs/) — EQ, compressor, gate, and more essentials (free)
+- [RNNoise](https://github.com/werman/noise-suppression-for-voice) — AI-powered real-time noise removal (free)
+- [TDR Nova](https://www.tokyodawn.net/tdr-nova/) — High-quality dynamic EQ (free)
+- [OrilRiver](https://www.kvraudio.com/product/orilriver-by-denis-tihanov) — Reverb (free)
+
+After installing plugins, click **"Scan..."** in DirectPipe to scan your plugin folders. They will appear in the plugin list.
 </details>
 
 <details>
@@ -180,6 +194,7 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
    - **Output** → `CABLE Input (VB-Audio Virtual Cable)` 선택
 3. Discord/Zoom/OBS 음성 설정:
    - **마이크** → `CABLE Output (VB-Audio Virtual Cable)` 선택
+4. 자기 목소리를 확인하려면 **Monitor** 탭에서 헤드폰 장치를 설정하세요
 
 ```
 내 USB 마이크 → DirectPipe (노이즈 제거, EQ 등) → VB-Cable Input
@@ -187,9 +202,24 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
                                        Discord/Zoom/OBS ← VB-Cable Output (마이크로 인식)
 ```
 
-4. 자기 목소리를 확인하려면 **Monitor** 탭에서 헤드폰 장치를 설정하세요
+---
 
-> Install [VB-Audio Virtual Cable](https://vb-audio.com/Cable/), set DirectPipe Output to `CABLE Input`, then select `CABLE Output` as your mic in Discord/Zoom/OBS.
+You'll need [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (free).
+
+**Setup steps:**
+1. Install VB-Audio Virtual Cable and reboot your PC
+2. In DirectPipe **Audio** tab:
+   - **Input** → Select your USB microphone
+   - **Output** → Select `CABLE Input (VB-Audio Virtual Cable)`
+3. In Discord / Zoom / OBS voice settings:
+   - **Microphone** → Select `CABLE Output (VB-Audio Virtual Cable)`
+4. To hear yourself, configure your headphone device in the **Monitor** tab
+
+```
+USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
+                                                        ↓
+                                      Discord/Zoom/OBS ← VB-Cable Output (recognized as mic)
+```
 </details>
 
 <details>
@@ -204,7 +234,16 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 4. **OUT** 버튼이 초록색인지 확인 (빨간색이면 뮤트 상태 → 클릭해서 해제)
 5. **PANIC MUTE**가 활성화되어 있으면 다시 클릭해서 해제
 
-> Check: Input device → INPUT meter moving → OUT button green (not muted) → PANIC MUTE off.
+---
+
+**Troubleshooting steps:**
+1. **Audio tab** → Make sure the correct Input device is selected
+2. Check if the left **INPUT level meter** is moving → if it moves, mic input is working
+3. If the level meter doesn't move:
+   - Windows Settings → Privacy → Microphone — make sure app access is allowed
+   - If another app (e.g., Discord) is using the mic in exclusive mode, disable exclusive mode
+4. Check that the **OUT** button is green (red means muted → click to unmute)
+5. If **PANIC MUTE** is active, click it again to deactivate
 </details>
 
 <details>
@@ -221,7 +260,18 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 - WASAPI 대신 **ASIO** 드라이버 사용 (더 낮은 지연 가능)
 - 하단 상태 바의 **CPU %** 수치를 확인 — 60% 이상이면 과부하
 
-> Lower the **Buffer Size** for less latency. If crackling persists, reduce plugins or switch to ASIO driver.
+---
+
+**Adjust the Buffer Size:**
+- Audio tab → **Buffer Size**: lower values reduce latency but increase CPU load
+  - `256 samples` (~5ms @ 48kHz) — good starting point
+  - `128 samples` (~2.7ms) — low latency, recommended for higher-end PCs
+  - `512 samples` (~10ms) — stable, recommended for lower-end PCs
+
+**Still crackling?**
+- Reduce the number of plugins, or Bypass CPU-heavy ones
+- Switch from WASAPI to **ASIO** driver (allows even lower latency)
+- Check the **CPU %** in the bottom status bar — above 60% indicates overload
 </details>
 
 <details>
@@ -229,14 +279,14 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 
 **ASIO**는 저지연 오디오 드라이버입니다. 대부분의 USB 마이크는 **WASAPI** 모드로 충분히 잘 동작하므로 반드시 필요하지는 않습니다.
 
+**ASIO** is a low-latency audio driver protocol. Most USB microphones work perfectly fine with **WASAPI** mode, so ASIO is not required.
+
 | | WASAPI Shared | ASIO |
 |---|---|---|
-| 지연(Latency) | 보통 (5~15ms) | 매우 낮음 (2~5ms) |
-| 설치 | 별도 설치 불필요 | 오디오 인터페이스 드라이버 필요 |
-| 다른 앱과 동시 사용 | 가능 (비독점) | 장치에 따라 다름 |
-| 추천 대상 | 일반 사용자 | 전문가, 실시간 모니터링 |
-
-> WASAPI works fine for most users. ASIO is optional for those who need ultra-low latency.
+| 지연 / Latency | 보통 / Normal (5~15ms) | 매우 낮음 / Very low (2~5ms) |
+| 설치 / Setup | 별도 설치 불필요 / No extra install | 오디오 인터페이스 드라이버 필요 / Requires audio interface driver |
+| 다른 앱 동시 사용 / Shared access | 가능 (비독점) / Yes (non-exclusive) | 장치에 따라 다름 / Depends on device |
+| 추천 대상 / Best for | 일반 사용자 / Most users | 전문가, 실시간 모니터링 / Pros, real-time monitoring |
 </details>
 
 <details>
@@ -247,7 +297,12 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 - 크래시를 유발하는 플러그인은 자동으로 **블랙리스트**에 등록되어 다음 스캔에서 건너뜁니다
 - 스캔 로그: `%AppData%/DirectPipe/scanner-log.txt`에서 확인 가능
 
-> Scans run in a separate process — the host never crashes. Bad plugins are auto-blacklisted.
+---
+
+Plugin scanning runs in a **separate process**, so DirectPipe itself will never freeze or crash. Some plugins may take a while to scan (up to 5 minutes).
+
+- Plugins that cause crashes are automatically **blacklisted** and skipped in future scans
+- Scan log: check `%AppData%/DirectPipe/scanner-log.txt`
 </details>
 
 <details>
@@ -261,7 +316,15 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 
 예: 게임 중엔 **A** (노이즈 제거만), 노래방에선 **B** (리버브 + 컴프레서)
 
-> Save your plugin chain to slots A-E. Click a slot to switch instantly.
+---
+
+**Quick Preset Slots (A–E):**
+- Save your current plugin chain and settings to slots **A through E**
+- **Save Preset** → saves the current state to the selected slot
+- Click a slot button **(A/B/C/D/E)** → switch instantly
+- If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading**
+
+Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (reverb + compressor)
 </details>
 
 <details>
@@ -273,7 +336,13 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 - Main Output과는 별도의 WASAPI 장치를 사용하므로 **독립적으로 동작**
 - **MON** 버튼으로 켜기/끄기
 
-> Monitor lets you hear your processed voice through headphones in real-time. Configure in the Monitor tab.
+---
+
+**Monitor** lets you hear your own processed voice through headphones in real-time, with all VST effects applied.
+
+- Select your headphone device in the **Monitor tab**
+- Uses a separate WASAPI device from the Main Output, so it **works independently**
+- Toggle on/off with the **MON** button
 </details>
 
 <details>
@@ -285,7 +354,13 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 
 활성화하면 Windows 시작 시 자동으로 트레이에서 실행됩니다. X 버튼으로 창을 닫아도 트레이에 남아서 계속 동작합니다.
 
-> Right-click the tray icon → "Start with Windows", or enable in Controls > General tab.
+---
+
+Two ways to enable:
+1. Right-click the **system tray** icon → check **"Start with Windows"**
+2. **Controls** tab → **General** → check **"Start with Windows"**
+
+Once enabled, DirectPipe launches automatically in the system tray when Windows starts. Closing the window (X button) minimizes it to the tray — it keeps running in the background.
 </details>
 
 <details>
@@ -293,16 +368,16 @@ VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다
 
 네! 다양한 방법으로 제어할 수 있습니다:
 
-| 방법 | 예시 | 적합한 용도 |
+Yes! Multiple control methods are available:
+
+| 방법 / Method | 예시 / Example | 적합한 용도 / Best for |
 |---|---|---|
-| **키보드 단축키** | Ctrl+Shift+1~9 bypass, F1~F5 프리셋 | 가장 간편 |
-| **MIDI CC** | 미디 컨트롤러 노브/버튼 | 실시간 볼륨 조절 |
-| **HTTP API** | `curl http://localhost:8766/api/...` | 스크립트 자동화 |
-| **WebSocket** | ws://localhost:8765 | 커스텀 앱/봇 연동 |
+| **키보드 단축키 / Hotkeys** | Ctrl+Shift+1~9 bypass, F1~F5 프리셋 / presets | 가장 간편 / Simplest |
+| **MIDI CC** | 미디 컨트롤러 노브/버튼 / MIDI controller knobs | 실시간 볼륨 조절 / Real-time volume |
+| **HTTP API** | `curl http://localhost:8766/api/...` | 스크립트 자동화 / Script automation |
+| **WebSocket** | ws://localhost:8765 | 커스텀 앱/봇 연동 / Custom app integration |
 
-자세한 내용: [Control API](docs/CONTROL_API.md)
-
-> Hotkeys, MIDI CC, HTTP API, and WebSocket are all supported. See [Control API](docs/CONTROL_API.md).
+자세한 내용 / Details: [Control API](docs/CONTROL_API.md)
 </details>
 
 ## License
