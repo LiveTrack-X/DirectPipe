@@ -271,6 +271,9 @@ bool WebSocketServer::start(int port)
     broadcaster_.addListener(this);
     serverThread_ = std::thread([this] { serverThread(); });
 
+    // Send UDP discovery broadcast so Stream Deck plugin can connect immediately
+    sendDiscoveryBroadcast();
+
     juce::Logger::writeToLog("WebSocket server started on port " + juce::String(port_));
     return true;
 }
@@ -449,6 +452,16 @@ void WebSocketServer::broadcastToClients(const std::string& message)
         if (conn->socket && conn->socket->isConnected()) {
             sendFrame(conn->socket.get(), message);
         }
+    }
+}
+
+void WebSocketServer::sendDiscoveryBroadcast()
+{
+    juce::DatagramSocket udp;
+    if (udp.bindToPort(0)) {
+        std::string msg = "DIRECTPIPE_READY:" + std::to_string(port_);
+        udp.write("127.0.0.1", 8767, msg.c_str(), static_cast<int>(msg.size()));
+        juce::Logger::writeToLog("WebSocket: Sent UDP discovery broadcast (port " + juce::String(port_) + ")");
     }
 }
 
