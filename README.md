@@ -66,6 +66,32 @@ External Control:
 - **Output / Monitor Mute** — 개별 출력 뮤트 (UI 인디케이터 + 클릭 제어) — Independent output/monitor mute with clickable status indicators
 - **다크 테마** — Dark theme (custom JUCE LookAndFeel)
 
+## 사용 예시: 가상 케이블로 Discord/OBS에 보이스 이펙트 적용 / Usage: Voice Effects with Virtual Cable
+
+USB 마이크에 VST 이펙트(노이즈 제거, 디에서, EQ 등)를 걸고, 처리된 오디오를 Discord·Zoom·OBS 등 다른 앱에서 마이크로 인식시키려면 가상 오디오 케이블이 필요하다.
+
+To apply VST effects (noise removal, de-esser, EQ, etc.) to a USB mic and route the processed audio as a virtual microphone to apps like Discord, Zoom, or OBS, you need a virtual audio cable.
+
+### 설정 방법 / Setup
+
+1. **[VB-Audio Virtual Cable](https://vb-audio.com/Cable/)** 설치 (무료) — Install VB-Audio Virtual Cable (free)
+2. DirectPipe **Audio** 탭에서 설정 — Configure in DirectPipe Audio tab:
+   - **Input**: USB 마이크 선택 — Select your USB microphone
+   - **Output**: `CABLE Input (VB-Audio Virtual Cable)` 선택 — Select VB-Cable as output
+3. Discord/Zoom/OBS 등에서 마이크를 `CABLE Output (VB-Audio Virtual Cable)`로 변경 — In your app, set mic to `CABLE Output`
+
+```
+USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...) → VB-Cable Input
+                                                                      ↓
+                                                Discord/Zoom/OBS ← VB-Cable Output
+```
+
+4. (선택) **Monitor** 탭에서 헤드폰 장치를 설정하면 처리된 자신의 목소리를 실시간으로 모니터링 가능 — Optionally configure headphone monitoring in the Monitor tab
+
+> **Tip**: [VoiceMeeter](https://vb-audio.com/Voicemeeter/) 등 다른 가상 오디오 장치도 동일하게 사용 가능. Output 장치만 바꾸면 된다. — Any virtual audio device works; just change the Output device.
+
+---
+
 ## 빌드 / Build
 
 ```bash
@@ -111,6 +137,24 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 - [User Guide](docs/USER_GUIDE.md) — 사용법 / Setup and usage
 - [Control API](docs/CONTROL_API.md) — WebSocket / HTTP API 레퍼런스 / API reference
 - [Stream Deck Guide](docs/STREAMDECK_GUIDE.md) — Stream Deck 플러그인 / Stream Deck integration
+
+## FAQ
+
+**Q: 다른 앱에서 처리된 마이크 소리를 쓸 수 있나요? / Can other apps use the processed mic audio?**
+
+A: 네. Output을 [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) 같은 가상 장치로 설정하면, Discord·Zoom·OBS 등에서 그 가상 장치를 마이크로 선택할 수 있습니다. — Yes. Set the Output to a virtual cable device, then select it as a mic in your app. See [Usage](#사용-예시-가상-케이블로-discordobs에-보이스-이펙트-적용--usage-voice-effects-with-virtual-cable) above.
+
+**Q: ASIO 드라이버가 필요한가요? / Do I need an ASIO driver?**
+
+A: 아니요. WASAPI Shared Mode가 기본이며 대부분의 USB 마이크에서 잘 동작합니다. ASIO는 더 낮은 레이턴시가 필요할 때 선택 사항입니다. — No. WASAPI Shared Mode is the default and works well with most USB mics. ASIO is optional for lower latency.
+
+**Q: 플러그인 스캔 중 크래시가 나면? / What if a plugin crashes during scan?**
+
+A: DirectPipe는 별도 프로세스에서 플러그인을 스캔합니다. 크래시가 나도 호스트는 영향 없으며, 해당 플러그인은 자동으로 블랙리스트에 등록됩니다. — Plugins are scanned in a separate process. Crashes don't affect the host; the plugin is automatically blacklisted.
+
+**Q: Stream Deck 없이도 외부 제어가 가능한가요? / Can I control DirectPipe without a Stream Deck?**
+
+A: 네. 키보드 단축키, MIDI CC, HTTP API, WebSocket 모두 지원합니다. 자세한 내용은 [Control API](docs/CONTROL_API.md) 참조. — Yes. Hotkeys, MIDI CC, HTTP API, and WebSocket are all supported.
 
 ## License
 
