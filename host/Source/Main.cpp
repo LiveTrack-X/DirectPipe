@@ -4,8 +4,11 @@
  */
 
 #include <JuceHeader.h>
+#include <atomic>
+#include <mutex>
 #include "BinaryData.h"
 #include "MainComponent.h"
+#include "Control/StateBroadcaster.h"
 
 // ═══════════════════════════════════════════════════════════════════
 // Windows startup (Run registry) helpers
@@ -231,7 +234,13 @@ public:
         }
 
         if (!trayIcon_) {
-            trayIcon_ = std::make_unique<DirectPipeTrayIcon>(*this);
+            directpipe::StateBroadcaster* bc = nullptr;
+            if (mainWindow_) {
+                auto* mc = dynamic_cast<directpipe::MainComponent*>(
+                    mainWindow_->getContentComponent());
+                if (mc) bc = &mc->getBroadcaster();
+            }
+            trayIcon_ = std::make_unique<DirectPipeTrayIcon>(*this, bc);
         }
     }
 
@@ -239,19 +248,31 @@ private:
     bool scannerMode_ = false;
 
     // ─── System Tray Icon ─────────────────────────────────────────
-    class DirectPipeTrayIcon : public juce::SystemTrayIconComponent {
+    class DirectPipeTrayIcon : public juce::SystemTrayIconComponent,
+                               public directpipe::StateListener,
+                               public juce::Timer {
     public:
-        explicit DirectPipeTrayIcon(DirectPipeApplication& app)
-            : app_(app)
+        explicit DirectPipeTrayIcon(DirectPipeApplication& app,
+                                     directpipe::StateBroadcaster* broadcaster = nullptr)
+            : app_(app), broadcaster_(broadcaster)
         {
-            // Load pre-rendered 16x16 icon for tray (crisp, no runtime scaling)
             auto smallIcon = juce::ImageFileFormat::loadFrom(
                 BinaryData::icon_16_png, BinaryData::icon_16_pngSize);
-            // Load 32x32 for high-DPI tray
             auto largeIcon = juce::ImageFileFormat::loadFrom(
                 BinaryData::icon_32_png, BinaryData::icon_32_pngSize);
             setIconImage(smallIcon, largeIcon);
             setIconTooltip("DirectPipe - Running");
+
+            if (broadcaster_)
+                broadcaster_->addListener(this);
+            startTimerHz(2);
+        }
+
+        ~DirectPipeTrayIcon() override
+        {
+            stopTimer();
+            if (broadcaster_)
+                broadcaster_->removeListener(this);
         }
 
         void mouseDoubleClick(const juce::MouseEvent&) override
@@ -266,6 +287,45 @@ private:
             } else if (e.mods.isLeftButtonDown()) {
                 app_.showWindow();
             }
+        }
+
+        // StateListener
+        void onStateChanged(const directpipe::AppState& state) override
+        {
+            std::lock_guard<std::mutex> lock(stateMutex_);
+            cachedState_ = state;
+            stateDirty_.store(true, std::memory_order_release);
+        }
+
+        void timerCallback() override
+        {
+            if (!stateDirty_.load(std::memory_order_acquire)) return;
+
+            directpipe::AppState snapshot;
+            {
+                std::lock_guard<std::mutex> lock(stateMutex_);
+                snapshot = cachedState_;
+                stateDirty_.store(false, std::memory_order_relaxed);
+            }
+
+            // "DirectPipe [Slot A] | CPU 2.3% | 5.2ms | MUTED"
+            juce::String tooltip = "DirectPipe";
+
+            char slotChar = 'A' + static_cast<char>(snapshot.activeSlot);
+            tooltip += " [Slot " + juce::String::charToString(slotChar) + "]";
+            tooltip += " | CPU " + juce::String(snapshot.cpuPercent, 1) + "%";
+            tooltip += " | " + juce::String(snapshot.latencyMs, 1) + "ms";
+
+            if (snapshot.muted)
+                tooltip += " | MUTED";
+            else {
+                if (snapshot.outputMuted)
+                    tooltip += " | OUT-MUTE";
+                if (!snapshot.monitorEnabled)
+                    tooltip += " | MON-OFF";
+            }
+
+            setIconTooltip(tooltip);
         }
 
     private:
@@ -297,6 +357,10 @@ private:
         }
 
         DirectPipeApplication& app_;
+        directpipe::StateBroadcaster* broadcaster_ = nullptr;
+        directpipe::AppState cachedState_;
+        std::mutex stateMutex_;
+        std::atomic<bool> stateDirty_{false};
     };
 
     // ─── Main Window ──────────────────────────────────────────────

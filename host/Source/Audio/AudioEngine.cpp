@@ -452,6 +452,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         vstChain_.processBlock(buffer, numSamples);
     }
 
+    // 2.5. Write processed audio to recorder (lock-free)
+    if (!muted) {
+        recorder_.writeBlock(buffer, numSamples);
+    }
+
     // 3. Route processed audio to monitor (separate WASAPI device)
     if (!muted) {
         outputRouter_.routeAudio(buffer, numSamples);
@@ -482,6 +487,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
+
+    // Stop recording before device parameters change (prevents WAV corruption)
+    if (recorder_.isRecording())
+        recorder_.stopRecording();
 
     currentSampleRate_ = device->getCurrentSampleRate();
     currentBufferSize_ = device->getCurrentBufferSizeSamples();

@@ -207,6 +207,7 @@ juce::var ControlMappingStore::actionEventToVar(const ActionEvent& event)
     obj->setProperty("intParam", event.intParam);
     obj->setProperty("floatParam", static_cast<double>(event.floatParam));
     obj->setProperty("stringParam", juce::String(event.stringParam));
+    obj->setProperty("intParam2", event.intParam2);
     return juce::var(obj);
 }
 
@@ -218,6 +219,7 @@ ActionEvent ControlMappingStore::varToActionEvent(const juce::var& v)
         event.intParam = obj->getProperty("intParam");
         event.floatParam = static_cast<float>(static_cast<double>(obj->getProperty("floatParam")));
         event.stringParam = obj->getProperty("stringParam").toString().toStdString();
+        event.intParam2 = obj->getProperty("intParam2");
     }
     return event;
 }

@@ -14,6 +14,22 @@ namespace directpipe {
 
 static juce::String actionToDisplayName(const ActionEvent& event)
 {
+    // Handle actions that use stringParam for display first
+    switch (event.action) {
+        case Action::ToggleMute:
+            if (event.stringParam == "output")  return "Output Mute Toggle";
+            if (event.stringParam == "monitor") return "Monitor Mute Toggle";
+            return "Toggle Mute";
+        case Action::SetPluginParameter:
+            if (!event.stringParam.empty())
+                return juce::String(event.stringParam);
+            return "Plugin[" + juce::String(event.intParam) + "].Param[" +
+                   juce::String(event.intParam2) + "]";
+        default:
+            break;
+    }
+
+    // For other actions, prefer stringParam as friendly display name
     if (!event.stringParam.empty())
         return juce::String(event.stringParam);
 
@@ -21,10 +37,6 @@ static juce::String actionToDisplayName(const ActionEvent& event)
         case Action::PluginBypass:    return "Plugin " + juce::String(event.intParam + 1) + " Bypass";
         case Action::MasterBypass:    return "Master Bypass";
         case Action::SetVolume:       return "Set Volume";
-        case Action::ToggleMute:
-            if (event.stringParam == "output")  return "Output Mute Toggle";
-            if (event.stringParam == "monitor") return "Monitor Mute Toggle";
-            return "Toggle Mute";
         case Action::LoadPreset:      return "Load Preset";
         case Action::PanicMute:       return "Panic Mute";
         case Action::InputGainAdjust: return "Input Gain Adjust";
@@ -36,6 +48,7 @@ static juce::String actionToDisplayName(const ActionEvent& event)
             return "Preset Slot " + juce::String::charToString(label);
         }
         case Action::MonitorToggle:   return "Monitor Toggle";
+        case Action::RecordingToggle: return "Recording Toggle";
         default:                      return "Unknown";
     }
 }
@@ -361,8 +374,8 @@ void HotkeyTab::onAddClicked()
 //  MidiTab implementation
 // ═════════════════════════════════════════════════════════════════════════════
 
-MidiTab::MidiTab(ControlManager& manager)
-    : manager_(manager)
+MidiTab::MidiTab(ControlManager& manager, VSTChain* vstChain)
+    : manager_(manager), vstChain_(vstChain)
 {
     // Device selector
     deviceLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
@@ -381,6 +394,20 @@ MidiTab::MidiTab(ControlManager& manager)
     mappingHeaderLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
     mappingHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
     addAndMakeVisible(mappingHeaderLabel_);
+
+    // Add mapping buttons
+    auto setupBtn = [this](juce::TextButton& btn) {
+        btn.setColour(juce::TextButton::buttonColourId, juce::Colour(kAccentColour));
+        btn.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        btn.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        addAndMakeVisible(btn);
+    };
+    addMappingButton_.onClick = [this] { onAddMappingClicked(); };
+    setupBtn(addMappingButton_);
+
+    addParamButton_.onClick = [this] { onAddParamClicked(); };
+    setupBtn(addParamButton_);
+    addParamButton_.setVisible(vstChain_ != nullptr);
 
     // Status label
     statusLabel_.setFont(juce::Font(12.0f));
@@ -429,8 +456,20 @@ void MidiTab::resized()
                            bounds.getWidth() - labelW - btnW - gap * 2, rowH);
     y += rowH + gap;
 
-    // Mapping header
-    mappingHeaderLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    // Mapping header + Add buttons (adaptive width)
+    {
+        int totalW = bounds.getWidth();
+        bool showParam = addParamButton_.isVisible();
+        int numBtns = showParam ? 2 : 1;
+        int btnAreaW = totalW * numBtns / (numBtns + 1);
+        int headerW = totalW - btnAreaW - gap;
+        int singleBtnW = (btnAreaW - (numBtns > 1 ? gap : 0)) / numBtns;
+
+        mappingHeaderLabel_.setBounds(bounds.getX(), y, headerW, rowH);
+        addMappingButton_.setBounds(bounds.getX() + headerW + gap, y, singleBtnW, rowH);
+        if (showParam)
+            addParamButton_.setBounds(bounds.getRight() - singleBtnW, y, singleBtnW, rowH);
+    }
     y += rowH + gap;
 
     // Status label
@@ -552,8 +591,8 @@ void MidiTab::refreshMappings()
 
 void MidiTab::timerCallback()
 {
-    // Check if learn mode has ended
-    if (learningIndex_ >= 0 && !manager_.getMidiHandler().isLearning()) {
+    // Check if learn mode has ended (>= 0 = re-learning existing, -2 = new binding)
+    if (learningIndex_ != -1 && !manager_.getMidiHandler().isLearning()) {
         learningIndex_ = -1;
         statusLabel_.setText("", juce::dontSendNotification);
         refreshMappings();
@@ -655,6 +694,177 @@ juce::String MidiTab::midiBindingToString(const MidiBinding& binding)
     }
 
     return result;
+}
+
+void MidiTab::onAddMappingClicked()
+{
+    // Build an action menu similar to HotkeyTab
+    juce::PopupMenu menu;
+
+    juce::PopupMenu bypassMenu;
+    for (int i = 1; i <= 16; ++i)
+        bypassMenu.addItem(100 + i, "Plugin " + juce::String(i) + " Bypass");
+    menu.addSubMenu("Plugin Bypass", bypassMenu);
+    menu.addItem(200, "Master Bypass");
+    menu.addItem(201, "Panic Mute");
+    menu.addItem(202, "Input Mute Toggle");
+    menu.addItem(203, "Output Mute Toggle");
+    menu.addItem(204, "Monitor Toggle");
+    menu.addItem(205, "Recording Toggle");
+    menu.addItem(300, "Input Gain +1 dB");
+    menu.addItem(301, "Input Gain -1 dB");
+
+    juce::PopupMenu slotMenu;
+    for (int i = 0; i < 5; ++i) {
+        char label = 'A' + static_cast<char>(i);
+        slotMenu.addItem(600 + i, "Preset Slot " + juce::String::charToString(label));
+    }
+    menu.addSubMenu("Preset Slot", slotMenu);
+    menu.addItem(500, "Next Preset");
+    menu.addItem(501, "Previous Preset");
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addMappingButton_),
+        [this](int result) {
+            if (result == 0) return;
+
+            ActionEvent action;
+            if (result >= 100 && result < 200) {
+                int idx = result - 100 - 1;
+                action = {Action::PluginBypass, idx, 0.0f, "Plugin " + std::to_string(idx + 1) + " Bypass"};
+            } else if (result == 200) {
+                action = {Action::MasterBypass, 0, 0.0f, "Master Bypass"};
+            } else if (result == 201) {
+                action = {Action::PanicMute, 0, 0.0f, "Panic Mute"};
+            } else if (result == 202) {
+                action = {Action::InputMuteToggle, 0, 0.0f, "Input Mute Toggle"};
+            } else if (result == 203) {
+                action = {Action::ToggleMute, 0, 0.0f, "output"};
+            } else if (result == 204) {
+                action = {Action::MonitorToggle, 0, 0.0f, "Monitor Toggle"};
+            } else if (result == 205) {
+                action = {Action::RecordingToggle, 0, 0.0f, "Recording Toggle"};
+            } else if (result == 300) {
+                action = {Action::InputGainAdjust, 0, 1.0f, "Input Gain +1 dB"};
+            } else if (result == 301) {
+                action = {Action::InputGainAdjust, 0, -1.0f, "Input Gain -1 dB"};
+            } else if (result == 500) {
+                action = {Action::NextPreset, 0, 0.0f, "Next Preset"};
+            } else if (result == 501) {
+                action = {Action::PreviousPreset, 0, 0.0f, "Previous Preset"};
+            } else if (result >= 600 && result < 700) {
+                int slot = result - 600;
+                char label = 'A' + static_cast<char>(slot);
+                action = {Action::SwitchPresetSlot, slot, 0.0f, "Preset Slot " + std::string(1, label)};
+            } else {
+                return;
+            }
+
+            // Enter MIDI Learn mode
+            statusLabel_.setText("Move a MIDI control for: " + juce::String(action.stringParam),
+                                 juce::dontSendNotification);
+            learningIndex_ = -2;
+
+            manager_.getMidiHandler().startLearn(
+                [this, action](int cc, int note, int channel, const juce::String& deviceName) {
+                    MidiBinding newBinding;
+                    newBinding.cc = cc;
+                    newBinding.note = note;
+                    newBinding.channel = channel;
+                    newBinding.deviceName = deviceName.toStdString();
+                    newBinding.action = action;
+                    newBinding.type = (cc >= 0) ? MidiMappingType::Toggle : MidiMappingType::NoteOnOff;
+                    manager_.getMidiHandler().addBinding(newBinding);
+                    manager_.saveConfig();
+                });
+        });
+}
+
+void MidiTab::onAddParamClicked()
+{
+    if (vstChain_ == nullptr) return;
+
+    int pluginCount = vstChain_->getPluginCount();
+    if (pluginCount == 0) {
+        statusLabel_.setText("No plugins loaded", juce::dontSendNotification);
+        return;
+    }
+
+    // Step 1: Select plugin
+    juce::PopupMenu pluginMenu;
+    for (int i = 0; i < pluginCount; ++i) {
+        auto* slot = vstChain_->getPluginSlot(i);
+        if (slot)
+            pluginMenu.addItem(i + 1, slot->name);
+    }
+
+    pluginMenu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetComponent(&addParamButton_),
+        [this](int pluginResult) {
+            if (pluginResult == 0 || !vstChain_) return;
+            int pluginIndex = pluginResult - 1;
+
+            // Re-validate plugin index after async gap
+            if (pluginIndex >= vstChain_->getPluginCount()) return;
+
+            // Capture plugin name now (safe at this point)
+            auto* pluginSlot = vstChain_->getPluginSlot(pluginIndex);
+            juce::String pluginName = pluginSlot ? pluginSlot->name
+                                                 : "Plugin " + juce::String(pluginIndex);
+
+            // Step 2: Select parameter
+            int paramCount = vstChain_->getPluginParameterCount(pluginIndex);
+            if (paramCount == 0) {
+                statusLabel_.setText("Plugin has no parameters", juce::dontSendNotification);
+                return;
+            }
+
+            juce::PopupMenu paramMenu;
+            int maxItems = juce::jmin(paramCount, 200);
+            for (int p = 0; p < maxItems; ++p) {
+                auto name = vstChain_->getPluginParameterName(pluginIndex, p);
+                if (name.isEmpty()) name = "Param " + juce::String(p);
+                paramMenu.addItem(p + 1, juce::String(p) + ": " + name);
+            }
+
+            paramMenu.showMenuAsync(
+                juce::PopupMenu::Options().withTargetComponent(&addParamButton_),
+                [this, pluginIndex, pluginName](int paramResult) {
+                    if (paramResult == 0 || !vstChain_) return;
+                    int paramIndex = paramResult - 1;
+
+                    // Re-validate after second async gap
+                    if (pluginIndex >= vstChain_->getPluginCount()) return;
+                    if (paramIndex >= vstChain_->getPluginParameterCount(pluginIndex)) return;
+
+                    auto paramName = vstChain_->getPluginParameterName(pluginIndex, paramIndex);
+
+                    ActionEvent action;
+                    action.action = Action::SetPluginParameter;
+                    action.intParam = pluginIndex;
+                    action.intParam2 = paramIndex;
+                    action.floatParam = 0.0f;
+                    action.stringParam = (pluginName + " > " + paramName).toStdString();
+
+                    // Step 3: MIDI Learn
+                    statusLabel_.setText("Move a MIDI CC for: " + pluginName + " > " + paramName,
+                                         juce::dontSendNotification);
+                    learningIndex_ = -2;
+
+                    manager_.getMidiHandler().startLearn(
+                        [this, action](int cc, int note, int channel, const juce::String& deviceName) {
+                            MidiBinding newBinding;
+                            newBinding.cc = cc;
+                            newBinding.note = note;
+                            newBinding.channel = channel;
+                            newBinding.deviceName = deviceName.toStdString();
+                            newBinding.action = action;
+                            newBinding.type = (cc >= 0) ? MidiMappingType::Continuous
+                                                        : MidiMappingType::NoteOnOff;
+                            manager_.getMidiHandler().addBinding(newBinding);
+                            manager_.saveConfig();
+                        });
+                });
+        });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -874,11 +1084,42 @@ GeneralTab::GeneralTab()
     startupInfoLabel_.setFont(juce::Font(11.0f));
     startupInfoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
     addAndMakeVisible(startupInfoLabel_);
+
+    // ── Settings Export/Import section ──
+    settingsHeaderLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
+    settingsHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(settingsHeaderLabel_);
+
+    saveSettingsBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kSurfaceColour));
+    saveSettingsBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    saveSettingsBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    saveSettingsBtn_.onClick = [this] { if (onSaveSettings) onSaveSettings(); };
+    addAndMakeVisible(saveSettingsBtn_);
+
+    loadSettingsBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kSurfaceColour));
+    loadSettingsBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    loadSettingsBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    loadSettingsBtn_.onClick = [this] { if (onLoadSettings) onLoadSettings(); };
+    addAndMakeVisible(loadSettingsBtn_);
+
+    settingsInfoLabel_.setFont(juce::Font(11.0f));
+    settingsInfoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(settingsInfoLabel_);
 }
 
 void GeneralTab::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(kBgColour));
+
+    // Separator line between Application and Settings sections
+    auto bounds = getLocalBounds().reduced(8);
+    constexpr int rowH = 28;
+    constexpr int gap  = 6;
+    // After: header + toggle + info = 3 rows
+    int separatorY = bounds.getY() + (rowH + gap) * 3 + gap;
+    g.setColour(juce::Colour(kDimTextColour).withAlpha(0.3f));
+    g.drawHorizontalLine(separatorY, static_cast<float>(bounds.getX()),
+                         static_cast<float>(bounds.getRight()));
 }
 
 void GeneralTab::resized()
@@ -888,28 +1129,46 @@ void GeneralTab::resized()
     constexpr int gap  = 6;
 
     int y = bounds.getY();
+    int w = bounds.getWidth();
+    int x = bounds.getX();
 
-    headerLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    headerLabel_.setBounds(x, y, w, rowH);
     y += rowH + gap;
 
-    startupToggle_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    startupToggle_.setBounds(x, y, w, rowH);
     y += rowH + gap;
 
-    startupInfoLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    startupInfoLabel_.setBounds(x, y, w, rowH);
+    y += rowH + gap + 12; // extra gap for separator
+
+    // ── Settings section ──
+    settingsHeaderLabel_.setBounds(x, y, w, rowH);
+    y += rowH + gap;
+
+    int btnW = (w - gap) / 2;
+    saveSettingsBtn_.setBounds(x, y, btnW, rowH);
+    loadSettingsBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
+    y += rowH + gap;
+
+    settingsInfoLabel_.setBounds(x, y, w, rowH);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  ControlSettingsPanel implementation (top-level tabbed container)
 // ═════════════════════════════════════════════════════════════════════════════
 
-ControlSettingsPanel::ControlSettingsPanel(ControlManager& manager)
+ControlSettingsPanel::ControlSettingsPanel(ControlManager& manager, VSTChain* vstChain)
     : manager_(manager)
 {
     // Create tab content components
     hotkeyTab_     = std::make_unique<HotkeyTab>(manager_);
-    midiTab_       = std::make_unique<MidiTab>(manager_);
+    midiTab_       = std::make_unique<MidiTab>(manager_, vstChain);
     streamDeckTab_ = std::make_unique<StreamDeckTab>(manager_);
     generalTab_    = std::make_unique<GeneralTab>();
+
+    // Forward Settings Save/Load callbacks to GeneralTab
+    generalTab_->onSaveSettings = [this] { if (onSaveSettings) onSaveSettings(); };
+    generalTab_->onLoadSettings = [this] { if (onLoadSettings) onLoadSettings(); };
 
     // Configure the tabbed component
     tabbedComponent_.setTabBarDepth(30);

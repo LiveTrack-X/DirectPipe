@@ -27,7 +27,7 @@ void PluginScannerComponent::DirectoryListModel::paintListBoxItem(
 
 int PluginScannerComponent::PluginTableModel::getNumRows()
 {
-    return owner_.scannedPlugins_.getNumTypes();
+    return static_cast<int>(owner_.filteredIndices_.size());
 }
 
 void PluginScannerComponent::PluginTableModel::paintRowBackground(
@@ -42,10 +42,14 @@ void PluginScannerComponent::PluginTableModel::paintRowBackground(
 void PluginScannerComponent::PluginTableModel::paintCell(
     juce::Graphics& g, int rowNumber, int columnId, int width, int height, bool /*rowIsSelected*/)
 {
-    auto types = owner_.scannedPlugins_.getTypes();
-    if (rowNumber < 0 || rowNumber >= types.size()) return;
+    if (rowNumber < 0 || rowNumber >= static_cast<int>(owner_.filteredIndices_.size()))
+        return;
 
-    const auto& desc = types[rowNumber];
+    auto types = owner_.scannedPlugins_.getTypes();
+    int actualIndex = owner_.filteredIndices_[static_cast<size_t>(rowNumber)];
+    if (actualIndex < 0 || actualIndex >= types.size()) return;
+
+    const auto& desc = types[actualIndex];
     g.setColour(juce::Colour(kTextColour));
     g.setFont(juce::Font(13.0f));
 
@@ -62,10 +66,14 @@ void PluginScannerComponent::PluginTableModel::paintCell(
 void PluginScannerComponent::PluginTableModel::cellDoubleClicked(
     int rowNumber, int /*columnId*/, const juce::MouseEvent&)
 {
+    if (rowNumber < 0 || rowNumber >= static_cast<int>(owner_.filteredIndices_.size()))
+        return;
+
     auto types = owner_.scannedPlugins_.getTypes();
-    if (rowNumber >= 0 && rowNumber < types.size()) {
+    int actualIndex = owner_.filteredIndices_[static_cast<size_t>(rowNumber)];
+    if (actualIndex >= 0 && actualIndex < types.size()) {
         if (owner_.onPluginSelected)
-            owner_.onPluginSelected(types[rowNumber]);
+            owner_.onPluginSelected(types[actualIndex]);
     }
 }
 
@@ -116,26 +124,40 @@ PluginScannerComponent::PluginScannerComponent(VSTChain& vstChain)
     progressLabel_.setFont(juce::Font(12.0f));
     addAndMakeVisible(progressLabel_);
 
+    // Search box
+    searchBox_.setColour(juce::TextEditor::backgroundColourId, juce::Colour(kSurfaceColour));
+    searchBox_.setColour(juce::TextEditor::textColourId, juce::Colour(kTextColour));
+    searchBox_.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xFF3A3A5A));
+    searchBox_.setTextToShowWhenEmpty("Type to filter plugins...", juce::Colour(0xFF808090));
+    searchBox_.onTextChange = [this] { updateFilteredList(); };
+    addAndMakeVisible(searchBox_);
+
     // Plugin table
     pluginTable_.setModel(tableModel_.get());
     pluginTable_.setRowHeight(24);
     pluginTable_.setColour(juce::ListBox::backgroundColourId, juce::Colour(kSurfaceColour));
-    pluginTable_.getHeader().addColumn("Plugin Name", 1, 250, 100, 400);
-    pluginTable_.getHeader().addColumn("Vendor", 2, 150, 80, 250);
-    pluginTable_.getHeader().addColumn("Format", 3, 80, 60, 120);
+    pluginTable_.getHeader().addColumn("Plugin Name", 1, 250, 100, 400,
+        juce::TableHeaderComponent::defaultFlags | juce::TableHeaderComponent::sortable);
+    pluginTable_.getHeader().addColumn("Vendor", 2, 150, 80, 250,
+        juce::TableHeaderComponent::defaultFlags | juce::TableHeaderComponent::sortable);
+    pluginTable_.getHeader().addColumn("Format", 3, 80, 60, 120,
+        juce::TableHeaderComponent::defaultFlags | juce::TableHeaderComponent::sortable);
     pluginTable_.getHeader().setColour(juce::TableHeaderComponent::backgroundColourId,
                                        juce::Colour(0xFF2A2A40));
     pluginTable_.getHeader().setColour(juce::TableHeaderComponent::textColourId,
                                        juce::Colour(kTextColour));
+    pluginTable_.getHeader().addListener(this);
     addAndMakeVisible(pluginTable_);
 
     // Add plugin button
     addPluginButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
     addPluginButton_.onClick = [this] {
         int selected = pluginTable_.getSelectedRow();
-        auto types = scannedPlugins_.getTypes();
-        if (selected >= 0 && selected < types.size() && onPluginSelected) {
-            onPluginSelected(types[selected]);
+        if (selected >= 0 && selected < static_cast<int>(filteredIndices_.size()) && onPluginSelected) {
+            auto types = scannedPlugins_.getTypes();
+            int actualIndex = filteredIndices_[static_cast<size_t>(selected)];
+            if (actualIndex >= 0 && actualIndex < types.size())
+                onPluginSelected(types[actualIndex]);
         }
     };
     addAndMakeVisible(addPluginButton_);
@@ -370,12 +392,62 @@ void PluginScannerComponent::run()
 
 void PluginScannerComponent::refreshPluginList()
 {
+    updateFilteredList();
+}
+
+void PluginScannerComponent::updateFilteredList()
+{
+    filteredIndices_.clear();
+    auto types = scannedPlugins_.getTypes();
+    auto searchText = searchBox_.getText().toLowerCase();
+
+    for (int i = 0; i < types.size(); ++i) {
+        if (searchText.isEmpty()) {
+            filteredIndices_.push_back(i);
+        } else {
+            const auto& desc = types[i];
+            if (desc.name.toLowerCase().contains(searchText) ||
+                desc.manufacturerName.toLowerCase().contains(searchText)) {
+                filteredIndices_.push_back(i);
+            }
+        }
+    }
+
+    if (sortColumnId_ > 0) {
+        std::sort(filteredIndices_.begin(), filteredIndices_.end(),
+            [this, &types](int a, int b) {
+                juce::String valA, valB;
+                switch (sortColumnId_) {
+                    case 1: valA = types[a].name;             valB = types[b].name; break;
+                    case 2: valA = types[a].manufacturerName; valB = types[b].manufacturerName; break;
+                    case 3: valA = types[a].pluginFormatName; valB = types[b].pluginFormatName; break;
+                    default: return false;
+                }
+                int cmp = valA.compareIgnoreCase(valB);
+                return sortAscending_ ? (cmp < 0) : (cmp > 0);
+            });
+    }
+
     pluginTable_.updateContent();
     pluginTable_.repaint();
 
-    pluginSectionLabel_.setText(
-        "Discovered Plugins (" + juce::String(scannedPlugins_.getNumTypes()) + "):",
-        juce::dontSendNotification);
+    auto total = types.size();
+    auto filtered = static_cast<int>(filteredIndices_.size());
+    if (searchText.isEmpty())
+        pluginSectionLabel_.setText(
+            "Discovered Plugins (" + juce::String(total) + "):",
+            juce::dontSendNotification);
+    else
+        pluginSectionLabel_.setText(
+            "Discovered Plugins (" + juce::String(filtered) + "/" + juce::String(total) + "):",
+            juce::dontSendNotification);
+}
+
+void PluginScannerComponent::tableSortOrderChanged(juce::TableHeaderComponent* header)
+{
+    sortColumnId_ = header->getSortColumnId();
+    sortAscending_ = header->isSortedForwards();
+    updateFilteredList();
 }
 
 juce::File PluginScannerComponent::getCacheFile() const
@@ -437,9 +509,10 @@ void PluginScannerComponent::resized()
     progressLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 20);
     y += 24;
 
-    // Plugin section label
-    pluginSectionLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 22);
-    y += 24;
+    // Plugin section label + search box
+    pluginSectionLabel_.setBounds(bounds.getX(), y, 200, 22);
+    searchBox_.setBounds(bounds.getX() + 210, y, bounds.getWidth() - 210, 22);
+    y += 26;
 
     // Plugin table (fill remaining minus button)
     int tableH = bounds.getBottom() - y - 34;

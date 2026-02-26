@@ -218,6 +218,30 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
         return R"({"ok": true, "action": "monitor_toggle"})";
     }
 
+    // GET /api/plugin/:pluginIndex/param/:paramIndex/:value
+    if (action == "plugin" && segments.size() >= 6 && segments[3] == "param") {
+        int pluginIndex = std::atoi(segments[2].c_str());
+        int paramIndex = std::atoi(segments[4].c_str());
+        float value = static_cast<float>(std::atof(segments[5].c_str()));
+        if (value < 0.0f || value > 1.0f)
+            return R"({"error": "value must be 0.0-1.0"})";
+        ActionEvent event;
+        event.action = Action::SetPluginParameter;
+        event.intParam = pluginIndex;
+        event.intParam2 = paramIndex;
+        event.floatParam = value;
+        dispatcher_.dispatch(event);
+        return R"({"ok": true, "action": "set_plugin_parameter"})";
+    }
+
+    // GET /api/recording/toggle
+    if (action == "recording" && segments.size() >= 3 && segments[2] == "toggle") {
+        ActionEvent event;
+        event.action = Action::RecordingToggle;
+        dispatcher_.dispatch(event);
+        return R"({"ok": true, "action": "recording_toggle"})";
+    }
+
     return R"({"error": "Unknown endpoint"})";
 }
 

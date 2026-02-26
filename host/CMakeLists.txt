@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "3.3.0"
+    VERSION "3.4.0"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -27,6 +27,8 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/AudioRingBuffer.h
     Source/Audio/VirtualMicOutput.h
     Source/Audio/VirtualMicOutput.cpp
+    Source/Audio/AudioRecorder.h
+    Source/Audio/AudioRecorder.cpp
     # DeviceSelector removed — merged into AudioSettings
     Source/UI/PluginChainEditor.h
     Source/UI/PluginChainEditor.cpp
@@ -44,6 +46,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/OutputPanel.cpp
     Source/UI/ControlSettingsPanel.h
     Source/UI/ControlSettingsPanel.cpp
+    Source/UI/SettingsExporter.h
+    Source/UI/SettingsExporter.cpp
     Source/Control/ActionDispatcher.h
     Source/Control/ActionDispatcher.cpp
     Source/Control/StateBroadcaster.h

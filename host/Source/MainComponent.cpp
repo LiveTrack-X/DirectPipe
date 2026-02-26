@@ -5,6 +5,8 @@
 
 #include "MainComponent.h"
 #include "Control/ControlMapping.h"
+#include "UI/SettingsExporter.h"  // Used by onSaveSettings/onLoadSettings callbacks
+#include <thread>
 
 namespace directpipe {
 
@@ -51,9 +53,57 @@ MainComponent::MainComponent()
     // ── Output Panel ──
     outputPanel_ = std::make_unique<OutputPanel>(audioEngine_);
     outputPanel_->onSettingsChanged = [this] { markSettingsDirty(); };
+    outputPanel_->onRecordToggle = [this] {
+        ActionEvent ev;
+        ev.action = Action::RecordingToggle;
+        dispatcher_.dispatch(ev);
+    };
+    outputPanelPtr_ = outputPanel_.get();
 
     // ── Control Settings Panel ──
-    controlSettingsPanel_ = std::make_unique<ControlSettingsPanel>(*controlManager_);
+    controlSettingsPanel_ = std::make_unique<ControlSettingsPanel>(
+        *controlManager_, &audioEngine_.getVSTChain());
+
+    // Settings Save/Load callbacks (General tab)
+    controlSettingsPanel_->onSaveSettings = [this] {
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Save Settings",
+            juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+                .getChildFile("DirectPipe_backup.dpbackup"),
+            "*.dpbackup");
+        chooser->launchAsync(juce::FileBrowserComponent::saveMode |
+                             juce::FileBrowserComponent::canSelectFiles,
+                             [this, chooser](const juce::FileChooser& fc) {
+            auto file = fc.getResult();
+            if (file != juce::File()) {
+                auto target = file.withFileExtension("dpbackup");
+                ControlMappingStore store;
+                auto json = SettingsExporter::exportAll(*presetManager_, store);
+                target.replaceWithText(json);
+            }
+        });
+    };
+    controlSettingsPanel_->onLoadSettings = [this] {
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Load Settings",
+            juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+            "*.dpbackup");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode |
+                             juce::FileBrowserComponent::canSelectFiles,
+                             [this, chooser](const juce::FileChooser& fc) {
+            auto file = fc.getResult();
+            if (file.existsAsFile()) {
+                auto json = file.loadFileAsString();
+                ControlMappingStore store;
+                loadingSlot_ = true;
+                SettingsExporter::importAll(json, *presetManager_, store);
+                controlManager_->reloadConfig();
+                loadingSlot_ = false;
+                refreshUI();
+                updateSlotButtonStates();
+            }
+        });
+    };
 
     // ── Right-column Tabbed Panel ──
     rightTabs_ = std::make_unique<juce::TabbedComponent>(juce::TabbedButtonBar::TabsAtTop);
@@ -243,6 +293,9 @@ MainComponent::MainComponent()
         loadingSlot_ = false;
     }
     updateSlotButtonStates();
+
+    // Check for new release on GitHub (background thread)
+    checkForUpdate();
 }
 
 MainComponent::~MainComponent()
@@ -373,6 +426,37 @@ void MainComponent::handleAction(const ActionEvent& event)
             router.setEnabled(OutputRouter::Output::Monitor, enabled);
             audioEngine_.setMonitorEnabled(enabled);
             markSettingsDirty();
+            break;
+        }
+
+        case Action::RecordingToggle: {
+            auto& recorder = audioEngine_.getRecorder();
+            if (recorder.isRecording()) {
+                auto lastFile = recorder.getRecordingFile();
+                recorder.stopRecording();
+                if (outputPanelPtr_)
+                    outputPanelPtr_->setLastRecordedFile(lastFile);
+            } else {
+                auto& monitor = audioEngine_.getLatencyMonitor();
+                double sr = monitor.getSampleRate();
+                if (sr <= 0.0) {
+                    juce::Logger::writeToLog("Recording: no audio device active");
+                    break;
+                }
+                auto timestamp = juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S");
+                auto dir = outputPanelPtr_ ? outputPanelPtr_->getRecordingFolder()
+                    : juce::File::getSpecialLocation(
+                        juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
+                dir.createDirectory();
+                auto file = dir.getChildFile("DirectPipe_" + timestamp + ".wav");
+                recorder.startRecording(file, sr, audioEngine_.getChannelMode());
+            }
+            break;
+        }
+
+        case Action::SetPluginParameter: {
+            audioEngine_.getVSTChain().setPluginParameter(
+                event.intParam, event.intParam2, event.floatParam);
             break;
         }
 
@@ -531,11 +615,20 @@ void MainComponent::resized()
     y += 30;
 
     // ── VST CHAIN Section ──
-    vstSectionLabel_.setBounds(cx, y, 120, 24);
+    {
+        // Layout: [LABEL] [Save][Load]
+        int lblW = 70;
+        int btnGap = 2;
+        int availW = cw - lblW - btnGap;
+        int nBtns = 2;
+        int bw = (availW - btnGap * (nBtns - 1)) / nBtns;
 
-    int presetBtnX = cx + 125;
-    savePresetBtn_.setBounds(presetBtnX, y, 90, 24);
-    loadPresetBtn_.setBounds(presetBtnX + 94, y, 90, 24);
+        vstSectionLabel_.setBounds(cx, y, lblW, 24);
+        int bx = cx + lblW + btnGap;
+        savePresetBtn_.setBounds(bx, y, bw, 24);
+        bx += bw + btnGap;
+        loadPresetBtn_.setBounds(bx, y, bw, 24);
+    }
     y += 26;
 
     // Quick preset slot buttons (A..E)
@@ -677,6 +770,8 @@ void MainComponent::timerCallback()
         s.channelMode = audioEngine_.getChannelMode();
         s.monitorEnabled = router.isEnabled(OutputRouter::Output::Monitor);
         s.activeSlot = presetManager_ ? presetManager_->getActiveSlot() : 0;
+        s.recording = audioEngine_.getRecorder().isRecording();
+        s.recordingSeconds = audioEngine_.getRecorder().getRecordedSeconds();
 
         s.plugins.clear();
         for (int i = 0; i < chain.getPluginCount(); ++i) {
@@ -691,6 +786,13 @@ void MainComponent::timerCallback()
             }
         }
     });
+
+    // Update recording state in OutputPanel (Monitor tab)
+    if (outputPanelPtr_) {
+        bool isRec = audioEngine_.getRecorder().isRecording();
+        double recSecs = audioEngine_.getRecorder().getRecordedSeconds();
+        outputPanelPtr_->updateRecordingState(isRec, recSecs);
+    }
 
     // Dirty-flag auto-save with 1-second debounce (30 ticks at 30Hz)
     if (settingsDirty_ && dirtyCooldown_ > 0) {
@@ -749,6 +851,53 @@ void MainComponent::refreshUI()
     panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                             juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+}
+
+// ─── Update Check ────────────────────────────────────────────────────────────
+
+void MainComponent::checkForUpdate()
+{
+    // Parse current version components
+    auto currentVersion = juce::String(ProjectInfo::versionString);
+
+    std::thread([this, currentVersion]() {
+        juce::URL url("https://api.github.com/repos/LiveTrack-X/DirectPipe/releases/latest");
+        auto response = url.readEntireTextStream(false);
+        if (response.isEmpty()) return;
+
+        // Simple JSON parse for "tag_name"
+        auto parsed = juce::JSON::parse(response);
+        if (auto* obj = parsed.getDynamicObject()) {
+            auto tagName = obj->getProperty("tag_name").toString();
+            // Strip leading 'v' if present
+            if (tagName.startsWithChar('v') || tagName.startsWithChar('V'))
+                tagName = tagName.substring(1);
+
+            // Compare versions (simple string compare works for semver)
+            if (tagName.isNotEmpty() && tagName != currentVersion) {
+                // Check if remote is actually newer (parse major.minor.patch)
+                auto parseVer = [](const juce::String& v) -> std::tuple<int,int,int> {
+                    auto parts = juce::StringArray::fromTokens(v, ".", "");
+                    return { parts.size() > 0 ? parts[0].getIntValue() : 0,
+                             parts.size() > 1 ? parts[1].getIntValue() : 0,
+                             parts.size() > 2 ? parts[2].getIntValue() : 0 };
+                };
+                auto [rMaj, rMin, rPat] = parseVer(tagName);
+                auto [cMaj, cMin, cPat] = parseVer(currentVersion);
+
+                bool isNewer = std::tie(rMaj, rMin, rPat) > std::tie(cMaj, cMin, cPat);
+                if (isNewer) {
+                    juce::MessageManager::callAsync([this, tagName]() {
+                        creditLink_.setButtonText(
+                            "NEW v" + tagName + " | v" +
+                            juce::String(ProjectInfo::versionString) + " | Created by LiveTrack");
+                        creditLink_.setColour(juce::HyperlinkButton::textColourId,
+                                              juce::Colour(0xFFFFAA33)); // orange highlight
+                    });
+                }
+            }
+        }
+    }).detach();
 }
 
 } // namespace directpipe

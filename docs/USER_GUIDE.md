@@ -88,8 +88,9 @@ Out-of-process scanner that safely discovers all installed plugins. / 별도 프
 1. Click **"Scan..."** / "Scan..." 클릭
 2. Default directories are pre-configured / 기본 경로 자동 설정
 3. Click **"Scan for Plugins"** — runs in a separate process / 별도 프로세스에서 스캔
-4. Bad plugin crashes -> auto-retry (up to 5 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
-5. Scanner logs: `%AppData%/DirectPipe/scanner-log.txt` / 스캐너 로그 경로
+4. **Search & Sort** — Type in the search box to filter by name. Click column headers to sort by name, vendor, or format. / 검색창에 입력하여 이름으로 필터링. 컬럼 헤더 클릭으로 이름/벤더/포맷 정렬.
+5. Bad plugin crashes -> auto-retry (up to 5 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
+6. Scanner logs: `%AppData%/DirectPipe/scanner-log.txt` / 스캐너 로그 경로
 
 ## System Tray / 시스템 트레이
 
@@ -104,6 +105,25 @@ Toggle via tray menu or Controls > General tab. Registers DirectPipe in Windows 
 ### Portable Mode / 포터블 모드
 
 Place a file named `portable.flag` next to `DirectPipe.exe` to store all configuration in `./config/` instead of `%AppData%/DirectPipe/`. / exe 옆에 `portable.flag` 파일을 두면 설정이 `./config/`에 저장된다.
+
+## Audio Recording / 오디오 녹음
+
+Record processed audio (after the VST plugin chain) to a WAV file. Located in the **Monitor tab**. / 처리된 오디오(VST 체인 이후)를 WAV 파일로 녹음. **Monitor 탭**에 위치.
+
+- **Start/Stop recording** — Click **REC** in the Monitor tab, or use the Stream Deck Recording Toggle, HTTP API (`/api/recording/toggle`), or WebSocket (`recording_toggle`). / Monitor 탭 REC 버튼, Stream Deck, HTTP API, WebSocket으로 시작/중지.
+- **Recording indicator** — Monitor tab shows elapsed time (mm:ss). Stream Deck shows `REC mm:ss`. / Monitor 탭과 Stream Deck에 경과 시간 표시.
+- **Play last recording** — Click **Play** to open the last recorded file with your default audio player. / **Play** 클릭으로 마지막 녹음 파일을 기본 플레이어로 재생.
+- **Open Folder** — Click **Open Folder** to open the recording directory in Explorer. / **Open Folder** 클릭으로 녹음 폴더를 탐색기에서 열기.
+- **Change folder** — Click **...** to choose a different recording folder. Saved automatically. / **...** 클릭으로 녹음 폴더 변경. 자동 저장.
+- **Default folder** — `Documents/DirectPipe Recordings`. / 기본 폴더: 문서/DirectPipe Recordings.
+- Recording is lock-free (real-time safe) — it does not affect audio processing performance. / 녹음은 락프리(실시간 안전) — 오디오 처리 성능에 영향 없음.
+
+## Settings Save/Load / 설정 저장/불러오기
+
+Export or import your full DirectPipe settings as `.dpbackup` files. Located in **Controls > General** tab. / 전체 설정을 .dpbackup 파일로 내보내기/가져오기. **Controls > General** 탭에 위치.
+
+- **Save Settings** — Saves audio settings, VST chain, volumes, preset slots, and control mappings to a `.dpbackup` file. / 오디오 설정, VST 체인, 볼륨, 프리셋 슬롯, 제어 매핑을 .dpbackup 파일로 저장.
+- **Load Settings** — Load a previously saved settings file. / 저장된 설정 파일 불러오기.
 
 ## External Control / 외부 제어
 
@@ -136,6 +156,15 @@ Immediately silences all outputs. When unmuted, previous monitor enable state is
 5. Mapping saved automatically / 자동 저장
 
 Supports 4 mapping types: Toggle, Momentary, Continuous, NoteOnOff. Hot-plug detection with [Rescan] button. / 4가지 매핑 타입 지원. [Rescan]으로 핫플러그 감지.
+
+**MIDI Plugin Parameter Mapping / MIDI 플러그인 파라미터 매핑:**
+
+Map MIDI CC to individual VST plugin parameters for direct real-time control. / MIDI CC로 VST 플러그인 파라미터를 직접 제어.
+
+1. Click **[+ Add Param]** in the MIDI tab / MIDI 탭에서 [+ Add Param] 클릭
+2. Select the plugin from the popup menu / 팝업 메뉴에서 플러그인 선택
+3. Select the parameter to control / 제어할 파라미터 선택
+4. Move a knob or slider on your MIDI controller to assign / MIDI 컨트롤러 조작으로 할당
 
 ### Stream Deck
 

@@ -19,7 +19,8 @@ namespace directpipe {
  * - Selection and callback to add to chain
  */
 class PluginScannerComponent : public juce::Component,
-                                public juce::Thread {
+                                public juce::Thread,
+                                public juce::TableHeaderComponent::Listener {
 public:
     explicit PluginScannerComponent(VSTChain& vstChain);
     ~PluginScannerComponent() override;
@@ -95,6 +96,18 @@ private:
 
     std::unique_ptr<PluginTableModel> tableModel_;
     std::unique_ptr<DirectoryListModel> dirListModel_;
+
+    // Search/filter
+    juce::TextEditor searchBox_;
+    std::vector<int> filteredIndices_;
+    int sortColumnId_ = 0;
+    bool sortAscending_ = true;
+    void updateFilteredList();
+
+    // TableHeaderComponent::Listener
+    void tableColumnsChanged(juce::TableHeaderComponent*) override {}
+    void tableColumnsResized(juce::TableHeaderComponent*) override {}
+    void tableSortOrderChanged(juce::TableHeaderComponent*) override;
 
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;
     static constexpr juce::uint32 kSurfaceColour  = 0xFF2A2A40;

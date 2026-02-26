@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 #include "../Control/ControlManager.h"
+#include "../Audio/VSTChain.h"
 
 namespace directpipe {
 
@@ -114,7 +115,7 @@ public:
      * @brief Construct the MIDI tab.
      * @param manager Reference to the control manager.
      */
-    explicit MidiTab(ControlManager& manager);
+    explicit MidiTab(ControlManager& manager, VSTChain* vstChain = nullptr);
     ~MidiTab() override;
 
     void paint(juce::Graphics& g) override;
@@ -167,6 +168,10 @@ private:
     juce::Viewport viewport_;
     juce::Component rowContainer_;
 
+    // Add buttons
+    juce::TextButton addMappingButton_{"+ Add Mapping"};
+    juce::TextButton addParamButton_{"+ Plugin Param"};
+
     /// One UI row per MIDI mapping
     struct MappingRow {
         juce::Label controlLabel;   // e.g., "CC 7 Ch 1"
@@ -179,8 +184,17 @@ private:
     // Status label
     juce::Label statusLabel_{"", ""};
 
-    // Index of the mapping currently in learn mode (-1 = none)
+    // Index of the mapping currently in learn mode (-1 = none, -2 = new binding)
     int learningIndex_ = -1;
+
+    // VSTChain pointer for plugin parameter mapping
+    VSTChain* vstChain_ = nullptr;
+
+    /** @brief Handle [Add Mapping] button click. */
+    void onAddMappingClicked();
+
+    /** @brief Handle [Add Plugin Param] button click — 3-step popup flow. */
+    void onAddParamClicked();
 
     // Theme colours (dark)
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;
@@ -279,12 +293,23 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
+    /** Callbacks for Settings Save/Load (wired from MainComponent). */
+    std::function<void()> onSaveSettings;
+    std::function<void()> onLoadSettings;
+
 private:
     juce::Label headerLabel_{"", "Application"};
     juce::ToggleButton startupToggle_{"Start with Windows"};
     juce::Label startupInfoLabel_{"", "Launch DirectPipe automatically when you log in to Windows."};
 
+    // Settings Export/Import section
+    juce::Label settingsHeaderLabel_{"", "Settings"};
+    juce::TextButton saveSettingsBtn_{"Save Settings"};
+    juce::TextButton loadSettingsBtn_{"Load Settings"};
+    juce::Label settingsInfoLabel_{"", "Export or import all DirectPipe settings."};
+
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;
+    static constexpr juce::uint32 kSurfaceColour  = 0xFF2A2A40;
     static constexpr juce::uint32 kAccentColour   = 0xFF6C63FF;
     static constexpr juce::uint32 kTextColour     = 0xFFE0E0E0;
     static constexpr juce::uint32 kDimTextColour  = 0xFF8888AA;
@@ -308,7 +333,7 @@ public:
      * @brief Construct the control settings panel.
      * @param manager Reference to the control manager that owns all handlers.
      */
-    explicit ControlSettingsPanel(ControlManager& manager);
+    explicit ControlSettingsPanel(ControlManager& manager, VSTChain* vstChain = nullptr);
     ~ControlSettingsPanel() override;
 
     void paint(juce::Graphics& g) override;
@@ -318,6 +343,10 @@ public:
      * @brief Refresh all tabs to reflect the current control configuration.
      */
     void refreshAll();
+
+    /** Callbacks forwarded to GeneralTab. */
+    std::function<void()> onSaveSettings;
+    std::function<void()> onLoadSettings;
 
 private:
     ControlManager& manager_;

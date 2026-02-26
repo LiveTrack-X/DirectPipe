@@ -115,6 +115,18 @@ public:
      */
     const PluginSlot* getPluginSlot(int index) const;
 
+    /** @brief Get parameter count for a plugin. */
+    int getPluginParameterCount(int pluginIndex) const;
+
+    /** @brief Get parameter name. */
+    juce::String getPluginParameterName(int pluginIndex, int paramIndex) const;
+
+    /** @brief Set a plugin parameter value (0.0-1.0 normalized). */
+    void setPluginParameter(int pluginIndex, int paramIndex, float value);
+
+    /** @brief Get a plugin parameter value (0.0-1.0 normalized). */
+    float getPluginParameter(int pluginIndex, int paramIndex) const;
+
     /**
      * @brief Get the list of known (scanned) plugin descriptions.
      */
