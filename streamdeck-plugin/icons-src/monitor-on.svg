@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: Monitor ON (enabled) - dark with green indicator -->
+  <rect width="144" height="144" rx="16" fill="#2a2a2a"/>
+  <!-- Green indicator bar -->
+  <rect x="0" y="124" width="144" height="20" rx="0" fill="#4CAF50"/>
+  <!-- Headphones icon -->
+  <path d="M30 76 C30 56 44 36 72 36 C100 36 114 56 114 76" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <rect x="24" y="76" width="18" height="34" rx="6" fill="none" stroke="#ffffff" stroke-width="5"/>
+  <rect x="102" y="76" width="18" height="34" rx="6" fill="none" stroke="#ffffff" stroke-width="5"/>
+</svg>

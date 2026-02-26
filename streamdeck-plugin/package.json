@@ -1,0 +1,39 @@
+{
+  "name": "directpipe-streamdeck",
+  "version": "3.1.0",
+  "description": "Stream Deck plugin for DirectPipe — Control VST bypass, volume, presets, and panic mute via WebSocket.",
+  "main": "src/plugin.js",
+  "scripts": {
+    "start": "node src/plugin.js",
+    "dev": "node --watch src/plugin.js",
+    "build": "rollup -c rollup.config.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "validate": "streamdeck validate .",
+    "package": "node scripts/package.mjs",
+    "lint": "eslint src/",
+    "test": "node --test src/**/*.test.js"
+  },
+  "keywords": [
+    "streamdeck",
+    "directpipe",
+    "audio",
+    "vst",
+    "websocket"
+  ],
+  "author": "DirectPipe",
+  "license": "GPL-3.0-only",
+  "dependencies": {
+    "@elgato/streamdeck": "^2.0.1",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "eslint": "^8.56.0",
+    "rollup": "^4.59.0",
+    "sharp": "^0.34.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

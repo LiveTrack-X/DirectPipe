@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: Volume ON - blue accent -->
+  <rect width="144" height="144" rx="16" fill="#2a2a2a"/>
+  <!-- Blue indicator bar -->
+  <rect x="0" y="124" width="144" height="20" rx="0" fill="#2196f3"/>
+  <!-- Speaker -->
+  <polygon points="30,52 46,52 66,36 66,88 46,72 30,72" fill="none" stroke="#2196f3" stroke-width="5" stroke-linejoin="round"/>
+  <!-- Sound waves -->
+  <path d="M76 48 Q88 58 88 62 Q88 66 76 76" fill="none" stroke="#2196f3" stroke-width="4" stroke-linecap="round"/>
+  <path d="M86 38 Q102 52 102 62 Q102 72 86 86" fill="none" stroke="#2196f3" stroke-width="4" stroke-linecap="round"/>
+  <path d="M96 28 Q116 46 116 62 Q116 78 96 96" fill="none" stroke="#2196f3" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: Bypass OFF (plugin is active/processing) - green -->
+  <rect width="144" height="144" rx="16" fill="#2a2a2a"/>
+  <!-- Green indicator bar -->
+  <rect x="0" y="124" width="144" height="20" rx="0" fill="#4caf50"/>
+  <!-- Power symbol -->
+  <path d="M52 40 A28 28 0 1 0 92 40" fill="none" stroke="#4caf50" stroke-width="6" stroke-linecap="round"/>
+  <line x1="72" y1="30" x2="72" y2="58" stroke="#4caf50" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Action icon: Headphones/monitor (white on transparent) -->
+  <path d="M8 22 C8 14 14 6 20 6 C26 6 32 14 32 22" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="6" y="22" width="6" height="12" rx="2" fill="none" stroke="#ffffff" stroke-width="2.5"/>
+  <rect x="28" y="22" width="6" height="12" rx="2" fill="none" stroke="#ffffff" stroke-width="2.5"/>
+</svg>

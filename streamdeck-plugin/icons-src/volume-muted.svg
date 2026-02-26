@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: Volume MUTED - red accent -->
+  <rect width="144" height="144" rx="16" fill="#2a2a2a"/>
+  <!-- Red indicator bar -->
+  <rect x="0" y="124" width="144" height="20" rx="0" fill="#f44336"/>
+  <!-- Speaker -->
+  <polygon points="30,52 46,52 66,36 66,88 46,72 30,72" fill="none" stroke="#f44336" stroke-width="5" stroke-linejoin="round"/>
+  <!-- X mark -->
+  <line x1="82" y1="48" x2="110" y2="76" stroke="#f44336" stroke-width="5" stroke-linecap="round"/>
+  <line x1="110" y1="48" x2="82" y2="76" stroke="#f44336" stroke-width="5" stroke-linecap="round"/>
+</svg>

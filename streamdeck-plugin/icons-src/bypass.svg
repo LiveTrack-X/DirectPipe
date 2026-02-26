@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Action icon: Power/bypass toggle symbol (white on transparent) -->
+  <!-- Power circle -->
+  <path d="M14 10 A12 12 0 1 0 26 10" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <!-- Power line -->
+  <line x1="20" y1="6" x2="20" y2="18" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+</svg>

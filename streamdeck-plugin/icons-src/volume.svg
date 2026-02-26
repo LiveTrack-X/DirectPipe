@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Action icon: Speaker/volume (white on transparent) -->
+  <polygon points="8,14 14,14 22,6 22,34 14,26 8,26" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Sound wave -->
+  <path d="M26 14 Q30 18 30 20 Q30 22 26 26" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M30 10 Q36 16 36 20 Q36 24 30 30" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

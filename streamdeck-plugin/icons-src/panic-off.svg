@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: Panic OFF (not muted, normal state) - dark gray -->
+  <rect width="144" height="144" rx="16" fill="#2a2a2a"/>
+  <!-- Gray indicator bar -->
+  <rect x="0" y="124" width="144" height="20" rx="0" fill="#666666"/>
+  <!-- Speaker icon (normal) -->
+  <polygon points="42,52 58,52 78,36 78,88 58,72 42,72" fill="none" stroke="#cccccc" stroke-width="5" stroke-linejoin="round"/>
+  <!-- Sound waves -->
+  <path d="M88 48 Q100 60 100 72 Q100 84 88 96" fill="none" stroke="#cccccc" stroke-width="4" stroke-linecap="round"/>
+  <path d="M96 38 Q112 56 112 72 Q112 88 96 106" fill="none" stroke="#cccccc" stroke-width="4" stroke-linecap="round"/>
+</svg>

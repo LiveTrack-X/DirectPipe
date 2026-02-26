@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Action icon: Emergency/panic mute (white on transparent) -->
+  <!-- Octagon shape (stop sign) -->
+  <polygon points="14,4 26,4 36,14 36,26 26,36 14,36 4,26 4,14" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Exclamation mark -->
+  <line x1="20" y1="12" x2="20" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="20" cy="29" r="1.8" fill="#ffffff"/>
+</svg>

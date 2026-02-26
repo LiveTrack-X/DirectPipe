@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Unified with Stream Deck directpipe.svg style -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="64" fill="url(#bg)"/>
+  <!-- Microphone body -->
+  <rect x="216" y="100" width="80" height="160" rx="40" fill="none" stroke="#ffffff" stroke-width="20"/>
+  <!-- Microphone stand arc -->
+  <path d="M176 240 Q176 320 256 320 Q336 320 336 240" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+  <!-- Stand line -->
+  <line x1="256" y1="320" x2="256" y2="370" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+  <!-- Arrow / chain indicator -->
+  <polyline points="220,390 256,370 292,390" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Audio waveform bars (chain output) -->
+  <line x1="180" y1="430" x2="180" y2="410" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+  <line x1="216" y1="440" x2="216" y2="400" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+  <line x1="256" y1="445" x2="256" y2="395" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+  <line x1="296" y1="440" x2="296" y2="400" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+  <line x1="332" y1="430" x2="332" y2="410" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+</svg>
