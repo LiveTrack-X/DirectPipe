@@ -140,27 +140,170 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 
 ## FAQ
 
-**Q: 처음 실행할 때 "Windows의 PC 보호" 경고가 뜹니다 / Windows SmartScreen warning on first run**
+<details>
+<summary><b>처음 실행할 때 빨간색 "Windows의 PC 보호" 경고가 떠요 / SmartScreen warning on first run</b></summary>
 
-A: DirectPipe는 오픈소스 프로젝트로, 코드 서명 인증서가 없어 Windows SmartScreen이 경고를 표시합니다. 이것은 정상이며 악성 소프트웨어가 아닙니다. **"추가 정보"** 를 클릭한 뒤 **"실행"** 버튼을 누르면 됩니다. 이후에는 경고가 다시 뜨지 않습니다. 소스 코드는 이 저장소에서 직접 확인하고 빌드할 수 있습니다.
+정상입니다! DirectPipe는 오픈소스라 코드 서명 인증서가 없어서 나타나는 경고입니다. 악성 소프트웨어가 아닙니다.
 
-This is normal for open-source software without a code signing certificate. Click **"More info"** then **"Run anyway"**. The warning only appears once. You can review and build the source code yourself from this repository.
+1. **"추가 정보"** 텍스트를 클릭하세요
+2. 아래에 나타나는 **"실행"** 버튼을 누르세요
+3. 한 번만 하면 이후로는 경고 없이 실행됩니다
 
-**Q: 다른 앱에서 처리된 마이크 소리를 쓸 수 있나요? / Can other apps use the processed mic audio?**
+> This is expected for open-source software. Click **"More info"** → **"Run anyway"**. It only appears once.
+</details>
 
-A: 네. Output을 [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) 같은 가상 장치로 설정하면, Discord·Zoom·OBS 등에서 그 가상 장치를 마이크로 선택할 수 있습니다. — Yes. Set the Output to a virtual cable device, then select it as a mic in your app. See [Usage](#사용-예시-가상-케이블로-discordobs에-보이스-이펙트-적용--usage-voice-effects-with-virtual-cable) above.
+<details>
+<summary><b>VST 플러그인이 뭔가요? 어디서 구하나요? / What are VST plugins and where to get them?</b></summary>
 
-**Q: ASIO 드라이버가 필요한가요? / Do I need an ASIO driver?**
+VST 플러그인은 오디오에 효과를 추가하는 소프트웨어입니다. 노이즈 제거, EQ, 컴프레서 등 다양한 종류가 있습니다.
 
-A: 아니요. WASAPI Shared Mode가 기본이며 대부분의 USB 마이크에서 잘 동작합니다. ASIO는 더 낮은 레이턴시가 필요할 때 선택 사항입니다. — No. WASAPI Shared Mode is the default and works well with most USB mics. ASIO is optional for lower latency.
+**무료 추천 플러그인:**
+- [ReaPlugs](https://www.reaper.fm/reaplugs/) — EQ, 컴프레서, 게이트 등 기본 플러그인 모음 (무료)
+- [RNNoise](https://github.com/werman/noise-suppression-for-voice) — AI 기반 실시간 노이즈 제거 (무료)
+- [TDR Nova](https://www.tokyodawn.net/tdr-nova/) — 고품질 다이나믹 EQ (무료)
+- [OrilRiver](https://www.kvraudio.com/product/orilriver-by-denis-tihanov) — 리버브 (무료)
 
-**Q: 플러그인 스캔 중 크래시가 나면? / What if a plugin crashes during scan?**
+설치 후 DirectPipe에서 **"Scan..."** 버튼으로 플러그인 폴더를 스캔하면 목록에 나타납니다.
 
-A: DirectPipe는 별도 프로세스에서 플러그인을 스캔합니다. 크래시가 나도 호스트는 영향 없으며, 해당 플러그인은 자동으로 블랙리스트에 등록됩니다. — Plugins are scanned in a separate process. Crashes don't affect the host; the plugin is automatically blacklisted.
+> VST plugins are audio effect processors. After installing them, click **"Scan..."** in DirectPipe to detect them.
+</details>
 
-**Q: Stream Deck 없이도 외부 제어가 가능한가요? / Can I control DirectPipe without a Stream Deck?**
+<details>
+<summary><b>Discord / Zoom / OBS에서 처리된 마이크를 쓰려면? / How to use with Discord, Zoom, or OBS?</b></summary>
 
-A: 네. 키보드 단축키, MIDI CC, HTTP API, WebSocket 모두 지원합니다. 자세한 내용은 [Control API](docs/CONTROL_API.md) 참조. — Yes. Hotkeys, MIDI CC, HTTP API, and WebSocket are all supported.
+[VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (무료)이 필요합니다.
+
+**설정 순서:**
+1. VB-Audio Virtual Cable을 설치하고 PC를 재부팅합니다
+2. DirectPipe **Audio** 탭:
+   - **Input** → 내 USB 마이크 선택
+   - **Output** → `CABLE Input (VB-Audio Virtual Cable)` 선택
+3. Discord/Zoom/OBS 음성 설정:
+   - **마이크** → `CABLE Output (VB-Audio Virtual Cable)` 선택
+
+```
+내 USB 마이크 → DirectPipe (노이즈 제거, EQ 등) → VB-Cable Input
+                                                         ↓
+                                       Discord/Zoom/OBS ← VB-Cable Output (마이크로 인식)
+```
+
+4. 자기 목소리를 확인하려면 **Monitor** 탭에서 헤드폰 장치를 설정하세요
+
+> Install [VB-Audio Virtual Cable](https://vb-audio.com/Cable/), set DirectPipe Output to `CABLE Input`, then select `CABLE Output` as your mic in Discord/Zoom/OBS.
+</details>
+
+<details>
+<summary><b>소리가 안 나와요 / 마이크가 인식이 안 돼요 / No sound or mic not detected</b></summary>
+
+**확인 순서:**
+1. **Audio 탭** → Input 장치가 올바르게 선택되어 있는지 확인
+2. 왼쪽 **INPUT 레벨 미터**가 움직이는지 확인 → 움직이면 마이크 입력은 정상
+3. 레벨 미터가 움직이지 않으면:
+   - Windows 설정 → 개인 정보 → 마이크에서 앱 접근이 허용되어 있는지 확인
+   - 다른 앱(Discord 등)이 마이크를 독점 모드로 사용 중이면 해제
+4. **OUT** 버튼이 초록색인지 확인 (빨간색이면 뮤트 상태 → 클릭해서 해제)
+5. **PANIC MUTE**가 활성화되어 있으면 다시 클릭해서 해제
+
+> Check: Input device → INPUT meter moving → OUT button green (not muted) → PANIC MUTE off.
+</details>
+
+<details>
+<summary><b>소리가 끊기거나 지연이 커요 / Audio crackling or high latency</b></summary>
+
+**Buffer Size를 조절하세요:**
+- Audio 탭 → **Buffer Size**: 값을 낮추면 지연이 줄지만 CPU 부담 증가
+  - `256 samples` (약 5ms @ 48kHz) — 일반적인 시작점
+  - `128 samples` (약 2.7ms) — 낮은 지연, 고사양 PC 권장
+  - `512 samples` (약 10ms) — 안정적, 저사양 PC 권장
+
+**그래도 끊긴다면:**
+- 플러그인 수를 줄이거나, CPU를 많이 쓰는 플러그인을 Bypass 처리
+- WASAPI 대신 **ASIO** 드라이버 사용 (더 낮은 지연 가능)
+- 하단 상태 바의 **CPU %** 수치를 확인 — 60% 이상이면 과부하
+
+> Lower the **Buffer Size** for less latency. If crackling persists, reduce plugins or switch to ASIO driver.
+</details>
+
+<details>
+<summary><b>ASIO가 뭔가요? 꼭 필요한가요? / What is ASIO? Do I need it?</b></summary>
+
+**ASIO**는 저지연 오디오 드라이버입니다. 대부분의 USB 마이크는 **WASAPI** 모드로 충분히 잘 동작하므로 반드시 필요하지는 않습니다.
+
+| | WASAPI Shared | ASIO |
+|---|---|---|
+| 지연(Latency) | 보통 (5~15ms) | 매우 낮음 (2~5ms) |
+| 설치 | 별도 설치 불필요 | 오디오 인터페이스 드라이버 필요 |
+| 다른 앱과 동시 사용 | 가능 (비독점) | 장치에 따라 다름 |
+| 추천 대상 | 일반 사용자 | 전문가, 실시간 모니터링 |
+
+> WASAPI works fine for most users. ASIO is optional for those who need ultra-low latency.
+</details>
+
+<details>
+<summary><b>플러그인 스캔 중 프로그램이 멈춘 것 같아요 / Plugin scan seems stuck</b></summary>
+
+플러그인 스캔은 **별도 프로세스**에서 실행되므로 DirectPipe가 멈추거나 크래시하지 않습니다. 일부 플러그인은 스캔에 시간이 오래 걸릴 수 있습니다 (최대 5분).
+
+- 크래시를 유발하는 플러그인은 자동으로 **블랙리스트**에 등록되어 다음 스캔에서 건너뜁니다
+- 스캔 로그: `%AppData%/DirectPipe/scanner-log.txt`에서 확인 가능
+
+> Scans run in a separate process — the host never crashes. Bad plugins are auto-blacklisted.
+</details>
+
+<details>
+<summary><b>프리셋은 어떻게 사용하나요? / How to use presets?</b></summary>
+
+**Quick Preset Slots (A~E):**
+- 현재 플러그인 체인과 설정을 **A~E** 슬롯에 저장할 수 있습니다
+- **Save Preset** → 현재 상태를 선택된 슬롯에 저장
+- 슬롯 버튼 **(A/B/C/D/E)** 클릭 → 즉시 전환
+- 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩**
+
+예: 게임 중엔 **A** (노이즈 제거만), 노래방에선 **B** (리버브 + 컴프레서)
+
+> Save your plugin chain to slots A-E. Click a slot to switch instantly.
+</details>
+
+<details>
+<summary><b>Monitor 출력은 뭔가요? / What is Monitor output?</b></summary>
+
+**Monitor**는 자기 목소리를 헤드폰으로 실시간 확인하는 기능입니다. VST 이펙트가 적용된 자신의 목소리를 들을 수 있습니다.
+
+- **Monitor 탭**에서 헤드폰이 연결된 오디오 장치를 선택
+- Main Output과는 별도의 WASAPI 장치를 사용하므로 **독립적으로 동작**
+- **MON** 버튼으로 켜기/끄기
+
+> Monitor lets you hear your processed voice through headphones in real-time. Configure in the Monitor tab.
+</details>
+
+<details>
+<summary><b>컴퓨터 시작할 때 자동으로 실행되게 하려면? / How to auto-start with Windows?</b></summary>
+
+두 가지 방법:
+1. **시스템 트레이** 아이콘 우클릭 → **"Start with Windows"** 체크
+2. **Controls** 탭 → **General** → **"Start with Windows"** 체크
+
+활성화하면 Windows 시작 시 자동으로 트레이에서 실행됩니다. X 버튼으로 창을 닫아도 트레이에 남아서 계속 동작합니다.
+
+> Right-click the tray icon → "Start with Windows", or enable in Controls > General tab.
+</details>
+
+<details>
+<summary><b>Stream Deck 없이도 외부 제어가 되나요? / Can I control without a Stream Deck?</b></summary>
+
+네! 다양한 방법으로 제어할 수 있습니다:
+
+| 방법 | 예시 | 적합한 용도 |
+|---|---|---|
+| **키보드 단축키** | Ctrl+Shift+1~9 bypass, F1~F5 프리셋 | 가장 간편 |
+| **MIDI CC** | 미디 컨트롤러 노브/버튼 | 실시간 볼륨 조절 |
+| **HTTP API** | `curl http://localhost:8766/api/...` | 스크립트 자동화 |
+| **WebSocket** | ws://localhost:8765 | 커스텀 앱/봇 연동 |
+
+자세한 내용: [Control API](docs/CONTROL_API.md)
+
+> Hotkeys, MIDI CC, HTTP API, and WebSocket are all supported. See [Control API](docs/CONTROL_API.md).
+</details>
 
 ## License
 
