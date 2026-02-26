@@ -179,6 +179,30 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
 
 ---
 
+#### `recording_toggle` — Toggle Recording / 녹음 토글
+
+```json
+{ "type": "action", "action": "recording_toggle", "params": {} }
+```
+
+Start or stop recording processed audio to a WAV file. Recording files are saved to the user's Documents folder. / 처리된 오디오의 WAV 녹음 시작/중지. 녹음 파일은 사용자 문서 폴더에 저장.
+
+---
+
+#### `set_plugin_parameter` — Set Plugin Parameter / 플러그인 파라미터 설정
+
+```json
+{ "type": "action", "action": "set_plugin_parameter", "params": { "pluginIndex": 0, "paramIndex": 3, "value": 0.75 } }
+```
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pluginIndex` | number | Yes | Plugin chain index (0-based) / 체인 인덱스 |
+| `paramIndex` | number | Yes | Parameter index (0-based) / 파라미터 인덱스 |
+| `value` | number | Yes | Parameter value (0.0-1.0) / 파라미터 값 |
+
+---
+
 ### State Object / 상태 객체
 
 ```json
@@ -201,7 +225,9 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
     "sample_rate": 48000,
     "buffer_size": 128,
     "channel_mode": 2,
-    "monitor_enabled": true
+    "monitor_enabled": true,
+    "recording": false,
+    "recording_seconds": 0.0
   }
 }
 ```
@@ -228,6 +254,8 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
 | `buffer_size` | number | Buffer size (samples) / 버퍼 크기 |
 | `channel_mode` | number | 1=Mono, 2=Stereo (default: 2) |
 | `monitor_enabled` | boolean | Monitor output enabled / 모니터 출력 활성화 |
+| `recording` | boolean | Audio recording active / 오디오 녹음 중 |
+| `recording_seconds` | number | Recording elapsed time in seconds / 녹음 경과 시간 (초) |
 
 ---
 
@@ -250,6 +278,8 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/slot/:index` | Switch preset slot (0-4 = A-E) / 슬롯 전환 |
 | `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |
 | `GET /api/gain/:delta` | Adjust input gain (dB) / 입력 게인 조절 |
+| `GET /api/recording/toggle` | Toggle audio recording on/off / 오디오 녹음 토글 |
+| `GET /api/plugin/:pluginIndex/param/:paramIndex/:value` | Set plugin parameter (0.0-1.0) / 플러그인 파라미터 설정 |
 
 **Success response:** `{ "ok": true, "action": "..." }`
 
@@ -283,6 +313,12 @@ curl http://127.0.0.1:8766/api/slot/2
 
 # Toggle input mute / 입력 뮤트 토글
 curl http://127.0.0.1:8766/api/input-mute/toggle
+
+# Toggle recording / 녹음 토글
+curl http://127.0.0.1:8766/api/recording/toggle
+
+# Set plugin 0, parameter 3 to 0.75 / 플러그인 0 파라미터 3 설정
+curl http://127.0.0.1:8766/api/plugin/0/param/3/0.75
 ```
 
 ### Python (WebSocket)

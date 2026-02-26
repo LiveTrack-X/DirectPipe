@@ -1,15 +1,17 @@
 /**
  * @file OutputPanel.cpp
- * @brief Monitor output control panel implementation
+ * @brief Monitor output + Recording control panel implementation
  */
 
 #include "OutputPanel.h"
+#include "../Control/ControlMapping.h"
 
 namespace directpipe {
 
 OutputPanel::OutputPanel(AudioEngine& engine)
     : engine_(engine)
 {
+    // ── Monitor Output section ──
     titleLabel_.setFont(juce::Font(16.0f, juce::Font::bold));
     titleLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
     addAndMakeVisible(titleLabel_);
@@ -45,6 +47,67 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
     addAndMakeVisible(monitorStatusLabel_);
 
+    // ── Recording section ──
+    recordingTitleLabel_.setFont(juce::Font(16.0f, juce::Font::bold));
+    recordingTitleLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(recordingTitleLabel_);
+
+    recordBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
+    recordBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    recordBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    recordBtn_.onClick = [this] {
+        if (onRecordToggle) onRecordToggle();
+    };
+    addAndMakeVisible(recordBtn_);
+
+    recordTimeLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
+    recordTimeLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(recordTimeLabel_);
+
+    playLastBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kAccentColour));
+    playLastBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    playLastBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    playLastBtn_.setEnabled(false);
+    playLastBtn_.onClick = [this] {
+        if (lastRecordedFile_.existsAsFile())
+            lastRecordedFile_.startAsProcess();
+    };
+    addAndMakeVisible(playLastBtn_);
+
+    openFolderBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
+    openFolderBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    openFolderBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    openFolderBtn_.onClick = [this] {
+        if (recordingFolder_.exists())
+            recordingFolder_.startAsProcess();
+    };
+    addAndMakeVisible(openFolderBtn_);
+
+    changeFolderBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
+    changeFolderBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    changeFolderBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    changeFolderBtn_.onClick = [this] {
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Select Recording Folder", recordingFolder_);
+        chooser->launchAsync(juce::FileBrowserComponent::openMode |
+                             juce::FileBrowserComponent::canSelectDirectories,
+                             [this, chooser](const juce::FileChooser& fc) {
+            auto result = fc.getResult();
+            if (result.isDirectory()) {
+                setRecordingFolder(result);
+                saveRecordingConfig();
+            }
+        });
+    };
+    addAndMakeVisible(changeFolderBtn_);
+
+    folderPathLabel_.setFont(juce::Font(10.0f));
+    folderPathLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(folderPathLabel_);
+
+    // Load recording folder config
+    loadRecordingConfig();
+
     refreshDeviceLists();
 
     auto& router = engine_.getOutputRouter();
@@ -66,6 +129,8 @@ OutputPanel::~OutputPanel()
 void OutputPanel::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(kBgColour));
+
+    // Monitor section background
     auto area = getLocalBounds().reduced(4);
     g.setColour(juce::Colour(kSurfaceColour));
     g.fillRoundedRectangle(area.toFloat(), 6.0f);
@@ -79,24 +144,48 @@ void OutputPanel::resized()
     constexpr int labelW = 80;
 
     int y = bounds.getY();
+    int w = bounds.getWidth();
+    int x = bounds.getX();
 
-    titleLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    // ── Monitor Output ──
+    titleLabel_.setBounds(x, y, w, rowH);
     y += rowH + gap;
 
-    monitorDeviceLabel_.setBounds(bounds.getX(), y, labelW, rowH);
-    monitorDeviceCombo_.setBounds(bounds.getX() + labelW + gap, y,
-                                  bounds.getWidth() - labelW - gap, rowH);
+    monitorDeviceLabel_.setBounds(x, y, labelW, rowH);
+    monitorDeviceCombo_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
     y += rowH + gap;
 
-    monitorVolumeLabel_.setBounds(bounds.getX(), y, labelW, rowH);
-    monitorVolumeSlider_.setBounds(bounds.getX() + labelW + gap, y,
-                                   bounds.getWidth() - labelW - gap, rowH);
+    monitorVolumeLabel_.setBounds(x, y, labelW, rowH);
+    monitorVolumeSlider_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
     y += rowH + gap;
 
-    monitorEnableButton_.setBounds(bounds.getX() + labelW + gap, y, 120, rowH);
+    monitorEnableButton_.setBounds(x + labelW + gap, y, 120, rowH);
     y += rowH + gap;
 
-    monitorStatusLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 18);
+    monitorStatusLabel_.setBounds(x, y, w, 18);
+    y += 24;
+
+    // ── Recording ──
+    recordingTitleLabel_.setBounds(x, y, w, rowH);
+    y += rowH + gap;
+
+    // Row: [REC 55] [time 55] [Play 50] [Open Folder flex] [... 30]
+    int recBtnW = 55, timeLblW = 55, playW = 45, dotW = 30, btnGap = 4;
+    int openW = w - recBtnW - timeLblW - playW - dotW - btnGap * 4;
+    int bx = x;
+
+    recordBtn_.setBounds(bx, y, recBtnW, rowH);
+    bx += recBtnW + btnGap;
+    recordTimeLabel_.setBounds(bx, y, timeLblW, rowH);
+    bx += timeLblW + btnGap;
+    playLastBtn_.setBounds(bx, y, playW, rowH);
+    bx += playW + btnGap;
+    openFolderBtn_.setBounds(bx, y, openW, rowH);
+    bx += openW + btnGap;
+    changeFolderBtn_.setBounds(bx, y, dotW, rowH);
+    y += rowH + 4;
+
+    folderPathLabel_.setBounds(x, y, w, 16);
 }
 
 void OutputPanel::timerCallback()
@@ -127,6 +216,71 @@ void OutputPanel::timerCallback()
             monitorStatusLabel_.setText("", juce::dontSendNotification);
         monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
     }
+}
+
+void OutputPanel::updateRecordingState(bool isRecording, double seconds)
+{
+    recordBtn_.setButtonText(isRecording ? "STOP" : "REC");
+    recordBtn_.setColour(juce::TextButton::buttonColourId,
+        juce::Colour(isRecording ? kRedColour : 0xFF3A3A5Au));
+
+    if (isRecording) {
+        int secs = static_cast<int>(seconds);
+        int mm = secs / 60;
+        int ss = secs % 60;
+        recordTimeLabel_.setText(
+            juce::String(mm).paddedLeft('0', 2) + ":" + juce::String(ss).paddedLeft('0', 2),
+            juce::dontSendNotification);
+        recordTimeLabel_.setColour(juce::Label::textColourId, juce::Colour(kRedColour));
+        playLastBtn_.setEnabled(false);
+    } else {
+        recordTimeLabel_.setText("", juce::dontSendNotification);
+        playLastBtn_.setEnabled(lastRecordedFile_.existsAsFile());
+    }
+}
+
+void OutputPanel::setLastRecordedFile(const juce::File& file)
+{
+    lastRecordedFile_ = file;
+    playLastBtn_.setEnabled(file.existsAsFile());
+}
+
+void OutputPanel::setRecordingFolder(const juce::File& folder)
+{
+    recordingFolder_ = folder;
+    folderPathLabel_.setText(folder.getFullPathName(), juce::dontSendNotification);
+}
+
+void OutputPanel::saveRecordingConfig()
+{
+    auto configDir = ControlMappingStore::getConfigDirectory();
+    auto configFile = configDir.getChildFile("recording-config.json");
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    obj->setProperty("recordingFolder", recordingFolder_.getFullPathName());
+    auto json = juce::JSON::toString(juce::var(obj.get()));
+    configFile.replaceWithText(json);
+}
+
+void OutputPanel::loadRecordingConfig()
+{
+    auto defaultFolder = juce::File::getSpecialLocation(
+        juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
+
+    auto configDir = ControlMappingStore::getConfigDirectory();
+    auto configFile = configDir.getChildFile("recording-config.json");
+
+    if (configFile.existsAsFile()) {
+        auto parsed = juce::JSON::parse(configFile.loadFileAsString());
+        if (auto* obj = parsed.getDynamicObject()) {
+            auto folderPath = obj->getProperty("recordingFolder").toString();
+            if (folderPath.isNotEmpty()) {
+                setRecordingFolder(juce::File(folderPath));
+                return;
+            }
+        }
+    }
+
+    setRecordingFolder(defaultFolder);
 }
 
 void OutputPanel::refreshDeviceLists()

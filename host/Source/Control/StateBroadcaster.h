@@ -44,6 +44,8 @@ struct AppState {
     int channelMode = 1;  // 1 = Mono, 2 = Stereo
     bool monitorEnabled = false;
     int activeSlot = 0;   // Quick preset slot index: 0=A, 1=B, 2=C, 3=D, 4=E
+    bool recording = false;
+    double recordingSeconds = 0.0;
 };
 
 /// Listener for state changes

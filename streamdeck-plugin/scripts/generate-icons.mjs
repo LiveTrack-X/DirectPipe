@@ -46,6 +46,11 @@ const icons = [
   { src: 'preset-active.svg', out: 'preset-active', size: 72, x2: 144 },
   { src: 'monitor-on.svg', out: 'monitor-on', size: 72, x2: 144 },
   { src: 'monitor-off.svg', out: 'monitor-off', size: 72, x2: 144 },
+
+  // Recording action
+  { src: 'recording.svg', out: 'recording', size: 20, x2: 40 },
+  { src: 'recording-off.svg', out: 'recording-off', size: 72, x2: 144 },
+  { src: 'recording-on.svg', out: 'recording-on', size: 72, x2: 144 },
 ];
 
 async function generateIcon({ src, out, size, x2 }) {

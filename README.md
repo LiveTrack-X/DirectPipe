@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.3.0-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.4.0-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -56,14 +56,28 @@ External Control:
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
-- **Stream Deck 플러그인** (SDK v2) — Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle
+- **Stream Deck 플러그인** (SDK v2) — Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle, Recording Toggle
+
+### 녹음 / Recording
+
+- **오디오 녹음** — Monitor 탭에서 처리된 오디오를 WAV 파일로 녹음. Lock-free 실시간 안전 설계. — Record processed audio to WAV in Monitor tab. Lock-free, real-time safe design.
+- **녹음 시간 표시** — Monitor 탭과 Stream Deck에서 실시간 경과 시간 확인 — Real-time duration display in Monitor tab and Stream Deck
+- **녹음 파일 재생** — Play 버튼으로 마지막 녹음 파일 즉시 재생 — Play last recording with one click
+- **녹음 폴더 관리** — Open Folder로 탐색기 열기, ... 버튼으로 폴더 위치 변경 — Open folder in Explorer, change recording location
+
+### 설정 관리 / Settings Management
+
+- **설정 저장/불러오기** — Controls > General 탭에서 전체 설정을 .dpbackup 파일로 저장/불러오기 — Save/load full settings as .dpbackup files in Controls > General tab
+- **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 검색 및 정렬 — Search and sort plugins by name, vendor, or format in scanner
+- **새 버전 알림** — 새 릴리즈가 있으면 하단 상태바에 주황색 "NEW" 표시 — Orange "NEW" indicator on status bar when a newer release is available
 
 ### UI
 
-- **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록 — Close minimizes to tray, double-click to restore, Start with Windows toggle
+- **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록. 트레이 툴팁에 현재 상태 표시. — Close minimizes to tray, double-click to restore, Start with Windows toggle. Tray tooltip shows current state.
 - **탭 설정** — Audio / Monitor / Controls (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 — Mute all outputs instantly, restores previous state on unmute
 - **Output / Monitor Mute** — 개별 출력 뮤트 (UI 인디케이터 + 클릭 제어) — Independent output/monitor mute with clickable status indicators
+- **MIDI 플러그인 파라미터 매핑** — MIDI CC로 VST 플러그인 파라미터 직접 제어 (Learn 모드) — Map MIDI CC to VST plugin parameters with Learn mode
 - **다크 테마** — Dark theme (custom JUCE LookAndFeel)
 
 ## 사용 예시: 가상 케이블로 Discord/OBS에 보이스 이펙트 적용 / Usage: Voice Effects with Virtual Cable
@@ -139,6 +153,56 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 - [Stream Deck Guide](docs/STREAMDECK_GUIDE.md) — Stream Deck 플러그인 / Stream Deck integration
 
 ## FAQ
+
+<details>
+<summary><b>X 버튼을 눌렀는데 프로그램이 꺼지지 않아요 / Clicking X doesn't close the app</b></summary>
+
+DirectPipe는 **시스템 트레이**에서 상주하는 앱입니다. X 버튼(닫기)을 누르면 **종료되는 것이 아니라 트레이로 최소화**됩니다. 오디오 처리는 백그라운드에서 계속 동작합니다.
+
+- **트레이 아이콘 더블클릭** → 창 복원
+- **트레이 아이콘 우클릭** → 메뉴에서 **"Quit DirectPipe"** 선택 → 완전 종료
+
+이 동작은 의도된 설계입니다 — Discord나 OBS 등에 실시간 오디오를 계속 보내면서 창을 닫아도 처리가 중단되지 않도록 합니다.
+
+---
+
+DirectPipe is a **system tray** resident app. Clicking the X (close) button **minimizes it to the tray** instead of quitting. Audio processing continues running in the background.
+
+- **Double-click the tray icon** → restore the window
+- **Right-click the tray icon** → select **"Quit DirectPipe"** → fully exit
+
+This is by design — it ensures audio processing keeps running for Discord, OBS, etc. even when the window is closed.
+</details>
+
+<details>
+<summary><b>트레이 아이콘이 안 보여요 / 트레이에 고정하는 방법 / Tray icon not visible / How to pin to tray</b></summary>
+
+Windows는 기본적으로 트레이 아이콘을 숨김 영역(▲ 화살표 안)에 넣습니다. DirectPipe 아이콘을 항상 보이게 하려면 **트레이에 고정**하세요.
+
+**Windows 11:**
+1. **설정** → **개인 설정** → **작업 표시줄** → **기타 시스템 트레이 아이콘** 클릭
+2. 목록에서 **DirectPipe**를 찾아 **켬** 으로 변경
+3. 또는: 숨김 영역(▲)에서 DirectPipe 아이콘을 **작업 표시줄로 드래그**
+
+**Windows 10:**
+1. **설정** → **개인 설정** → **작업 표시줄** → **알림 영역** → **작업 표시줄에 표시할 아이콘 선택** 클릭
+2. 목록에서 **DirectPipe**를 찾아 **켬** 으로 변경
+3. 또는: 숨김 영역(▲)에서 DirectPipe 아이콘을 **작업 표시줄로 드래그**
+
+---
+
+Windows hides tray icons in the overflow area (▲ arrow) by default. To keep the DirectPipe icon always visible, **pin it to the taskbar tray**.
+
+**Windows 11:**
+1. **Settings** → **Personalization** → **Taskbar** → click **Other system tray icons**
+2. Find **DirectPipe** and toggle it **On**
+3. Or: drag the DirectPipe icon from the overflow area (▲) onto the **taskbar**
+
+**Windows 10:**
+1. **Settings** → **Personalization** → **Taskbar** → **Notification area** → click **Select which icons appear on the taskbar**
+2. Find **DirectPipe** and toggle it **On**
+3. Or: drag the DirectPipe icon from the overflow area (▲) onto the **taskbar**
+</details>
 
 <details>
 <summary><b>처음 실행할 때 빨간색 "Windows의 PC 보호" 경고가 떠요 / SmartScreen warning on first run</b></summary>

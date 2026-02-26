@@ -316,6 +316,43 @@ const PluginSlot* VSTChain::getPluginSlot(int index) const
     return &chain_[static_cast<size_t>(index)];
 }
 
+int VSTChain::getPluginParameterCount(int pluginIndex) const
+{
+    auto* slot = getPluginSlot(pluginIndex);
+    if (!slot || !slot->instance) return 0;
+    return slot->instance->getParameters().size();
+}
+
+juce::String VSTChain::getPluginParameterName(int pluginIndex, int paramIndex) const
+{
+    auto* slot = getPluginSlot(pluginIndex);
+    if (!slot || !slot->instance) return {};
+    auto& params = slot->instance->getParameters();
+    if (paramIndex < 0 || paramIndex >= params.size()) return {};
+    return params[paramIndex]->getName(64);
+}
+
+void VSTChain::setPluginParameter(int pluginIndex, int paramIndex, float value)
+{
+    const juce::ScopedLock sl(chainLock_);
+    if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
+        return;
+    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
+    if (!inst) return;
+    auto& params = inst->getParameters();
+    if (paramIndex < 0 || paramIndex >= params.size()) return;
+    params[paramIndex]->setValue(value);
+}
+
+float VSTChain::getPluginParameter(int pluginIndex, int paramIndex) const
+{
+    auto* slot = getPluginSlot(pluginIndex);
+    if (!slot || !slot->instance) return 0.0f;
+    auto& params = slot->instance->getParameters();
+    if (paramIndex < 0 || paramIndex >= params.size()) return 0.0f;
+    return params[paramIndex]->getValue();
+}
+
 void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 {
     if (index < 0 || index >= static_cast<int>(chain_.size()))

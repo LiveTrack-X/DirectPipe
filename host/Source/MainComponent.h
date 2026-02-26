@@ -40,6 +40,9 @@ public:
     /** @brief Refresh all UI components to match engine state. */
     void refreshUI();
 
+    /** @brief Get the state broadcaster (for tray tooltip etc.). */
+    StateBroadcaster& getBroadcaster() { return broadcaster_; }
+
 private:
     void timerCallback() override;
     void saveSettings();
@@ -63,6 +66,7 @@ private:
     std::unique_ptr<LevelMeter> inputMeter_;
     std::unique_ptr<LevelMeter> outputMeter_;
     std::unique_ptr<OutputPanel> outputPanel_;
+    OutputPanel* outputPanelPtr_ = nullptr;  // raw ptr (rightTabs_ owns the component)
     std::unique_ptr<ControlSettingsPanel> controlSettingsPanel_;
 
     // Right-column tabbed panel (Audio Settings / Output / Controls)
@@ -119,6 +123,9 @@ private:
     // Panic mute: remember pre-mute state for restore on unmute
     bool preMuteMonitorEnabled_ = false;
     bool preMuteOutputMuted_ = false;
+
+    // Update check — show "NEW" on credit label if newer release exists
+    void checkForUpdate();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

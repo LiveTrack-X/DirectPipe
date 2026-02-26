@@ -38,17 +38,18 @@ JUCE 7.0.12 기반 데스크톱 앱. 메인 오디오 처리 엔진.
 - **VirtualMicOutput** — Second WASAPI AudioDeviceManager used for the monitor output. Lock-free `AudioRingBuffer` bridge between two audio callback threads. Configured in Monitor tab. Status tracking (Active/Error/NotConfigured). / 모니터 출력용 별도 WASAPI AudioDeviceManager. 락프리 링버퍼 브리지. Monitor 탭에서 구성. 상태 추적.
 - **AudioRingBuffer** — Header-only SPSC lock-free ring buffer for inter-device audio transfer. / 디바이스 간 오디오 전송용 헤더 전용 SPSC 락프리 링 버퍼.
 - **LatencyMonitor** — High-resolution timer-based latency measurement. / 고해상도 타이머 기반 레이턴시 측정.
+- **AudioRecorder** — Lock-free audio recording to WAV via `AudioFormatWriter::ThreadedWriter`. SpinLock-protected writer teardown for RT-safety. Timer-based duration tracking. Auto-stop on device change. / 락프리 WAV 녹음. SpinLock으로 RT 안전한 writer 해제. 장치 변경 시 자동 중지.
 
 #### Control Module (`host/Source/Control/`) / 제어 모듈
 
 All external inputs funnel through a unified ActionDispatcher. / 모든 외부 입력은 통합된 ActionDispatcher를 거친다.
 
-- **ActionDispatcher** — Central action routing. 12 actions: `PluginBypass`, `MasterBypass`, `SetVolume`, `ToggleMute`, `LoadPreset`, `PanicMute`, `InputGainAdjust`, `NextPreset`, `PreviousPreset`, `InputMuteToggle`, `SwitchPresetSlot`, `MonitorToggle`. Thread-safe dispatch via `callAsync`. / 중앙 액션 라우팅. 12개 액션. callAsync를 통한 스레드 안전 디스패치.
+- **ActionDispatcher** — Central action routing. 14 actions: `PluginBypass`, `MasterBypass`, `SetVolume`, `ToggleMute`, `LoadPreset`, `PanicMute`, `InputGainAdjust`, `NextPreset`, `PreviousPreset`, `InputMuteToggle`, `SwitchPresetSlot`, `MonitorToggle`, `RecordingToggle`, `SetPluginParameter`. Thread-safe dispatch via `callAsync`. / 중앙 액션 라우팅. 14개 액션. callAsync를 통한 스레드 안전 디스패치.
 - **ControlManager** — Aggregates all control sources (Hotkey, MIDI, WebSocket, HTTP). Initialize/shutdown lifecycle. / 모든 제어 소스 통합 관리.
 - **HotkeyHandler** — Windows `RegisterHotKey` API for global keyboard shortcuts. Recording mode for key capture. / 글로벌 키보드 단축키. 키 녹화 모드.
 - **MidiHandler** — JUCE `MidiInput` for MIDI CC/note mapping with Learn mode. LED feedback via MidiOutput. Hot-plug detection. / MIDI CC 매핑 + Learn 모드. LED 피드백. 핫플러그 감지.
 - **WebSocketServer** — RFC 6455 WebSocket server (port 8765). Custom SHA-1 implementation for handshake. JUCE `StreamingSocket` with frame encoding/decoding, ping/pong. Dead client cleanup sweep on broadcast. UDP discovery broadcast on port 8767 at startup for instant Stream Deck connection. / RFC 6455 WebSocket 서버. 커스텀 SHA-1 핸드셰이크. 죽은 클라이언트 자동 정리. 시작 시 UDP 8767 디스커버리 브로드캐스트로 Stream Deck 즉시 연결.
-- **HttpApiServer** — HTTP REST API (port 8766) for one-shot GET commands. CORS enabled. 3-second read timeout. Volume range validation (0.0-1.0). / HTTP REST API. CORS 활성화. 3초 읽기 타임아웃. 볼륨 범위 검증.
+- **HttpApiServer** — HTTP REST API (port 8766) for one-shot GET commands. CORS enabled. 3-second read timeout. Volume range validation (0.0-1.0). Recording toggle and plugin parameter endpoints. / HTTP REST API. CORS 활성화. 3초 읽기 타임아웃. 볼륨 범위 검증. 녹음 토글 및 플러그인 파라미터 엔드포인트.
 - **StateBroadcaster** — Pushes AppState changes to all connected StateListeners as JSON. / 상태 변경을 JSON으로 모든 리스너에 푸시.
 - **ControlMapping** — JSON-based persistence for hotkey/MIDI/server config. Portable mode support (`portable.flag` next to exe). / JSON 기반 설정 저장. 포터블 모드 지원.
 
@@ -60,10 +61,11 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 
 - **AudioSettings** — Driver type selector (WASAPI/ASIO), device selection, ASIO channel routing (input/output pair), sample rate, buffer size, channel mode (Mono/Stereo), latency display, ASIO Control Panel button. / 오디오 설정 패널.
 - **PluginChainEditor** — Drag-and-drop reordering, bypass toggle, edit button (native GUI), remove button. Safe deletion via `callAsync`. / 드래그 앤 드롭 플러그인 체인 편집. callAsync를 통한 안전 삭제.
-- **PluginScanner** — Out-of-process VST scanner with auto-retry (5x) and dead man's pedal. Blacklist for crashed plugins. / 별도 프로세스 VST 스캐너. 자동 재시도 5회. 블랙리스트.
-- **OutputPanel** — Monitor output controls: device selector, volume slider, enable toggle, device status indicator (Active/Error/No device). / 모니터 출력 제어 + 디바이스 상태 표시.
+- **PluginScanner** — Out-of-process VST scanner with auto-retry (5x) and dead man's pedal. Blacklist for crashed plugins. Real-time text search and column sorting (name/vendor/format). / 별도 프로세스 VST 스캐너. 자동 재시도 5회. 블랙리스트. 실시간 검색 및 정렬.
+- **OutputPanel** — Monitor output controls: device selector, volume slider, enable toggle, device status indicator (Active/Error/No device). Recording section: REC/STOP button, elapsed time, Play last recording, Open Folder, folder chooser. Recording folder persisted to `recording-config.json`. / 모니터 출력 제어 + 디바이스 상태 표시. 녹음 섹션: REC/STOP, 경과 시간, 마지막 녹음 재생, 폴더 열기, 폴더 변경.
 - **PresetManager** — Full preset save/load (JSON, `.dppreset`) + Quick Preset Slots A-E. Plugin state via `getStateInformation()`/base64. Async slot loading. / 프리셋 관리 + 퀵 슬롯 A-E. 비동기 슬롯 로딩.
-- **ControlSettingsPanel** — 4 sub-tabs: Hotkey, MIDI, StreamDeck (server status), General (Start with Windows). / 4개 서브탭: 단축키, MIDI, StreamDeck, 일반.
+- **ControlSettingsPanel** — 4 sub-tabs: Hotkey, MIDI, StreamDeck (server status), General (Start with Windows + Settings Save/Load). MIDI tab includes plugin parameter mapping (3-step popup: plugin → parameter → Learn). / 4개 서브탭: 단축키, MIDI, StreamDeck, 일반(시작 프로그램 + 설정 저장/불러오기). MIDI 탭에 플러그인 파라미터 매핑 (3단계 팝업).
+- **SettingsExporter** — Export/import full settings as `.dpbackup` files via native file chooser. Located in Controls > General tab. / 설정 내보내기/가져오기. Controls > General 탭에 위치.
 - **LevelMeter** — Real-time RMS level display with peak hold, clipping indicator. dB log scale. / 실시간 RMS 레벨 미터. 피크 홀드. dB 로그 스케일.
 - **DirectPipeLookAndFeel** — Custom dark theme (#1E1E2E bg, #6C63FF purple accent, #4CAF50 green). / 다크 테마.
 
@@ -73,7 +75,8 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 - Quick Preset Slot buttons A-E with visual active/occupied state. Loading feedback (dimmed buttons). / 퀵 프리셋 슬롯 버튼 (활성/사용중 시각 구분, 로딩 중 피드백)
 - Auto-save via dirty-flag + 1-second debounce. `onSettingsChanged` callbacks trigger `markSettingsDirty()`. / dirty-flag + 1초 디바운스 자동 저장
 - Panic mute remembers pre-mute monitor enable state, restores on unmute / Panic Mute 모니터 상태 기억/복원
-- Status bar: latency, CPU, format, portable mode, "Created by LiveTrack" / 상태 바
+- Status bar: latency, CPU, format, portable mode, "Created by LiveTrack". Shows "NEW vX.Y.Z" in orange when newer GitHub release exists (background update check on startup). / 상태 바. 새 릴리즈 시 주황색 "NEW" 표시 (시작 시 GitHub API 체크).
+- System tray tooltip: shows current state (preset, plugins, volumes). Atomic dirty-flag for cross-thread safety. / 시스템 트레이 툴팁: 현재 상태 표시. atomic dirty-flag로 스레드 안전.
 
 #### System Tray (`host/Source/Main.cpp`)
 
@@ -98,7 +101,7 @@ Shared static library for IPC. No JUCE dependency. / IPC용 정적 라이브러�
 Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v2). / Stream Deck 플러그인 (SDK v2).
 
 - Connects via WebSocket (`ws://localhost:8765`) / WebSocket으로 연결
-- 5 SingletonAction subclasses: Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle / 5개 액션
+- 6 SingletonAction subclasses: Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle, Recording Toggle / 6개 액션
 - Volume Control supports 3 modes: Mute Toggle, Volume Up (+), Volume Down (-) with configurable step size / 볼륨 제어: 뮤트 토글, 볼륨 +/- 모드
 - SD+ dial support for volume adjustment / SD+ 다이얼 지원
 - Event-driven reconnection: UDP discovery (port 8767) + user-action trigger (no polling) / 이벤트 기반 재연결: UDP 디스커버리 + 사용자 조작 트리거 (폴링 없음)

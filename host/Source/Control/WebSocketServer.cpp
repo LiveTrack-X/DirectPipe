@@ -424,6 +424,13 @@ void WebSocketServer::processMessage(const std::string& message)
         event.action = Action::PreviousPreset;
     } else if (actionStr == "monitor_toggle") {
         event.action = Action::MonitorToggle;
+    } else if (actionStr == "recording_toggle") {
+        event.action = Action::RecordingToggle;
+    } else if (actionStr == "set_plugin_parameter") {
+        event.action = Action::SetPluginParameter;
+        event.intParam = params ? static_cast<int>(params->getProperty("pluginIndex")) : 0;
+        event.intParam2 = params ? static_cast<int>(params->getProperty("paramIndex")) : 0;
+        event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : 0.0f;
     } else {
         return;  // Unknown action
     }

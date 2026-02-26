@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: Recording OFF (idle) - dark bg, white circle outline -->
+  <rect width="144" height="144" rx="16" fill="#2a2a2a"/>
+  <!-- Record circle outline -->
+  <circle cx="72" cy="64" r="28" fill="none" stroke="#ffffff" stroke-width="5"/>
+  <circle cx="72" cy="64" r="12" fill="#ffffff" opacity="0.4"/>
+</svg>

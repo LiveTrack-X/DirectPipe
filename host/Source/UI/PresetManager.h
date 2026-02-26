@@ -106,8 +106,10 @@ public:
      */
     static char slotLabel(int slotIndex) { return 'A' + static_cast<char>(slotIndex); }
 
-private:
+    /** @brief Get the file path for a quick slot. */
     static juce::File getSlotFile(int slotIndex);
+
+private:
 
     AudioEngine& engine_;
     int activeSlot_ = -1;

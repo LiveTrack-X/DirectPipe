@@ -1,5 +1,22 @@
 # DirectPipe Stream Deck Plugin — Release Notes
 
+## v1.4.0.0 (2026-02-26)
+
+### New Features
+- **Recording Toggle**: New action to start/stop audio recording from Stream Deck. Shows elapsed time (mm:ss) on the button while recording.
+
+### Actions
+| Action | Description |
+|--------|-------------|
+| **Bypass Toggle** | Toggle individual VST plugin bypass. Long-press (>500ms) for master bypass. |
+| **Volume Control** | Mute toggle / volume up / volume down modes. SD+ dial support (+-5% per tick). |
+| **Preset Switch** | Switch between Quick Preset Slots (A-E) or cycle through presets. |
+| **Monitor Toggle** | Toggle monitor output on/off. Visual state indicator (green=ON, gray=OFF). |
+| **Panic Mute** | Instantly mute all DirectPipe audio outputs. Press again to unmute. |
+| **Recording Toggle** | Start/stop recording processed audio to WAV. Shows REC + mm:ss elapsed time. |
+
+---
+
 ## v1.2.0.0 (2026-02-25)
 
 ### New Features

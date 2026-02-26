@@ -93,6 +93,8 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("channel_mode", state.channelMode);
     data->setProperty("monitor_enabled", state.monitorEnabled);
     data->setProperty("active_slot", state.activeSlot);
+    data->setProperty("recording", state.recording);
+    data->setProperty("recording_seconds", state.recordingSeconds);
 
     root->setProperty("data", juce::var(data));
 

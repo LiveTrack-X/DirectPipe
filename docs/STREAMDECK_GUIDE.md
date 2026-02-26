@@ -2,9 +2,9 @@
 
 ## Overview / 개요
 
-The DirectPipe Stream Deck plugin connects to the host via WebSocket and provides 5 button actions for controlling the VST host remotely.
+The DirectPipe Stream Deck plugin connects to the host via WebSocket and provides 6 button actions for controlling the VST host remotely.
 
-DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여 5가지 버튼 액션으로 VST 호스트를 원격 제어한다.
+DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여 6가지 버튼 액션으로 VST 호스트를 원격 제어한다.
 
 | Action / 액션 | Description / 설명 |
 |---------------|-------------------|
@@ -13,6 +13,7 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 | **Volume Control** | Mute toggle, volume up/down, or dial adjust. / 뮤트 토글, 볼륨 +/-, 다이얼 조절. |
 | **Preset Switch** | Switch preset slot (A-E) or cycle presets. / 프리셋 슬롯 전환 또는 순환. |
 | **Monitor Toggle** | Toggle monitor output (headphones) on/off. / 모니터 출력(헤드폰) 켜기/끄기. |
+| **Recording Toggle** | Start/stop audio recording to WAV. Shows elapsed time. / 오디오 녹음 시작/중지. 경과 시간 표시. |
 
 ---
 
@@ -155,6 +156,18 @@ No settings required. / 설정 불필요.
 
 ---
 
+### Recording Toggle / 녹음 토글
+
+**UUID:** `com.directpipe.directpipe.recording-toggle`
+
+- **Press** — Start or stop recording processed audio to WAV / 녹음 시작/중지
+
+**Display:** State 0 = "REC" (idle), State 1 = "REC" + elapsed time in mm:ss format (e.g., "REC\n01:23") / 상태 0 = "REC" (대기), 상태 1 = "REC" + 경과 시간
+
+No settings required. / 설정 불필요.
+
+---
+
 ## Technical Details / 기술 세부사항
 
 ### SDK Version
@@ -192,6 +205,7 @@ streamdeck-plugin/
       volume-control.js       Volume control SingletonAction / 볼륨 제어 액션
       preset-switch.js        Preset switch SingletonAction / 프리셋 전환 액션
       monitor-toggle.js       Monitor toggle SingletonAction / 모니터 토글 액션
+      recording-toggle.js     Recording toggle SingletonAction / 녹음 토글 액션
     inspectors/
       bypass-pi.html          Bypass settings (sdpi-components v4) / Bypass 설정 UI
       volume-pi.html          Volume settings (target, mode, step) / 볼륨 설정 UI

@@ -15,7 +15,7 @@ Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체�
 7. Out-of-process VST scanner (crash-safe)
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.3.0
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.4.0
 - WASAPI Shared Mode + ASIO (Steinberg ASIO SDK)
 - VST2 SDK 2.4 + VST3
 - WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)
@@ -46,14 +46,19 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
 - **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal. Blacklist for crashed plugins. Log: `%AppData%/DirectPipe/scanner-log.txt`.
 - **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Safe deletion via callAsync.
-- **Tabbed UI**: Audio/Monitor/Controls tabs in right column. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General.
+- **Tabbed UI**: Audio/Monitor/Controls tabs in right column. Monitor tab includes Recording section. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General (with Settings Save/Load).
 - **Start with Windows**: Registry-based (`HKCU\...\Run`). Toggle in tray menu + Controls > General tab.
 - **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
 - **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
 - **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765. UDP discovery broadcast (port 8767) at startup for instant Stream Deck connection.
-- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0).
-- **Stream Deck plugin**: SDK v2, 5 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50).
+- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0). Endpoints include recording toggle and plugin parameter control.
+- **Audio recording**: Lock-free recording via `AudioRecorder` + `AudioFormatWriter::ThreadedWriter`. WAV output. RT-safe `juce::SpinLock` protects writer teardown. Timer-based duration tracking. Auto-stop on device change.
+- **Settings export/import**: `SettingsExporter` class. Full settings save/load as `.dpbackup` files via native file chooser. Located in Controls > General tab.
+- **Plugin scanner search/sort**: Real-time text filter + column sorting (name/vendor/format) in PluginScanner dialog.
+- **MIDI plugin parameter mapping**: MidiTab 3-step popup flow (select plugin → select parameter → MIDI Learn). Creates `Continuous` MidiBinding with `SetPluginParameter` action.
+- **System tray tooltip**: Shows current state (preset, plugins, volumes) on hover. Atomic dirty-flag for cross-thread safety.
+- **Stream Deck plugin**: SDK v2, 6 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic/Recording), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50).
 
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.
@@ -70,10 +75,10 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 ## Modules
 - `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants)
 - `host/` -> JUCE app
-  - `Audio/` -> AudioEngine, VSTChain, OutputRouter, VirtualMicOutput, AudioRingBuffer, LatencyMonitor
+  - `Audio/` -> AudioEngine, VSTChain, OutputRouter, VirtualMicOutput, AudioRingBuffer, LatencyMonitor, AudioRecorder
   - `Control/` -> ActionDispatcher, ControlManager, ControlMapping, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster
   - `IPC/` -> SharedMemWriter
-  - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel, PluginChainEditor, PluginScanner, PresetManager, LevelMeter, DirectPipeLookAndFeel
+  - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel, PluginChainEditor, PluginScanner, PresetManager, LevelMeter, DirectPipeLookAndFeel, SettingsExporter
 - `streamdeck-plugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v2)
 - `tests/` -> Google Test (core tests + host tests)
 - `dist/` -> Packaged .streamDeckPlugin + marketplace assets
@@ -86,9 +91,10 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: SDK v2.0.1, 5 actions (Bypass/Volume/Preset/Monitor/Panic), 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
+- Stream Deck: SDK v2.0.1, 6 actions (Bypass/Volume/Preset/Monitor/Panic/Recording), 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), onSettingsChanged callbacks
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
-- Credit label "Created by LiveTrack" at bottom-right of main UI
+- Credit label "Created by LiveTrack" at bottom-right of main UI. Shows "NEW vX.Y.Z" in orange when a newer GitHub release exists.
+- **Update check**: Background thread fetches latest release from GitHub API on startup. Compares semver, updates credit label if newer.
 - Process priority: HIGH_PRIORITY_CLASS at startup
 - Portable mode: `portable.flag` next to exe -> config stored in `./config/`

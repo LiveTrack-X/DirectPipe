@@ -31,6 +31,8 @@ enum class Action {
     InputMuteToggle,    ///< Toggle microphone input mute
     SwitchPresetSlot,   ///< Switch to preset slot (intParam = 0..4 for A..E)
     MonitorToggle,      ///< Toggle monitor output on/off
+    RecordingToggle,    ///< Toggle audio recording on/off
+    SetPluginParameter, ///< Set plugin parameter (intParam=pluginIndex, intParam2=paramIndex, floatParam=value 0.0~1.0)
 };
 
 /// Carries an action with its parameters
@@ -39,6 +41,7 @@ struct ActionEvent {
     int intParam = 0;
     float floatParam = 0.0f;
     std::string stringParam;
+    int intParam2 = 0;      ///< Secondary int param (appended for backward compatibility)
 };
 
 /// Listener interface for action events

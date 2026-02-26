@@ -12,6 +12,7 @@
 #include "OutputRouter.h"
 #include "LatencyMonitor.h"
 #include "VirtualMicOutput.h"
+#include "AudioRecorder.h"
 
 #include <functional>
 #include <memory>
@@ -39,6 +40,7 @@ public:
     VSTChain& getVSTChain() { return vstChain_; }
     OutputRouter& getOutputRouter() { return outputRouter_; }
     LatencyMonitor& getLatencyMonitor() { return latencyMonitor_; }
+    AudioRecorder& getRecorder() { return recorder_; }
     // Device type (ASIO / Windows Audio)
     bool setAudioDeviceType(const juce::String& typeName);
     juce::String getCurrentDeviceType() const;
@@ -125,6 +127,7 @@ private:
     OutputRouter outputRouter_;
     LatencyMonitor latencyMonitor_;
     VirtualMicOutput monitorOutput_;
+    AudioRecorder recorder_;
 
     bool running_ = false;
 
