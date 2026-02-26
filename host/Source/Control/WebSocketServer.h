@@ -51,6 +51,7 @@ private:
     void clientThread(juce::StreamingSocket* client);
     void processMessage(const std::string& message);
     void broadcastToClients(const std::string& message);
+    void sendDiscoveryBroadcast();
 
     // RFC 6455 WebSocket helpers
     static bool performHandshake(juce::StreamingSocket* client);

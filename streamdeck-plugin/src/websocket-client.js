@@ -13,7 +13,7 @@ const { EventEmitter } = require("events");
 
 // ─── Constants ──────────────────────────────────────────────────────
 const DEFAULT_RECONNECT_INTERVAL_MS = 2000;
-const MAX_RECONNECT_INTERVAL_MS = 30000;
+const MAX_RECONNECT_INTERVAL_MS = 10000;
 const RECONNECT_BACKOFF_FACTOR = 1.5;
 const PING_INTERVAL_MS = 15000;
 
@@ -141,6 +141,10 @@ class DirectPipeClient extends EventEmitter {
         if (this._pendingMessages.length > 50) {
             this._pendingMessages.shift(); // drop oldest
         }
+
+        // User interaction while disconnected — try to reconnect immediately
+        this.reconnectNow();
+
         return false;
     }
 
@@ -177,6 +181,22 @@ class DirectPipeClient extends EventEmitter {
      */
     getReconnectAttempts() {
         return this._reconnectAttempts;
+    }
+
+    /**
+     * Immediately attempt reconnection, resetting the backoff delay.
+     *
+     * Useful when an external signal (e.g., UDP discovery or user interaction)
+     * indicates the server is likely available now.
+     */
+    reconnectNow() {
+        if (this._connected) return;
+        // Avoid duplicate connections if already attempting
+        if (this._ws && this._ws.readyState === WebSocket.CONNECTING) return;
+
+        this._stopReconnectTimer();
+        this._currentReconnectDelay = this.reconnectInterval;
+        this._createConnection();
     }
 
     // ─── Internal Methods ───────────────────────────────────────────

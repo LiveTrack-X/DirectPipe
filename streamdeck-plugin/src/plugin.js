@@ -4,6 +4,7 @@
  */
 
 const streamDeck = require("@elgato/streamdeck").default;
+const dgram = require("dgram");
 const { DirectPipeClient } = require("./websocket-client");
 const { BypassToggleAction } = require("./actions/bypass-toggle");
 const { PanicMuteAction } = require("./actions/panic-mute");
@@ -13,7 +14,7 @@ const { MonitorToggleAction } = require("./actions/monitor-toggle");
 
 // ─── DirectPipe host connection ─────────────────────────────────────
 const DIRECTPIPE_WS_URL = "ws://localhost:8765";
-const dpClient = new DirectPipeClient(DIRECTPIPE_WS_URL);
+const dpClient = new DirectPipeClient(DIRECTPIPE_WS_URL, { autoReconnect: false });
 let currentState = null;
 
 // ─── Action instances ───────────────────────────────────────────────
@@ -80,6 +81,24 @@ streamDeck.actions.registerAction(monitorAction);
 
 streamDeck.connect();
 dpClient.connect();
+
+// ─── UDP discovery listener ─────────────────────────────────────────
+// DirectPipe sends a UDP packet to port 8767 when its WebSocket server
+// is ready. This lets us connect instantly instead of waiting for the
+// next backoff retry.
+const discoverySocket = dgram.createSocket("udp4");
+discoverySocket.on("message", (msg) => {
+    const text = msg.toString();
+    if (text.startsWith("DIRECTPIPE_READY")) {
+        streamDeck.logger.info(`UDP discovery received: ${text}`);
+        dpClient.reconnectNow();
+    }
+});
+discoverySocket.on("error", (err) => {
+    streamDeck.logger.error(`UDP discovery error: ${err.message}`);
+    discoverySocket.close();
+});
+discoverySocket.bind(8767, "127.0.0.1");
 
 // Exports for action modules to access
 module.exports = { dpClient, getCurrentState: () => currentState };
