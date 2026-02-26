@@ -32,6 +32,7 @@ struct AppState {
     float monitorVolume = 1.0f;
     bool masterBypassed = false;
     bool muted = false;
+    bool outputMuted = false;
     bool inputMuted = false;
     std::string currentPreset;
     float latencyMs = 0.0f;

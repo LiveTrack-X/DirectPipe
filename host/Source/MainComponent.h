@@ -91,15 +91,21 @@ private:
     void updateSlotButtonStates();
     void setSlotButtonsEnabled(bool enabled);
 
-    // Master mute button
+    // Mute indicators (clickable) + panic mute button
+    juce::TextButton outputMuteBtn_{"OUT"};
+    juce::TextButton monitorMuteBtn_{"MON"};
     juce::TextButton panicMuteBtn_{"PANIC MUTE"};
+
+    // Cached mute states (avoid redundant repaints)
+    bool cachedOutputMuted_ = false;
+    bool cachedMonitorMuted_ = false;
 
     // Status bar labels
     juce::Label latencyLabel_;
     juce::Label cpuLabel_;
     juce::Label formatLabel_;
     juce::Label portableLabel_;
-    juce::Label creditLabel_;
+    juce::HyperlinkButton creditLink_{"", juce::URL("https://github.com/LiveTrack-X/DirectPipe")};
 
     // Section labels (left column only)
     juce::Label inputSectionLabel_;
@@ -110,8 +116,9 @@ private:
     int dirtyCooldown_ = 0;   // ticks remaining before save (30Hz)
     std::atomic<bool> loadingSlot_ { false };
 
-    // Panic mute: remember pre-mute monitor state for restore on unmute
+    // Panic mute: remember pre-mute state for restore on unmute
     bool preMuteMonitorEnabled_ = false;
+    bool preMuteOutputMuted_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

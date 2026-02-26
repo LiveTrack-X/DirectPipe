@@ -113,12 +113,14 @@ Supports both Keypad and SD+ Encoder (dial). / 키패드와 SD+ 인코더 (다�
 - **Volume Down mode** — Press to decrease volume by step size / 볼륨 Down 모드
 
 **Encoder (Stream Deck+):**
-- **Dial rotate** — Adjust volume +/-5% per tick / 다이얼 회전 -> 볼륨 +-5% 조절
+- **Dial rotate** — Adjust volume +/-5% per tick with optimistic local update (instant LCD feedback) / 다이얼 회전 -> 볼륨 +-5% 조절 (즉시 LCD 반영)
+- **Dial press** — Mute toggle for target / 다이얼 누름 -> 뮤트 토글
+- **LCD display** — Shows target name, volume value, progress indicator. Shows "MUTED" when muted. / LCD에 대상 이름, 볼륨, 프로그레스 바 표시. 뮤트 시 "MUTED".
 
-**Display:** Target name + volume % or "MUTED". Volume Up/Down shows +/- indicator. / 대상 이름 + 볼륨 % 또는 "MUTED".
+**Display:** Target name + volume % (or x multiplier for input) or "MUTED". Input gain shows x0.00-x2.00 format. / 대상 이름 + 볼륨 % (입력은 x배수) 또는 "MUTED".
 
 **Settings (Property Inspector):**
-- `target` — `"monitor"` (default) or `"input"` / 대상 선택
+- `target` — `"monitor"` (default), `"output"`, or `"input"` / 대상 선택
 - `mode` — `"mute"` (default), `"volume_up"`, or `"volume_down"` / 버튼 동작 모드
 - `step` — 1-25% (default: 5%) / 볼륨 스텝 크기
 
@@ -166,9 +168,11 @@ Built with `@elgato/streamdeck` SDK v2.0.1. Uses `SingletonAction` class-based a
 - Pending message queue (cap 50) during disconnection / 연결 해제 중 대기 큐 (최대 50)
 - Auto-reconnect with exponential backoff / 지수 백오프 자동 재연결
 
-### Async Settings
+### Settings Cache / 설정 캐시
 
-All actions use `await action.getSettings()` (async) for thread-safe settings access. / 모든 액션에서 `await action.getSettings()`으로 스레드 안전 설정 접근.
+All actions cache settings from `onWillAppear`/`onDidReceiveSettings` events. The 30 Hz state broadcast loop uses cached settings (synchronous) instead of `await action.getSettings()` (async IPC) for instant display updates with zero event loop congestion.
+
+모든 액션은 `onWillAppear`/`onDidReceiveSettings` 이벤트에서 설정을 캐시한다. 30 Hz 상태 브로드캐스트 루프는 비동기 IPC 대신 캐시된 설정을 동기적으로 사용하여 이벤트 루프 정체 없이 즉시 디스플레이를 갱신한다.
 
 ---
 

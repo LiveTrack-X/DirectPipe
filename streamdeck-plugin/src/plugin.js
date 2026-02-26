@@ -48,6 +48,15 @@ function alertAll() {
 }
 
 dpClient.on("state", (state) => {
+    // Preserve locally-overridden volume values (dial/key optimistic updates)
+    if (state?.data?.volumes && currentState?.data?.volumes) {
+        const overrides = volumeAction.getLocalOverrides();
+        for (const [target, until] of overrides) {
+            if (Date.now() < until) {
+                state.data.volumes[target] = currentState.data.volumes[target];
+            }
+        }
+    }
     currentState = state;
     broadcastState(state);
 });

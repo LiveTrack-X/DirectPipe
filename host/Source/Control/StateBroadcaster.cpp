@@ -81,6 +81,7 @@ std::string StateBroadcaster::toJSON() const
     // Status
     data->setProperty("master_bypassed", state.masterBypassed);
     data->setProperty("muted", state.muted);
+    data->setProperty("output_muted", state.outputMuted);
     data->setProperty("input_muted", state.inputMuted);
     data->setProperty("preset", juce::String(state.currentPreset));
     data->setProperty("latency_ms", static_cast<double>(state.latencyMs));

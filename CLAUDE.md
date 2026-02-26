@@ -15,7 +15,7 @@ Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체�
 7. Out-of-process VST scanner (crash-safe)
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.2.0
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.3.0
 - WASAPI Shared Mode + ASIO (Steinberg ASIO SDK)
 - VST2 SDK 2.4 + VST3
 - WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)

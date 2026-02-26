@@ -49,6 +49,7 @@ External Control:
 - **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록 — Close minimizes to tray, double-click to restore, Start with Windows toggle
 - **탭 설정** — Audio / Monitor / Controls (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 — Mute all outputs instantly, restores previous state on unmute
+- **Output / Monitor Mute** — 개별 출력 뮤트 (UI 인디케이터 + 클릭 제어) — Independent output/monitor mute with clickable status indicators
 - **다크 테마** — Dark theme (custom JUCE LookAndFeel)
 
 ## 빌드 / Build

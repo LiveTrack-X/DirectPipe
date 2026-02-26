@@ -8,7 +8,8 @@
 <body>
     <sdpi-item label="Target">
         <sdpi-select setting="target">
-            <option value="monitor">Monitor Output</option>
+            <option value="monitor">Monitor</option>
+            <option value="output">Main Output</option>
             <option value="input">Input Gain</option>
         </sdpi-select>
     </sdpi-item>
@@ -25,9 +26,10 @@
     <sdpi-item label="">
         <details>
             <summary>Help</summary>
-            <p><b>Mute Toggle</b>: Press to mute/unmute.<br>
-               <b>Volume Up/Down</b>: Press to adjust by step size (%).<br>
-               <b>Dial (SD+)</b>: Rotate to adjust volume.</p>
+            <p><b>Monitor</b>: Headphone output (0-100%). Mute toggles monitor on/off.<br>
+               <b>Main Output</b>: Main audio device. Mute silences output only, monitor keeps working.<br>
+               <b>Input</b>: Microphone gain multiplier (x0.00-x2.00). No mute — use Panic Mute for full silence.<br>
+               <b>Dial (SD+)</b>: Rotate to adjust, press to mute toggle.</p>
         </details>
     </sdpi-item>
 </body>

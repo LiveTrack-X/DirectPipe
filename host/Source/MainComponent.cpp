@@ -146,6 +146,27 @@ MainComponent::MainComponent()
         addAndMakeVisible(*btn);
     }
 
+    // ── Mute Status Indicators (clickable) ──
+    auto setupMuteBtn = [this](juce::TextButton& btn) {
+        btn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
+        btn.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        addAndMakeVisible(btn);
+    };
+    setupMuteBtn(outputMuteBtn_);
+    setupMuteBtn(monitorMuteBtn_);
+    outputMuteBtn_.onClick = [this] {
+        bool outputMuted = !audioEngine_.isOutputMuted();
+        audioEngine_.setOutputMuted(outputMuted);
+        markSettingsDirty();
+    };
+    monitorMuteBtn_.onClick = [this] {
+        auto& router = audioEngine_.getOutputRouter();
+        bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
+        router.setEnabled(OutputRouter::Output::Monitor, enabled);
+        audioEngine_.setMonitorEnabled(enabled);
+        markSettingsDirty();
+    };
+
     // ── Panic Mute Button ──
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
     panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
@@ -156,9 +177,12 @@ MainComponent::MainComponent()
         auto& router = audioEngine_.getOutputRouter();
         if (muted) {
             preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
+            preMuteOutputMuted_ = audioEngine_.isOutputMuted();
+            audioEngine_.setOutputMuted(false);
             router.setEnabled(OutputRouter::Output::Monitor, false);
             audioEngine_.setMonitorEnabled(false);
         } else {
+            audioEngine_.setOutputMuted(preMuteOutputMuted_);
             router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
             audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
         }
@@ -197,12 +221,12 @@ MainComponent::MainComponent()
         portableLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6C63FF));
     }
 
-    // Credit label
-    creditLabel_.setFont(juce::Font(11.0f));
-    creditLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF666680));
-    creditLabel_.setText("Created by LiveTrack", juce::dontSendNotification);
-    creditLabel_.setJustificationType(juce::Justification::centredRight);
-    addAndMakeVisible(creditLabel_);
+    // Credit + version hyperlink (click opens GitHub)
+    creditLink_.setButtonText("v" + juce::String(ProjectInfo::versionString) + " | Created by LiveTrack");
+    creditLink_.setFont(juce::Font(11.0f), false);
+    creditLink_.setColour(juce::HyperlinkButton::textColourId, juce::Colour(0xFF666680));
+    creditLink_.setJustificationType(juce::Justification::centredRight);
+    addAndMakeVisible(creditLink_);
 
     // Start UI update timer (30 Hz)
     startTimerHz(30);
@@ -272,17 +296,51 @@ void MainComponent::handleAction(const ActionEvent& event)
             break;
         }
 
+        case Action::ToggleMute: {
+            if (event.stringParam == "monitor") {
+                // Monitor mute = toggle monitor enable (headphones only)
+                auto& router = audioEngine_.getOutputRouter();
+                bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
+                router.setEnabled(OutputRouter::Output::Monitor, enabled);
+                audioEngine_.setMonitorEnabled(enabled);
+            } else if (event.stringParam == "output") {
+                // Output mute = silence main output only, monitor keeps working
+                bool outputMuted = !audioEngine_.isOutputMuted();
+                audioEngine_.setOutputMuted(outputMuted);
+            } else {
+                // Input / global mute (same as panic)
+                bool muted = !audioEngine_.isMuted();
+                audioEngine_.setMuted(muted);
+                auto& router = audioEngine_.getOutputRouter();
+                if (muted) {
+                    preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
+                    router.setEnabled(OutputRouter::Output::Monitor, false);
+                    audioEngine_.setMonitorEnabled(false);
+                } else {
+                    router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
+                    audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
+                }
+                panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
+                panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                                        juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+            }
+            markSettingsDirty();
+            break;
+        }
+
         case Action::PanicMute:
-        case Action::ToggleMute:
         case Action::InputMuteToggle: {
             bool muted = !audioEngine_.isMuted();
             audioEngine_.setMuted(muted);
             auto& router = audioEngine_.getOutputRouter();
             if (muted) {
                 preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
+                preMuteOutputMuted_ = audioEngine_.isOutputMuted();
+                audioEngine_.setOutputMuted(false);
                 router.setEnabled(OutputRouter::Output::Monitor, false);
                 audioEngine_.setMonitorEnabled(false);
             } else {
+                audioEngine_.setOutputMuted(preMuteOutputMuted_);
                 router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
                 audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
             }
@@ -302,6 +360,10 @@ void MainComponent::handleAction(const ActionEvent& event)
         case Action::SetVolume:
             if (event.stringParam == "monitor")
                 audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
+            else if (event.stringParam == "input") {
+                audioEngine_.setInputGain(event.floatParam);
+                inputGainSlider_.setValue(event.floatParam, juce::dontSendNotification);
+            }
             markSettingsDirty();
             break;
 
@@ -324,6 +386,27 @@ void MainComponent::handleAction(const ActionEvent& event)
             loadingSlot_ = true;
             setSlotButtonsEnabled(false);
             presetManager_->loadSlotAsync(slot, [this](bool /*ok*/) {
+                loadingSlot_ = false;
+                setSlotButtonsEnabled(true);
+                refreshUI();
+                updateSlotButtonStates();
+                markSettingsDirty();
+            });
+            break;
+        }
+
+        case Action::NextPreset:
+        case Action::PreviousPreset: {
+            if (loadingSlot_) break;
+            int currentSlot = presetManager_->getActiveSlot();
+            if (currentSlot >= 0)
+                presetManager_->saveSlot(currentSlot);
+            int nextSlot = (event.action == Action::NextPreset)
+                ? (currentSlot + 1) % kNumPresetSlots
+                : (currentSlot - 1 + kNumPresetSlots) % kNumPresetSlots;
+            loadingSlot_ = true;
+            setSlotButtonsEnabled(false);
+            presetManager_->loadSlotAsync(nextSlot, [this](bool /*ok*/) {
                 loadingSlot_ = false;
                 setSlotButtonsEnabled(true);
                 refreshUI();
@@ -466,8 +549,16 @@ void MainComponent::resized()
     }
 
     int vstH = bounds.getBottom() - y - 40;
-    pluginChainEditor_->setBounds(cx, y, cw, vstH - 34);
-    y += vstH - 30;
+    pluginChainEditor_->setBounds(cx, y, cw, vstH - 60);
+    y += vstH - 56;
+
+    // Mute status indicators above panic mute button (clickable)
+    {
+        int indicatorW = (cw - 4) / 2;
+        outputMuteBtn_.setBounds(cx, y, indicatorW, 20);
+        monitorMuteBtn_.setBounds(cx + indicatorW + 4, y, indicatorW, 20);
+        y += 24;
+    }
 
     panicMuteBtn_.setBounds(cx, y, cw, 28);
 
@@ -486,12 +577,12 @@ void MainComponent::resized()
 
     // ── Status Bar ──
     int statusY = getHeight() - kStatusBarHeight + 3;
-    int sw = getWidth();
-    latencyLabel_.setBounds(5, statusY, sw * 3 / 10, 24);
-    cpuLabel_.setBounds(sw * 3 / 10, statusY, sw / 6, 24);
-    formatLabel_.setBounds(sw * 3 / 10 + sw / 6, statusY, sw * 3 / 10, 24);
-    portableLabel_.setBounds(sw * 3 / 10 + sw / 6 + sw * 3 / 10, statusY, sw / 6, 24);
-    creditLabel_.setBounds(getWidth() - 160, statusY, 150, 24);
+    int infoW = getWidth() / 2;   // left half for latency/cpu/format
+    latencyLabel_.setBounds(5, statusY, infoW * 4 / 10, 24);
+    cpuLabel_.setBounds(5 + infoW * 4 / 10, statusY, infoW * 2 / 10, 24);
+    formatLabel_.setBounds(5 + infoW * 6 / 10, statusY, infoW * 4 / 10, 24);
+    portableLabel_.setBounds(5 + infoW, statusY, 100, 24);
+    creditLink_.setBounds(getWidth() - 300, statusY, 290, 24);
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────────────
@@ -503,6 +594,23 @@ void MainComponent::timerCallback()
     bool muted = audioEngine_.isMuted();
     inputMeter_->setLevel(audioEngine_.getInputLevel());
     outputMeter_->setLevel(muted ? 0.0f : audioEngine_.getOutputLevel());
+
+    // Update mute indicator colours (cached to avoid redundant repaints)
+    {
+        bool outMuted = audioEngine_.isOutputMuted() || muted;
+        if (outMuted != cachedOutputMuted_) {
+            cachedOutputMuted_ = outMuted;
+            outputMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                outMuted ? juce::Colour(0xFFE05050) : juce::Colour(0xFF4CAF50));
+        }
+
+        bool monMuted = !audioEngine_.getOutputRouter().isEnabled(OutputRouter::Output::Monitor) || muted;
+        if (monMuted != cachedMonitorMuted_) {
+            cachedMonitorMuted_ = monMuted;
+            monitorMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                monMuted ? juce::Colour(0xFFE05050) : juce::Colour(0xFF4CAF50));
+        }
+    }
 
     // Main output latency: input buffer + processing + output buffer
     double mainLatency = monitor.getTotalLatencyVirtualMicMs();
@@ -547,6 +655,7 @@ void MainComponent::timerCallback()
         s.inputGain = audioEngine_.getInputGain();
         s.monitorVolume = router.getVolume(OutputRouter::Output::Monitor);
         s.muted = muted;
+        s.outputMuted = audioEngine_.isOutputMuted();
         s.inputMuted = muted;
         s.masterBypassed = false;
         s.latencyMs = static_cast<float>(mainLatency);
