@@ -19,6 +19,12 @@ class PanicMuteAction extends SingletonAction {
         if (state) this._updateDisplay(ev.action, state);
     }
 
+    onDidReceiveSettings(ev) {
+        const { getCurrentState } = require("../plugin");
+        const state = getCurrentState();
+        if (state) this._updateDisplay(ev.action, state);
+    }
+
     updateAllFromState(state) {
         for (const action of this.actions) {
             this._updateDisplay(action, state);

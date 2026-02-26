@@ -11,6 +11,8 @@ class BypassToggleAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.bypass-toggle";
     /** @type {Map<string, number>} keyDown timestamps per action id */
     _keyDownTimes = new Map();
+    /** @type {Map<string, object>} action.id -> cached settings */
+    _settingsCache = new Map();
 
     onKeyDown(ev) {
         this._keyDownTimes.set(ev.action.id, Date.now());
@@ -32,25 +34,27 @@ class BypassToggleAction extends SingletonAction {
     }
 
     onWillAppear(ev) {
+        this._settingsCache.set(ev.action.id, ev.payload.settings ?? {});
         const { getCurrentState } = require("../plugin");
         const state = getCurrentState();
-        if (state) this._updateDisplay(ev.action, ev.payload.settings, state);
+        if (state) this._updateDisplay(ev.action, ev.payload.settings ?? {}, state);
     }
 
     onDidReceiveSettings(ev) {
+        this._settingsCache.set(ev.action.id, ev.payload.settings ?? {});
         const { getCurrentState } = require("../plugin");
         const state = getCurrentState();
-        if (state) this._updateDisplay(ev.action, ev.payload.settings, state);
+        if (state) this._updateDisplay(ev.action, ev.payload.settings ?? {}, state);
     }
 
     onWillDisappear(ev) {
         this._keyDownTimes.delete(ev.action.id);
+        this._settingsCache.delete(ev.action.id);
     }
 
-    /** Broadcast from plugin.js on DirectPipe state change */
-    async updateAllFromState(state) {
+    updateAllFromState(state) {
         for (const action of this.actions) {
-            const settings = await action.getSettings().catch(() => ({}));
+            const settings = this._settingsCache.get(action.id) ?? {};
             this._updateDisplay(action, settings, state);
         }
     }

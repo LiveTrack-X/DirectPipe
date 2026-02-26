@@ -21,8 +21,11 @@ static juce::String actionToDisplayName(const ActionEvent& event)
         case Action::PluginBypass:    return "Plugin " + juce::String(event.intParam + 1) + " Bypass";
         case Action::MasterBypass:    return "Master Bypass";
         case Action::SetVolume:       return "Set Volume";
-        case Action::ToggleMute:      return "Toggle Mute";
-        case Action::LoadPreset:      return "Load Preset " + juce::String(event.intParam);
+        case Action::ToggleMute:
+            if (event.stringParam == "output")  return "Output Mute Toggle";
+            if (event.stringParam == "monitor") return "Monitor Mute Toggle";
+            return "Toggle Mute";
+        case Action::LoadPreset:      return "Load Preset";
         case Action::PanicMute:       return "Panic Mute";
         case Action::InputGainAdjust: return "Input Gain Adjust";
         case Action::NextPreset:      return "Next Preset";
@@ -32,6 +35,7 @@ static juce::String actionToDisplayName(const ActionEvent& event)
             char label = 'A' + static_cast<char>(event.intParam);
             return "Preset Slot " + juce::String::charToString(label);
         }
+        case Action::MonitorToggle:   return "Monitor Toggle";
         default:                      return "Unknown";
     }
 }
@@ -276,20 +280,12 @@ juce::PopupMenu HotkeyTab::buildActionMenu()
     // Mute / Panic
     menu.addItem(201, "Panic Mute");
     menu.addItem(202, "Input Mute Toggle");
+    menu.addItem(203, "Output Mute Toggle");
+    menu.addItem(204, "Monitor Toggle");
 
     // Input gain
     menu.addItem(300, "Input Gain +1 dB");
     menu.addItem(301, "Input Gain -1 dB");
-
-    // Presets
-    juce::PopupMenu presetMenu;
-    for (int i = 1; i <= 8; ++i) {
-        presetMenu.addItem(400 + i, "Load Preset " + juce::String(i));
-    }
-    menu.addSubMenu("Load Preset", presetMenu);
-
-    menu.addItem(500, "Next Preset");
-    menu.addItem(501, "Previous Preset");
 
     // Preset slots (A..E)
     juce::PopupMenu slotMenu;
@@ -298,6 +294,9 @@ juce::PopupMenu HotkeyTab::buildActionMenu()
         slotMenu.addItem(600 + i, "Preset Slot " + juce::String::charToString(label));
     }
     menu.addSubMenu("Preset Slot", slotMenu);
+
+    menu.addItem(500, "Next Preset");
+    menu.addItem(501, "Previous Preset");
 
     return menu;
 }
@@ -322,14 +321,14 @@ void HotkeyTab::onAddClicked()
                 action = {Action::PanicMute, 0, 0.0f, "Panic Mute"};
             } else if (result == 202) {
                 action = {Action::InputMuteToggle, 0, 0.0f, "Input Mute Toggle"};
+            } else if (result == 203) {
+                action = {Action::ToggleMute, 0, 0.0f, "output"};
+            } else if (result == 204) {
+                action = {Action::MonitorToggle, 0, 0.0f, "Monitor Toggle"};
             } else if (result == 300) {
                 action = {Action::InputGainAdjust, 0, 1.0f, "Input Gain +1 dB"};
             } else if (result == 301) {
                 action = {Action::InputGainAdjust, 0, -1.0f, "Input Gain -1 dB"};
-            } else if (result >= 400 && result < 500) {
-                int presetIdx = result - 400;
-                action = {Action::LoadPreset, presetIdx, 0.0f,
-                          "Load Preset " + std::to_string(presetIdx)};
             } else if (result == 500) {
                 action = {Action::NextPreset, 0, 0.0f, "Next Preset"};
             } else if (result == 501) {

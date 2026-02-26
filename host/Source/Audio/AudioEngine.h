@@ -88,6 +88,9 @@ public:
     void setMuted(bool muted) { muted_.store(muted, std::memory_order_relaxed); }
     bool isMuted() const { return muted_.load(std::memory_order_relaxed); }
 
+    void setOutputMuted(bool muted) { outputMuted_.store(muted, std::memory_order_relaxed); }
+    bool isOutputMuted() const { return outputMuted_.load(std::memory_order_relaxed); }
+
     float getInputLevel() const { return inputLevel_.load(std::memory_order_relaxed); }
     float getOutputLevel() const { return outputLevel_.load(std::memory_order_relaxed); }
 
@@ -130,6 +133,7 @@ private:
     std::atomic<float> inputGain_{1.0f};
     std::atomic<int> channelMode_{2};
     std::atomic<bool> muted_{false};
+    std::atomic<bool> outputMuted_{false};
 
     double currentSampleRate_ = 48000.0;
     int currentBufferSize_ = 480;

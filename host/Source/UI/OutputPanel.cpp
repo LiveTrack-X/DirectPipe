@@ -106,6 +106,11 @@ void OutputPanel::timerCallback()
     if (monitorEnableButton_.getToggleState() != monEnabled)
         monitorEnableButton_.setToggleState(monEnabled, juce::dontSendNotification);
 
+    // Sync volume slider with actual router value (external control may change it)
+    double actualVol = static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0;
+    if (std::abs(monitorVolumeSlider_.getValue() - actualVol) > 0.5)
+        monitorVolumeSlider_.setValue(actualVol, juce::dontSendNotification);
+
     // Show monitor device status
     auto& monOut = engine_.getMonitorOutput();
     auto status = monOut.getStatus();

@@ -79,8 +79,8 @@ State updates are pushed automatically on every state change. / 상태 변경 �
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `target` | string | No | `"input"` or `"monitor"` (default: `"monitor"`) |
-| `value` | number | Yes | 0.0 (silent) to 1.0 (full) |
+| `target` | string | No | `"input"`, `"output"`, or `"monitor"` (default: `"monitor"`) |
+| `value` | number | Yes | 0.0-1.0 for output/monitor, 0.0-2.0 for input gain multiplier |
 
 ---
 
@@ -92,7 +92,7 @@ State updates are pushed automatically on every state change. / 상태 변경 �
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `target` | string | No | `"input"`, `"monitor"`, or `""` (all) |
+| `target` | string | No | `"input"`, `"output"`, `"monitor"`, or `""` (all) |
 
 ---
 
@@ -186,7 +186,7 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
       { "name": "ReaComp", "bypass": false, "loaded": true },
       { "name": "ReaEQ", "bypass": true, "loaded": true }
     ],
-    "volumes": { "input": 1.0, "monitor": 0.6 },
+    "volumes": { "input": 1.0, "output": 0.8, "monitor": 0.6 },
     "master_bypassed": false,
     "muted": false,
     "input_muted": false,
@@ -209,10 +209,12 @@ Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프
 | `plugins[].name` | string | Plugin name / 플러그인 이름 |
 | `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
 | `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
-| `volumes.input` | number | Input gain (0.0-1.0) / 입력 게인 |
+| `volumes.input` | number | Input gain multiplier (0.0-2.0) / 입력 게인 배수 |
+| `volumes.output` | number | Main output volume (0.0-1.0) / 메인 출력 볼륨 |
 | `volumes.monitor` | number | Monitor volume (0.0-1.0) / 모니터 볼륨 |
 | `master_bypassed` | boolean | Entire chain bypassed / 전체 체인 Bypass |
 | `muted` | boolean | Panic mute active / 패닉 뮤트 상태 |
+| `output_muted` | boolean | Main output muted / 메인 출력 뮤트 |
 | `input_muted` | boolean | Input muted / 입력 뮤트 |
 | `active_slot` | number | Active preset slot (0-4 = A-E) / 활성 슬롯 |
 | `preset` | string | Current preset name / 현재 프리셋 이름 |

@@ -9,6 +9,8 @@ const SLOT_LABELS = ["A", "B", "C", "D", "E"];
 
 class PresetSwitchAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.preset-switch";
+    /** @type {Map<string, object>} action.id -> cached settings */
+    _settingsCache = new Map();
 
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
@@ -24,20 +26,26 @@ class PresetSwitchAction extends SingletonAction {
     }
 
     onWillAppear(ev) {
+        this._settingsCache.set(ev.action.id, ev.payload.settings ?? {});
         const { getCurrentState } = require("../plugin");
         const state = getCurrentState();
-        if (state) this._updateDisplay(ev.action, ev.payload.settings, state);
+        if (state) this._updateDisplay(ev.action, ev.payload.settings ?? {}, state);
     }
 
     onDidReceiveSettings(ev) {
+        this._settingsCache.set(ev.action.id, ev.payload.settings ?? {});
         const { getCurrentState } = require("../plugin");
         const state = getCurrentState();
-        if (state) this._updateDisplay(ev.action, ev.payload.settings, state);
+        if (state) this._updateDisplay(ev.action, ev.payload.settings ?? {}, state);
     }
 
-    async updateAllFromState(state) {
+    onWillDisappear(ev) {
+        this._settingsCache.delete(ev.action.id);
+    }
+
+    updateAllFromState(state) {
         for (const action of this.actions) {
-            const settings = await action.getSettings().catch(() => ({}));
+            const settings = this._settingsCache.get(action.id) ?? {};
             this._updateDisplay(action, settings, state);
         }
     }

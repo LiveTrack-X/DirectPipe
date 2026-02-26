@@ -404,6 +404,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     const int chMode = channelMode_.load(std::memory_order_relaxed);
     const float gain = inputGain_.load(std::memory_order_relaxed);
     const bool muted = muted_.load(std::memory_order_relaxed);
+    const bool outputMuted = outputMuted_.load(std::memory_order_relaxed);
 
     // 1. Copy input data into the pre-allocated work buffer (no heap allocation)
     auto& buffer = workBuffer_;
@@ -457,8 +458,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     }
 
     // 4. Copy processed audio to main output (AudioSettings Output device)
+    //    Silence if panic muted OR output muted
+    const bool mainSilence = muted || outputMuted;
     for (int ch = 0; ch < numOutputChannels; ++ch) {
-        if (ch < buffer.getNumChannels() && !muted) {
+        if (ch < buffer.getNumChannels() && !mainSilence) {
             std::memcpy(outputChannelData[ch], buffer.getReadPointer(ch),
                         sizeof(float) * static_cast<size_t>(numSamples));
         } else {
