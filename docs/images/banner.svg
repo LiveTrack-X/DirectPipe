@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1200" height="300" rx="16" fill="url(#bg)"/>
+
+  <!-- Microphone icon (scaled from app icon) -->
+  <g transform="translate(80, 45) scale(0.41)">
+    <rect x="216" y="100" width="80" height="160" rx="40" fill="none" stroke="#ffffff" stroke-width="20"/>
+    <path d="M176 240 Q176 320 256 320 Q336 320 336 240" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+    <line x1="256" y1="320" x2="256" y2="370" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+    <polyline points="220,390 256,370 292,390" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="180" y1="430" x2="180" y2="410" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+    <line x1="216" y1="440" x2="216" y2="400" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+    <line x1="256" y1="445" x2="256" y2="395" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+    <line x1="296" y1="440" x2="296" y2="400" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+    <line x1="332" y1="430" x2="332" y2="410" stroke="#4fc3f7" stroke-width="14" stroke-linecap="round"/>
+  </g>
+
+  <!-- App name -->
+  <text x="320" y="135" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="72" fill="#ffffff" letter-spacing="-1">DirectPipe</text>
+
+  <!-- Tagline -->
+  <text x="322" y="180" font-family="Segoe UI, Arial, sans-serif" font-weight="400" font-size="24" fill="#8899aa">Real-time VST2/VST3 Host for Windows</text>
+
+  <!-- Feature tags -->
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="500">
+    <!-- WASAPI + ASIO -->
+    <rect x="322" y="205" width="130" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="387" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">WASAPI + ASIO</text>
+    <!-- VST2/VST3 -->
+    <rect x="464" y="205" width="100" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="514" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">VST2 / VST3</text>
+    <!-- Stream Deck -->
+    <rect x="576" y="205" width="110" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="631" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">Stream Deck</text>
+    <!-- MIDI -->
+    <rect x="698" y="205" width="60" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="728" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">MIDI</text>
+    <!-- HTTP API -->
+    <rect x="770" y="205" width="90" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="815" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">HTTP API</text>
+  </g>
+
+  <!-- Decorative waveform on right side -->
+  <g opacity="0.15">
+    <line x1="1000" y1="150" x2="1000" y2="100" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1020" y1="150" x2="1020" y2="70" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1040" y1="150" x2="1040" y2="40" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1060" y1="150" x2="1060" y2="60" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1080" y1="150" x2="1080" y2="90" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1100" y1="150" x2="1100" y2="110" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1120" y1="150" x2="1120" y2="80" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1140" y1="150" x2="1140" y2="50" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1160" y1="150" x2="1160" y2="95" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1000" y1="150" x2="1000" y2="200" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1020" y1="150" x2="1020" y2="230" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1040" y1="150" x2="1040" y2="260" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1060" y1="150" x2="1060" y2="240" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1080" y1="150" x2="1080" y2="210" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1100" y1="150" x2="1100" y2="190" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1120" y1="150" x2="1120" y2="220" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1140" y1="150" x2="1140" y2="250" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+    <line x1="1160" y1="150" x2="1160" y2="205" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>
