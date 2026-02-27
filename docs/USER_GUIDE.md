@@ -133,13 +133,13 @@ DirectPipe can be controlled while minimized or in the background. / 최소화 �
 
 | Shortcut / 단축키 | Action / 동작 |
 |-------------------|---------------|
-| Ctrl+Shift+1~9 | Toggle Plugin 1-9 Bypass / 플러그인 1-9 Bypass 토글 |
+| Ctrl+Shift+1–9 | Toggle Plugin 1-9 Bypass / 플러그인 1-9 Bypass 토글 |
 | Ctrl+Shift+0 | Master Bypass / 마스터 Bypass |
 | Ctrl+Shift+M | Panic Mute / 패닉 뮤트 |
 | Ctrl+Shift+N | Input Mute Toggle / 입력 뮤트 토글 |
 | Ctrl+Shift+O | Output Mute Toggle / 출력 뮤트 토글 |
 | Ctrl+Shift+H | Monitor Toggle / 모니터 토글 |
-| Ctrl+Shift+F1~F5 | Preset Slot A-E / 프리셋 슬롯 A-E |
+| Ctrl+Shift+F1–F5 | Preset Slot A-E / 프리셋 슬롯 A-E |
 
 Shortcuts are customizable in Controls > Hotkey tab. / Controls > Hotkey 탭에서 단축키 변경 가능.
 
