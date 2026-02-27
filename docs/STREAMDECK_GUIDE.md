@@ -34,7 +34,7 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 
 ### Option B: Manual Install / 수동 설치
 
-1. Copy `streamdeck-plugin/` folder to the Stream Deck plugins directory: / 플러그인 디렉토리에 복사:
+1. Copy `com.directpipe.directpipe.sdPlugin/` folder to the Stream Deck plugins directory: / 플러그인 디렉토리에 복사:
    ```
    %APPDATA%\Elgato\StreamDeck\Plugins\com.directpipe.directpipe.sdPlugin
    ```
@@ -192,8 +192,8 @@ All actions cache settings from `onWillAppear`/`onDidReceiveSettings` events. Th
 ## File Structure / 파일 구조
 
 ```
-streamdeck-plugin/
-  manifest.json               SDK v2 plugin manifest / 플러그인 매니페스트
+com.directpipe.directpipe.sdPlugin/
+  manifest.json               SDK v3 plugin manifest / 플러그인 매니페스트
   package.json                Node.js package (@elgato/streamdeck, ws)
   .sdignore                   Files excluded from packaging / 패키징 제외 파일
   src/
@@ -243,7 +243,7 @@ dist/
 ### Build Icons / 아이콘 빌드
 
 ```bash
-cd streamdeck-plugin
+cd com.directpipe.directpipe.sdPlugin
 npm run icons    # SVG -> PNG generation (requires sharp)
 ```
 
@@ -251,7 +251,7 @@ npm run icons    # SVG -> PNG generation (requires sharp)
 
 ```bash
 npm install -g @elgato/cli
-cd streamdeck-plugin
+cd com.directpipe.directpipe.sdPlugin
 streamdeck validate .          # Validate manifest and structure
 streamdeck pack . --output ../dist/ --force  # Create .streamDeckPlugin
 ```

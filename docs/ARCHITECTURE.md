@@ -96,7 +96,7 @@ Shared static library for IPC. No JUCE dependency. / IPC용 정적 라이브러�
 - **Protocol** — Shared header structure for IPC communication. / IPC 헤더 구조체.
 - **Constants** — Buffer names, sizes, sample rates. / 상수.
 
-### 3. Stream Deck Plugin (`streamdeck-plugin/`) / 스트림 덱 플러그인
+### 3. Stream Deck Plugin (`com.directpipe.directpipe.sdPlugin/`) / 스트림 덱 플러그인
 
 Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDK v2). / Stream Deck 플러그인 (SDK v2).
 
