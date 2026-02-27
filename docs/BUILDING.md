@@ -80,7 +80,7 @@ dist/com.directpipe.directpipe.streamDeckPlugin          Stream Deck plugin pack
 ## Stream Deck Plugin Build / Stream Deck 플러그인 빌드
 
 ```bash
-cd streamdeck-plugin
+cd com.directpipe.directpipe.sdPlugin
 npm install                  # Install dependencies / 의존성 설치
 npm run icons                # Generate PNG icons from SVG / SVG -> PNG 생성
 streamdeck validate .        # Validate structure / 구조 검증

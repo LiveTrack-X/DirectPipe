@@ -1,5 +1,4 @@
 node_modules/
-src/
 icons-src/
 scripts/
 *.log
@@ -8,3 +7,6 @@ package-lock.json
 rollup.config.mjs
 package.json
 .sdignore
+src/actions/
+src/plugin.js
+src/websocket-client.js

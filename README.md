@@ -138,7 +138,7 @@ host/                     JUCE host application (main)
                             PluginChainEditor, PluginScanner, PresetManager,
                             LevelMeter, DirectPipeLookAndFeel
 core/                     IPC library (RingBuffer, SharedMemory, Protocol)
-streamdeck-plugin/        Stream Deck plugin (Node.js, SDK v2)
+com.directpipe.directpipe.sdPlugin/  Stream Deck plugin (Node.js, SDK v3)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)
 thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)

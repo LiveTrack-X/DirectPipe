@@ -79,7 +79,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
   - `Control/` -> ActionDispatcher, ControlManager, ControlMapping, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster
   - `IPC/` -> SharedMemWriter
   - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel, PluginChainEditor, PluginScanner, PresetManager, LevelMeter, DirectPipeLookAndFeel, SettingsExporter
-- `streamdeck-plugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v2)
+- `com.directpipe.directpipe.sdPlugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v3)
 - `tests/` -> Google Test (core tests + host tests)
 - `dist/` -> Packaged .streamDeckPlugin + marketplace assets
 
