@@ -249,9 +249,14 @@ npm run icons    # SVG -> PNG generation (requires sharp)
 
 ### Package Plugin / 플러그인 패키징
 
+**Important:** Must use official `streamdeck pack` CLI. Custom ZIP will be rejected by Maker Console (SDKVersion 3 requires CLI packaging).
+
+**중요:** 반드시 공식 `streamdeck pack` CLI로 패키징해야 함. 커스텀 ZIP은 Maker Console에서 거부됨 (SDKVersion 3은 CLI 패키징 필수).
+
 ```bash
 npm install -g @elgato/cli
 cd com.directpipe.directpipe.sdPlugin
+npm run build                  # Rollup bundle src/ -> bin/plugin.js
 streamdeck validate .          # Validate manifest and structure
 streamdeck pack . --output ../dist/ --force  # Create .streamDeckPlugin
 ```

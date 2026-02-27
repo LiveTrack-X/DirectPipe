@@ -20,7 +20,7 @@ Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체�
 - VST2 SDK 2.4 + VST3
 - WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)
 - HTTP: JUCE StreamingSocket manual parsing
-- Stream Deck: @elgato/streamdeck SDK v2.0.1, Node.js 20
+- Stream Deck: @elgato/streamdeck SDK v2.0.1, SDKVersion 3, Node.js 20
 
 ## Build
 ```bash
@@ -58,7 +58,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **Plugin scanner search/sort**: Real-time text filter + column sorting (name/vendor/format) in PluginScanner dialog.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow (select plugin → select parameter → MIDI Learn). Creates `Continuous` MidiBinding with `SetPluginParameter` action.
 - **System tray tooltip**: Shows current state (preset, plugins, volumes) on hover. Atomic dirty-flag for cross-thread safety.
-- **Stream Deck plugin**: SDK v2, 6 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic/Recording), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50).
+- **Stream Deck plugin**: SDKVersion 3, 6 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic/Recording), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50). Packaged via official `streamdeck pack` CLI.
 
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.
@@ -91,7 +91,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: SDK v2.0.1, 6 actions (Bypass/Volume/Preset/Monitor/Panic/Recording), 3 PI HTMLs, SVG-based icons + @2x, packaged .streamDeckPlugin
+- Stream Deck: SDKVersion 3 (SDK v2.0.1 npm), 6 actions (Bypass/Volume/Preset/Monitor/Panic/Recording), 3 PI HTMLs, SVG-based icons + @2x, packaged via `streamdeck pack` CLI
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), onSettingsChanged callbacks
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
 - Credit label "Created by LiveTrack" at bottom-right of main UI. Shows "NEW vX.Y.Z" in orange when a newer GitHub release exists.
