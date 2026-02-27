@@ -83,11 +83,12 @@ dist/com.directpipe.directpipe.streamDeckPlugin          Stream Deck plugin pack
 cd com.directpipe.directpipe.sdPlugin
 npm install                  # Install dependencies / 의존성 설치
 npm run icons                # Generate PNG icons from SVG / SVG -> PNG 생성
+npm run build                # Rollup bundle src/ -> bin/plugin.js
 streamdeck validate .        # Validate structure / 구조 검증
-streamdeck pack . --output ../dist/ --force  # Package / 패키징
+streamdeck pack . --output ../dist/ --force  # Package (official CLI required) / 패키징 (공식 CLI 필수)
 ```
 
-Requires `@elgato/cli` (`npm install -g @elgato/cli`). / `@elgato/cli` 필요.
+Requires `@elgato/cli` (`npm install -g @elgato/cli`). Custom ZIP packaging will NOT work for Maker Console — must use official CLI. / `@elgato/cli` 필요. 커스텀 ZIP은 Maker Console에서 거부됨 — 반드시 공식 CLI 사용.
 
 ## Test Suite / 테스트
 
