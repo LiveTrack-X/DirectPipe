@@ -172,7 +172,7 @@ No settings required. / 설정 불필요.
 
 ### SDK Version
 
-Built with `@elgato/streamdeck` SDK v2.0.1. Uses `SingletonAction` class-based architecture. / SDK v2.0.1 기반. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket Client (`websocket-client.js`)
 
