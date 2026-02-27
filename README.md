@@ -75,7 +75,7 @@ External Control:
 
 ### 외부 제어 / External Control
 
-- **키보드 단축키** — Ctrl+Shift+1~9 plugin bypass, Ctrl+Shift+M panic mute, Ctrl+Shift+F1~F5 preset slots
+- **키보드 단축키** — Ctrl+Shift+1–9 plugin bypass, Ctrl+Shift+M panic mute, Ctrl+Shift+F1–F5 preset slots
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
@@ -370,7 +370,7 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 
 | | WASAPI Shared | ASIO |
 |---|---|---|
-| 지연 / Latency | 보통 / Normal (5~15ms) | 매우 낮음 / Very low (2~5ms) |
+| 지연 / Latency | 보통 / Normal (5–15ms) | 매우 낮음 / Very low (2–5ms) |
 | 설치 / Setup | 별도 설치 불필요 / No extra install | 오디오 인터페이스 드라이버 필요 / Requires audio interface driver |
 | 다른 앱 동시 사용 / Shared access | 가능 (비독점) / Yes (non-exclusive) | 장치에 따라 다름 / Depends on device |
 | 추천 대상 / Best for | 일반 사용자 / Most users | 전문가, 실시간 모니터링 / Pros, real-time monitoring |
@@ -395,8 +395,8 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 <details>
 <summary><b>프리셋은 어떻게 사용하나요? / How to use presets?</b></summary>
 
-**Quick Preset Slots (A~E):**
-- 현재 플러그인 체인과 설정을 **A~E** 슬롯에 저장할 수 있습니다
+**Quick Preset Slots (A–E):**
+- 현재 플러그인 체인과 설정을 **A–E** 슬롯에 저장할 수 있습니다
 - **Save Preset** → 현재 상태를 선택된 슬롯에 저장
 - 슬롯 버튼 **(A/B/C/D/E)** 클릭 → 즉시 전환
 - 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩**
@@ -471,7 +471,7 @@ Yes! Multiple control methods are available:
 
 | 방법 / Method | 예시 / Example | 적합한 용도 / Best for |
 |---|---|---|
-| **키보드 단축키 / Hotkeys** | Ctrl+Shift+1~9 bypass, F1~F5 프리셋 / presets | 가장 간편 / Simplest |
+| **키보드 단축키 / Hotkeys** | Ctrl+Shift+1–9 bypass, F1–F5 프리셋 / presets | 가장 간편 / Simplest |
 | **MIDI CC** | 미디 컨트롤러 노브/버튼 / MIDI controller knobs | 실시간 볼륨 조절 / Real-time volume |
 | **HTTP API** | `curl http://localhost:8766/api/...` | 스크립트 자동화 / Script automation |
 | **WebSocket** | ws://localhost:8765 | 커스텀 앱/봇 연동 / Custom app integration |
