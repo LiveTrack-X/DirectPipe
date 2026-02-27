@@ -22,6 +22,25 @@ Real-time VST2/VST3 host for Windows. Processes microphone input through a VST p
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
 </p>
 
+---
+
+<table>
+<tr>
+<td width="80" align="center">
+  <a href="https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3">
+    <img src="https://img.shields.io/badge/🎛-000?style=for-the-badge" width="50" alt="">
+  </a>
+</td>
+<td>
+  <b>🎛 Stream Deck Plugin — <a href="https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3">Elgato Marketplace에서 무료 설치</a></b><br>
+  Bypass · Volume (SD+ 다이얼) · Preset · Monitor · Panic Mute · Recording — 6가지 액션으로 Stream Deck에서 DirectPipe를 완전 제어<br>
+  <sub>Free on Elgato Marketplace — 6 actions to fully control DirectPipe from your Stream Deck</sub>
+</td>
+</tr>
+</table>
+
+---
+
 ## 동작 원리 / How It Works
 
 ```
