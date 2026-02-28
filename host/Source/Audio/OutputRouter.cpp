@@ -53,6 +53,7 @@ void OutputRouter::shutdown()
 
 void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSamples)
 {
+    numSamples = juce::jmin(numSamples, scaledBuffer_.getNumSamples());
     const int numChannels = juce::jmin(buffer.getNumChannels(), 2);
 
     // Main output goes directly through the audio callback's outputChannelData.

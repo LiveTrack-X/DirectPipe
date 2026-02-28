@@ -79,7 +79,7 @@ public:
 private:
     void serverThread();
     void handleClient(std::unique_ptr<juce::StreamingSocket> client);
-    std::string processRequest(const std::string& method, const std::string& path);
+    std::pair<int, std::string> processRequest(const std::string& method, const std::string& path);
     std::string makeResponse(int statusCode, const std::string& body);
 
     ActionDispatcher& dispatcher_;

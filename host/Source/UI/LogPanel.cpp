@@ -48,25 +48,25 @@ void DirectPipeLogger::logMessage(const juce::String& message)
     auto ts = now.toString(false, true, true, true);  // HH:MM:SS.mmm
     auto line = "[" + ts + "] " + message;
 
-    int w = writeIdx_.load(std::memory_order_relaxed);
-    int r = readIdx_.load(std::memory_order_acquire);
+    uint32_t w = writeIdx_.load(std::memory_order_relaxed);
+    uint32_t r = readIdx_.load(std::memory_order_acquire);
 
     // Drop if buffer full
-    if (w - r >= kMaxPending)
+    if (w - r >= static_cast<uint32_t>(kMaxPending))
         return;
 
-    pendingBuf_[w % kMaxPending] = line;
+    pendingBuf_[w % static_cast<uint32_t>(kMaxPending)] = line;
     writeIdx_.store(w + 1, std::memory_order_release);
 }
 
 int DirectPipeLogger::drain(juce::StringArray& out)
 {
-    int r = readIdx_.load(std::memory_order_relaxed);
-    int w = writeIdx_.load(std::memory_order_acquire);
+    uint32_t r = readIdx_.load(std::memory_order_relaxed);
+    uint32_t w = writeIdx_.load(std::memory_order_acquire);
     int count = 0;
 
-    while (r < w) {
-        out.add(pendingBuf_[r % kMaxPending]);
+    while (r != w) {
+        out.add(pendingBuf_[r % static_cast<uint32_t>(kMaxPending)]);
         ++r;
         ++count;
     }

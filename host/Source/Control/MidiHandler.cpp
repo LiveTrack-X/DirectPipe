@@ -160,42 +160,45 @@ void MidiHandler::handleIncomingMidiMessage(
 void MidiHandler::processCC(int cc, int channel, int value,
                               const juce::String& deviceName)
 {
-    std::lock_guard<std::mutex> lock(bindingsMutex_);
-    for (auto& binding : bindings_) {
-        if (binding.cc != cc) continue;
-        if (binding.channel != 0 && binding.channel != channel) continue;
-        if (!binding.deviceName.empty() &&
-            binding.deviceName != deviceName.toStdString()) continue;
+    std::vector<ActionEvent> pendingActions;
 
-        switch (binding.type) {
-            case MidiMappingType::Toggle: {
-                bool newState = (value >= 64);
-                if (newState != binding.lastState) {
-                    binding.lastState = newState;
-                    if (newState) {
-                        dispatcher_.dispatch(binding.action);
+    {
+        std::lock_guard<std::mutex> lock(bindingsMutex_);
+        for (auto& binding : bindings_) {
+            if (binding.cc != cc) continue;
+            if (binding.channel != 0 && binding.channel != channel) continue;
+            if (!binding.deviceName.empty() &&
+                binding.deviceName != deviceName.toStdString()) continue;
+
+            switch (binding.type) {
+                case MidiMappingType::Toggle: {
+                    bool newState = (value >= 64);
+                    if (newState != binding.lastState) {
+                        binding.lastState = newState;
+                        if (newState)
+                            pendingActions.push_back(binding.action);
                     }
+                    break;
                 }
-                break;
-            }
-            case MidiMappingType::Momentary: {
-                bool pressed = (value >= 64);
-                if (pressed) {
-                    dispatcher_.dispatch(binding.action);
+                case MidiMappingType::Momentary: {
+                    if (value >= 64)
+                        pendingActions.push_back(binding.action);
+                    break;
                 }
-                break;
+                case MidiMappingType::Continuous: {
+                    auto event = binding.action;
+                    event.floatParam = static_cast<float>(value) / 127.0f;
+                    pendingActions.push_back(event);
+                    break;
+                }
+                default:
+                    break;
             }
-            case MidiMappingType::Continuous: {
-                float normalized = static_cast<float>(value) / 127.0f;
-                auto event = binding.action;
-                event.floatParam = normalized;
-                dispatcher_.dispatch(event);
-                break;
-            }
-            default:
-                break;
         }
     }
+
+    for (auto& event : pendingActions)
+        dispatcher_.dispatch(event);
 }
 
 void MidiHandler::processNote(int note, int channel, bool noteOn,
@@ -203,16 +206,23 @@ void MidiHandler::processNote(int note, int channel, bool noteOn,
 {
     if (!noteOn) return;
 
-    std::lock_guard<std::mutex> lock(bindingsMutex_);
-    for (auto& binding : bindings_) {
-        if (binding.type != MidiMappingType::NoteOnOff) continue;
-        if (binding.note != note) continue;
-        if (binding.channel != 0 && binding.channel != channel) continue;
-        if (!binding.deviceName.empty() &&
-            binding.deviceName != deviceName.toStdString()) continue;
+    std::vector<ActionEvent> pendingActions;
 
-        dispatcher_.dispatch(binding.action);
+    {
+        std::lock_guard<std::mutex> lock(bindingsMutex_);
+        for (auto& binding : bindings_) {
+            if (binding.type != MidiMappingType::NoteOnOff) continue;
+            if (binding.note != note) continue;
+            if (binding.channel != 0 && binding.channel != channel) continue;
+            if (!binding.deviceName.empty() &&
+                binding.deviceName != deviceName.toStdString()) continue;
+
+            pendingActions.push_back(binding.action);
+        }
     }
+
+    for (auto& event : pendingActions)
+        dispatcher_.dispatch(event);
 }
 
 void MidiHandler::loadFromMappings(const std::vector<MidiMapping>& mappings)

@@ -132,19 +132,23 @@ bool WebSocketServer::performHandshake(juce::StreamingSocket* client)
 
     std::string request(buf, static_cast<size_t>(totalRead));
 
+    // Case-insensitive header matching (RFC 7230)
+    std::string requestLower = request;
+    std::transform(requestLower.begin(), requestLower.end(), requestLower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
     // Check for WebSocket upgrade request
-    if (request.find("Upgrade: websocket") == std::string::npos &&
-        request.find("Upgrade: WebSocket") == std::string::npos)
+    if (requestLower.find("upgrade: websocket") == std::string::npos)
         return false;
 
-    // Extract Sec-WebSocket-Key
+    // Extract Sec-WebSocket-Key (case-insensitive header name)
     std::string key;
-    auto keyPos = request.find("Sec-WebSocket-Key: ");
+    auto keyPos = requestLower.find("sec-websocket-key: ");
     if (keyPos == std::string::npos) return false;
-    keyPos += 19; // length of "Sec-WebSocket-Key: "
-    auto keyEnd = request.find("\r\n", keyPos);
+    keyPos += 19; // length of "sec-websocket-key: "
+    auto keyEnd = request.find("\r\n", keyPos);  // same offset works on original
     if (keyEnd == std::string::npos) return false;
-    key = request.substr(keyPos, keyEnd - keyPos);
+    key = request.substr(keyPos, keyEnd - keyPos);  // extract from original (value is case-sensitive)
 
     // Trim whitespace
     while (!key.empty() && (key.back() == ' ' || key.back() == '\t'))

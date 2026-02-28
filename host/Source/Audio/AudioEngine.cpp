@@ -552,19 +552,19 @@ void AudioEngine::audioDeviceError(const juce::String& errorMessage)
 
 void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)
 {
-    int w = notifWriteIdx_.load(std::memory_order_relaxed);
-    int r = notifReadIdx_.load(std::memory_order_acquire);
-    if (w - r >= kNotifQueueSize) return;  // Queue full, drop (RT-safe)
-    notifQueue_[w % kNotifQueueSize] = {msg, level};
+    uint32_t w = notifWriteIdx_.load(std::memory_order_relaxed);
+    uint32_t r = notifReadIdx_.load(std::memory_order_acquire);
+    if (w - r >= static_cast<uint32_t>(kNotifQueueSize)) return;  // Queue full, drop (RT-safe)
+    notifQueue_[w % static_cast<uint32_t>(kNotifQueueSize)] = {msg, level};
     notifWriteIdx_.store(w + 1, std::memory_order_release);
 }
 
 bool AudioEngine::popNotification(PendingNotification& out)
 {
-    int r = notifReadIdx_.load(std::memory_order_relaxed);
-    int w = notifWriteIdx_.load(std::memory_order_acquire);
+    uint32_t r = notifReadIdx_.load(std::memory_order_relaxed);
+    uint32_t w = notifWriteIdx_.load(std::memory_order_acquire);
     if (r == w) return false;
-    out = notifQueue_[r % kNotifQueueSize];
+    out = notifQueue_[r % static_cast<uint32_t>(kNotifQueueSize)];
     notifReadIdx_.store(r + 1, std::memory_order_relaxed);
     return true;
 }

@@ -329,7 +329,7 @@ private:
             // "DirectPipe [Slot A] | CPU 2.3% | 5.2ms | MUTED"
             juce::String tooltip = "DirectPipe";
 
-            char slotChar = 'A' + static_cast<char>(snapshot.activeSlot);
+            char slotChar = 'A' + static_cast<char>(juce::jlimit(0, 4, snapshot.activeSlot));
             tooltip += " [Slot " + juce::String::charToString(slotChar) + "]";
             tooltip += " | CPU " + juce::String(snapshot.cpuPercent, 1) + "%";
             tooltip += " | " + juce::String(snapshot.latencyMs, 1) + "ms";

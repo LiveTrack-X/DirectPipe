@@ -323,12 +323,14 @@ void PluginScannerComponent::run()
             }
         }
 
-        juce::MessageManager::callAsync([this, attempt, badPluginCount] {
+        auto safeThis = juce::Component::SafePointer<PluginScannerComponent>(this);
+        juce::MessageManager::callAsync([safeThis, attempt, badPluginCount] {
+            if (!safeThis) return;
             juce::String msg = "Scanning (attempt " + juce::String(attempt) + ")";
             if (badPluginCount > 0)
                 msg += " - skipped " + juce::String(badPluginCount) + " bad plugin(s)";
             msg += "...";
-            progressLabel_.setText(msg, juce::dontSendNotification);
+            safeThis->progressLabel_.setText(msg, juce::dontSendNotification);
         });
 
         juce::ChildProcess scanner;
@@ -353,10 +355,12 @@ void PluginScannerComponent::run()
         if (outputFile.existsAsFile()) {
             auto xmlStr = outputFile.loadFileAsString();
             if (xmlStr.isNotEmpty()) {
-                juce::MessageManager::callAsync([this, xmlStr] {
+                auto safeThis2 = juce::Component::SafePointer<PluginScannerComponent>(this);
+                juce::MessageManager::callAsync([safeThis2, xmlStr] {
+                    if (!safeThis2) return;
                     if (auto parsed = juce::parseXML(xmlStr))
-                        scannedPlugins_.recreateFromXml(*parsed);
-                    refreshPluginList();
+                        safeThis2->scannedPlugins_.recreateFromXml(*parsed);
+                    safeThis2->refreshPluginList();
                 });
             }
         }
@@ -381,30 +385,33 @@ void PluginScannerComponent::run()
     if (outputFile.existsAsFile())
         finalXml = outputFile.loadFileAsString();
 
-    juce::MessageManager::callAsync([this, finalXml, lastRunCrashed, startFailed, badPluginCount] {
+    auto safeThis3 = juce::Component::SafePointer<PluginScannerComponent>(this);
+    juce::MessageManager::callAsync([safeThis3, finalXml, lastRunCrashed, startFailed, badPluginCount] {
+        if (!safeThis3) return;
+        auto* self = safeThis3.getComponent();
         if (finalXml.isNotEmpty()) {
             if (auto parsed = juce::parseXML(finalXml))
-                scannedPlugins_.recreateFromXml(*parsed);
+                self->scannedPlugins_.recreateFromXml(*parsed);
         }
-        refreshPluginList();
-        saveCachedPlugins();
+        self->refreshPluginList();
+        self->saveCachedPlugins();
 
-        scanning_ = false;
-        scanButton_.setEnabled(true);
-        scanButton_.setButtonText("Scan for Plugins");
-        addDirButton_.setEnabled(true);
-        removeDirButton_.setEnabled(true);
-        clearCacheButton_.setEnabled(true);
+        self->scanning_ = false;
+        self->scanButton_.setEnabled(true);
+        self->scanButton_.setButtonText("Scan for Plugins");
+        self->addDirButton_.setEnabled(true);
+        self->removeDirButton_.setEnabled(true);
+        self->clearCacheButton_.setEnabled(true);
 
         juce::String statusText;
         if (startFailed) {
             statusText = "Error: Failed to launch scanner process";
         } else {
-            statusText = "Found " + juce::String(scannedPlugins_.getNumTypes()) + " plugins";
+            statusText = "Found " + juce::String(self->scannedPlugins_.getNumTypes()) + " plugins";
             if (badPluginCount > 0)
                 statusText += " (skipped " + juce::String(badPluginCount) + " bad plugin(s))";
         }
-        progressLabel_.setText(statusText, juce::dontSendNotification);
+        self->progressLabel_.setText(statusText, juce::dontSendNotification);
     });
 }
 

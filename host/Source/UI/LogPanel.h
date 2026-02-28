@@ -48,8 +48,8 @@ public:
 private:
     static constexpr int kMaxPending = 512;
     juce::String pendingBuf_[kMaxPending];
-    std::atomic<int> writeIdx_{0};
-    std::atomic<int> readIdx_{0};
+    std::atomic<uint32_t> writeIdx_{0};
+    std::atomic<uint32_t> readIdx_{0};
     juce::Logger* previousLogger_ = nullptr;
 };
 

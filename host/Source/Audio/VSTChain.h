@@ -230,7 +230,7 @@ private:
 
     double currentSampleRate_ = 48000.0;
     int currentBlockSize_ = 128;
-    bool prepared_ = false;
+    std::atomic<bool> prepared_{false};
 
     // Pre-allocated MidiBuffer for processBlock (avoids per-callback allocation)
     juce::MidiBuffer emptyMidi_;
@@ -239,7 +239,7 @@ private:
     std::atomic<bool> chainDirty_{false};
 
     // Mutex for chain modification (NOT used in processBlock)
-    juce::CriticalSection chainLock_;
+    mutable juce::CriticalSection chainLock_;
 
     // Async loading state
     std::atomic<bool> asyncLoading_{false};

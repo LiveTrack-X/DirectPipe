@@ -287,8 +287,9 @@ void PluginChainEditor::addPluginFromDescription(const juce::PluginDescription& 
 {
     // Use callAsync to prevent scanner dialog freeze during plugin loading
     auto descCopy = desc;
-    juce::MessageManager::callAsync([this, descCopy] {
-        vstChain_.addPlugin(descCopy);
+    auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
+    juce::MessageManager::callAsync([safeThis, descCopy] {
+        if (safeThis) safeThis->vstChain_.addPlugin(descCopy);
     });
 }
 

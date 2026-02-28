@@ -177,8 +177,8 @@ private:
     // Lock-free notification queue (device thread -> message thread)
     static constexpr int kNotifQueueSize = 8;
     PendingNotification notifQueue_[kNotifQueueSize];
-    std::atomic<int> notifWriteIdx_{0};
-    std::atomic<int> notifReadIdx_{0};
+    std::atomic<uint32_t> notifWriteIdx_{0};
+    std::atomic<uint32_t> notifReadIdx_{0};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioEngine)
 };

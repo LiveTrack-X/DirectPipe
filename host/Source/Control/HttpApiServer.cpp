@@ -116,17 +116,17 @@ void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
         }
     }
 
-    std::string responseBody = processRequest(method, path);
-    std::string response = makeResponse(200, responseBody);
+    auto [statusCode, responseBody] = processRequest(method, path);
+    std::string response = makeResponse(statusCode, responseBody);
 
     client->write(response.c_str(), static_cast<int>(response.size()));
     client->close();
 }
 
-std::string HttpApiServer::processRequest(const std::string& method, const std::string& path)
+std::pair<int, std::string> HttpApiServer::processRequest(const std::string& method, const std::string& path)
 {
     if (method != "GET") {
-        return R"({"error": "Method not allowed"})";
+        return {405, R"({"error": "Method not allowed"})"};
     }
 
     // Parse path segments
@@ -146,41 +146,41 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
 
     // Route: /api/...
     if (segments.empty() || segments[0] != "api") {
-        return R"({"error": "Not found"})";
+        return {404, R"({"error": "Not found"})"};
     }
 
     if (segments.size() < 2) {
-        return R"({"info": "DirectPipe API v1.0"})";
+        return {200, R"({"info": "DirectPipe API v1.0"})"};
     }
 
     const auto& action = segments[1];
 
     // GET /api/status
     if (action == "status") {
-        return broadcaster_.toJSON();
+        return {200, broadcaster_.toJSON()};
     }
 
     // GET /api/bypass/:index/toggle
     if (action == "bypass" && segments.size() >= 3) {
         if (segments[2] == "master") {
             dispatcher_.masterBypass();
-            return R"({"ok": true, "action": "master_bypass"})";
+            return {200, R"({"ok": true, "action": "master_bypass"})"};
         }
         int index = std::atoi(segments[2].c_str());
         dispatcher_.pluginBypass(index);
-        return R"({"ok": true, "action": "plugin_bypass", "index": )" +
-               std::to_string(index) + "}";
+        return {200, R"({"ok": true, "action": "plugin_bypass", "index": )" +
+               std::to_string(index) + "}"};
     }
 
     // GET /api/mute/toggle or /api/mute/panic
     if (action == "mute" && segments.size() >= 3) {
         if (segments[2] == "panic") {
             dispatcher_.panicMute();
-            return R"({"ok": true, "action": "panic_mute"})";
+            return {200, R"({"ok": true, "action": "panic_mute"})"};
         }
         if (segments[2] == "toggle") {
             dispatcher_.toggleMute("all");
-            return R"({"ok": true, "action": "toggle_mute"})";
+            return {200, R"({"ok": true, "action": "toggle_mute"})"};
         }
     }
 
@@ -188,27 +188,27 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
     if (action == "volume" && segments.size() >= 4) {
         float value = static_cast<float>(std::atof(segments[3].c_str()));
         if (value < 0.0f || value > 1.0f)
-            return R"({"error": "value must be 0.0-1.0"})";
+            return {400, R"({"error": "value must be 0.0-1.0"})"};
         dispatcher_.setVolume(segments[2], value);
-        return R"({"ok": true, "action": "set_volume", "target": ")" +
+        return {200, R"({"ok": true, "action": "set_volume", "target": ")" +
                segments[2] + R"(", "value": )" +
-               std::to_string(value) + "}";
+               std::to_string(value) + "}"};
     }
 
     // GET /api/preset/:index
     if (action == "preset" && segments.size() >= 3) {
         int index = std::atoi(segments[2].c_str());
         dispatcher_.loadPreset(index);
-        return R"({"ok": true, "action": "load_preset", "index": )" +
-               std::to_string(index) + "}";
+        return {200, R"({"ok": true, "action": "load_preset", "index": )" +
+               std::to_string(index) + "}"};
     }
 
     // GET /api/gain/:delta
     if (action == "gain" && segments.size() >= 3) {
         float delta = static_cast<float>(std::atof(segments[2].c_str()));
         dispatcher_.inputGainAdjust(delta);
-        return R"({"ok": true, "action": "input_gain", "delta": )" +
-               std::to_string(delta) + "}";
+        return {200, R"({"ok": true, "action": "input_gain", "delta": )" +
+               std::to_string(delta) + "}"};
     }
 
     // GET /api/slot/:index
@@ -218,14 +218,14 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
         event.action = Action::SwitchPresetSlot;
         event.intParam = index;
         dispatcher_.dispatch(event);
-        return R"({"ok": true, "action": "switch_preset_slot", "slot": )" +
-               std::to_string(index) + "}";
+        return {200, R"({"ok": true, "action": "switch_preset_slot", "slot": )" +
+               std::to_string(index) + "}"};
     }
 
     // GET /api/input-mute/toggle
     if (action == "input-mute" && segments.size() >= 3 && segments[2] == "toggle") {
         dispatcher_.inputMuteToggle();
-        return R"({"ok": true, "action": "input_mute_toggle"})";
+        return {200, R"({"ok": true, "action": "input_mute_toggle"})"};
     }
 
     // GET /api/monitor/toggle
@@ -233,7 +233,7 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
         ActionEvent event;
         event.action = Action::MonitorToggle;
         dispatcher_.dispatch(event);
-        return R"({"ok": true, "action": "monitor_toggle"})";
+        return {200, R"({"ok": true, "action": "monitor_toggle"})"};
     }
 
     // GET /api/plugin/:pluginIndex/param/:paramIndex/:value
@@ -242,14 +242,14 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
         int paramIndex = std::atoi(segments[4].c_str());
         float value = static_cast<float>(std::atof(segments[5].c_str()));
         if (value < 0.0f || value > 1.0f)
-            return R"({"error": "value must be 0.0-1.0"})";
+            return {400, R"({"error": "value must be 0.0-1.0"})"};
         ActionEvent event;
         event.action = Action::SetPluginParameter;
         event.intParam = pluginIndex;
         event.intParam2 = paramIndex;
         event.floatParam = value;
         dispatcher_.dispatch(event);
-        return R"({"ok": true, "action": "set_plugin_parameter"})";
+        return {200, R"({"ok": true, "action": "set_plugin_parameter"})"};
     }
 
     // GET /api/recording/toggle
@@ -257,15 +257,22 @@ std::string HttpApiServer::processRequest(const std::string& method, const std::
         ActionEvent event;
         event.action = Action::RecordingToggle;
         dispatcher_.dispatch(event);
-        return R"({"ok": true, "action": "recording_toggle"})";
+        return {200, R"({"ok": true, "action": "recording_toggle"})"};
     }
 
-    return R"({"error": "Unknown endpoint"})";
+    return {404, R"({"error": "Unknown endpoint"})"};
 }
 
 std::string HttpApiServer::makeResponse(int statusCode, const std::string& body)
 {
-    std::string status = (statusCode == 200) ? "200 OK" : "400 Bad Request";
+    std::string status;
+    switch (statusCode) {
+        case 200: status = "200 OK"; break;
+        case 400: status = "400 Bad Request"; break;
+        case 404: status = "404 Not Found"; break;
+        case 405: status = "405 Method Not Allowed"; break;
+        default:  status = std::to_string(statusCode) + " Error"; break;
+    }
     return "HTTP/1.1 " + status + "\r\n"
            "Content-Type: application/json\r\n"
            "Access-Control-Allow-Origin: *\r\n"

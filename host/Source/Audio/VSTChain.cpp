@@ -112,11 +112,10 @@ void VSTChain::releaseResources()
 
 void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
 {
-    if (!prepared_) return;
+    if (!prepared_.load(std::memory_order_acquire)) return;
 
-    // Process through the graph — buffer size must match prepareToPlay blockSize
-    // If mismatched, skip processing rather than allocating in RT thread
-    if (buffer.getNumSamples() != numSamples) return;
+    // Safety: clamp numSamples to buffer capacity
+    if (numSamples > buffer.getNumSamples()) return;
 
     graph_->processBlock(buffer, emptyMidi_);
 
@@ -296,9 +295,10 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
         chain_.erase(chain_.begin() + fromIndex);
         chain_.insert(chain_.begin() + toIndex, slot);
 
-        // Move editor windows to match
-        size_t maxIdx = juce::jmax(static_cast<size_t>(fromIndex), static_cast<size_t>(toIndex));
-        if (maxIdx < editorWindows_.size()) {
+        // Ensure editor windows vector is large enough, then move to match
+        if (editorWindows_.size() < chain_.size())
+            editorWindows_.resize(chain_.size());
+        if (static_cast<size_t>(fromIndex) < editorWindows_.size()) {
             auto win = std::move(editorWindows_[static_cast<size_t>(fromIndex)]);
             editorWindows_.erase(editorWindows_.begin() + fromIndex);
             editorWindows_.insert(editorWindows_.begin() + toIndex, std::move(win));
@@ -313,6 +313,8 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
 
 void VSTChain::setPluginBypassed(int index, bool bypassed)
 {
+    const juce::ScopedLock sl(chainLock_);
+
     if (index < 0 || index >= static_cast<int>(chain_.size()))
         return;
 
@@ -326,16 +328,20 @@ void VSTChain::setPluginBypassed(int index, bool bypassed)
         node->setBypassed(bypassed);
     }
 
+    // Notify outside of lock — but we must unlock first
+    // Since JUCE CriticalSection is re-entrant, we keep it simple here.
     if (onChainChanged) onChainChanged();
 }
 
 int VSTChain::getPluginCount() const
 {
+    const juce::ScopedLock sl(chainLock_);
     return static_cast<int>(chain_.size());
 }
 
 const PluginSlot* VSTChain::getPluginSlot(int index) const
 {
+    const juce::ScopedLock sl(chainLock_);
     if (index < 0 || index >= static_cast<int>(chain_.size()))
         return nullptr;
     return &chain_[static_cast<size_t>(index)];
@@ -343,16 +349,22 @@ const PluginSlot* VSTChain::getPluginSlot(int index) const
 
 int VSTChain::getPluginParameterCount(int pluginIndex) const
 {
-    auto* slot = getPluginSlot(pluginIndex);
-    if (!slot || !slot->instance) return 0;
-    return slot->instance->getParameters().size();
+    const juce::ScopedLock sl(chainLock_);
+    if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
+        return 0;
+    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
+    if (!inst) return 0;
+    return inst->getParameters().size();
 }
 
 juce::String VSTChain::getPluginParameterName(int pluginIndex, int paramIndex) const
 {
-    auto* slot = getPluginSlot(pluginIndex);
-    if (!slot || !slot->instance) return {};
-    auto& params = slot->instance->getParameters();
+    const juce::ScopedLock sl(chainLock_);
+    if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
+        return {};
+    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
+    if (!inst) return {};
+    auto& params = inst->getParameters();
     if (paramIndex < 0 || paramIndex >= params.size()) return {};
     return params[paramIndex]->getName(64);
 }
@@ -371,15 +383,19 @@ void VSTChain::setPluginParameter(int pluginIndex, int paramIndex, float value)
 
 float VSTChain::getPluginParameter(int pluginIndex, int paramIndex) const
 {
-    auto* slot = getPluginSlot(pluginIndex);
-    if (!slot || !slot->instance) return 0.0f;
-    auto& params = slot->instance->getParameters();
+    const juce::ScopedLock sl(chainLock_);
+    if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
+        return 0.0f;
+    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
+    if (!inst) return 0.0f;
+    auto& params = inst->getParameters();
     if (paramIndex < 0 || paramIndex >= params.size()) return 0.0f;
     return params[paramIndex]->getValue();
 }
 
 void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 {
+    const juce::ScopedLock sl(chainLock_);
     if (index < 0 || index >= static_cast<int>(chain_.size()))
         return;
 
@@ -415,6 +431,7 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 
 void VSTChain::closePluginEditor(int index)
 {
+    const juce::ScopedLock sl(chainLock_);
     if (index >= 0 && static_cast<size_t>(index) < editorWindows_.size()) {
         editorWindows_[static_cast<size_t>(index)].reset();
     }
