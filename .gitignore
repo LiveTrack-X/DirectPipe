@@ -34,6 +34,7 @@ dist/스크린샷*
 dist/*.zip
 dist/*.streamDeckPlugin
 dist/RELEASE_NOTES.md
+dist/_tmp_release/
 
 # Claude Code internal files
 .claude/
