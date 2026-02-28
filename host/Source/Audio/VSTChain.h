@@ -245,6 +245,9 @@ private:
     std::atomic<bool> asyncLoading_{false};
     std::unique_ptr<std::thread> loadThread_;
 
+    // Lifetime guard for callAsync lambdas
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VSTChain)
 };
 

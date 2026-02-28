@@ -93,11 +93,13 @@ void MidiHandler::closeAllDevices()
 
 void MidiHandler::addBinding(const MidiBinding& binding)
 {
+    std::lock_guard<std::mutex> lock(bindingsMutex_);
     bindings_.push_back(binding);
 }
 
 void MidiHandler::removeBinding(int index)
 {
+    std::lock_guard<std::mutex> lock(bindingsMutex_);
     if (index >= 0 && static_cast<size_t>(index) < bindings_.size()) {
         bindings_.erase(bindings_.begin() + index);
     }
@@ -158,6 +160,7 @@ void MidiHandler::handleIncomingMidiMessage(
 void MidiHandler::processCC(int cc, int channel, int value,
                               const juce::String& deviceName)
 {
+    std::lock_guard<std::mutex> lock(bindingsMutex_);
     for (auto& binding : bindings_) {
         if (binding.cc != cc) continue;
         if (binding.channel != 0 && binding.channel != channel) continue;
@@ -200,6 +203,7 @@ void MidiHandler::processNote(int note, int channel, bool noteOn,
 {
     if (!noteOn) return;
 
+    std::lock_guard<std::mutex> lock(bindingsMutex_);
     for (auto& binding : bindings_) {
         if (binding.type != MidiMappingType::NoteOnOff) continue;
         if (binding.note != note) continue;
@@ -213,6 +217,7 @@ void MidiHandler::processNote(int note, int channel, bool noteOn,
 
 void MidiHandler::loadFromMappings(const std::vector<MidiMapping>& mappings)
 {
+    std::lock_guard<std::mutex> lock(bindingsMutex_);
     bindings_.clear();
     for (const auto& m : mappings) {
         MidiBinding b;
@@ -228,6 +233,7 @@ void MidiHandler::loadFromMappings(const std::vector<MidiMapping>& mappings)
 
 std::vector<MidiMapping> MidiHandler::exportMappings() const
 {
+    std::lock_guard<std::mutex> lock(bindingsMutex_);
     std::vector<MidiMapping> mappings;
     for (const auto& b : bindings_) {
         MidiMapping m;

@@ -57,6 +57,8 @@ VSTChain::VSTChain()
 
 VSTChain::~VSTChain()
 {
+    alive_->store(false);
+
     // Wait for any async loading to finish before destroying
     if (loadThread_ && loadThread_->joinable())
         loadThread_->join();
@@ -507,9 +509,11 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
     };
     auto result = std::make_shared<AsyncLoadResult>();
 
+    auto aliveFlag = alive_;
+
     loadThread_ = std::make_unique<std::thread>(
         [this, requests = std::move(requests), onComplete = std::move(onComplete),
-         sr, bs, result]()
+         sr, bs, result, aliveFlag]()
     {
         for (auto& req : requests) {
             juce::String error;
@@ -524,8 +528,9 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
         // Post to message thread to wire into graph
         juce::MessageManager::callAsync(
-            [this, result, onComplete]()
+            [this, result, onComplete, aliveFlag]()
         {
+            if (!aliveFlag->load()) return;
             const juce::ScopedLock sl(chainLock_);
 
             for (auto& entry : result->entries) {

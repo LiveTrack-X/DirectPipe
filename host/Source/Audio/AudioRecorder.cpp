@@ -63,6 +63,7 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
         24, {}, 0);
 
     if (!writer) {
+        delete outputStream;
         juce::Logger::writeToLog("AudioRecorder: Failed to create WAV writer");
         return false;
     }

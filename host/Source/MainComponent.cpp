@@ -113,8 +113,7 @@ MainComponent::MainComponent()
             auto file = fc.getResult();
             if (file != juce::File()) {
                 auto target = file.withFileExtension("dpbackup");
-                ControlMappingStore store;
-                auto json = SettingsExporter::exportAll(*presetManager_, store);
+                auto json = SettingsExporter::exportAll(*presetManager_, controlManager_->getConfigStore());
                 target.replaceWithText(json);
             }
         });
@@ -130,9 +129,8 @@ MainComponent::MainComponent()
             auto file = fc.getResult();
             if (file.existsAsFile()) {
                 auto json = file.loadFileAsString();
-                ControlMappingStore store;
                 loadingSlot_ = true;
-                SettingsExporter::importAll(json, *presetManager_, store);
+                SettingsExporter::importAll(json, *presetManager_, controlManager_->getConfigStore());
                 controlManager_->reloadConfig();
                 loadingSlot_ = false;
                 refreshUI();
@@ -948,7 +946,9 @@ void MainComponent::checkForUpdate()
     // Parse current version components
     auto currentVersion = juce::String(ProjectInfo::versionString);
 
-    updateCheckThread_ = std::thread([this, currentVersion]() {
+    auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+
+    updateCheckThread_ = std::thread([safeThis, currentVersion]() {
         juce::URL url("https://api.github.com/repos/LiveTrack-X/DirectPipe/releases/latest");
         auto response = url.readEntireTextStream(false);
         if (response.isEmpty()) return;
@@ -975,12 +975,14 @@ void MainComponent::checkForUpdate()
 
                 bool isNewer = std::tie(rMaj, rMin, rPat) > std::tie(cMaj, cMin, cPat);
                 if (isNewer) {
-                    juce::MessageManager::callAsync([this, tagName]() {
-                        creditLink_.setButtonText(
-                            "NEW v" + tagName + " | v" +
-                            juce::String(ProjectInfo::versionString) + " | Created by LiveTrack");
-                        creditLink_.setColour(juce::HyperlinkButton::textColourId,
-                                              juce::Colour(0xFFFFAA33)); // orange highlight
+                    juce::MessageManager::callAsync([safeThis, tagName]() {
+                        if (auto* self = safeThis.getComponent()) {
+                            self->creditLink_.setButtonText(
+                                "NEW v" + tagName + " | v" +
+                                juce::String(ProjectInfo::versionString) + " | Created by LiveTrack");
+                            self->creditLink_.setColour(juce::HyperlinkButton::textColourId,
+                                                  juce::Colour(0xFFFFAA33)); // orange highlight
+                        }
                     });
                 }
             }

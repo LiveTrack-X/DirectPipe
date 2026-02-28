@@ -28,6 +28,7 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -80,6 +81,7 @@ public:
 class ActionDispatcher {
 public:
     ActionDispatcher() = default;
+    ~ActionDispatcher() { alive_->store(false); }
 
     /**
      * @brief Dispatch an action from any thread.
@@ -117,6 +119,9 @@ private:
 
     std::vector<ActionListener*> listeners_;
     std::mutex listenerMutex_;
+
+    // Lifetime guard for callAsync lambdas
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
 } // namespace directpipe

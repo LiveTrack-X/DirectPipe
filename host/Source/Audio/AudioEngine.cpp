@@ -144,7 +144,9 @@ void AudioEngine::setBufferSize(int bufferSize)
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.bufferSize = bufferSize;
-    deviceManager_.setAudioDeviceSetup(setup, true);
+    auto error = deviceManager_.setAudioDeviceSetup(setup, true);
+    if (error.isNotEmpty())
+        juce::Logger::writeToLog("setBufferSize error: " + error);
 }
 
 void AudioEngine::setChannelMode(int channels)
@@ -159,7 +161,9 @@ void AudioEngine::setSampleRate(double sampleRate)
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.sampleRate = sampleRate;
-    deviceManager_.setAudioDeviceSetup(setup, true);
+    auto error = deviceManager_.setAudioDeviceSetup(setup, true);
+    if (error.isNotEmpty())
+        juce::Logger::writeToLog("setSampleRate error: " + error);
 }
 
 juce::StringArray AudioEngine::getAvailableInputDevices() const
@@ -549,6 +553,8 @@ void AudioEngine::audioDeviceError(const juce::String& errorMessage)
 void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)
 {
     int w = notifWriteIdx_.load(std::memory_order_relaxed);
+    int r = notifReadIdx_.load(std::memory_order_acquire);
+    if (w - r >= kNotifQueueSize) return;  // Queue full, drop (RT-safe)
     notifQueue_[w % kNotifQueueSize] = {msg, level};
     notifWriteIdx_.store(w + 1, std::memory_order_release);
 }

@@ -60,7 +60,11 @@ void StateBroadcaster::notifyListeners()
 {
     // Always deliver to listeners on the message thread.
     if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
-        juce::MessageManager::callAsync([this] { notifyOnMessageThread(); });
+        auto aliveFlag = alive_;
+        juce::MessageManager::callAsync([this, aliveFlag] {
+            if (!aliveFlag->load()) return;
+            notifyOnMessageThread();
+        });
         return;
     }
     notifyOnMessageThread();

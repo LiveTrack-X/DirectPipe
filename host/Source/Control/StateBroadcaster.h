@@ -30,6 +30,7 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -84,6 +85,7 @@ public:
 class StateBroadcaster {
 public:
     StateBroadcaster() = default;
+    ~StateBroadcaster() { alive_->store(false); }
 
     /**
      * @brief Get the current state snapshot.
@@ -120,6 +122,9 @@ private:
 
     std::mutex listenerMutex_;
     std::vector<StateListener*> listeners_;
+
+    // Lifetime guard for callAsync lambdas
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
 } // namespace directpipe

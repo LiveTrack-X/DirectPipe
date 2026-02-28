@@ -171,6 +171,8 @@ public:
     {
         writePos_.store(0, std::memory_order_relaxed);
         readPos_.store(0, std::memory_order_relaxed);
+        for (auto& ch : data_)
+            std::fill(ch.begin(), ch.end(), 0.0f);
     }
 
 private:

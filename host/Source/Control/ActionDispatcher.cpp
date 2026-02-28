@@ -33,7 +33,11 @@ void ActionDispatcher::dispatch(const ActionEvent& event)
     // If already on message thread: synchronous (no latency).
     // If on another thread (MIDI, WebSocket, HTTP, hotkey): callAsync.
     if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
-        juce::MessageManager::callAsync([this, event] { dispatchOnMessageThread(event); });
+        auto aliveFlag = alive_;
+        juce::MessageManager::callAsync([this, event, aliveFlag] {
+            if (!aliveFlag->load()) return;
+            dispatchOnMessageThread(event);
+        });
         return;
     }
     dispatchOnMessageThread(event);

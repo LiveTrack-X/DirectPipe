@@ -29,6 +29,7 @@
 #include "ActionDispatcher.h"
 #include "ControlMapping.h"
 
+#include <mutex>
 #include <vector>
 #include <functional>
 
@@ -107,7 +108,10 @@ public:
     /**
      * @brief Get all MIDI bindings.
      */
-    const std::vector<MidiBinding>& getBindings() const { return bindings_; }
+    std::vector<MidiBinding> getBindings() const {
+        std::lock_guard<std::mutex> lock(bindingsMutex_);
+        return bindings_;
+    }
 
     /**
      * @brief Start MIDI Learn mode.
@@ -159,6 +163,7 @@ private:
     void processNote(int note, int channel, bool noteOn, const juce::String& deviceName);
 
     ActionDispatcher& dispatcher_;
+    mutable std::mutex bindingsMutex_;
     std::vector<MidiBinding> bindings_;
 
     std::vector<std::unique_ptr<juce::MidiInput>> openInputs_;

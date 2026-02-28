@@ -89,6 +89,11 @@ public:
      */
     void applyConfig(const ControlConfig& config);
 
+    /**
+     * @brief Get the config store (for settings export/import).
+     */
+    ControlMappingStore& getConfigStore() { return configStore_; }
+
 private:
     ActionDispatcher& dispatcher_;
     StateBroadcaster& broadcaster_;
