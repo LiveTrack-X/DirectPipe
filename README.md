@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.5.0-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.6.0-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -33,8 +33,8 @@ Real-time VST2/VST3 host for Windows. Processes microphone input through a VST p
 </td>
 <td>
   <b>🎛 Stream Deck Plugin — <a href="https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3">Elgato Marketplace에서 무료 설치</a></b><br>
-  Bypass · Volume (SD+ 다이얼) · Preset · Monitor · Panic Mute · Recording — 6가지 액션으로 Stream Deck에서 DirectPipe를 완전 제어<br>
-  <sub>Free on Elgato Marketplace — 6 actions to fully control DirectPipe from your Stream Deck</sub>
+  Bypass · Volume (SD+ 다이얼) · Preset · Monitor · Panic Mute · Recording · IPC Toggle — 7가지 액션으로 Stream Deck에서 DirectPipe를 완전 제어<br>
+  <sub>Free on Elgato Marketplace — 7 actions to fully control DirectPipe from your Stream Deck</sub>
 </td>
 </tr>
 </table>
@@ -79,7 +79,21 @@ External Control:
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
-- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — Bypass Toggle, Panic Mute, Volume Control (SD+ 다이얼 지원), Preset Switch, Monitor Toggle, Recording Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
+- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — Bypass Toggle, Panic Mute, Volume Control (SD+ 다이얼 지원), Preset Switch, Monitor Toggle, Recording Toggle, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
+
+### IPC 출력 (Receiver VST) / IPC Output (Receiver VST)
+
+- **Receiver VST2 플러그인** — OBS 등 VST2를 지원하는 앱에서 DirectPipe 처리 오디오를 공유 메모리(IPC)로 직접 수신. **가상 오디오 케이블 없이** OBS에 마이크 오디오를 바로 보낼 수 있다 — Receive processed audio directly via shared memory (IPC) in OBS or other VST2 hosts. Route mic audio to OBS **without a virtual audio cable**
+- **IPC 토글** — 기본값은 OFF. Controls > General 탭의 체크박스, 단축키 Ctrl+Shift+I, MIDI, Stream Deck, HTTP API 등 다양한 방법으로 켜기/끄기 가능 — Off by default. Toggle via UI checkbox, hotkey Ctrl+Shift+I, MIDI, Stream Deck, or HTTP API
+- **버퍼 크기 설정** — Receiver VST 플러그인 GUI에서 5단계 버퍼 프리셋 선택. 낮을수록 지연이 적지만 언더런 위험 증가 — 5 buffer presets in Receiver VST GUI. Lower = less latency but higher underrun risk
+
+  | 프리셋 / Preset | 지연 / Latency | 용도 / Best for |
+  |---|---|---|
+  | Ultra Low | ~5ms | 최소 지연 필요 시 / Minimum latency |
+  | Low | ~10ms (기본) | 일반 사용 / General use (default) |
+  | Medium | ~21ms | 안정적 / Stable |
+  | High | ~42ms | CPU 여유 적을 때 / Low CPU headroom |
+  | Safe | ~85ms | 최대 안정성 / Maximum stability |
 
 ### 녹음 / Recording
 
@@ -104,7 +118,7 @@ External Control:
 
 - **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록. 트레이 툴팁에 현재 상태 표시. — Close minimizes to tray, double-click to restore, Start with Windows toggle. Tray tooltip shows current state.
 - **탭 설정** — Audio / Monitor / Controls / Log (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
-- **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 — Mute all outputs instantly, restores previous state on unmute
+- **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원. 패닉 뮤트 중에는 OUT/MON/VST 및 외부 제어 잠금 — Mute all outputs instantly, restores previous state on unmute. Locks OUT/MON/VST buttons and external controls during panic mute
 - **Output / Monitor Mute** — 개별 출력 뮤트 (UI 인디케이터 + 클릭 제어) — Independent output/monitor mute with clickable status indicators
 - **MIDI 플러그인 파라미터 매핑** — MIDI CC로 VST 플러그인 파라미터 직접 제어 (Learn 모드) — Map MIDI CC to VST plugin parameters with Learn mode
 - **다크 테마** — Dark theme (custom JUCE LookAndFeel)
@@ -132,6 +146,24 @@ USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...) → VB-Cabl
 4. (선택) **Monitor** 탭에서 헤드폰 장치를 설정하면 처리된 자신의 목소리를 실시간으로 모니터링 가능 — Optionally configure headphone monitoring in the Monitor tab
 
 > **Tip**: [VoiceMeeter](https://vb-audio.com/Voicemeeter/) 등 다른 가상 오디오 장치도 동일하게 사용 가능. Output 장치만 바꾸면 된다. — Any virtual audio device works; just change the Output device.
+
+### OBS에서 Receiver VST2로 사용하기 (가상 케이블 불필요) / Using Receiver VST2 with OBS (No Virtual Cable)
+
+OBS에서는 Receiver VST2 플러그인을 사용하면 가상 케이블 없이 더 간단하게 설정할 수 있습니다.
+
+If you use OBS, the Receiver VST2 plugin offers a simpler setup without any virtual cable.
+
+1. `DirectPipe Receiver.dll`을 VST 폴더에 복사 (예: `C:\Program Files\VSTPlugins\`) — Copy DLL to VST folder
+2. DirectPipe에서 **VST** 버튼 클릭 (IPC 출력 켜기) — Enable IPC output in DirectPipe
+3. OBS → 오디오 소스 → 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택 — Add VST filter in OBS
+
+```
+USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...)
+      ↓ IPC (공유 메모리, 가상 케이블 불필요)
+OBS [DirectPipe Receiver VST 필터] → 방송/녹화
+```
+
+> **Tip**: 가상 케이블과 Receiver VST를 **동시에** 사용할 수도 있습니다. Discord는 VB-Cable로, OBS는 Receiver VST로 각각 보내면 됩니다. — You can use both methods simultaneously: VB-Cable for Discord, Receiver VST for OBS.
 
 ---
 
@@ -169,6 +201,7 @@ host/                     JUCE host application (main)
                             LevelMeter, LogPanel, NotificationBar,
                             DirectPipeLookAndFeel
 core/                     IPC library (RingBuffer, SharedMemory, Protocol)
+plugins/receiver/         Receiver VST2 plugin (for OBS)
 com.directpipe.directpipe.sdPlugin/  Stream Deck plugin (Node.js, SDK v3)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)
@@ -465,9 +498,9 @@ Once enabled, DirectPipe launches automatically in the system tray when Windows 
 
 **[Install free from Elgato Marketplace](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — Installs directly into the Stream Deck app.
 
-지원 액션: Bypass Toggle, Volume Control (SD+ 다이얼), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle
+지원 액션: Bypass Toggle, Volume Control (SD+ 다이얼), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle
 
-Supported actions: Bypass Toggle, Volume Control (SD+ dial), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle
+Supported actions: Bypass Toggle, Volume Control (SD+ dial), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle
 </details>
 
 <details>
@@ -486,6 +519,223 @@ Yes! Multiple control methods are available:
 
 자세한 내용 / Details: [Control API](docs/CONTROL_API.md)
 </details>
+
+<details>
+<summary><b>Receiver VST2 플러그인이 뭔가요? / What is the Receiver VST2 plugin?</b></summary>
+
+**Receiver VST2**는 DirectPipe에서 처리한 마이크 오디오를 **OBS, DAW 등 VST2 플러그인을 지원하는 앱**에서 직접 받을 수 있게 해주는 플러그인입니다.
+
+보통 DirectPipe에서 처리된 오디오를 OBS로 보내려면 **VB-Audio Virtual Cable** 같은 가상 오디오 케이블이 필요합니다. Receiver VST2를 사용하면 **가상 케이블 없이** 공유 메모리(IPC)를 통해 오디오를 직접 받을 수 있어 설정이 더 간단하고 지연도 적습니다.
+
+---
+
+**Receiver VST2** is a plugin that lets **OBS, DAWs, and other apps that support VST2 plugins** receive DirectPipe's processed mic audio directly.
+
+Normally, to route DirectPipe's processed audio to OBS, you need a **virtual audio cable** like VB-Audio Virtual Cable. With the Receiver VST2, you can receive audio directly via shared memory (IPC) — **no virtual cable needed**, simpler setup, lower latency.
+
+**Receiver VST2 vs. Virtual Cable 비교 / Comparison:**
+
+| | Receiver VST2 | VB-Audio Virtual Cable |
+|---|---|---|
+| 설치 / Install | DirectPipe Receiver.dll을 VST 폴더에 복사 / Copy DLL to VST folder | VB-Cable 설치 + PC 재부팅 / Install VB-Cable + reboot |
+| 설정 / Setup | OBS에서 VST 필터 추가만 하면 됨 / Just add VST filter in OBS | DirectPipe Output + OBS Input 양쪽 설정 필요 / Configure both sides |
+| 지연 / Latency | ~5–85ms (프리셋 선택 가능) / Configurable | 드라이버에 의존 / Depends on driver |
+| 추가 소프트웨어 / Extra software | 불필요 / None needed | VB-Cable 필요 / VB-Cable required |
+| 호환성 / Compatibility | VST2 지원 앱만 / VST2-capable apps only | 모든 앱 / Any app |
+| 추천 / Recommended for | OBS 사용자 / OBS users | Discord, Zoom 등 일반 앱 / General apps |
+</details>
+
+<details>
+<summary><b>OBS에서 Receiver VST2는 어떻게 사용하나요? / How to use Receiver VST2 in OBS?</b></summary>
+
+**OBS에서 Receiver VST2 설정하기:**
+
+1. **DirectPipe Receiver.dll**을 VST 플러그인 폴더에 복사
+   - 기본 위치: `C:\Program Files\VSTPlugins\` 또는 `C:\Program Files\Steinberg\VSTPlugins\`
+   - OBS가 인식하는 VST 폴더에 넣어야 합니다
+
+2. **DirectPipe**에서 IPC 출력 켜기
+   - DirectPipe 실행 → 하단의 **VST** 버튼 클릭 (초록색으로 변경)
+   - 또는: **Controls** > **General** 탭에서 **"IPC Output"** 체크
+   - 또는: 키보드 **Ctrl+Shift+I**
+
+3. **OBS** 설정
+   - OBS 실행 → **소스** 영역에서 오디오 소스(마이크 등) 선택 → **필터** 클릭
+   - **"+" 버튼** → **"VST 2.x 플러그인"** 선택
+   - 플러그인 목록에서 **"DirectPipe Receiver"** 선택
+   - **"플러그인 인터페이스 열기"** 클릭하면 연결 상태와 버퍼 설정 확인 가능
+
+4. **연결 확인**
+   - Receiver 플러그인 UI에서 **"Connected"** (초록색 원)이 표시되면 정상
+   - "Disconnected" (빨간색)이면 DirectPipe가 실행 중이고 IPC가 켜져 있는지 확인
+
+```
+DirectPipe (마이크 + VST 이펙트)
+      ↓ IPC (공유 메모리)
+OBS [DirectPipe Receiver VST 필터]
+      ↓
+방송 / 녹화
+```
+
+---
+
+**Setting up Receiver VST2 in OBS:**
+
+1. **Copy DirectPipe Receiver.dll** to your VST plugin folder
+   - Default: `C:\Program Files\VSTPlugins\` or `C:\Program Files\Steinberg\VSTPlugins\`
+   - Must be in a folder that OBS scans for VST plugins
+
+2. **Enable IPC output in DirectPipe**
+   - Run DirectPipe → click the **VST** button at the bottom (turns green)
+   - Or: **Controls** > **General** tab → check **"IPC Output"**
+   - Or: press **Ctrl+Shift+I**
+
+3. **Configure OBS**
+   - Open OBS → select an audio source (e.g., mic) → click **Filters**
+   - Click **"+"** → select **"VST 2.x Plug-in"**
+   - Choose **"DirectPipe Receiver"** from the plugin list
+   - Click **"Open Plug-in Interface"** to verify connection and adjust buffer settings
+
+4. **Verify connection**
+   - In the Receiver plugin UI, **"Connected"** with a green circle = working
+   - If "Disconnected" (red), check that DirectPipe is running and IPC is enabled
+
+```
+DirectPipe (Mic + VST Effects)
+      ↓ IPC (Shared Memory)
+OBS [DirectPipe Receiver VST Filter]
+      ↓
+Stream / Recording
+```
+</details>
+
+<details>
+<summary><b>Receiver VST2에서 끊김/지연이 있어요 / Audio crackling or latency with Receiver VST2</b></summary>
+
+**버퍼 크기를 조정하세요:**
+
+Receiver VST의 플러그인 UI를 열면 **Buffer** 드롭다운에서 버퍼 크기를 선택할 수 있습니다.
+
+| 프리셋 | 지연 | 권장 상황 |
+|---|---|---|
+| **Ultra Low** | ~5ms | 실시간 모니터링이 중요할 때 (끊김 가능성 있음) |
+| **Low** (기본) | ~10ms | 대부분의 상황에 적합 |
+| **Medium** | ~21ms | 안정적인 연결 |
+| **High** | ~42ms | CPU 사용량이 높을 때 |
+| **Safe** | ~85ms | 끊김이 자주 발생할 때 |
+
+**여전히 끊긴다면:**
+- 한 단계 높은 버퍼 프리셋을 선택하세요
+- DirectPipe와 OBS의 **샘플레이트를 동일하게** 맞추세요 (예: 둘 다 48000Hz)
+- CPU 사용량을 확인하세요 — DirectPipe 하단 상태 바에서 확인 가능
+
+---
+
+**Adjust the buffer size:**
+
+Open the Receiver VST plugin interface and select a buffer size from the **Buffer** dropdown.
+
+| Preset | Latency | Recommended for |
+|---|---|---|
+| **Ultra Low** | ~5ms | When real-time monitoring matters (risk of dropouts) |
+| **Low** (default) | ~10ms | Most situations |
+| **Medium** | ~21ms | Stable connection |
+| **High** | ~42ms | When CPU load is high |
+| **Safe** | ~85ms | If you experience frequent dropouts |
+
+**Still getting dropouts?**
+- Select a higher buffer preset
+- Make sure DirectPipe and OBS use the **same sample rate** (e.g., both at 48000Hz)
+- Check CPU usage — visible in DirectPipe's bottom status bar
+</details>
+
+<details>
+<summary><b>Receiver VST2와 가상 케이블 중 뭘 써야 하나요? / Should I use Receiver VST2 or Virtual Cable?</b></summary>
+
+**상황에 따라 다릅니다:**
+
+**Receiver VST2를 추천하는 경우:**
+- **OBS**에서 DirectPipe 오디오를 사용하는 경우 (OBS는 VST2 지원)
+- 가상 오디오 케이블을 설치하고 싶지 않은 경우
+- 설정을 최소화하고 싶은 경우
+
+**VB-Audio Virtual Cable을 추천하는 경우:**
+- **Discord, Zoom, Google Meet** 등 VST 플러그인을 지원하지 않는 앱에서 사용하는 경우
+- 여러 앱에서 동시에 DirectPipe 오디오를 사용해야 하는 경우
+- OBS 이외의 앱에서도 가상 마이크가 필요한 경우
+
+**둘 다 동시에 사용 가능합니다!**
+- DirectPipe Output → VB-Cable (Discord/Zoom용)
+- DirectPipe IPC → Receiver VST2 (OBS용)
+- 이렇게 하면 Discord에는 VB-Cable로, OBS에는 Receiver VST로 동시에 오디오를 보낼 수 있습니다
+
+---
+
+**Depends on your use case:**
+
+**Use Receiver VST2 when:**
+- Using DirectPipe audio in **OBS** (OBS supports VST2)
+- Don't want to install virtual audio cable software
+- Want minimal setup
+
+**Use VB-Audio Virtual Cable when:**
+- Using apps that **don't support VST plugins** (Discord, Zoom, Google Meet, etc.)
+- Need to use DirectPipe audio in multiple apps simultaneously
+- Need a virtual microphone for non-OBS apps
+
+**You can use both at the same time!**
+- DirectPipe Output → VB-Cable (for Discord/Zoom)
+- DirectPipe IPC → Receiver VST2 (for OBS)
+- This lets you send audio to Discord via VB-Cable and to OBS via Receiver VST simultaneously
+</details>
+
+<details>
+<summary><b>IPC 출력(VST 버튼)은 뭔가요? 켜야 하나요? / What is IPC Output (VST button)? Do I need to enable it?</b></summary>
+
+**IPC(Inter-Process Communication) 출력**은 DirectPipe에서 처리한 오디오를 **공유 메모리**를 통해 다른 프로세스(Receiver VST 플러그인)에 전달하는 기능입니다.
+
+**기본값은 꺼져(OFF) 있습니다.** VB-Audio Virtual Cable만 사용하는 경우에는 켤 필요가 없습니다.
+
+**켜야 하는 경우:**
+- OBS에서 **DirectPipe Receiver VST2** 플러그인을 사용할 때
+- 가상 케이블 없이 OBS로 오디오를 직접 보내고 싶을 때
+
+**켜는 방법 (5가지):**
+1. DirectPipe 메인 화면 하단의 **VST** 버튼 클릭
+2. **Controls** > **General** 탭 → **"IPC Output"** 체크
+3. 키보드 단축키 **Ctrl+Shift+I**
+4. Stream Deck **IPC Toggle** 버튼
+5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
+
+켜면 VST 버튼이 **초록색**으로 변하고, 끄면 **빨간색**입니다.
+
+---
+
+**IPC (Inter-Process Communication) Output** sends DirectPipe's processed audio to another process (the Receiver VST plugin) via **shared memory**.
+
+**It's OFF by default.** If you only use VB-Audio Virtual Cable, you don't need to enable it.
+
+**Enable it when:**
+- Using the **DirectPipe Receiver VST2** plugin in OBS
+- Want to route audio to OBS without a virtual cable
+
+**How to enable (5 ways):**
+1. Click the **VST** button at the bottom of DirectPipe's main window
+2. **Controls** > **General** tab → check **"IPC Output"**
+3. Hotkey **Ctrl+Shift+I**
+4. Stream Deck **IPC Toggle** button
+5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
+
+When enabled, the VST button turns **green**; when disabled, it's **red**.
+</details>
+
+## 후원 / Support
+
+프로젝트가 도움이 되셨다면 커피 한 잔 사주세요! / If you find this project useful, consider buying me a coffee!
+
+<a href="https://buymeacoffee.com/livetrack">
+  <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee">
+</a>
 
 ## License
 

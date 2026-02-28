@@ -24,8 +24,6 @@
 #include "ControlSettingsPanel.h"
 
 #if JUCE_WINDOWS
-extern bool isStartupEnabled();
-extern void setStartupEnabled(bool enable);
 #endif
 
 namespace directpipe {
@@ -67,6 +65,7 @@ static juce::String actionToDisplayName(const ActionEvent& event)
         }
         case Action::MonitorToggle:   return "Monitor Toggle";
         case Action::RecordingToggle: return "Recording Toggle";
+        case Action::IpcToggle:       return "IPC Toggle";
         default:                      return "Unknown";
     }
 }
@@ -313,6 +312,8 @@ juce::PopupMenu HotkeyTab::buildActionMenu()
     menu.addItem(202, "Input Mute Toggle");
     menu.addItem(203, "Output Mute Toggle");
     menu.addItem(204, "Monitor Toggle");
+    menu.addItem(205, "IPC Toggle");
+    menu.addItem(206, "Recording Toggle");
 
     // Input gain
     menu.addItem(300, "Input Gain +1 dB");
@@ -356,6 +357,10 @@ void HotkeyTab::onAddClicked()
                 action = {Action::ToggleMute, 0, 0.0f, "output"};
             } else if (result == 204) {
                 action = {Action::MonitorToggle, 0, 0.0f, "Monitor Toggle"};
+            } else if (result == 205) {
+                action = {Action::IpcToggle, 0, 0.0f, "IPC Toggle"};
+            } else if (result == 206) {
+                action = {Action::RecordingToggle, 0, 0.0f, "Recording Toggle"};
             } else if (result == 300) {
                 action = {Action::InputGainAdjust, 0, 1.0f, "Input Gain +1 dB"};
             } else if (result == 301) {
@@ -728,7 +733,8 @@ void MidiTab::onAddMappingClicked()
     menu.addItem(202, "Input Mute Toggle");
     menu.addItem(203, "Output Mute Toggle");
     menu.addItem(204, "Monitor Toggle");
-    menu.addItem(205, "Recording Toggle");
+    menu.addItem(205, "IPC Toggle");
+    menu.addItem(206, "Recording Toggle");
     menu.addItem(300, "Input Gain +1 dB");
     menu.addItem(301, "Input Gain -1 dB");
 
@@ -760,6 +766,8 @@ void MidiTab::onAddMappingClicked()
             } else if (result == 204) {
                 action = {Action::MonitorToggle, 0, 0.0f, "Monitor Toggle"};
             } else if (result == 205) {
+                action = {Action::IpcToggle, 0, 0.0f, "IPC Toggle"};
+            } else if (result == 206) {
                 action = {Action::RecordingToggle, 0, 0.0f, "Recording Toggle"};
             } else if (result == 300) {
                 action = {Action::InputGainAdjust, 0, 1.0f, "Input Gain +1 dB"};
@@ -1080,98 +1088,6 @@ void StreamDeckTab::updateStatus()
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  GeneralTab implementation
-// ═════════════════════════════════════════════════════════════════════════════
-
-GeneralTab::GeneralTab()
-{
-    headerLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
-    headerLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(headerLabel_);
-
-    startupToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
-    startupToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
-#if JUCE_WINDOWS
-    startupToggle_.setToggleState(::isStartupEnabled(), juce::dontSendNotification);
-    startupToggle_.onClick = [this] {
-        ::setStartupEnabled(startupToggle_.getToggleState());
-    };
-#endif
-    addAndMakeVisible(startupToggle_);
-
-    startupInfoLabel_.setFont(juce::Font(11.0f));
-    startupInfoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
-    addAndMakeVisible(startupInfoLabel_);
-
-    // ── Settings Export/Import section ──
-    settingsHeaderLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
-    settingsHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(settingsHeaderLabel_);
-
-    saveSettingsBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kSurfaceColour));
-    saveSettingsBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-    saveSettingsBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    saveSettingsBtn_.onClick = [this] { if (onSaveSettings) onSaveSettings(); };
-    addAndMakeVisible(saveSettingsBtn_);
-
-    loadSettingsBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kSurfaceColour));
-    loadSettingsBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-    loadSettingsBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    loadSettingsBtn_.onClick = [this] { if (onLoadSettings) onLoadSettings(); };
-    addAndMakeVisible(loadSettingsBtn_);
-
-    settingsInfoLabel_.setFont(juce::Font(11.0f));
-    settingsInfoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
-    addAndMakeVisible(settingsInfoLabel_);
-}
-
-void GeneralTab::paint(juce::Graphics& g)
-{
-    g.fillAll(juce::Colour(kBgColour));
-
-    // Separator line between Application and Settings sections
-    auto bounds = getLocalBounds().reduced(8);
-    constexpr int rowH = 28;
-    constexpr int gap  = 6;
-    // After: header + toggle + info = 3 rows
-    int separatorY = bounds.getY() + (rowH + gap) * 3 + gap;
-    g.setColour(juce::Colour(kDimTextColour).withAlpha(0.3f));
-    g.drawHorizontalLine(separatorY, static_cast<float>(bounds.getX()),
-                         static_cast<float>(bounds.getRight()));
-}
-
-void GeneralTab::resized()
-{
-    auto bounds = getLocalBounds().reduced(8);
-    constexpr int rowH = 28;
-    constexpr int gap  = 6;
-
-    int y = bounds.getY();
-    int w = bounds.getWidth();
-    int x = bounds.getX();
-
-    headerLabel_.setBounds(x, y, w, rowH);
-    y += rowH + gap;
-
-    startupToggle_.setBounds(x, y, w, rowH);
-    y += rowH + gap;
-
-    startupInfoLabel_.setBounds(x, y, w, rowH);
-    y += rowH + gap + 12; // extra gap for separator
-
-    // ── Settings section ──
-    settingsHeaderLabel_.setBounds(x, y, w, rowH);
-    y += rowH + gap;
-
-    int btnW = (w - gap) / 2;
-    saveSettingsBtn_.setBounds(x, y, btnW, rowH);
-    loadSettingsBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
-    y += rowH + gap;
-
-    settingsInfoLabel_.setBounds(x, y, w, rowH);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
 //  ControlSettingsPanel implementation (top-level tabbed container)
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -1182,11 +1098,6 @@ ControlSettingsPanel::ControlSettingsPanel(ControlManager& manager, VSTChain* vs
     hotkeyTab_     = std::make_unique<HotkeyTab>(manager_);
     midiTab_       = std::make_unique<MidiTab>(manager_, vstChain);
     streamDeckTab_ = std::make_unique<StreamDeckTab>(manager_);
-    generalTab_    = std::make_unique<GeneralTab>();
-
-    // Forward Settings Save/Load callbacks to GeneralTab
-    generalTab_->onSaveSettings = [this] { if (onSaveSettings) onSaveSettings(); };
-    generalTab_->onLoadSettings = [this] { if (onLoadSettings) onLoadSettings(); };
 
     // Configure the tabbed component
     tabbedComponent_.setTabBarDepth(30);
@@ -1197,7 +1108,6 @@ ControlSettingsPanel::ControlSettingsPanel(ControlManager& manager, VSTChain* vs
     tabbedComponent_.addTab("Hotkeys",     juce::Colour(kTabBarColour), hotkeyTab_.get(),     false);
     tabbedComponent_.addTab("MIDI",        juce::Colour(kTabBarColour), midiTab_.get(),       false);
     tabbedComponent_.addTab("Stream Deck", juce::Colour(kTabBarColour), streamDeckTab_.get(), false);
-    tabbedComponent_.addTab("General",     juce::Colour(kTabBarColour), generalTab_.get(),    false);
 
     // Style the tab bar
     auto& tabBar = tabbedComponent_.getTabbedButtonBar();

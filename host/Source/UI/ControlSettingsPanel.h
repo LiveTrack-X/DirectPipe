@@ -294,48 +294,6 @@ private:
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-// GeneralTab — App-level settings (startup, etc.)
-// ═════════════════════════════════════════════════════════════════════════════
-
-/**
- * @brief Tab content for general application settings.
- *
- * Contains app-level settings such as "Start with Windows" that don't
- * belong to a specific control source.
- */
-class GeneralTab : public juce::Component {
-public:
-    GeneralTab();
-    ~GeneralTab() override = default;
-
-    void paint(juce::Graphics& g) override;
-    void resized() override;
-
-    /** Callbacks for Settings Save/Load (wired from MainComponent). */
-    std::function<void()> onSaveSettings;
-    std::function<void()> onLoadSettings;
-
-private:
-    juce::Label headerLabel_{"", "Application"};
-    juce::ToggleButton startupToggle_{"Start with Windows"};
-    juce::Label startupInfoLabel_{"", "Launch DirectPipe automatically when you log in to Windows."};
-
-    // Settings Export/Import section
-    juce::Label settingsHeaderLabel_{"", "Settings"};
-    juce::TextButton saveSettingsBtn_{"Save Settings"};
-    juce::TextButton loadSettingsBtn_{"Load Settings"};
-    juce::Label settingsInfoLabel_{"", "Export or import all DirectPipe settings."};
-
-    static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;
-    static constexpr juce::uint32 kSurfaceColour  = 0xFF2A2A40;
-    static constexpr juce::uint32 kAccentColour   = 0xFF6C63FF;
-    static constexpr juce::uint32 kTextColour     = 0xFFE0E0E0;
-    static constexpr juce::uint32 kDimTextColour  = 0xFF8888AA;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GeneralTab)
-};
-
-// ═════════════════════════════════════════════════════════════════════════════
 // ControlSettingsPanel — top-level tabbed container
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -362,10 +320,6 @@ public:
      */
     void refreshAll();
 
-    /** Callbacks forwarded to GeneralTab. */
-    std::function<void()> onSaveSettings;
-    std::function<void()> onLoadSettings;
-
 private:
     ControlManager& manager_;
 
@@ -376,7 +330,6 @@ private:
     std::unique_ptr<HotkeyTab> hotkeyTab_;
     std::unique_ptr<MidiTab> midiTab_;
     std::unique_ptr<StreamDeckTab> streamDeckTab_;
-    std::unique_ptr<GeneralTab> generalTab_;
 
     // Theme colours (dark)
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;

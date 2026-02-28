@@ -64,6 +64,7 @@ Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE. / 또는
 |--------|---------|-------------|
 | `DIRECTPIPE_BUILD_TESTS` | ON | Build unit tests (Google Test) / 유닛 테스트 빌드 |
 | `DIRECTPIPE_BUILD_HOST` | ON | Build JUCE host application / 호스트 앱 빌드 |
+| `DIRECTPIPE_BUILD_RECEIVER` | ON | Build Receiver VST2 plugin / 리시버 VST2 플러그인 빌드 |
 
 Note: `JUCE_DISPLAY_SPLASH_SCREEN=0` is set in CMakeLists.txt (GPL v3 license). / GPL v3 라이선스로 JUCE 스플래시 비활성화.
 
@@ -71,6 +72,7 @@ Note: `JUCE_DISPLAY_SPLASH_SCREEN=0` is set in CMakeLists.txt (GPL v3 license). 
 
 ```
 build/host/DirectPipe_artefacts/Release/DirectPipe.exe   Host application / 호스트 앱
+build/plugins/receiver/Release/DirectPipeReceiver.dll    Receiver VST2 plugin / 리시버 VST2 플러그인
 build/bin/Release/directpipe-tests.exe                   Core test suite / 코어 테스트
 build/bin/Release/directpipe-host-tests.exe              Host test suite / 호스트 테스트
 build/lib/Release/directpipe-core.lib                    Core IPC library / 코어 라이브러리

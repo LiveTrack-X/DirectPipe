@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <!-- State image: IPC ON (enabled) - dark with green indicator -->
+  <rect width="144" height="144" rx="16" fill="#2a2a2a"/>
+  <!-- Green indicator bar -->
+  <rect x="0" y="124" width="144" height="20" rx="0" fill="#4CAF50"/>
+  <!-- Two boxes connected by pipe -->
+  <rect x="20" y="44" width="36" height="48" rx="6" fill="none" stroke="#ffffff" stroke-width="5"/>
+  <rect x="88" y="44" width="36" height="48" rx="6" fill="none" stroke="#ffffff" stroke-width="5"/>
+  <!-- Connection arrow -->
+  <line x1="56" y1="68" x2="88" y2="68" stroke="#ffffff" stroke-width="5"/>
+  <polyline points="78,56 90,68 78,80" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

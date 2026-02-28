@@ -454,6 +454,8 @@ void WebSocketServer::processMessage(const std::string& message)
         event.action = Action::MonitorToggle;
     } else if (actionStr == "recording_toggle") {
         event.action = Action::RecordingToggle;
+    } else if (actionStr == "ipc_toggle") {
+        event.action = Action::IpcToggle;
     } else if (actionStr == "set_plugin_parameter") {
         event.action = Action::SetPluginParameter;
         event.intParam = params ? static_cast<int>(params->getProperty("pluginIndex")) : 0;

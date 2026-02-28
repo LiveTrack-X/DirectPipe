@@ -118,6 +118,36 @@ Record processed audio (after the VST plugin chain) to a WAV file. Located in th
 - **Default folder** — `Documents/DirectPipe Recordings`. / 기본 폴더: 문서/DirectPipe Recordings.
 - Recording is lock-free (real-time safe) — it does not affect audio processing performance. / 녹음은 락프리(실시간 안전) — 오디오 처리 성능에 영향 없음.
 
+## IPC Output & Receiver VST / IPC 출력 & 리시버 VST
+
+### IPC Toggle / IPC 토글
+
+DirectPipe can send processed audio to other applications (e.g., OBS) via shared memory IPC. Toggle IPC output on/off using: / DirectPipe는 공유 메모리 IPC를 통해 처리된 오디오를 다른 앱(예: OBS)에 전송할 수 있다. IPC 출력 켜기/끄기:
+
+- **Hotkey** — Ctrl+Shift+I (default, customizable in Controls > Hotkey tab) / 단축키: Ctrl+Shift+I (기본값, Controls > Hotkey 탭에서 변경 가능)
+- **MIDI** — Mappable in Controls > MIDI tab / MIDI: Controls > MIDI 탭에서 매핑 가능
+- **Stream Deck** — IPC Toggle button / Stream Deck: IPC Toggle 버튼
+- **HTTP API** — `GET /api/ipc/toggle` / HTTP API
+- **WebSocket** — `ipc_toggle` action / WebSocket
+
+### Receiver VST Plugin / 리시버 VST 플러그인
+
+The Receiver VST2 plugin (located at `plugins/receiver/`) can be loaded in OBS or any VST2 host to receive processed audio from DirectPipe via shared memory. / 리시버 VST2 플러그인(`plugins/receiver/`)은 OBS 또는 VST2 호스트에서 공유 메모리를 통해 DirectPipe의 처리된 오디오를 수신한다.
+
+**Buffer Size Configuration / 버퍼 크기 설정:**
+
+The Receiver plugin offers 5 buffer size presets to balance latency vs. stability: / 리시버 플러그인은 지연 시간과 안정성 균형을 위해 5가지 버퍼 크기 프리셋을 제공한다:
+
+| Preset / 프리셋 | Latency / 지연 |
+|-----------------|---------------|
+| Ultra Low | ~5ms |
+| Low | ~10ms |
+| Medium | ~21ms |
+| High | ~42ms |
+| Safe | ~85ms |
+
+Choose a lower buffer for minimal latency or a higher buffer if you experience audio dropouts. / 최소 지연을 원하면 낮은 버퍼, 오디오 끊김이 있으면 높은 버퍼를 선택.
+
 ## Settings Save/Load / 설정 저장/불러오기
 
 Export or import your full DirectPipe settings as `.dpbackup` files. Located in **Controls > General** tab. / 전체 설정을 .dpbackup 파일로 내보내기/가져오기. **Controls > General** 탭에 위치.
@@ -166,13 +196,14 @@ DirectPipe can be controlled while minimized or in the background. / 최소화 �
 | Ctrl+Shift+N | Input Mute Toggle / 입력 뮤트 토글 |
 | Ctrl+Shift+O | Output Mute Toggle / 출력 뮤트 토글 |
 | Ctrl+Shift+H | Monitor Toggle / 모니터 토글 |
+| Ctrl+Shift+I | IPC Toggle / IPC 출력 토글 |
 | Ctrl+Shift+F1–F5 | Preset Slot A-E / 프리셋 슬롯 A-E |
 
 Shortcuts are customizable in Controls > Hotkey tab. / Controls > Hotkey 탭에서 단축키 변경 가능.
 
 ### Panic Mute / 패닉 뮤트
 
-Immediately silences all outputs. When unmuted, previous monitor enable state is restored. / 전체 출력 즉시 뮤트. 해제 시 모니터 상태 복원.
+Immediately silences all outputs. When unmuted, previous monitor enable state is restored. During panic mute, OUT/MON/VST buttons and all external controls (hotkeys, MIDI, Stream Deck, HTTP) are locked -- only PanicMute/unmute can change state. / 전체 출력 즉시 뮤트. 해제 시 모니터 상태 복원. 패닉 뮤트 중 OUT/MON/VST 버튼과 모든 외부 제어(단축키, MIDI, Stream Deck, HTTP)가 잠금 -- PanicMute/해제만 상태 변경 가능.
 
 ### MIDI Control / MIDI 제어
 

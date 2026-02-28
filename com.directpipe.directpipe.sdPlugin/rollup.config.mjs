@@ -32,5 +32,6 @@ export default {
     "assert",
     "querystring",
     "string_decoder",
+    "dgram",
   ],
 };

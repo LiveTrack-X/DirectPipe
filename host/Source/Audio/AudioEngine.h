@@ -29,8 +29,9 @@
 #include "VSTChain.h"
 #include "OutputRouter.h"
 #include "LatencyMonitor.h"
-#include "VirtualMicOutput.h"
+#include "MonitorOutput.h"
 #include "AudioRecorder.h"
+#include "../IPC/SharedMemWriter.h"
 
 #include <atomic>
 #include <functional>
@@ -105,7 +106,7 @@ public:
     /** Set the monitor output WASAPI device (independent of main driver). */
     bool setMonitorDevice(const juce::String& deviceName);
     juce::String getMonitorDeviceName() const { return monitorOutput_.getDeviceName(); }
-    VirtualMicOutput& getMonitorOutput() { return monitorOutput_; }
+    MonitorOutput& getMonitorOutput() { return monitorOutput_; }
 
     void setChannelMode(int channels);
     int getChannelMode() const { return channelMode_.load(std::memory_order_relaxed); }
@@ -118,6 +119,13 @@ public:
 
     void setOutputMuted(bool muted) { outputMuted_.store(muted, std::memory_order_relaxed); }
     bool isOutputMuted() const { return outputMuted_.load(std::memory_order_relaxed); }
+
+    /** Output "None" mode — user selected no output device (persists across restart). */
+    void setOutputNone(bool none) { outputNone_.store(none, std::memory_order_relaxed); setOutputMuted(none); }
+    bool isOutputNone() const { return outputNone_.load(std::memory_order_relaxed); }
+
+    void setIpcEnabled(bool enabled);
+    bool isIpcEnabled() const { return ipcEnabled_.load(std::memory_order_relaxed); }
 
     float getInputLevel() const { return inputLevel_.load(std::memory_order_relaxed); }
     float getOutputLevel() const { return outputLevel_.load(std::memory_order_relaxed); }
@@ -157,8 +165,10 @@ private:
     VSTChain vstChain_;
     OutputRouter outputRouter_;
     LatencyMonitor latencyMonitor_;
-    VirtualMicOutput monitorOutput_;
+    MonitorOutput monitorOutput_;
     AudioRecorder recorder_;
+    SharedMemWriter sharedMemWriter_;
+    std::atomic<bool> ipcEnabled_{false};
 
     bool running_ = false;
 
@@ -168,6 +178,7 @@ private:
     std::atomic<int> channelMode_{2};
     std::atomic<bool> muted_{false};
     std::atomic<bool> outputMuted_{false};
+    std::atomic<bool> outputNone_{false};   // "None" output device (persists)
 
     double currentSampleRate_ = 48000.0;
     int currentBufferSize_ = 480;

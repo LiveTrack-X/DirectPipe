@@ -219,6 +219,16 @@ ControlConfig ControlMappingStore::createDefaults()
         config.hotkeys.push_back(hk);
     }
 
+    // IPC toggle: Ctrl+Shift+I
+    {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = 'I';
+        hk.action = {Action::IpcToggle, 0, 0.0f, "IPC Toggle"};
+        hk.displayName = "Ctrl+Shift+I";
+        config.hotkeys.push_back(hk);
+    }
+
     // Preset slots: Ctrl+Shift+F1..F5
     for (int i = 0; i < 5; ++i) {
         HotkeyMapping hk;

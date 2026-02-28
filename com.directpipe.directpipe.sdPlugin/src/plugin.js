@@ -30,6 +30,7 @@ const { VolumeControlAction } = require("./actions/volume-control");
 const { PresetSwitchAction } = require("./actions/preset-switch");
 const { MonitorToggleAction } = require("./actions/monitor-toggle");
 const { RecordingToggleAction } = require("./actions/recording-toggle");
+const { IpcToggleAction } = require("./actions/ipc-toggle");
 
 // ─── DirectPipe host connection ─────────────────────────────────────
 const DIRECTPIPE_WS_URL = "ws://localhost:8765";
@@ -43,8 +44,9 @@ const volumeAction = new VolumeControlAction();
 const presetAction = new PresetSwitchAction();
 const monitorAction = new MonitorToggleAction();
 const recordingAction = new RecordingToggleAction();
+const ipcAction = new IpcToggleAction();
 
-const allActions = [bypassAction, panicAction, volumeAction, presetAction, monitorAction, recordingAction];
+const allActions = [bypassAction, panicAction, volumeAction, presetAction, monitorAction, recordingAction, ipcAction];
 
 // ─── DirectPipe state broadcasting ──────────────────────────────────
 function broadcastState(state) {
@@ -99,6 +101,7 @@ streamDeck.actions.registerAction(volumeAction);
 streamDeck.actions.registerAction(presetAction);
 streamDeck.actions.registerAction(monitorAction);
 streamDeck.actions.registerAction(recordingAction);
+streamDeck.actions.registerAction(ipcAction);
 
 streamDeck.connect();
 dpClient.connect();

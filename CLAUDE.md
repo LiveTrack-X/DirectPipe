@@ -15,7 +15,7 @@ Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체�
 7. Out-of-process VST scanner (crash-safe)
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.5.0
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.6.0
 - WASAPI Shared Mode + ASIO (Steinberg ASIO SDK)
 - VST2 SDK 2.4 + VST3
 - WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)
@@ -49,16 +49,18 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **Tabbed UI**: Audio/Monitor/Controls/Log tabs in right column. Monitor tab includes Recording section. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General (with Settings Save/Load). Log tab has real-time log viewer + maintenance tools.
 - **Start with Windows**: Registry-based (`HKCU\...\Run`). Toggle in tray menu + Controls > General tab.
 - **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
-- **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
+- **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute. During panic mute, OUT/MON/VST buttons and external controls (hotkey/MIDI/Stream Deck/HTTP) are locked -- only PanicMute/unmute can change state.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
 - **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup on broadcast. Port 8765. UDP discovery broadcast (port 8767) at startup for instant Stream Deck connection. `broadcastToClients` thread join outside `clientsMutex_` lock.
-- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0). Proper HTTP status codes (404/405/400) — `processRequest` returns `pair<int, string>`. Endpoints include recording toggle and plugin parameter control.
+- **IPC Toggle**: `Action::IpcToggle` toggles IPC output (Receiver VST) on/off. Default hotkey: Ctrl+Shift+I. WebSocket: `ipc_toggle`. HTTP: `GET /api/ipc/toggle`. MIDI mappable. StateBroadcaster includes `ipc_enabled` in state JSON.
+- **Receiver VST plugin**: VST2 plugin for OBS. Reads shared memory IPC from DirectPipe. Configurable buffer size (5 presets: Ultra Low ~5ms, Low ~10ms, Medium ~21ms, High ~42ms, Safe ~85ms). Located at `plugins/receiver/`.
+- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0). Proper HTTP status codes (404/405/400) — `processRequest` returns `pair<int, string>`. Endpoints include recording toggle, plugin parameter control, and IPC toggle.
 - **Audio recording**: Lock-free recording via `AudioRecorder` + `AudioFormatWriter::ThreadedWriter`. WAV output. RT-safe `juce::SpinLock` protects writer teardown. Timer-based duration tracking. Auto-stop on device change. `outputStream` properly cleaned up on writer creation failure.
 - **Settings export/import**: `SettingsExporter` class. Full settings save/load as `.dpbackup` files via native file chooser. Located in Controls > General tab. Uses `controlManager_->getConfigStore()` for live config access.
 - **Plugin scanner search/sort**: Real-time text filter + column sorting (name/vendor/format) in PluginScanner dialog.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow (select plugin → select parameter → MIDI Learn). Creates `Continuous` MidiBinding with `SetPluginParameter` action.
 - **System tray tooltip**: Shows current state (preset, plugins, volumes) on hover. Atomic dirty-flag for cross-thread safety.
-- **Stream Deck plugin**: SDKVersion 3, 6 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic/Recording), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50). Packaged via official `streamdeck pack` CLI.
+- **Stream Deck plugin**: SDKVersion 3, 7 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic/Recording/IpcToggle), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50). Packaged via official `streamdeck pack` CLI.
 - **NotificationBar**: Non-intrusive status bar notifications. Temporarily replaces latency/CPU labels. Color-coded: red (errors), orange (warnings), purple (info). Auto-fades after 3-8 seconds depending on severity. Triggered by audio device errors, plugin load failures, recording failures. Notification queue overflow guard (capacity check before write).
 - **LogPanel**: 4th tab in right panel. Real-time log viewer with timestamped monospaced entries. Export Log (save to .txt) and Clear Log buttons. Maintenance section: Clear Plugin Cache, Clear All Presets, Reset Settings (all with confirmation dialogs).
 - **DirectPipeLogger**: Centralized logging system feeding LogPanel and NotificationBar. Captures logs from all subsystems (audio engine, plugins, WebSocket, HTTP, etc.).
@@ -98,6 +100,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
   - `Control/` -> ActionDispatcher, ControlManager, ControlMapping, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster, DirectPipeLogger
   - `IPC/` -> SharedMemWriter
   - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel, PluginChainEditor, PluginScanner, PresetManager, LevelMeter, LogPanel, NotificationBar, DirectPipeLookAndFeel, SettingsExporter
+- `plugins/receiver/` -> Receiver VST2 plugin for OBS (shared memory IPC consumer, configurable buffer size)
 - `com.directpipe.directpipe.sdPlugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v3)
 - `tests/` -> Google Test (core tests + host tests)
 - `dist/` -> Packaged .streamDeckPlugin + marketplace assets
@@ -110,7 +113,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: SDKVersion 3 (SDK v2.0.1 npm), 6 actions (Bypass/Volume/Preset/Monitor/Panic/Recording), 3 PI HTMLs, SVG-based icons + @2x, packaged via `streamdeck pack` CLI
+- Stream Deck: SDKVersion 3 (SDK v2.0.1 npm), Version 1.5.0.0, 7 actions (Bypass/Volume/Preset/Monitor/Panic/Recording/IpcToggle), 3 PI HTMLs, SVG-based icons + @2x, packaged via `streamdeck pack` CLI
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), onSettingsChanged callbacks
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
 - Credit label "Created by LiveTrack" at bottom-right of main UI. Shows "NEW vX.Y.Z" in orange when a newer GitHub release exists.

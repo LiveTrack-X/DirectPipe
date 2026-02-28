@@ -251,7 +251,6 @@ TEST_F(StateSerializationTest, DefaultStateSerializesToValidJson) {
 TEST_F(StateSerializationTest, StateContainsVolumeFields) {
     broadcaster->updateState([](AppState& state) {
         state.inputGain = 0.8f;
-        state.virtualMicVolume = 0.6f;
         state.monitorVolume = 0.4f;
     });
 
@@ -264,7 +263,6 @@ TEST_F(StateSerializationTest, StateContainsVolumeFields) {
     ASSERT_NE(volumes, nullptr);
 
     EXPECT_NEAR(static_cast<double>(volumes->getProperty("input")), 0.8, 0.001);
-    EXPECT_NEAR(static_cast<double>(volumes->getProperty("virtual_mic")), 0.6, 0.001);
     EXPECT_NEAR(static_cast<double>(volumes->getProperty("monitor")), 0.4, 0.001);
 }
 
@@ -273,7 +271,7 @@ TEST_F(StateSerializationTest, StateContainsBooleanFlags) {
         state.masterBypassed = true;
         state.muted = true;
         state.inputMuted = false;
-        state.driverConnected = true;
+        state.ipcEnabled = true;
     });
 
     std::string json = broadcaster->toJSON();
@@ -284,7 +282,7 @@ TEST_F(StateSerializationTest, StateContainsBooleanFlags) {
     EXPECT_TRUE(static_cast<bool>(data->getProperty("master_bypassed")));
     EXPECT_TRUE(static_cast<bool>(data->getProperty("muted")));
     EXPECT_FALSE(static_cast<bool>(data->getProperty("input_muted")));
-    EXPECT_TRUE(static_cast<bool>(data->getProperty("driver_connected")));
+    EXPECT_TRUE(static_cast<bool>(data->getProperty("ipc_enabled")));
 }
 
 TEST_F(StateSerializationTest, StateContainsAudioParams) {
