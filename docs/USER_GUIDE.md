@@ -125,6 +125,33 @@ Export or import your full DirectPipe settings as `.dpbackup` files. Located in 
 - **Save Settings** — Saves audio settings, VST chain, volumes, preset slots, and control mappings to a `.dpbackup` file. / 오디오 설정, VST 체인, 볼륨, 프리셋 슬롯, 제어 매핑을 .dpbackup 파일로 저장.
 - **Load Settings** — Load a previously saved settings file. / 저장된 설정 파일 불러오기.
 
+## Error Notifications / 오류 알림
+
+DirectPipe shows non-intrusive notifications in the status bar area when errors, warnings, or informational events occur. These replace the latency/CPU labels temporarily and auto-fade after a few seconds. / DirectPipe는 오류, 경고, 정보 이벤트 발생 시 상태 바 영역에 비침습적 알림을 표시한다. 레이턴시/CPU 레이블을 일시적으로 대체하며 몇 초 후 자동으로 사라진다.
+
+- **Red** — Errors (audio device failures, plugin load failures) / 빨간색 — 오류 (오디오 장치 실패, 플러그인 로드 실패)
+- **Orange** — Warnings / 주황색 — 경고
+- **Purple** — Info messages / 보라색 — 정보 메시지
+- Auto-fades after 3-8 seconds depending on severity / 심각도에 따라 3-8초 후 자동 사라짐
+
+## Log Tab / 로그 탭
+
+The 4th tab in the right panel (Audio / Monitor / Controls / **Log**). A real-time log viewer for diagnosing issues. / 우측 패널의 4번째 탭 (Audio / Monitor / Controls / **Log**). 문제 진단을 위한 실시간 로그 뷰어.
+
+### Log Viewer / 로그 뷰어
+
+- **Timestamped entries** in a monospaced font — captures logs from audio engine, plugins, WebSocket, HTTP, and more / 타임스탬프가 포함된 고정폭 폰트 엔트리 — 오디오 엔진, 플러그인, WebSocket, HTTP 등의 로그 캡처
+- **Export Log** — Save the log to a `.txt` file for sharing or analysis / 로그를 .txt 파일로 저장하여 공유 또는 분석
+- **Clear Log** — Clear the log display / 로그 표시 지우기
+
+### Maintenance / 유지보수
+
+Located at the bottom of the Log tab. All destructive actions show a confirmation dialog before proceeding. / 로그 탭 하단에 위치. 모든 파괴적 작업은 실행 전 확인 대화상자를 표시.
+
+- **Clear Plugin Cache** — Deletes the scanned plugin list. Forces a re-scan on next "Scan..." click. / 스캔된 플러그인 목록 삭제. 다음 "Scan..." 클릭 시 재스캔 강제.
+- **Clear All Presets** — Deletes all quick slots (A-E) and saved presets. / 모든 퀵 슬롯(A-E)과 저장된 프리셋 삭제.
+- **Reset Settings** — Factory reset. Deletes audio settings, hotkeys, and MIDI mappings. / 공장 초기화. 오디오 설정, 단축키, MIDI 매핑 삭제.
+
 ## External Control / 외부 제어
 
 DirectPipe can be controlled while minimized or in the background. / 최소화 상태에서도 제어 가능.
@@ -201,6 +228,11 @@ See [Control API Reference](CONTROL_API.md) for all endpoints. / 전체 엔드�
 - Check the monitor device is selected in Monitor tab / Monitor 탭에서 모니터 장치가 선택되어 있는지 확인
 - Ensure "Enable" is toggled on / "Enable"이 켜져 있는지 확인
 - The monitor uses a separate WASAPI device — it works even when main driver is ASIO / 모니터는 별도 WASAPI 장치를 사용 — ASIO 모드에서도 동작
+
+**Something went wrong but no error popup? / 오류가 발생했는데 팝업이 없나요?**
+- Check the status bar at the bottom — error notifications appear there briefly (red/orange/purple) / 하단 상태 바 확인 — 오류 알림이 잠시 표시됨 (빨강/주황/보라)
+- Open the **Log** tab for a full history of all application events / **Log** 탭에서 모든 앱 이벤트의 전체 기록 확인
+- Use **Export Log** to save logs for troubleshooting / **Export Log**로 문제 해결용 로그 저장
 
 **Want to send audio to OBS/Discord? / OBS/Discord로 보내고 싶나요?**
 - Install a virtual audio cable driver (e.g., VB-Audio Hi-Fi Cable) / 가상 오디오 케이블 드라이버 설치

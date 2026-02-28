@@ -33,7 +33,25 @@ MainComponent::MainComponent()
     setLookAndFeel(&lookAndFeel_);
 
     // Initialize audio engine
-    audioEngine_.initialize();
+    if (!audioEngine_.initialize()) {
+        juce::MessageManager::callAsync([this] {
+            showNotification("Audio engine failed to start — check device settings",
+                             NotificationLevel::Critical);
+        });
+    }
+
+    // Wire error callbacks
+    audioEngine_.onDeviceError = [this](const juce::String& msg) {
+        juce::MessageManager::callAsync([this, msg] {
+            showNotification(msg, NotificationLevel::Warning);
+        });
+    };
+    audioEngine_.getVSTChain().onPluginLoadFailed = [this](const juce::String& name, const juce::String& err) {
+        juce::MessageManager::callAsync([this, name, err] {
+            showNotification("Plugin load failed: " + name + " — " + err,
+                             NotificationLevel::Error);
+        });
+    };
 
     // Initialize external control system
     controlManager_ = std::make_unique<ControlManager>(dispatcher_, broadcaster_);
@@ -133,6 +151,20 @@ MainComponent::MainComponent()
     rightTabs_->addTab("Audio",    tabBg, audioSettings_.release(), true);
     rightTabs_->addTab("Monitor",  tabBg, outputPanel_.release(), true);
     rightTabs_->addTab("Controls", tabBg, controlSettingsPanel_.release(), true);
+
+    // ── Log Panel ──
+    {
+        auto logPanel = std::make_unique<LogPanel>();
+        logPanel->onResetSettings = [this] {
+            loadingSlot_ = true;
+            controlManager_->reloadConfig();
+            loadSettings();
+            loadingSlot_ = false;
+            refreshUI();
+            updateSlotButtonStates();
+        };
+        rightTabs_->addTab("Log", tabBg, logPanel.release(), true);
+    }
 
     // Re-acquire raw pointers (TabbedComponent owns the components now)
     audioSettings_.reset();
@@ -296,6 +328,10 @@ MainComponent::MainComponent()
     creditLink_.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(creditLink_);
 
+    // ── Notification Bar (overlays status bar labels on error) ──
+    addAndMakeVisible(notificationBar_);
+    notificationBar_.setVisible(false);
+
     // Start UI update timer (30 Hz)
     startTimerHz(30);
 
@@ -319,6 +355,8 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     stopTimer();
+    if (updateCheckThread_.joinable())
+        updateCheckThread_.join();
     saveSettings();
     dispatcher_.removeListener(this);
     controlManager_->shutdown();
@@ -467,7 +505,9 @@ void MainComponent::handleAction(const ActionEvent& event)
                         juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
                 dir.createDirectory();
                 auto file = dir.getChildFile("DirectPipe_" + timestamp + ".wav");
-                recorder.startRecording(file, sr, audioEngine_.getChannelMode());
+                if (!recorder.startRecording(file, sr, audioEngine_.getChannelMode()))
+                    showNotification("Recording failed — check folder permissions",
+                                     NotificationLevel::Error);
             }
             break;
         }
@@ -694,12 +734,31 @@ void MainComponent::resized()
     formatLabel_.setBounds(5 + infoW * 6 / 10, statusY, infoW * 4 / 10, 24);
     portableLabel_.setBounds(5 + infoW, statusY, 100, 24);
     creditLink_.setBounds(getWidth() - 300, statusY, 290, 24);
+    notificationBar_.setBounds(0, statusY - 3, getWidth(), kStatusBarHeight);
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────────────
 
 void MainComponent::timerCallback()
 {
+    // ── Drain notification queue ──
+    {
+        PendingNotification notif;
+        while (audioEngine_.popNotification(notif))
+            showNotification(notif.message, notif.level);
+
+        notificationBar_.tick();
+        bool notifActive = notificationBar_.isActive();
+        latencyLabel_.setVisible(!notifActive);
+        cpuLabel_.setVisible(!notifActive);
+        formatLabel_.setVisible(!notifActive);
+        portableLabel_.setVisible(!notifActive);
+    }
+
+    // ── Flush log entries to Log tab ──
+    if (auto* logComp = dynamic_cast<LogPanel*>(rightTabs_->getTabContentComponent(3)))
+        logComp->flushPendingLogs();
+
     auto& monitor = audioEngine_.getLatencyMonitor();
 
     bool muted = audioEngine_.isMuted();
@@ -871,6 +930,21 @@ void MainComponent::refreshUI()
                             juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
 }
 
+// ─── Notification ─────────────────────────────────────────────────────────
+
+void MainComponent::showNotification(const juce::String& message, NotificationLevel level)
+{
+    int durationTicks;
+    switch (level) {
+        case NotificationLevel::Critical: durationTicks = 240; break; // 8s
+        case NotificationLevel::Error:    durationTicks = 150; break; // 5s
+        case NotificationLevel::Warning:  durationTicks = 120; break; // 4s
+        default:                          durationTicks = 90;  break; // 3s
+    }
+    notificationBar_.showNotification(message, level, durationTicks);
+    juce::Logger::writeToLog("[Notification] " + message);
+}
+
 // ─── Update Check ────────────────────────────────────────────────────────────
 
 void MainComponent::checkForUpdate()
@@ -878,7 +952,7 @@ void MainComponent::checkForUpdate()
     // Parse current version components
     auto currentVersion = juce::String(ProjectInfo::versionString);
 
-    std::thread([this, currentVersion]() {
+    updateCheckThread_ = std::thread([this, currentVersion]() {
         juce::URL url("https://api.github.com/repos/LiveTrack-X/DirectPipe/releases/latest");
         auto response = url.readEntireTextStream(false);
         if (response.isEmpty()) return;
@@ -915,7 +989,7 @@ void MainComponent::checkForUpdate()
                 }
             }
         }
-    }).detach();
+    });
 }
 
 } // namespace directpipe

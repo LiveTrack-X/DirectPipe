@@ -199,6 +199,26 @@ ControlConfig ControlMappingStore::createDefaults()
         config.hotkeys.push_back(hk);
     }
 
+    // Output mute toggle: Ctrl+Shift+O
+    {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = 'O';
+        hk.action = {Action::ToggleMute, 0, 0.0f, "output"};
+        hk.displayName = "Ctrl+Shift+O";
+        config.hotkeys.push_back(hk);
+    }
+
+    // Monitor toggle: Ctrl+Shift+H
+    {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = 'H';
+        hk.action = {Action::MonitorToggle, 0, 0.0f, ""};
+        hk.displayName = "Ctrl+Shift+H";
+        config.hotkeys.push_back(hk);
+    }
+
     // Preset slots: Ctrl+Shift+F1..F5
     for (int i = 0; i < 5; ++i) {
         HotkeyMapping hk;

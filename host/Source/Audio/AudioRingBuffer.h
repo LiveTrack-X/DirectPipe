@@ -26,6 +26,7 @@
  */
 #pragma once
 
+#include <JuceHeader.h>
 #include <atomic>
 #include <cstring>
 #include <vector>
@@ -44,6 +45,7 @@ public:
      */
     void initialize(uint32_t capacityFrames, int numChannels)
     {
+        jassert(capacityFrames > 0 && (capacityFrames & (capacityFrames - 1)) == 0);
         capacity_ = capacityFrames;
         mask_ = capacityFrames - 1;
         channels_ = numChannels;

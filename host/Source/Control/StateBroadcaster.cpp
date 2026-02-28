@@ -64,8 +64,13 @@ void StateBroadcaster::notifyListeners()
         snapshot = state_;
     }
 
-    std::lock_guard<std::mutex> lock(listenerMutex_);
-    for (auto* listener : listeners_) {
+    // Copy listener list to avoid deadlock if a listener adds/removes listeners
+    std::vector<StateListener*> listenerSnapshot;
+    {
+        std::lock_guard<std::mutex> lock(listenerMutex_);
+        listenerSnapshot = listeners_;
+    }
+    for (auto* listener : listenerSnapshot) {
         listener->onStateChanged(snapshot);
     }
 }

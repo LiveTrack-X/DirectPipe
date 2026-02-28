@@ -15,7 +15,7 @@ Windows용 실시간 VST2/VST3 호스트. 마이크 입력을 플러그인 체�
 7. Out-of-process VST scanner (crash-safe)
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.4.0
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 3.5.0
 - WASAPI Shared Mode + ASIO (Steinberg ASIO SDK)
 - VST2 SDK 2.4 + VST3
 - WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)
@@ -46,7 +46,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
 - **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal. Blacklist for crashed plugins. Log: `%AppData%/DirectPipe/scanner-log.txt`.
 - **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Safe deletion via callAsync.
-- **Tabbed UI**: Audio/Monitor/Controls tabs in right column. Monitor tab includes Recording section. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General (with Settings Save/Load).
+- **Tabbed UI**: Audio/Monitor/Controls/Log tabs in right column. Monitor tab includes Recording section. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General (with Settings Save/Load). Log tab has real-time log viewer + maintenance tools.
 - **Start with Windows**: Registry-based (`HKCU\...\Run`). Toggle in tray menu + Controls > General tab.
 - **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
 - **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
@@ -59,6 +59,9 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow (select plugin → select parameter → MIDI Learn). Creates `Continuous` MidiBinding with `SetPluginParameter` action.
 - **System tray tooltip**: Shows current state (preset, plugins, volumes) on hover. Atomic dirty-flag for cross-thread safety.
 - **Stream Deck plugin**: SDKVersion 3, 6 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic/Recording), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50). Packaged via official `streamdeck pack` CLI.
+- **NotificationBar**: Non-intrusive status bar notifications. Temporarily replaces latency/CPU labels. Color-coded: red (errors), orange (warnings), purple (info). Auto-fades after 3-8 seconds depending on severity. Triggered by audio device errors, plugin load failures, recording failures.
+- **LogPanel**: 4th tab in right panel. Real-time log viewer with timestamped monospaced entries. Export Log (save to .txt) and Clear Log buttons. Maintenance section: Clear Plugin Cache, Clear All Presets, Reset Settings (all with confirmation dialogs).
+- **DirectPipeLogger**: Centralized logging system feeding LogPanel and NotificationBar. Captures logs from all subsystems (audio engine, plugins, WebSocket, HTTP, etc.).
 
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.
@@ -71,14 +74,18 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - onChainChanged callback outside chainLock_ scope (deadlock prevention)
 - MidiBuffer pre-allocated in prepareToPlay, cleared after processBlock
 - VSTChain removes old I/O nodes before adding new ones in prepareToPlay
+- ActionDispatcher/StateBroadcaster: copy-before-iterate for reentrant safety
+- WebSocket broadcast on dedicated thread (non-blocking)
+- Update check thread properly joined (no detached threads)
+- AudioRingBuffer capacity must be power-of-2 (assertion enforced)
 
 ## Modules
 - `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants)
 - `host/` -> JUCE app
   - `Audio/` -> AudioEngine, VSTChain, OutputRouter, VirtualMicOutput, AudioRingBuffer, LatencyMonitor, AudioRecorder
-  - `Control/` -> ActionDispatcher, ControlManager, ControlMapping, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster
+  - `Control/` -> ActionDispatcher, ControlManager, ControlMapping, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster, DirectPipeLogger
   - `IPC/` -> SharedMemWriter
-  - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel, PluginChainEditor, PluginScanner, PresetManager, LevelMeter, DirectPipeLookAndFeel, SettingsExporter
+  - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel, PluginChainEditor, PluginScanner, PresetManager, LevelMeter, LogPanel, NotificationBar, DirectPipeLookAndFeel, SettingsExporter
 - `com.directpipe.directpipe.sdPlugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v3)
 - `tests/` -> Google Test (core tests + host tests)
 - `dist/` -> Packaged .streamDeckPlugin + marketplace assets
