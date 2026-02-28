@@ -64,22 +64,29 @@ Five quick-access slots for different VST chain configurations. / 5개 체인 �
 
 Slots save chain-only data (plugins, order, bypass, parameters). Audio and output settings are NOT affected. / 슬롯은 체인 데이터만 저장. 오디오/출력 설정은 영향 없음.
 
-## Monitor Settings (Output Tab) / 모니터 설정
+## Output Tab / Output 탭
+
+The Output tab has 3 sections: Monitor Output, VST Receiver (IPC), and Recording. / Output 탭은 3개 섹션으로 구성: 모니터 출력, VST Receiver (IPC), 녹음.
 
 ### Monitor Output / 모니터 출력
 
 - **Device** — Select output device for monitoring (headphones) / 모니터링용 출력 장치 선택 (헤드폰)
-- **Volume** — Adjust monitor volume / 모니터 볼륨 조절
+- **Volume** — Adjust monitor volume (0-100%) / 모니터 볼륨 조절
 - **Enable** — Toggle monitor on/off / 모니터 켜기/끄기
-- **Status** — Shows device state: Active (green), Error (red), or "No device selected" / 디바이스 상태 표시: Active(녹색), Error(빨강), 미선택 안내
+- **Status** — Color-coded: Active (green), Error (red), or "No device selected" (grey) / 디바이스 상태 표시: Active(녹색), Error(빨강), 미선택(회색)
+
+The monitor output uses a separate WASAPI device, independent from the main driver (works even with ASIO). / 모니터 출력은 별도 WASAPI 장치를 사용하며 메인 드라이버와 독립적 (ASIO 모드에서도 동작).
+
+### VST Receiver (IPC) / VST 리시버
+
+- **Enable VST Receiver Output** — Toggle IPC output to send processed audio to Receiver VST2 plugin via shared memory / IPC 출력 토글. 공유 메모리로 Receiver VST2 플러그인에 오디오 전송
+- Also controllable via VST button on main screen, Ctrl+Shift+I, MIDI, Stream Deck, or HTTP API / 메인 화면 VST 버튼, Ctrl+Shift+I, MIDI, Stream Deck, HTTP API로도 제어 가능
 
 ### Main Output / 메인 출력
 
-The main processed audio goes directly to the AudioSettings Output device. To send audio to OBS, Discord, etc., select a virtual audio cable (e.g., VB-Audio Hi-Fi Cable) as the Output device in the Audio tab.
+The main processed audio goes directly to the AudioSettings Output device. To send audio to OBS, Discord, etc., select a virtual audio cable (e.g., VB-Audio Virtual Cable) as the Output device in the Audio tab.
 
-처리된 오디오는 AudioSettings Output 장치로 직접 전송된다. OBS, Discord 등에 보내려면 Audio 탭에서 가상 오디오 케이블(예: VB-Audio Hi-Fi Cable)을 Output 장치로 선택.
-
-The monitor output (headphones) uses a separate WASAPI device configured in the Output tab, so you can listen while routing to a different device. / 모니터 출력(헤드폰)은 Output 탭에서 설정하는 별도 WASAPI 장치를 사용하므로, 다른 장치로 라우팅하면서 동시에 청취 가능.
+처리된 오디오는 AudioSettings Output 장치로 직접 전송된다. OBS, Discord 등에 보내려면 Audio 탭에서 가상 오디오 케이블(예: VB-Audio Virtual Cable)을 Output 장치로 선택.
 
 ## VST Plugin Scanner / VST 스캐너
 
@@ -166,7 +173,16 @@ DirectPipe shows non-intrusive notifications in the status bar area when errors,
 
 ## Settings Tab / Settings 탭
 
-The 4th tab in the right panel (Audio / Output / Controls / **Settings**). Includes real-time log viewer and maintenance tools. / 우측 패널의 4번째 탭 (Audio / Output / Controls / **Settings**). 실시간 로그 뷰어와 유지보수 도구 포함.
+The 4th tab in the right panel (Audio / Output / Controls / **Settings**). / 우측 패널의 4번째 탭.
+
+### Application / 앱 설정
+
+- **Start with Windows** — Toggle to auto-launch DirectPipe at Windows startup (HKCU registry). Also available in tray menu. / Windows 시작 시 자동 실행 토글. 트레이 메뉴에서도 설정 가능.
+
+### Settings Export/Import / 설정 저장/불러오기
+
+- **Save Settings** — Export full settings (audio, VST chain, presets, controls) to `.dpbackup` file / 전체 설정을 .dpbackup 파일로 내보내기
+- **Load Settings** — Import a previously saved `.dpbackup` file / 저장된 .dpbackup 파일 불러오기
 
 ### Log Viewer / 로그 뷰어
 

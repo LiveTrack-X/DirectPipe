@@ -2,25 +2,35 @@
 
 ## System Overview / 시스템 개요
 
-DirectPipe is a real-time VST2/VST3 host that processes microphone input through a plugin chain. Main output goes directly to the AudioSettings Output device (WASAPI/ASIO). An optional separate WASAPI monitor output sends to headphones. External control sources (hotkeys, MIDI, WebSocket, HTTP) all funnel through a unified ActionDispatcher.
+DirectPipe is a real-time VST2/VST3 host that processes microphone input through a plugin chain. It provides three independent output paths: main output to the AudioSettings device (WASAPI/ASIO), optional monitor output to headphones (separate WASAPI), and IPC output to shared memory for the Receiver VST2 plugin (e.g., OBS). Processed audio can also be recorded to WAV. All external control sources (hotkeys, MIDI, WebSocket, HTTP, Stream Deck) funnel through a unified ActionDispatcher.
 
-DirectPipe는 마이크 입력을 VST 플러그인 체인으로 실시간 처리하는 VST 호스트다. 메인 출력은 AudioSettings Output 장치(WASAPI/ASIO)로 직접 전송. 별도 WASAPI 모니터 출력(헤드폰)을 선택적으로 사용 가능. 모든 외부 제어(단축키, MIDI, WebSocket, HTTP)는 ActionDispatcher를 통해 통합된다.
+DirectPipe는 마이크 입력을 VST 플러그인 체인으로 실시간 처리하는 VST 호스트다. 3가지 독립 출력 경로 제공: 메인 출력(AudioSettings 장치, WASAPI/ASIO), 모니터 출력(헤드폰, 별도 WASAPI), IPC 출력(공유 메모리 → Receiver VST2, 예: OBS). 처리된 오디오의 WAV 녹음도 지원. 모든 외부 제어(단축키, MIDI, WebSocket, HTTP, Stream Deck)는 ActionDispatcher를 통해 통합된다.
 
 ```
-Mic -> WASAPI Shared / ASIO -> VST2/VST3 Chain -> Main Output (outputChannelData)
-                                                     \
-                                                OutputRouter -> Monitor Output (Headphones, separate WASAPI)
+Mic ─→ WASAPI Shared / ASIO ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
+                                                                      │
+                 ┌────────────────────────────────────────────────────┼────────────────────┐
+                 │                                                    │                    │
+           Main Output                                         Monitor Output         IPC Output
+        (outputChannelData)                                  (OutputRouter →         (SharedMemWriter →
+     Audio tab Output device                                VirtualMicOutput,       Shared Memory →
+     e.g. VB-Cable → Discord                               separate WASAPI →       OBS [Receiver VST2])
+                 │                                            Headphones)
+           AudioRecorder → WAV File
 
 External Control:
-  Hotkey / MIDI / WebSocket / HTTP -> ControlManager -> ActionDispatcher
-    -> VSTChain (bypass), OutputRouter (volume), PresetManager (slots)
+  Hotkey / MIDI / Stream Deck / WebSocket (:8765) / HTTP (:8766)
+    → ControlManager → ActionDispatcher
+      → VSTChain (bypass/params), OutputRouter (volume), PresetManager (slots),
+        AudioRecorder (recording), SharedMemWriter (IPC toggle)
 ```
 
 **Design choices / 설계 원칙:**
 - **WASAPI Shared** — Non-exclusive mic access. Other apps can use the mic simultaneously. / 비독점 마이크 접근. 다른 앱과 동시 사용 가능.
 - **ASIO** — Lower latency for ASIO-compatible interfaces. / ASIO 호환 인터페이스로 저지연.
 - Runtime switching between driver types. UI adapts dynamically. / 드라이버 타입 런타임 전환. UI 자동 적응.
-- **Main + Monitor output** — Main output goes directly to AudioSettings device (e.g., VB-Audio for OBS/Discord). Monitor uses a separate WASAPI device for headphones. / 메인 출력은 AudioSettings 장치로 직접 전송. 모니터는 별도 WASAPI 장치로 헤드폰 출력.
+- **3 output paths** — Main output directly to AudioSettings device (e.g., VB-Audio for Discord). Monitor uses a separate WASAPI device for headphones. IPC output sends to shared memory for Receiver VST2 plugin (e.g., OBS — no virtual cable needed). / 3가지 출력: 메인(AudioSettings 장치), 모니터(별도 WASAPI 헤드폰), IPC(공유 메모리 → Receiver VST2, 가상 케이블 불필요).
+- **15 actions** — Unified action system: PluginBypass, MasterBypass, SetVolume, ToggleMute, LoadPreset, PanicMute, InputGainAdjust, NextPreset, PreviousPreset, InputMuteToggle, SwitchPresetSlot, MonitorToggle, RecordingToggle, SetPluginParameter, IpcToggle. / 15개 통합 액션 시스템.
 
 ## Components / 컴포넌트
 
@@ -63,16 +73,16 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 - **AudioSettings** — Driver type selector (WASAPI/ASIO), device selection, ASIO channel routing (input/output pair), sample rate, buffer size, channel mode (Mono/Stereo), latency display, ASIO Control Panel button. / 오디오 설정 패널.
 - **PluginChainEditor** — Drag-and-drop reordering, bypass toggle, edit button (native GUI), remove button. Safe deletion via `callAsync`. `addPluginFromDescription` uses `SafePointer` in `callAsync` lambda. / 드래그 앤 드롭 플러그인 체인 편집. callAsync를 통한 안전 삭제. `addPluginFromDescription`은 callAsync 람다에서 `SafePointer` 사용.
 - **PluginScanner** — Out-of-process VST scanner with auto-retry (5x) and dead man's pedal. Blacklist for crashed plugins. Real-time text search and column sorting (name/vendor/format). All 3 `callAsync` lambdas from background scan thread use `SafePointer`. / 별도 프로세스 VST 스캐너. 자동 재시도 5회. 블랙리스트. 실시간 검색 및 정렬. 백그라운드 스캔 스레드의 모든 callAsync 람다가 `SafePointer` 사용.
-- **OutputPanel** — Monitor output controls: device selector, volume slider, enable toggle, device status indicator (Active/Error/No device). Recording section: REC/STOP button, elapsed time, Play last recording, Open Folder, folder chooser. Recording folder persisted to `recording-config.json`. / 모니터 출력 제어 + 디바이스 상태 표시. 녹음 섹션: REC/STOP, 경과 시간, 마지막 녹음 재생, 폴더 열기, 폴더 변경.
+- **OutputPanel** — Three sections: (1) Monitor output: device selector, volume slider, enable toggle, device status indicator (Active/Error/No device). (2) VST Receiver (IPC): enable toggle for shared memory output. (3) Recording: REC/STOP button, elapsed time, Play last recording, Open Folder, folder chooser. Default folder: `Documents\DirectPipe Recordings`. Recording folder persisted to `recording-config.json`. / 3개 섹션: (1) 모니터 출력(장치/볼륨/상태), (2) VST Receiver IPC 토글, (3) 녹음(REC/STOP/재생/폴더). 기본 폴더: `Documents\DirectPipe Recordings`.
 - **PresetManager** — Full preset save/load (JSON, `.dppreset`) + Quick Preset Slots A-E. Plugin state via `getStateInformation()`/base64. Async slot loading. / 프리셋 관리 + 퀵 슬롯 A-E. 비동기 슬롯 로딩.
 - **ControlSettingsPanel** — 3 sub-tabs: Hotkeys, MIDI, Stream Deck (server status). MIDI tab includes plugin parameter mapping (3-step popup: plugin → parameter → Learn). / 3개 서브탭: 단축키, MIDI, Stream Deck. MIDI 탭에 플러그인 파라미터 매핑 (3단계 팝업).
 - **SettingsExporter** — Export/import full settings as `.dpbackup` files via native file chooser. Located in Settings tab (LogPanel). Uses `controlManager_->getConfigStore()` for live config access instead of temporary stores. / 설정 내보내기/가져오기. Settings 탭(LogPanel)에 위치. 임시 저장소 대신 `controlManager_->getConfigStore()`로 라이브 설정 접근.
 - **LevelMeter** — Real-time RMS level display with peak hold, clipping indicator. dB log scale. / 실시간 RMS 레벨 미터. 피크 홀드. dB 로그 스케일.
-- **LogPanel** — Real-time log viewer (4th tab in right panel). Timestamped entries in monospaced font. Export Log (save to .txt) and Clear Log buttons. Maintenance section: Clear Plugin Cache, Clear All Presets, Reset Settings (all with confirmation dialogs). / 실시간 로그 뷰어 (우측 패널 4번째 탭). 고정폭 타임스탬프 엔트리. 유지보수: 캐시/프리셋/설정 초기화 (확인 대화상자).
+- **LogPanel** — 4th tab "Settings" in right panel. Four sections: (1) Application: "Start with Windows" toggle (HKCU registry). (2) Settings: Save/Load Settings buttons (`.dpbackup` via SettingsExporter). (3) Log: real-time log viewer with timestamped monospaced entries, Export Log / Clear Log buttons. (4) Maintenance: Clear Plugin Cache, Clear All Presets, Reset Settings (all with confirmation dialogs). / 우측 패널 4번째 탭 "Settings". 4개 섹션: (1) 시작 프로그램 등록, (2) 설정 저장/불러오기, (3) 실시간 로그 뷰어 + Export/Clear, (4) 유지보수 도구 (확인 대화상자).
 - **NotificationBar** — Non-intrusive status bar notifications. Temporarily replaces latency/CPU labels. Color-coded: red (errors), orange (warnings), purple (info). Auto-fades after 3-8 seconds depending on severity. / 비침습적 상태 바 알림. 레이턴시/CPU 레이블 임시 대체. 색상: 빨강(오류), 주황(경고), 보라(정보). 3-8초 자동 페이드.
 - **DirectPipeLookAndFeel** — Custom dark theme (#1E1E2E bg, #6C63FF purple accent, #4CAF50 green). / 다크 테마.
 
-#### Main Application (`host/Source/MainComponent.cpp`)
+#### Main Application (`host/Source/MainComponent.cpp`) / 메인 앱
 
 - Two-column layout: left (input meter + gain + VST chain + slot buttons), right (tabbed panel: Audio/Output/Controls/Settings + output meter) / 2컬럼 레이아웃, 좌우 대칭 미터
 - Quick Preset Slot buttons A-E with visual active/occupied state. Loading feedback (dimmed buttons). / 퀵 프리셋 슬롯 버튼 (활성/사용중 시각 구분, 로딩 중 피드백)
@@ -124,26 +134,16 @@ Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDKVersion 3). / Stream
 ## Data Flow (Audio Thread) / 데이터 흐름 (오디오 스레드)
 
 ```
-1. WASAPI Shared / ASIO callback fires
-   WASAPI Shared / ASIO 콜백 발생
-2. Input PCM float32 copied to pre-allocated work buffer (no heap alloc)
-   입력 PCM float32를 사전 할당된 버퍼에 복사 (힙 할당 없음)
-3. Channel processing: Mono (average L+R) or Stereo (passthrough)
-   채널 처리: Mono (좌우 평균) 또는 Stereo (패스스루)
-4. Apply input gain (atomic float)
-   입력 게인 적용 (atomic float)
-5. Measure input RMS level
-   입력 RMS 레벨 측정
-6. Process through VST chain (graph->processBlock, inline, pre-allocated MidiBuffer)
-   VST 체인 처리 (인라인, 사전 할당된 MidiBuffer)
-7. Copy processed audio to main output (outputChannelData)
-   처리된 오디오를 메인 출력(outputChannelData)에 복사
-8. OutputRouter routes to monitor (if enabled):
-   OutputRouter가 모니터로 라우팅 (활성화 시):
+1. WASAPI Shared / ASIO callback fires / WASAPI Shared / ASIO 콜백 발생
+2. Input PCM float32 copied to pre-allocated work buffer (no heap alloc) / 입력 PCM float32를 사전 할당된 버퍼에 복사 (힙 할당 없음)
+3. Channel processing: Mono (average L+R) or Stereo (passthrough) / 채널 처리: Mono (좌우 평균) 또는 Stereo (패스스루)
+4. Apply input gain (atomic float) / 입력 게인 적용 (atomic float)
+5. Measure input RMS level / 입력 RMS 레벨 측정
+6. Process through VST chain (graph->processBlock, inline, pre-allocated MidiBuffer) / VST 체인 처리 (인라인, 사전 할당된 MidiBuffer)
+7. Copy processed audio to main output (outputChannelData) / 처리된 오디오를 메인 출력(outputChannelData)에 복사
+8. OutputRouter routes to monitor (if enabled) / OutputRouter가 모니터로 라우팅 (활성화 시):
    Monitor -> volume scale -> lock-free AudioRingBuffer -> VirtualMicOutput (separate WASAPI)
-   모니터 -> 볼륨 스케일링 -> 락프리 링버퍼 -> VirtualMicOutput (별도 WASAPI)
-9. Measure output RMS level
-   출력 RMS 레벨 측정
+9. Measure output RMS level / 출력 RMS 레벨 측정
 ```
 
 ## Preset System / 프리셋 시스템

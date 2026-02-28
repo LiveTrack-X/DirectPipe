@@ -47,15 +47,20 @@ Real-time VST2/VST3 host for Windows. Processes microphone input through a VST p
 ## 동작 원리 / How It Works
 
 ```
-Mic -> WASAPI Shared / ASIO -> VST2/VST3 Plugin Chain
-                                    |
-                              Main Output (AudioSettings Output device)
-                                    \
-                               OutputRouter -> Monitor Output (Headphones, separate WASAPI)
+Mic ─→ WASAPI Shared / ASIO ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
+                                                                      │
+                 ┌────────────────────────────────────────────────────┼────────────────────┐
+                 │                                                    │                    │
+           Main Output                                         Monitor Output         IPC Output
+     (Audio tab Output device)                             (Output tab, separate    (SharedMemWriter)
+     예: VB-Cable → Discord/Zoom                             WASAPI → Headphones)    → Shared Memory
+                 │                                                                       │
+           AudioRecorder                                                     OBS / DAW [Receiver VST2]
+           → WAV File (Output tab)
 
 External Control:
-  Hotkeys / MIDI CC / Stream Deck / HTTP / WebSocket
-    -> ActionDispatcher -> Plugin Bypass, Volume, Preset Switch, Mute ...
+  Hotkeys / MIDI CC / Stream Deck / HTTP (:8766) / WebSocket (:8765)
+    → ActionDispatcher → Bypass, Volume, Preset, Mute, Recording, IPC Toggle ...
 ```
 
 ## 주요 기능 / Features
@@ -64,67 +69,73 @@ External Control:
 
 - **VST2 + VST3** 플러그인 로드 및 인라인 실시간 처리 — Load and process plugins inline in real time
 - **드래그 앤 드롭** 플러그인 체인 편집 — Drag & drop to reorder plugins, toggle bypass, open native plugin GUIs
-- **Out-of-process 스캐너** — Scans plugins in a separate process; bad plugin crashes don't affect the host (auto-retry with dead man's pedal)
-- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 bypass/파라미터만 즉시 전환, 다른 체인이면 비동기 로딩 — 5 chain-only presets with instant or async switching
+- **Out-of-process 스캐너** — 별도 프로세스에서 안전 스캔. 크래시 시 자동 재시도 (5회), 블랙리스트 자동 등록 — Scans in a separate process; auto-retry up to 5 times, blacklists crashed plugins
+- **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 실시간 검색 및 컬럼 정렬 — Real-time search and column sort by name, vendor, or format
+- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 즉시 전환, 다른 체인이면 비동기 로딩. Save/Load 버튼으로 .dppreset 파일 저장/불러오기 — 5 chain-only presets with instant or async switching. Save/Load buttons for .dppreset files
 
 ### 오디오 / Audio
 
 - **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
 - WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
-- **메인 출력 + 모니터** — Main output to AudioSettings device + optional monitor (headphones) via separate WASAPI
+- **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor (Output 탭, 별도 WASAPI) + IPC (Receiver VST) — Three output paths: main, monitor headphones, IPC to OBS
 - **Mono / Stereo** 채널 모드 — Channel mode selection
-- **입력 게인** 조절 — Input gain control
-- **실시간 레벨 미터** (입력/출력 RMS, 좌우 대칭 배치) — Real-time input/output level meters (symmetric vertical layout)
+- **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
+- **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
 
 ### 외부 제어 / External Control
 
-- **키보드 단축키** — Ctrl+Shift+1–9 plugin bypass, Ctrl+Shift+M panic mute, Ctrl+Shift+F1–F5 preset slots
-- **MIDI CC** — Learn 모드로 CC/노트 매핑 — CC/note mapping with Learn mode
+- **키보드 단축키** (모두 Controls > Hotkeys 탭에서 변경 가능) — All customizable in Controls > Hotkeys tab
+
+  | 단축키 / Shortcut | 동작 / Action |
+  |---|---|
+  | Ctrl+Shift+1–9 | 플러그인 1-9 Bypass 토글 / Plugin 1-9 bypass |
+  | Ctrl+Shift+0 | 마스터 Bypass (전체 체인) / Master bypass |
+  | Ctrl+Shift+M | 패닉 뮤트 / Panic mute |
+  | Ctrl+Shift+N | 입력 뮤트 토글 / Input mute |
+  | Ctrl+Shift+O | 출력 뮤트 토글 / Output mute |
+  | Ctrl+Shift+H | 모니터 토글 / Monitor toggle |
+  | Ctrl+Shift+I | IPC 출력 토글 / IPC toggle |
+  | Ctrl+Shift+F1–F5 | 프리셋 슬롯 A-E / Preset slot A-E |
+
+- **MIDI CC** — Learn 모드로 CC/노트 매핑. 플러그인 파라미터 직접 매핑도 지원 — CC/note mapping with Learn mode. Direct plugin parameter mapping supported
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
-- **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 커맨드 — One-shot commands from curl or browser
-- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — Bypass Toggle, Panic Mute, Volume Control (SD+ 다이얼 지원), Preset Switch, Monitor Toggle, Recording Toggle, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
+- **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 GET 커맨드 — One-shot GET commands from curl or browser
+- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
 
 ### IPC 출력 (Receiver VST) / IPC Output (Receiver VST)
 
-- **Receiver VST2 플러그인** — OBS 등 VST2를 지원하는 앱에서 DirectPipe 처리 오디오를 공유 메모리(IPC)로 직접 수신. **가상 오디오 케이블 없이** OBS에 마이크 오디오를 바로 보낼 수 있다 — Receive processed audio directly via shared memory (IPC) in OBS or other VST2 hosts. Route mic audio to OBS **without a virtual audio cable**
-- **IPC 토글** — 기본값은 OFF. Output 탭의 체크박스, 메인 화면 하단 VST 버튼, 단축키 Ctrl+Shift+I, MIDI, Stream Deck, HTTP API 등 다양한 방법으로 켜기/끄기 가능 — Off by default. Toggle via Output tab checkbox, VST button, hotkey Ctrl+Shift+I, MIDI, Stream Deck, or HTTP API
-- **버퍼 크기 설정** — Receiver VST 플러그인 GUI에서 5단계 버퍼 프리셋 선택. 낮을수록 지연이 적지만 언더런 위험 증가 — 5 buffer presets in Receiver VST GUI. Lower = less latency but higher underrun risk
+- **Receiver VST2 플러그인** — OBS 등 VST2 지원 앱에서 공유 메모리(IPC)로 직접 수신. **가상 케이블 불필요** — Receive audio via shared memory IPC. **No virtual cable needed**
+- **IPC 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
+- **버퍼 크기 설정** — Receiver VST GUI에서 5단계 프리셋 선택 — 5 buffer presets in Receiver VST GUI
 
   | 프리셋 / Preset | 지연 / Latency | 용도 / Best for |
   |---|---|---|
-  | Ultra Low | ~5ms | 최소 지연 필요 시 / Minimum latency |
-  | Low | ~10ms (기본) | 일반 사용 / General use (default) |
+  | Ultra Low | ~5ms | 최소 지연 / Minimum latency |
+  | Low (기본) | ~10ms | 일반 사용 / General use (default) |
   | Medium | ~21ms | 안정적 / Stable |
   | High | ~42ms | CPU 여유 적을 때 / Low CPU headroom |
   | Safe | ~85ms | 최대 안정성 / Maximum stability |
 
 ### 녹음 / Recording
 
-- **오디오 녹음** — Output 탭에서 처리된 오디오를 WAV 파일로 녹음. Lock-free 실시간 안전 설계. — Record processed audio to WAV in Output tab. Lock-free, real-time safe design.
-- **녹음 시간 표시** — Output 탭과 Stream Deck에서 실시간 경과 시간 확인 — Real-time duration display in Output tab and Stream Deck
-- **녹음 파일 재생** — Play 버튼으로 마지막 녹음 파일 즉시 재생 — Play last recording with one click
-- **녹음 폴더 관리** — Open Folder로 탐색기 열기, ... 버튼으로 폴더 위치 변경 — Open folder in Explorer, change recording location
-
-### 설정 관리 / Settings Management
-
-- **설정 저장/불러오기** — Settings 탭에서 전체 설정을 .dpbackup 파일로 저장/불러오기 — Save/load full settings as .dpbackup files in Settings tab
-- **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 검색 및 정렬 — Search and sort plugins by name, vendor, or format in scanner
-- **새 버전 알림** — 새 릴리즈가 있으면 하단 상태바에 주황색 "NEW" 표시 — Orange "NEW" indicator on status bar when a newer release is available
-
-### 진단 / Diagnostics
-
-- **오류 알림** — 상태 바에 비침습적 알림 표시 (빨강=오류, 주황=경고, 보라=정보). 3-8초 자동 페이드. — Non-intrusive status bar notifications (red=error, orange=warning, purple=info). Auto-fades after 3-8 seconds.
-- **Settings 탭** — 실시간 로그 뷰어 (4번째 탭). 타임스탬프 + 고정폭 폰트. Export Log / Clear Log 지원. — Real-time log viewer (4th tab). Timestamped entries in monospaced font. Export Log / Clear Log.
-- **유지보수 도구** — Settings 탭에서 플러그인 캐시 삭제, 프리셋 전체 삭제, 설정 초기화 (확인 대화상자 포함) — Maintenance tools in Settings tab: Clear Plugin Cache, Clear All Presets, Reset Settings (with confirmation dialogs)
+- **오디오 녹음** — Output 탭에서 VST 체인 이후 처리된 오디오를 WAV로 녹음 (lock-free 실시간 안전) — Record post-chain audio to WAV in Output tab (lock-free, RT-safe)
+- **기본 폴더**: `Documents\DirectPipe Recordings`, 파일명: `DirectPipe_YYYYMMDD_HHMMSS.wav` — Default folder and naming format
+- **녹음 제어** — REC/STOP 버튼, 경과 시간 표시, Play (마지막 녹음 재생), Open Folder, 폴더 변경 — REC/STOP, elapsed time, Play last, Open Folder, change folder
+- **외부 제어** — Stream Deck (경과 시간 표시), HTTP API, WebSocket으로도 녹음 토글 가능 — Also controllable via Stream Deck (shows elapsed time), HTTP, WebSocket
 
 ### UI
 
-- **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록. 트레이 툴팁에 현재 상태 표시. — Close minimizes to tray, double-click to restore, Start with Windows toggle. Tray tooltip shows current state.
-- **탭 설정** — Audio / Output / Controls / Settings — Tabbed settings panel
-- **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원. 패닉 뮤트 중에는 OUT/MON/VST 및 외부 제어 잠금 — Mute all outputs instantly, restores previous state on unmute. Locks OUT/MON/VST buttons and external controls during panic mute
-- **Output / Monitor Mute** — 개별 출력 뮤트 (UI 인디케이터 + 클릭 제어) — Independent output/monitor mute with clickable status indicators
-- **MIDI 플러그인 파라미터 매핑** — MIDI CC로 VST 플러그인 파라미터 직접 제어 (Learn 모드) — Map MIDI CC to VST plugin parameters with Learn mode
-- **다크 테마** — Dark theme (custom JUCE LookAndFeel)
+- **2컬럼 레이아웃** — 좌: 입력 미터 + 게인 + VST 체인 + 프리셋 슬롯 + 뮤트 버튼(OUT/MON/VST) + PANIC MUTE, 우: 설정 탭 패널 + 출력 미터 — Left: input meter + chain + controls, Right: tabbed settings + output meter
+- **4개 탭** — Tab layout:
+  - **Audio**: 드라이버(WASAPI/ASIO), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드 — Driver, devices, SR, buffer, channel mode
+  - **Output**: 모니터 출력(장치/볼륨/상태), IPC 토글, 녹음(REC/Play/폴더) — Monitor output, IPC toggle, recording
+  - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
+  - **Settings**: Start with Windows, 설정 저장/불러오기(.dpbackup), 로그 뷰어, 유지보수 도구 — Startup, settings export, log viewer, maintenance
+- **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
+- **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원. 패닉 중 OUT/MON/VST 및 외부 제어 잠금 — Instant mute all, locks controls until unmuted
+- **상태 바** — 레이턴시, CPU %, 오디오 포맷, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU, format, portable mode, version. Auto-fade notifications
+- **다크 테마** — Custom JUCE LookAndFeel
+- **포터블 모드** — exe 옆에 `portable.flag` 파일 배치 시 설정을 `./config/`에 저장 — Place `portable.flag` next to exe to store config in `./config/`
 
 ## 사용 예시: 가상 케이블로 Discord/OBS에 보이스 이펙트 적용 / Usage: Voice Effects with Virtual Cable
 
