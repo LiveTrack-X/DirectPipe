@@ -69,7 +69,7 @@ External Control:
 
 - **VST2 + VST3** 플러그인 로드 및 인라인 실시간 처리 — Load and process plugins inline in real time
 - **드래그 앤 드롭** 플러그인 체인 편집 — Drag & drop to reorder plugins, toggle bypass, open native plugin GUIs
-- **Out-of-process 스캐너** — 별도 프로세스에서 안전 스캔. 크래시 시 자동 재시도 (5회), 블랙리스트 자동 등록 — Scans in a separate process; auto-retry up to 5 times, blacklists crashed plugins
+- **Out-of-process 스캐너** — 별도 프로세스에서 안전 스캔. 크래시 시 자동 재시도 (10회), 블랙리스트 자동 등록 — Scans in a separate process; auto-retry up to 10 times, blacklists crashed plugins
 - **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 실시간 검색 및 컬럼 정렬 — Real-time search and column sort by name, vendor, or format
 - **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 즉시 전환, 다른 체인이면 비동기 로딩. Save/Load 버튼으로 .dppreset 파일 저장/불러오기 — 5 chain-only presets with instant or async switching. Save/Load buttons for .dppreset files
 
@@ -203,7 +203,7 @@ cmake --build build --config Release
 ```
 host/                     JUCE host application (main)
   Source/
-    Audio/                  AudioEngine, VSTChain, OutputRouter, VirtualMicOutput,
+    Audio/                  AudioEngine, VSTChain, OutputRouter, MonitorOutput,
                             AudioRingBuffer, LatencyMonitor, AudioRecorder
     Control/                ActionDispatcher, ControlManager, ControlMapping,
                             WebSocketServer, HttpApiServer,

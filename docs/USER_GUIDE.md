@@ -96,7 +96,7 @@ Out-of-process scanner that safely discovers all installed plugins. / 별도 프
 2. Default directories are pre-configured / 기본 경로 자동 설정
 3. Click **"Scan for Plugins"** — runs in a separate process / 별도 프로세스에서 스캔
 4. **Search & Sort** — Type in the search box to filter by name. Click column headers to sort by name, vendor, or format. / 검색창에 입력하여 이름으로 필터링. 컬럼 헤더 클릭으로 이름/벤더/포맷 정렬.
-5. Bad plugin crashes -> auto-retry (up to 5 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
+5. Bad plugin crashes -> auto-retry (up to 10 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
 6. Scanner logs: `%AppData%/DirectPipe/scanner-log.txt` / 스캐너 로그 경로
 
 ## System Tray / 시스템 트레이

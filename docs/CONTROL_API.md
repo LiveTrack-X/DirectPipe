@@ -223,7 +223,7 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
       { "name": "ReaComp", "bypass": false, "loaded": true },
       { "name": "ReaEQ", "bypass": true, "loaded": true }
     ],
-    "volumes": { "input": 1.0, "output": 0.8, "monitor": 0.6 },
+    "volumes": { "input": 1.0, "monitor": 0.6 },
     "master_bypassed": false,
     "muted": false,
     "input_muted": false,
@@ -250,7 +250,6 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
 | `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
 | `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
 | `volumes.input` | number | Input gain multiplier (0.0-2.0) / 입력 게인 배수 |
-| `volumes.output` | number | Main output volume (0.0-1.0) / 메인 출력 볼륨 |
 | `volumes.monitor` | number | Monitor volume (0.0-1.0) / 모니터 볼륨 |
 | `master_bypassed` | boolean | Entire chain bypassed / 전체 체인 Bypass |
 | `muted` | boolean | Panic mute active / 패닉 뮤트 상태 |
@@ -259,6 +258,7 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
 | `active_slot` | number | Active preset slot (0-4 = A-E) / 활성 슬롯 |
 | `preset` | string | Current preset name / 현재 프리셋 이름 |
 | `latency_ms` | number | Latency in ms / 레이턴시 (ms) |
+| `monitor_latency_ms` | number | Monitor output latency in ms / 모니터 출력 레이턴시 (ms) |
 | `level_db` | number | Input level in dBFS / 입력 레벨 (dBFS) |
 | `cpu_percent` | number | Audio CPU usage % / 오디오 CPU 사용률 |
 | `sample_rate` | number | Sample rate (Hz) / 샘플레이트 |
