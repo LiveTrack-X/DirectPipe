@@ -77,8 +77,9 @@ public:
  * @brief Manages and broadcasts application state.
  *
  * Thread-safe: state can be updated from any thread.
- * Listeners are notified on the calling thread (ensure GUI updates
- * are dispatched to the message thread).
+ * Listeners are always notified on the JUCE message thread.
+ * If updateState() is called from the message thread, notification is synchronous.
+ * If called from another thread, notification is deferred via callAsync.
  */
 class StateBroadcaster {
 public:
@@ -112,6 +113,7 @@ public:
 
 private:
     void notifyListeners();
+    void notifyOnMessageThread();
 
     mutable std::mutex stateMutex_;
     AppState state_;

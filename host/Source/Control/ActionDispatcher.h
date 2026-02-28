@@ -73,7 +73,9 @@ public:
  * @brief Central dispatcher that routes control actions to the audio engine.
  *
  * Thread-safe: actions can be dispatched from any thread (GUI, MIDI, network).
- * The dispatcher forwards to registered listeners on the message thread.
+ * The dispatcher always delivers to listeners on the JUCE message thread.
+ * If called from the message thread, delivery is synchronous (zero latency).
+ * If called from another thread, delivery is deferred via callAsync.
  */
 class ActionDispatcher {
 public:
@@ -111,6 +113,8 @@ public:
     void inputMuteToggle();
 
 private:
+    void dispatchOnMessageThread(const ActionEvent& event);
+
     std::vector<ActionListener*> listeners_;
     std::mutex listenerMutex_;
 };

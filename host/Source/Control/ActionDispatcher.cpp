@@ -22,13 +22,26 @@
  */
 
 #include "ActionDispatcher.h"
+#include <JuceHeader.h>
 #include <algorithm>
 
 namespace directpipe {
 
 void ActionDispatcher::dispatch(const ActionEvent& event)
 {
-    // Copy listener list to avoid deadlock if a listener adds/removes listeners
+    // Always deliver to listeners on the message thread.
+    // If already on message thread: synchronous (no latency).
+    // If on another thread (MIDI, WebSocket, HTTP, hotkey): callAsync.
+    if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
+        juce::MessageManager::callAsync([this, event] { dispatchOnMessageThread(event); });
+        return;
+    }
+    dispatchOnMessageThread(event);
+}
+
+void ActionDispatcher::dispatchOnMessageThread(const ActionEvent& event)
+{
+    // Copy listener list to avoid issues if a listener adds/removes listeners
     std::vector<ActionListener*> snapshot;
     {
         std::lock_guard<std::mutex> lock(listenerMutex_);

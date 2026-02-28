@@ -368,11 +368,7 @@ MainComponent::~MainComponent()
 
 void MainComponent::onAction(const ActionEvent& event)
 {
-    // Dispatch to message thread — onAction may be called from WebSocket/MIDI threads
-    if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
-        juce::MessageManager::callAsync([this, event] { handleAction(event); });
-        return;
-    }
+    // ActionDispatcher guarantees message-thread delivery, so no thread check needed.
     handleAction(event);
 }
 

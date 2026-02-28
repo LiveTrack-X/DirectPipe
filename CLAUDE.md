@@ -66,9 +66,9 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 ## Coding Rules
 - Audio callback: no heap alloc, no mutex. Pre-allocated 8-channel work buffer.
 - Control -> audio: atomic flags or lock-free queue
-- GUI and control share ActionDispatcher
-- MainComponent::onAction() checks thread, uses callAsync if not on message thread
-- WebSocket/HTTP on separate threads
+- GUI and control share ActionDispatcher (message-thread delivery guaranteed)
+- ActionDispatcher/StateBroadcaster guarantee message-thread listener delivery (callAsync for off-thread callers, synchronous for message-thread callers)
+- WebSocket/HTTP on separate threads (actions routed via ActionDispatcher's message-thread guarantee)
 - `juce::MessageManager::callAsync` for UI self-deletion safety (PluginChainEditor remove button etc.)
 - `loadingSlot_` (std::atomic<bool>) guard prevents recursive auto-save during slot loading
 - onChainChanged callback outside chainLock_ scope (deadlock prevention)

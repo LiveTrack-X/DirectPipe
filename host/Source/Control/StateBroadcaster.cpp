@@ -58,13 +58,23 @@ void StateBroadcaster::removeListener(StateListener* listener)
 
 void StateBroadcaster::notifyListeners()
 {
+    // Always deliver to listeners on the message thread.
+    if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
+        juce::MessageManager::callAsync([this] { notifyOnMessageThread(); });
+        return;
+    }
+    notifyOnMessageThread();
+}
+
+void StateBroadcaster::notifyOnMessageThread()
+{
     AppState snapshot;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         snapshot = state_;
     }
 
-    // Copy listener list to avoid deadlock if a listener adds/removes listeners
+    // Copy listener list to avoid issues if a listener adds/removes listeners
     std::vector<StateListener*> listenerSnapshot;
     {
         std::lock_guard<std::mutex> lock(listenerMutex_);
