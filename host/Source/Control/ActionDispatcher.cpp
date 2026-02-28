@@ -28,8 +28,13 @@ namespace directpipe {
 
 void ActionDispatcher::dispatch(const ActionEvent& event)
 {
-    std::lock_guard<std::mutex> lock(listenerMutex_);
-    for (auto* listener : listeners_) {
+    // Copy listener list to avoid deadlock if a listener adds/removes listeners
+    std::vector<ActionListener*> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(listenerMutex_);
+        snapshot = listeners_;
+    }
+    for (auto* listener : snapshot) {
         listener->onAction(event);
     }
 }

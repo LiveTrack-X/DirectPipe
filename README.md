@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.4.0-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.5.0-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -94,10 +94,16 @@ External Control:
 - **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 검색 및 정렬 — Search and sort plugins by name, vendor, or format in scanner
 - **새 버전 알림** — 새 릴리즈가 있으면 하단 상태바에 주황색 "NEW" 표시 — Orange "NEW" indicator on status bar when a newer release is available
 
+### 진단 / Diagnostics
+
+- **오류 알림** — 상태 바에 비침습적 알림 표시 (빨강=오류, 주황=경고, 보라=정보). 3-8초 자동 페이드. — Non-intrusive status bar notifications (red=error, orange=warning, purple=info). Auto-fades after 3-8 seconds.
+- **로그 탭** — 실시간 로그 뷰어 (4번째 탭). 타임스탬프 + 고정폭 폰트. Export Log / Clear Log 지원. — Real-time log viewer (4th tab). Timestamped entries in monospaced font. Export Log / Clear Log.
+- **유지보수 도구** — 로그 탭에서 플러그인 캐시 삭제, 프리셋 전체 삭제, 설정 초기화 (확인 대화상자 포함) — Maintenance tools in Log tab: Clear Plugin Cache, Clear All Presets, Reset Settings (with confirmation dialogs)
+
 ### UI
 
 - **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록. 트레이 툴팁에 현재 상태 표시. — Close minimizes to tray, double-click to restore, Start with Windows toggle. Tray tooltip shows current state.
-- **탭 설정** — Audio / Monitor / Controls (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
+- **탭 설정** — Audio / Monitor / Controls / Log (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원 — Mute all outputs instantly, restores previous state on unmute
 - **Output / Monitor Mute** — 개별 출력 뮤트 (UI 인디케이터 + 클릭 제어) — Independent output/monitor mute with clickable status indicators
 - **MIDI 플러그인 파라미터 매핑** — MIDI CC로 VST 플러그인 파라미터 직접 제어 (Learn 모드) — Map MIDI CC to VST plugin parameters with Learn mode
@@ -155,11 +161,13 @@ host/                     JUCE host application (main)
                             AudioRingBuffer, LatencyMonitor
     Control/                ActionDispatcher, ControlManager, ControlMapping,
                             WebSocketServer, HttpApiServer,
-                            HotkeyHandler, MidiHandler, StateBroadcaster
+                            HotkeyHandler, MidiHandler, StateBroadcaster,
+                            DirectPipeLogger
     IPC/                    SharedMemWriter
     UI/                     AudioSettings, OutputPanel, ControlSettingsPanel,
                             PluginChainEditor, PluginScanner, PresetManager,
-                            LevelMeter, DirectPipeLookAndFeel
+                            LevelMeter, LogPanel, NotificationBar,
+                            DirectPipeLookAndFeel
 core/                     IPC library (RingBuffer, SharedMemory, Protocol)
 com.directpipe.directpipe.sdPlugin/  Stream Deck plugin (Node.js, SDK v3)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets

@@ -35,9 +35,12 @@
 #include "UI/AudioSettings.h"
 #include "UI/OutputPanel.h"
 #include "UI/ControlSettingsPanel.h"
+#include "UI/NotificationBar.h"
+#include "UI/LogPanel.h"
 
 #include <array>
 #include <memory>
+#include <thread>
 
 namespace directpipe {
 
@@ -142,8 +145,13 @@ private:
     bool preMuteMonitorEnabled_ = false;
     bool preMuteOutputMuted_ = false;
 
+    // Non-intrusive notification system
+    NotificationBar notificationBar_;
+    void showNotification(const juce::String& message, NotificationLevel level);
+
     // Update check — show "NEW" on credit label if newer release exists
     void checkForUpdate();
+    std::thread updateCheckThread_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

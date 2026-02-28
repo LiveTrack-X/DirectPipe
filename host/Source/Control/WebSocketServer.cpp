@@ -287,6 +287,7 @@ bool WebSocketServer::start(int port)
 
     running_.store(true, std::memory_order_release);
     broadcaster_.addListener(this);
+    broadcastThread_ = std::thread([this] { broadcastThreadFunc(); });
     serverThread_ = std::thread([this] { serverThread(); });
 
     // Send UDP discovery broadcast so Stream Deck plugin can connect immediately
@@ -300,6 +301,11 @@ void WebSocketServer::stop()
 {
     running_.store(false, std::memory_order_release);
     broadcaster_.removeListener(this);
+
+    // Wake up broadcast thread so it can exit
+    broadcastCV_.notify_one();
+    if (broadcastThread_.joinable())
+        broadcastThread_.join();
 
     if (serverSocket_) {
         serverSocket_->close();
@@ -494,8 +500,30 @@ void WebSocketServer::onStateChanged(const AppState& /*state*/)
 {
     if (!running_.load(std::memory_order_relaxed)) return;
 
+    // Queue broadcast — actual send happens on dedicated broadcast thread
     auto json = broadcaster_.toJSON();
-    broadcastToClients(json);
+    {
+        std::lock_guard<std::mutex> lock(broadcastMutex_);
+        pendingBroadcast_ = std::move(json);
+        hasPendingBroadcast_ = true;
+    }
+    broadcastCV_.notify_one();
+}
+
+void WebSocketServer::broadcastThreadFunc()
+{
+    while (running_.load(std::memory_order_acquire)) {
+        std::string message;
+        {
+            std::unique_lock<std::mutex> lock(broadcastMutex_);
+            broadcastCV_.wait_for(lock, std::chrono::milliseconds(100),
+                [this] { return hasPendingBroadcast_ || !running_.load(std::memory_order_relaxed); });
+            if (!hasPendingBroadcast_) continue;
+            message = std::move(pendingBroadcast_);
+            hasPendingBroadcast_ = false;
+        }
+        broadcastToClients(message);
+    }
 }
 
 } // namespace directpipe

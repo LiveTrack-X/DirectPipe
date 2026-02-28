@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "3.4.0"
+    VERSION "3.5.0"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -48,6 +48,10 @@ target_sources(DirectPipe PRIVATE
     Source/UI/ControlSettingsPanel.cpp
     Source/UI/SettingsExporter.h
     Source/UI/SettingsExporter.cpp
+    Source/UI/NotificationBar.h
+    Source/UI/NotificationBar.cpp
+    Source/UI/LogPanel.h
+    Source/UI/LogPanel.cpp
     Source/Control/ActionDispatcher.h
     Source/Control/ActionDispatcher.cpp
     Source/Control/StateBroadcaster.h

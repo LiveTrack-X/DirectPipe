@@ -199,6 +199,9 @@ public:
     // Callback when a plugin editor window is closed (for state save)
     std::function<void()> onEditorClosed;
 
+    // Callback when a plugin fails to load (name, error message)
+    std::function<void(const juce::String&, const juce::String&)> onPluginLoadFailed;
+
 private:
     /**
      * @brief Rebuild the audio graph connections after chain modification.

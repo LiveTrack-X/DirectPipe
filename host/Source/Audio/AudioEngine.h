@@ -32,10 +32,18 @@
 #include "VirtualMicOutput.h"
 #include "AudioRecorder.h"
 
+#include <atomic>
 #include <functional>
 #include <memory>
 
+#include "../UI/NotificationBar.h"
+
 namespace directpipe {
+
+struct PendingNotification {
+    juce::String message;
+    NotificationLevel level = NotificationLevel::Error;
+};
 
 /**
  * @brief Main audio processing engine.
@@ -124,8 +132,13 @@ public:
 
     std::function<void(float)> onInputLevelChanged;
     std::function<void(float)> onOutputLevelChanged;
+    std::function<void(const juce::String&)> onDeviceError;
+
+    /** Drain pending notifications (call from message thread timer). */
+    bool popNotification(PendingNotification& out);
 
 private:
+    void pushNotification(const juce::String& msg, NotificationLevel level);
     void audioDeviceIOCallbackWithContext(
         const float* const* inputChannelData,
         int numInputChannels,
@@ -160,6 +173,12 @@ private:
     int currentBufferSize_ = 480;
 
     juce::AudioBuffer<float> workBuffer_;
+
+    // Lock-free notification queue (device thread -> message thread)
+    static constexpr int kNotifQueueSize = 8;
+    PendingNotification notifQueue_[kNotifQueueSize];
+    std::atomic<int> notifWriteIdx_{0};
+    std::atomic<int> notifReadIdx_{0};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioEngine)
 };

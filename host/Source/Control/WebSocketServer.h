@@ -31,6 +31,7 @@
 #include "StateBroadcaster.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -95,6 +96,14 @@ private:
     };
     std::mutex clientsMutex_;
     std::vector<std::unique_ptr<ClientConnection>> clients_;
+
+    // Async broadcast: queue JSON on any thread, send from dedicated thread
+    std::thread broadcastThread_;
+    std::mutex broadcastMutex_;
+    std::condition_variable broadcastCV_;
+    std::string pendingBroadcast_;
+    bool hasPendingBroadcast_ = false;
+    void broadcastThreadFunc();
 };
 
 } // namespace directpipe

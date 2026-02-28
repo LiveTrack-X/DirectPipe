@@ -152,6 +152,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     auto instance = loadPlugin(desc, error);
     if (!instance) {
         juce::Logger::writeToLog("Failed to load plugin: " + error);
+        if (onPluginLoadFailed) onPluginLoadFailed(desc.name, error);
         return -1;
     }
 
@@ -159,6 +160,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
         juce::Logger::writeToLog("Failed to add plugin to graph");
+        if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;
     }
 
@@ -207,6 +209,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
 
         if (descriptions.isEmpty()) {
             juce::Logger::writeToLog("Plugin not found: " + pluginPath);
+            if (onPluginLoadFailed) onPluginLoadFailed(pluginPath, "Plugin file not found");
             return -1;
         }
         desc = *descriptions[0];
@@ -217,6 +220,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     auto instance = loadPlugin(desc, error);
     if (!instance) {
         juce::Logger::writeToLog("Failed to load plugin: " + error);
+        if (onPluginLoadFailed) onPluginLoadFailed(desc.name, error);
         return -1;
     }
 
@@ -224,6 +228,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
         juce::Logger::writeToLog("Failed to add plugin to graph");
+        if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;
     }
 
@@ -498,6 +503,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             PluginLoadRequest request;
         };
         std::vector<Entry> entries;
+        std::vector<std::pair<juce::String, juce::String>> failures;
     };
     auto result = std::make_shared<AsyncLoadResult>();
 
@@ -510,8 +516,10 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             auto inst = formatManager_.createPluginInstance(req.desc, sr, bs, error);
             if (inst)
                 result->entries.push_back({std::move(inst), std::move(req)});
-            else
+            else {
                 juce::Logger::writeToLog("Async load failed: " + req.name + " - " + error);
+                result->failures.push_back({req.name, error});
+            }
         }
 
         // Post to message thread to wire into graph
@@ -544,6 +552,12 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
             rebuildGraph();
             asyncLoading_.store(false);
+
+            // Report any load failures
+            if (onPluginLoadFailed) {
+                for (auto& [name, err] : result->failures)
+                    onPluginLoadFailed(name, err);
+            }
 
             if (onChainChanged) onChainChanged();
             if (onComplete) onComplete();

@@ -236,6 +236,7 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
                         deviceManager_.setCurrentAudioDeviceType(currentType, true);
                         deviceManager_.initialiseWithDefaultDevices(2, 2);
                         deviceManager_.addAudioCallback(this);
+                        if (onDeviceError) onDeviceError("ASIO switch failed — reverted to previous driver");
                         return false;
                     }
                 }
@@ -249,6 +250,7 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
             deviceManager_.setCurrentAudioDeviceType(currentType, true);
             deviceManager_.initialiseWithDefaultDevices(2, 2);
             deviceManager_.addAudioCallback(this);
+            if (onDeviceError) onDeviceError("Driver switch failed — reverted to " + currentType);
             return false;
         }
 
@@ -539,6 +541,26 @@ void AudioEngine::audioDeviceStopped()
 void AudioEngine::audioDeviceError(const juce::String& errorMessage)
 {
     juce::Logger::writeToLog("Audio device error: " + errorMessage);
+    pushNotification("Audio device error: " + errorMessage, NotificationLevel::Critical);
+}
+
+// ─── Notification queue ─────────────────────────────────────────────────────
+
+void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)
+{
+    int w = notifWriteIdx_.load(std::memory_order_relaxed);
+    notifQueue_[w % kNotifQueueSize] = {msg, level};
+    notifWriteIdx_.store(w + 1, std::memory_order_release);
+}
+
+bool AudioEngine::popNotification(PendingNotification& out)
+{
+    int r = notifReadIdx_.load(std::memory_order_relaxed);
+    int w = notifWriteIdx_.load(std::memory_order_acquire);
+    if (r == w) return false;
+    out = notifQueue_[r % kNotifQueueSize];
+    notifReadIdx_.store(r + 1, std::memory_order_relaxed);
+    return true;
 }
 
 float AudioEngine::calculateRMS(const float* data, int numSamples)

@@ -44,13 +44,14 @@ JUCE 7.0.12 기반 데스크톱 앱. 메인 오디오 처리 엔진.
 
 All external inputs funnel through a unified ActionDispatcher. / 모든 외부 입력은 통합된 ActionDispatcher를 거친다.
 
-- **ActionDispatcher** — Central action routing. 14 actions: `PluginBypass`, `MasterBypass`, `SetVolume`, `ToggleMute`, `LoadPreset`, `PanicMute`, `InputGainAdjust`, `NextPreset`, `PreviousPreset`, `InputMuteToggle`, `SwitchPresetSlot`, `MonitorToggle`, `RecordingToggle`, `SetPluginParameter`. Thread-safe dispatch via `callAsync`. / 중앙 액션 라우팅. 14개 액션. callAsync를 통한 스레드 안전 디스패치.
+- **ActionDispatcher** — Central action routing. 14 actions: `PluginBypass`, `MasterBypass`, `SetVolume`, `ToggleMute`, `LoadPreset`, `PanicMute`, `InputGainAdjust`, `NextPreset`, `PreviousPreset`, `InputMuteToggle`, `SwitchPresetSlot`, `MonitorToggle`, `RecordingToggle`, `SetPluginParameter`. Thread-safe dispatch via `callAsync`. Copy-before-iterate for reentrant safety. / 중앙 액션 라우팅. 14개 액션. callAsync를 통한 스레드 안전 디스패치. 재진입 안전을 위한 copy-before-iterate.
 - **ControlManager** — Aggregates all control sources (Hotkey, MIDI, WebSocket, HTTP). Initialize/shutdown lifecycle. / 모든 제어 소스 통합 관리.
 - **HotkeyHandler** — Windows `RegisterHotKey` API for global keyboard shortcuts. Recording mode for key capture. / 글로벌 키보드 단축키. 키 녹화 모드.
 - **MidiHandler** — JUCE `MidiInput` for MIDI CC/note mapping with Learn mode. LED feedback via MidiOutput. Hot-plug detection. / MIDI CC 매핑 + Learn 모드. LED 피드백. 핫플러그 감지.
 - **WebSocketServer** — RFC 6455 WebSocket server (port 8765). Custom SHA-1 implementation for handshake. JUCE `StreamingSocket` with frame encoding/decoding, ping/pong. Dead client cleanup sweep on broadcast. UDP discovery broadcast on port 8767 at startup for instant Stream Deck connection. / RFC 6455 WebSocket 서버. 커스텀 SHA-1 핸드셰이크. 죽은 클라이언트 자동 정리. 시작 시 UDP 8767 디스커버리 브로드캐스트로 Stream Deck 즉시 연결.
 - **HttpApiServer** — HTTP REST API (port 8766) for one-shot GET commands. CORS enabled. 3-second read timeout. Volume range validation (0.0-1.0). Recording toggle and plugin parameter endpoints. / HTTP REST API. CORS 활성화. 3초 읽기 타임아웃. 볼륨 범위 검증. 녹음 토글 및 플러그인 파라미터 엔드포인트.
-- **StateBroadcaster** — Pushes AppState changes to all connected StateListeners as JSON. / 상태 변경을 JSON으로 모든 리스너에 푸시.
+- **StateBroadcaster** — Pushes AppState changes to all connected StateListeners as JSON. Copy-before-iterate for reentrant safety. Broadcast moved to dedicated thread (non-blocking). / 상태 변경을 JSON으로 모든 리스너에 푸시. 재진입 안전을 위한 copy-before-iterate. 브로드캐스트 전용 스레드 (비차단).
+- **DirectPipeLogger** — Centralized logging system. Captures logs from all subsystems (audio engine, plugins, WebSocket, HTTP, etc.). Feeds LogPanel and NotificationBar. / 중앙 집중 로깅 시스템. 모든 서브시스템 로그 캡처. LogPanel과 NotificationBar로 전달.
 - **ControlMapping** — JSON-based persistence for hotkey/MIDI/server config. Portable mode support (`portable.flag` next to exe). / JSON 기반 설정 저장. 포터블 모드 지원.
 
 #### IPC Module (`host/Source/IPC/`) / IPC 모듈
@@ -67,15 +68,17 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 - **ControlSettingsPanel** — 4 sub-tabs: Hotkey, MIDI, StreamDeck (server status), General (Start with Windows + Settings Save/Load). MIDI tab includes plugin parameter mapping (3-step popup: plugin → parameter → Learn). / 4개 서브탭: 단축키, MIDI, StreamDeck, 일반(시작 프로그램 + 설정 저장/불러오기). MIDI 탭에 플러그인 파라미터 매핑 (3단계 팝업).
 - **SettingsExporter** — Export/import full settings as `.dpbackup` files via native file chooser. Located in Controls > General tab. / 설정 내보내기/가져오기. Controls > General 탭에 위치.
 - **LevelMeter** — Real-time RMS level display with peak hold, clipping indicator. dB log scale. / 실시간 RMS 레벨 미터. 피크 홀드. dB 로그 스케일.
+- **LogPanel** — Real-time log viewer (4th tab in right panel). Timestamped entries in monospaced font. Export Log (save to .txt) and Clear Log buttons. Maintenance section: Clear Plugin Cache, Clear All Presets, Reset Settings (all with confirmation dialogs). / 실시간 로그 뷰어 (우측 패널 4번째 탭). 고정폭 타임스탬프 엔트리. 유지보수: 캐시/프리셋/설정 초기화 (확인 대화상자).
+- **NotificationBar** — Non-intrusive status bar notifications. Temporarily replaces latency/CPU labels. Color-coded: red (errors), orange (warnings), purple (info). Auto-fades after 3-8 seconds depending on severity. / 비침습적 상태 바 알림. 레이턴시/CPU 레이블 임시 대체. 색상: 빨강(오류), 주황(경고), 보라(정보). 3-8초 자동 페이드.
 - **DirectPipeLookAndFeel** — Custom dark theme (#1E1E2E bg, #6C63FF purple accent, #4CAF50 green). / 다크 테마.
 
 #### Main Application (`host/Source/MainComponent.cpp`)
 
-- Two-column layout: left (input meter + gain + VST chain + slot buttons), right (tabbed panel: Audio/Monitor/Controls + output meter) / 2컬럼 레이아웃, 좌우 대칭 미터
+- Two-column layout: left (input meter + gain + VST chain + slot buttons), right (tabbed panel: Audio/Monitor/Controls/Log + output meter) / 2컬럼 레이아웃, 좌우 대칭 미터
 - Quick Preset Slot buttons A-E with visual active/occupied state. Loading feedback (dimmed buttons). / 퀵 프리셋 슬롯 버튼 (활성/사용중 시각 구분, 로딩 중 피드백)
 - Auto-save via dirty-flag + 1-second debounce. `onSettingsChanged` callbacks trigger `markSettingsDirty()`. / dirty-flag + 1초 디바운스 자동 저장
 - Panic mute remembers pre-mute monitor enable state, restores on unmute / Panic Mute 모니터 상태 기억/복원
-- Status bar: latency, CPU, format, portable mode, "Created by LiveTrack". Shows "NEW vX.Y.Z" in orange when newer GitHub release exists (background update check on startup). / 상태 바. 새 릴리즈 시 주황색 "NEW" 표시 (시작 시 GitHub API 체크).
+- Status bar: latency, CPU, format, portable mode, "Created by LiveTrack". Shows "NEW vX.Y.Z" in orange when newer GitHub release exists (background update check on startup). NotificationBar temporarily replaces status labels with color-coded error/warning/info messages (auto-fade 3-8s). / 상태 바. 새 릴리즈 시 주황색 "NEW" 표시. NotificationBar가 상태 레이블을 색상 코드 오류/경고/정보 메시지로 임시 대체 (3-8초 자동 페이드).
 - System tray tooltip: shows current state (preset, plugins, volumes). Atomic dirty-flag for cross-thread safety. / 시스템 트레이 툴팁: 현재 상태 표시. atomic dirty-flag로 스레드 안전.
 
 #### System Tray (`host/Source/Main.cpp`)

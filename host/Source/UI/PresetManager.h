@@ -128,6 +128,19 @@ public:
     static juce::File getSlotFile(int slotIndex);
 
 private:
+    struct TargetPlugin {
+        juce::String name, path;
+        juce::PluginDescription desc;
+        bool hasDesc = false;
+        bool bypassed = false;
+        juce::MemoryBlock stateData;
+        bool hasState = false;
+    };
+
+    static std::vector<TargetPlugin> parseTargetPlugins(const juce::Array<juce::var>* pluginsArray);
+    static bool isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain);
+    static void applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
+    static void applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
 
     AudioEngine& engine_;
     int activeSlot_ = -1;

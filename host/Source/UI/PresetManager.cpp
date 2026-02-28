@@ -219,6 +219,121 @@ bool PresetManager::importFromJSON(const juce::String& json)
     return true;
 }
 
+// ─── Shared chain helpers ────────────────────────────────────────────────────
+
+std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
+    const juce::Array<juce::var>* pluginsArray)
+{
+    std::vector<TargetPlugin> targets;
+    if (!pluginsArray) return targets;
+
+    for (auto& pluginVar : *pluginsArray) {
+        if (auto* plugin = pluginVar.getDynamicObject()) {
+            TargetPlugin t;
+            t.name = plugin->getProperty("name").toString();
+            t.path = plugin->getProperty("path").toString();
+            t.bypassed = static_cast<bool>(plugin->getProperty("bypassed"));
+
+            if (plugin->hasProperty("descXml")) {
+                auto xmlStr = plugin->getProperty("descXml").toString();
+                if (auto xml = juce::XmlDocument::parse(xmlStr))
+                    t.hasDesc = t.desc.loadFromXml(*xml);
+            }
+            if (plugin->hasProperty("state")) {
+                auto stateStr = plugin->getProperty("state").toString();
+                if (stateStr.isNotEmpty())
+                    t.hasState = t.stateData.fromBase64Encoding(stateStr);
+            }
+            targets.push_back(std::move(t));
+        }
+    }
+    return targets;
+}
+
+bool PresetManager::isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain)
+{
+    if (static_cast<int>(targets.size()) != chain.getPluginCount())
+        return false;
+
+    for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
+        auto* slot = chain.getPluginSlot(i);
+        auto& t = targets[static_cast<size_t>(i)];
+        if (!slot) return false;
+
+        if (t.hasDesc) {
+            if (slot->desc.uniqueId != t.desc.uniqueId ||
+                slot->desc.fileOrIdentifier != t.desc.fileOrIdentifier)
+                return false;
+        } else {
+            if (slot->path != t.path) return false;
+        }
+    }
+    return true;
+}
+
+void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
+{
+    for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
+        auto& t = targets[static_cast<size_t>(i)];
+        chain.setPluginBypassed(i, t.bypassed);
+        if (t.hasState) {
+            if (auto* slot = chain.getPluginSlot(i)) {
+                if (slot->instance)
+                    slot->instance->setStateInformation(
+                        t.stateData.getData(), static_cast<int>(t.stateData.getSize()));
+            }
+        }
+    }
+}
+
+void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
+{
+    while (chain.getPluginCount() > 0)
+        chain.removePlugin(0);
+
+    for (auto& target : targets) {
+        int idx = -1;
+
+        if (target.hasDesc)
+            idx = chain.addPlugin(target.desc);
+
+        if (idx < 0) {
+            auto& knownPlugins = chain.getKnownPlugins();
+            for (const auto& desc : knownPlugins.getTypes()) {
+                if (desc.fileOrIdentifier == target.path && desc.name == target.name) {
+                    idx = chain.addPlugin(desc);
+                    break;
+                }
+            }
+        }
+
+        if (idx < 0) {
+            auto& knownPlugins = chain.getKnownPlugins();
+            for (const auto& desc : knownPlugins.getTypes()) {
+                if (desc.name == target.name) {
+                    idx = chain.addPlugin(desc);
+                    break;
+                }
+            }
+        }
+
+        if (idx < 0)
+            idx = chain.addPlugin(target.path);
+
+        if (idx >= 0) {
+            if (target.bypassed)
+                chain.setPluginBypassed(idx, true);
+            if (target.hasState) {
+                if (auto* loadedSlot = chain.getPluginSlot(idx)) {
+                    if (loadedSlot->instance)
+                        loadedSlot->instance->setStateInformation(
+                            target.stateData.getData(), static_cast<int>(target.stateData.getSize()));
+                }
+            }
+        }
+    }
+}
+
 // ─── Chain-only export/import ────────────────────────────────────────────────
 
 juce::String PresetManager::exportChainToJSON()
@@ -237,7 +352,6 @@ juce::String PresetManager::exportChainToJSON()
             plugin->setProperty("bypassed", slot->bypassed);
             if (auto xml = slot->desc.createXml())
                 plugin->setProperty("descXml", xml->toString());
-            // Store plugin internal state (parameters, settings)
             if (slot->instance) {
                 juce::MemoryBlock stateData;
                 slot->instance->getStateInformation(stateData);
@@ -264,134 +378,12 @@ bool PresetManager::importChainFromJSON(const juce::String& json)
     if (!pluginsArray) return false;
 
     auto& chain = engine_.getVSTChain();
+    auto targets = parseTargetPlugins(pluginsArray);
 
-    // Build target list from JSON
-    struct TargetPlugin {
-        juce::String name, path;
-        juce::PluginDescription desc;  // from descXml if available
-        bool hasDesc = false;
-        bool bypassed;
-        juce::MemoryBlock stateData;   // plugin internal state
-        bool hasState = false;
-    };
-    std::vector<TargetPlugin> targets;
-    for (auto& pluginVar : *pluginsArray) {
-        if (auto* plugin = pluginVar.getDynamicObject()) {
-            TargetPlugin t;
-            t.name = plugin->getProperty("name").toString();
-            t.path = plugin->getProperty("path").toString();
-            t.bypassed = static_cast<bool>(plugin->getProperty("bypassed"));
-
-            // Restore full PluginDescription from XML if available
-            if (plugin->hasProperty("descXml")) {
-                auto xmlStr = plugin->getProperty("descXml").toString();
-                if (auto xml = juce::XmlDocument::parse(xmlStr)) {
-                    t.hasDesc = t.desc.loadFromXml(*xml);
-                }
-            }
-            // Restore plugin internal state from base64
-            if (plugin->hasProperty("state")) {
-                auto stateStr = plugin->getProperty("state").toString();
-                if (stateStr.isNotEmpty()) {
-                    t.hasState = t.stateData.fromBase64Encoding(stateStr);
-                }
-            }
-            targets.push_back(std::move(t));
-        }
-    }
-
-    // Fast path: same plugins in same order — just update bypass states
-    // Compare using PluginDescription identity when available
-    bool sameChain = (static_cast<int>(targets.size()) == chain.getPluginCount());
-    if (sameChain) {
-        for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
-            auto* slot = chain.getPluginSlot(i);
-            auto& t = targets[static_cast<size_t>(i)];
-            if (!slot) { sameChain = false; break; }
-
-            if (t.hasDesc) {
-                // Full description comparison (handles shell plugins perfectly)
-                if (slot->desc.uniqueId != t.desc.uniqueId ||
-                    slot->desc.fileOrIdentifier != t.desc.fileOrIdentifier) {
-                    sameChain = false;
-                    break;
-                }
-            } else {
-                // Legacy: path-only comparison
-                if (slot->path != t.path) {
-                    sameChain = false;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (sameChain) {
-        for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
-            auto& t = targets[static_cast<size_t>(i)];
-            chain.setPluginBypassed(i, t.bypassed);
-            // Restore plugin internal state
-            if (t.hasState) {
-                if (auto* slot = chain.getPluginSlot(i)) {
-                    if (slot->instance)
-                        slot->instance->setStateInformation(
-                            t.stateData.getData(), static_cast<int>(t.stateData.getSize()));
-                }
-            }
-        }
-        return true;
-    }
-
-    // Slow path: different chain — remove and reload
-    while (chain.getPluginCount() > 0)
-        chain.removePlugin(0);
-
-    for (auto& target : targets) {
-        int idx = -1;
-
-        // 1st priority: load directly from saved PluginDescription
-        if (target.hasDesc) {
-            idx = chain.addPlugin(target.desc);
-        }
-
-        // 2nd priority: search in known plugins by name (legacy/fallback)
-        if (idx < 0) {
-            auto& knownPlugins = chain.getKnownPlugins();
-            for (const auto& desc : knownPlugins.getTypes()) {
-                if (desc.fileOrIdentifier == target.path && desc.name == target.name) {
-                    idx = chain.addPlugin(desc);
-                    break;
-                }
-            }
-        }
-
-        // 3rd priority: name-only match
-        if (idx < 0) {
-            auto& knownPlugins = chain.getKnownPlugins();
-            for (const auto& desc : knownPlugins.getTypes()) {
-                if (desc.name == target.name) {
-                    idx = chain.addPlugin(desc);
-                    break;
-                }
-            }
-        }
-
-        // 4th priority: raw file path
-        if (idx < 0)
-            idx = chain.addPlugin(target.path);
-
-        if (idx >= 0) {
-            if (target.bypassed)
-                chain.setPluginBypassed(idx, true);
-            // Restore plugin internal state
-            if (target.hasState) {
-                if (auto* loadedSlot = chain.getPluginSlot(idx)) {
-                    if (loadedSlot->instance)
-                        loadedSlot->instance->setStateInformation(
-                            target.stateData.getData(), static_cast<int>(target.stateData.getSize()));
-                }
-            }
-        }
+    if (isSameChain(targets, chain)) {
+        applyFastPath(targets, chain);
+    } else {
+        applySlowPath(targets, chain);
     }
 
     return true;
@@ -467,73 +459,17 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
     }
 
     auto& chain = engine_.getVSTChain();
+    auto targets = parseTargetPlugins(pluginsArray);
 
-    // Parse target list
-    struct TargetPlugin {
-        juce::String name, path;
-        juce::PluginDescription desc;
-        bool hasDesc = false;
-        bool bypassed = false;
-        juce::MemoryBlock stateData;
-        bool hasState = false;
-    };
-    std::vector<TargetPlugin> targets;
-    for (auto& pluginVar : *pluginsArray) {
-        if (auto* plugin = pluginVar.getDynamicObject()) {
-            TargetPlugin t;
-            t.name = plugin->getProperty("name").toString();
-            t.path = plugin->getProperty("path").toString();
-            t.bypassed = static_cast<bool>(plugin->getProperty("bypassed"));
-            if (plugin->hasProperty("descXml")) {
-                auto xmlStr = plugin->getProperty("descXml").toString();
-                if (auto xml = juce::XmlDocument::parse(xmlStr))
-                    t.hasDesc = t.desc.loadFromXml(*xml);
-            }
-            if (plugin->hasProperty("state")) {
-                auto stateStr = plugin->getProperty("state").toString();
-                if (stateStr.isNotEmpty())
-                    t.hasState = t.stateData.fromBase64Encoding(stateStr);
-            }
-            targets.push_back(std::move(t));
-        }
-    }
-
-    // Fast path: same plugins in same order → sync (instant)
-    bool sameChain = (static_cast<int>(targets.size()) == chain.getPluginCount());
-    if (sameChain) {
-        for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
-            auto* slot = chain.getPluginSlot(i);
-            auto& t = targets[static_cast<size_t>(i)];
-            if (!slot) { sameChain = false; break; }
-            if (t.hasDesc) {
-                if (slot->desc.uniqueId != t.desc.uniqueId ||
-                    slot->desc.fileOrIdentifier != t.desc.fileOrIdentifier) {
-                    sameChain = false; break;
-                }
-            } else {
-                if (slot->path != t.path) { sameChain = false; break; }
-            }
-        }
-    }
-
-    if (sameChain) {
-        for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
-            auto& t = targets[static_cast<size_t>(i)];
-            chain.setPluginBypassed(i, t.bypassed);
-            if (t.hasState) {
-                if (auto* slot = chain.getPluginSlot(i)) {
-                    if (slot->instance)
-                        slot->instance->setStateInformation(
-                            t.stateData.getData(), static_cast<int>(t.stateData.getSize()));
-                }
-            }
-        }
+    // Fast path: same plugins in same order -> sync (instant)
+    if (isSameChain(targets, chain)) {
+        applyFastPath(targets, chain);
         activeSlot_ = slotIndex;
         if (onComplete) onComplete(true);
         return;
     }
 
-    // Slow path: different chain → async (non-blocking)
+    // Slow path: different chain -> async (non-blocking)
     std::vector<VSTChain::PluginLoadRequest> requests;
     for (auto& t : targets) {
         VSTChain::PluginLoadRequest req;
@@ -544,7 +480,6 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         req.stateData = std::move(t.stateData);
         req.hasState = t.hasState;
 
-        // If no saved description, try to find in known plugins
         if (!t.hasDesc) {
             for (const auto& desc : chain.getKnownPlugins().getTypes()) {
                 if (desc.fileOrIdentifier == t.path && desc.name == t.name) {
