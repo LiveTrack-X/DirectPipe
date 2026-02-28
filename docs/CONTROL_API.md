@@ -12,7 +12,7 @@ DirectPipe는 두 가지 네트워크 인터페이스를 제공한다: 실시간
 | HTTP | 8766 | http://127.0.0.1 |
 | UDP Discovery | 8767 | 127.0.0.1 (broadcast) |
 
-Both WebSocket and HTTP bind to localhost only for security. Ports configurable in Settings > Controls > StreamDeck tab. DirectPipe sends a `DIRECTPIPE_READY:<port>` UDP packet to port 8767 when the WebSocket server starts, enabling instant client connection without polling.
+Both WebSocket and HTTP bind to localhost only for security. Ports configurable in Controls > Stream Deck tab. DirectPipe sends a `DIRECTPIPE_READY:<port>` UDP packet to port 8767 when the WebSocket server starts, enabling instant client connection without polling.
 
 WebSocket과 HTTP는 보안을 위해 localhost만 바인딩. 설정에서 포트 변경 가능. DirectPipe는 WebSocket 서버 시작 시 UDP 8767로 `DIRECTPIPE_READY:<port>` 패킷을 전송하여 클라이언트가 폴링 없이 즉시 연결 가능.
 

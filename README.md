@@ -87,7 +87,7 @@ External Control:
 ### IPC 출력 (Receiver VST) / IPC Output (Receiver VST)
 
 - **Receiver VST2 플러그인** — OBS 등 VST2를 지원하는 앱에서 DirectPipe 처리 오디오를 공유 메모리(IPC)로 직접 수신. **가상 오디오 케이블 없이** OBS에 마이크 오디오를 바로 보낼 수 있다 — Receive processed audio directly via shared memory (IPC) in OBS or other VST2 hosts. Route mic audio to OBS **without a virtual audio cable**
-- **IPC 토글** — 기본값은 OFF. Controls > General 탭의 체크박스, 단축키 Ctrl+Shift+I, MIDI, Stream Deck, HTTP API 등 다양한 방법으로 켜기/끄기 가능 — Off by default. Toggle via UI checkbox, hotkey Ctrl+Shift+I, MIDI, Stream Deck, or HTTP API
+- **IPC 토글** — 기본값은 OFF. Output 탭의 체크박스, 메인 화면 하단 VST 버튼, 단축키 Ctrl+Shift+I, MIDI, Stream Deck, HTTP API 등 다양한 방법으로 켜기/끄기 가능 — Off by default. Toggle via Output tab checkbox, VST button, hotkey Ctrl+Shift+I, MIDI, Stream Deck, or HTTP API
 - **버퍼 크기 설정** — Receiver VST 플러그인 GUI에서 5단계 버퍼 프리셋 선택. 낮을수록 지연이 적지만 언더런 위험 증가 — 5 buffer presets in Receiver VST GUI. Lower = less latency but higher underrun risk
 
   | 프리셋 / Preset | 지연 / Latency | 용도 / Best for |
@@ -100,27 +100,27 @@ External Control:
 
 ### 녹음 / Recording
 
-- **오디오 녹음** — Monitor 탭에서 처리된 오디오를 WAV 파일로 녹음. Lock-free 실시간 안전 설계. — Record processed audio to WAV in Monitor tab. Lock-free, real-time safe design.
-- **녹음 시간 표시** — Monitor 탭과 Stream Deck에서 실시간 경과 시간 확인 — Real-time duration display in Monitor tab and Stream Deck
+- **오디오 녹음** — Output 탭에서 처리된 오디오를 WAV 파일로 녹음. Lock-free 실시간 안전 설계. — Record processed audio to WAV in Output tab. Lock-free, real-time safe design.
+- **녹음 시간 표시** — Output 탭과 Stream Deck에서 실시간 경과 시간 확인 — Real-time duration display in Output tab and Stream Deck
 - **녹음 파일 재생** — Play 버튼으로 마지막 녹음 파일 즉시 재생 — Play last recording with one click
 - **녹음 폴더 관리** — Open Folder로 탐색기 열기, ... 버튼으로 폴더 위치 변경 — Open folder in Explorer, change recording location
 
 ### 설정 관리 / Settings Management
 
-- **설정 저장/불러오기** — Controls > General 탭에서 전체 설정을 .dpbackup 파일로 저장/불러오기 — Save/load full settings as .dpbackup files in Controls > General tab
+- **설정 저장/불러오기** — Settings 탭에서 전체 설정을 .dpbackup 파일로 저장/불러오기 — Save/load full settings as .dpbackup files in Settings tab
 - **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 검색 및 정렬 — Search and sort plugins by name, vendor, or format in scanner
 - **새 버전 알림** — 새 릴리즈가 있으면 하단 상태바에 주황색 "NEW" 표시 — Orange "NEW" indicator on status bar when a newer release is available
 
 ### 진단 / Diagnostics
 
 - **오류 알림** — 상태 바에 비침습적 알림 표시 (빨강=오류, 주황=경고, 보라=정보). 3-8초 자동 페이드. — Non-intrusive status bar notifications (red=error, orange=warning, purple=info). Auto-fades after 3-8 seconds.
-- **로그 탭** — 실시간 로그 뷰어 (4번째 탭). 타임스탬프 + 고정폭 폰트. Export Log / Clear Log 지원. — Real-time log viewer (4th tab). Timestamped entries in monospaced font. Export Log / Clear Log.
-- **유지보수 도구** — 로그 탭에서 플러그인 캐시 삭제, 프리셋 전체 삭제, 설정 초기화 (확인 대화상자 포함) — Maintenance tools in Log tab: Clear Plugin Cache, Clear All Presets, Reset Settings (with confirmation dialogs)
+- **Settings 탭** — 실시간 로그 뷰어 (4번째 탭). 타임스탬프 + 고정폭 폰트. Export Log / Clear Log 지원. — Real-time log viewer (4th tab). Timestamped entries in monospaced font. Export Log / Clear Log.
+- **유지보수 도구** — Settings 탭에서 플러그인 캐시 삭제, 프리셋 전체 삭제, 설정 초기화 (확인 대화상자 포함) — Maintenance tools in Settings tab: Clear Plugin Cache, Clear All Presets, Reset Settings (with confirmation dialogs)
 
 ### UI
 
 - **시스템 트레이** — X 버튼으로 트레이 최소화, 더블클릭 복원, 시작 프로그램 등록. 트레이 툴팁에 현재 상태 표시. — Close minimizes to tray, double-click to restore, Start with Windows toggle. Tray tooltip shows current state.
-- **탭 설정** — Audio / Monitor / Controls / Log (Hotkeys, MIDI, Stream Deck, General) — Tabbed settings panel
+- **탭 설정** — Audio / Output / Controls / Settings — Tabbed settings panel
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원. 패닉 뮤트 중에는 OUT/MON/VST 및 외부 제어 잠금 — Mute all outputs instantly, restores previous state on unmute. Locks OUT/MON/VST buttons and external controls during panic mute
 - **Output / Monitor Mute** — 개별 출력 뮤트 (UI 인디케이터 + 클릭 제어) — Independent output/monitor mute with clickable status indicators
 - **MIDI 플러그인 파라미터 매핑** — MIDI CC로 VST 플러그인 파라미터 직접 제어 (Learn 모드) — Map MIDI CC to VST plugin parameters with Learn mode
@@ -146,7 +146,7 @@ USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...) → VB-Cabl
                                                 Discord/Zoom/OBS ← VB-Cable Output
 ```
 
-4. (선택) **Monitor** 탭에서 헤드폰 장치를 설정하면 처리된 자신의 목소리를 실시간으로 모니터링 가능 — Optionally configure headphone monitoring in the Monitor tab
+4. (선택) **Output** 탭에서 헤드폰 장치를 설정하면 처리된 자신의 목소리를 실시간으로 모니터링 가능 — Optionally configure headphone monitoring in the Output tab
 
 > **Tip**: [VoiceMeeter](https://vb-audio.com/Voicemeeter/) 등 다른 가상 오디오 장치도 동일하게 사용 가능. Output 장치만 바꾸면 된다. — Any virtual audio device works; just change the Output device.
 
@@ -193,7 +193,7 @@ cmake --build build --config Release
 host/                     JUCE host application (main)
   Source/
     Audio/                  AudioEngine, VSTChain, OutputRouter, VirtualMicOutput,
-                            AudioRingBuffer, LatencyMonitor
+                            AudioRingBuffer, LatencyMonitor, AudioRecorder
     Control/                ActionDispatcher, ControlManager, ControlMapping,
                             WebSocketServer, HttpApiServer,
                             HotkeyHandler, MidiHandler, StateBroadcaster,
@@ -202,7 +202,7 @@ host/                     JUCE host application (main)
     UI/                     AudioSettings, OutputPanel, ControlSettingsPanel,
                             PluginChainEditor, PluginScanner, PresetManager,
                             LevelMeter, LogPanel, NotificationBar,
-                            DirectPipeLookAndFeel
+                            DirectPipeLookAndFeel, SettingsExporter
 core/                     IPC library (RingBuffer, SharedMemory, Protocol)
 plugins/receiver/         Receiver VST2 plugin (for OBS)
 com.directpipe.directpipe.sdPlugin/  Stream Deck plugin (Node.js, SDK v3)
@@ -325,7 +325,7 @@ After installing plugins, click **"Scan..."** in DirectPipe to scan your plugin 
    - **Output** → `CABLE Input (VB-Audio Virtual Cable)` 선택
 3. Discord/Zoom/OBS 음성 설정:
    - **마이크** → `CABLE Output (VB-Audio Virtual Cable)` 선택
-4. 자기 목소리를 확인하려면 **Monitor** 탭에서 헤드폰 장치를 설정하세요
+4. 자기 목소리를 확인하려면 **Output** 탭에서 헤드폰 장치를 설정하세요
 
 ```
 내 USB 마이크 → DirectPipe (노이즈 제거, EQ 등) → VB-Cable Input
@@ -344,7 +344,7 @@ You'll need [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (free).
    - **Output** → Select `CABLE Input (VB-Audio Virtual Cable)`
 3. In Discord / Zoom / OBS voice settings:
    - **Microphone** → Select `CABLE Output (VB-Audio Virtual Cable)`
-4. To hear yourself, configure your headphone device in the **Monitor** tab
+4. To hear yourself, configure your headphone device in the **Output** tab
 
 ```
 USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
@@ -441,9 +441,9 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 
 **Quick Preset Slots (A–E):**
 - 현재 플러그인 체인과 설정을 **A–E** 슬롯에 저장할 수 있습니다
-- **Save Preset** → 현재 상태를 선택된 슬롯에 저장
-- 슬롯 버튼 **(A/B/C/D/E)** 클릭 → 즉시 전환
+- 슬롯 버튼 **(A/B/C/D/E)** 클릭 → 비어있으면 현재 상태 저장, 차있으면 해당 슬롯 로드
 - 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩**
+- **Save/Load** 버튼으로 .dppreset 파일에 프리셋 저장/불러오기 가능
 
 예: 게임 중엔 **A** (노이즈 제거만), 노래방에선 **B** (리버브 + 컴프레서)
 
@@ -451,9 +451,9 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 
 **Quick Preset Slots (A–E):**
 - Save your current plugin chain and settings to slots **A through E**
-- **Save Preset** → saves the current state to the selected slot
-- Click a slot button **(A/B/C/D/E)** → switch instantly
+- Click a slot button **(A/B/C/D/E)** → saves current state if empty, loads slot if occupied
 - If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading**
+- Use **Save/Load** buttons to save/load presets as .dppreset files
 
 Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (reverb + compressor)
 </details>
@@ -463,7 +463,7 @@ Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (rev
 
 **Monitor**는 자기 목소리를 헤드폰으로 실시간 확인하는 기능입니다. VST 이펙트가 적용된 자신의 목소리를 들을 수 있습니다.
 
-- **Monitor 탭**에서 헤드폰이 연결된 오디오 장치를 선택
+- **Output** 탭에서 헤드폰이 연결된 오디오 장치를 선택
 - Main Output과는 별도의 WASAPI 장치를 사용하므로 **독립적으로 동작**
 - **MON** 버튼으로 켜기/끄기
 
@@ -471,7 +471,7 @@ Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (rev
 
 **Monitor** lets you hear your own processed voice through headphones in real-time, with all VST effects applied.
 
-- Select your headphone device in the **Monitor tab**
+- Select your headphone device in the **Output** tab
 - Uses a separate WASAPI device from the Main Output, so it **works independently**
 - Toggle on/off with the **MON** button
 </details>
@@ -481,7 +481,7 @@ Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (rev
 
 두 가지 방법:
 1. **시스템 트레이** 아이콘 우클릭 → **"Start with Windows"** 체크
-2. **Controls** 탭 → **General** → **"Start with Windows"** 체크
+2. **Settings** 탭 → **"Start with Windows"** 체크
 
 활성화하면 Windows 시작 시 자동으로 트레이에서 실행됩니다. X 버튼으로 창을 닫아도 트레이에 남아서 계속 동작합니다.
 
@@ -489,7 +489,7 @@ Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (rev
 
 Two ways to enable:
 1. Right-click the **system tray** icon → check **"Start with Windows"**
-2. **Controls** tab → **General** → check **"Start with Windows"**
+2. **Settings** tab → check **"Start with Windows"**
 
 Once enabled, DirectPipe launches automatically in the system tray when Windows starts. Closing the window (X button) minimizes it to the tray — it keeps running in the background.
 </details>
@@ -559,7 +559,7 @@ Normally, to route DirectPipe's processed audio to OBS, you need a **virtual aud
 
 2. **DirectPipe**에서 IPC 출력 켜기
    - DirectPipe 실행 → 하단의 **VST** 버튼 클릭 (초록색으로 변경)
-   - 또는: **Controls** > **General** 탭에서 **"IPC Output"** 체크
+   - 또는: **Output** 탭에서 **"Enable VST Receiver Output"** 체크
    - 또는: 키보드 **Ctrl+Shift+I**
 
 3. **OBS** 설정
@@ -590,7 +590,7 @@ OBS [DirectPipe Receiver VST 필터]
 
 2. **Enable IPC output in DirectPipe**
    - Run DirectPipe → click the **VST** button at the bottom (turns green)
-   - Or: **Controls** > **General** tab → check **"IPC Output"**
+   - Or: **Output** tab → check **"Enable VST Receiver Output"**
    - Or: press **Ctrl+Shift+I**
 
 3. **Configure OBS**
@@ -705,7 +705,7 @@ Open the Receiver VST plugin interface and select a buffer size from the **Buffe
 
 **켜는 방법 (5가지):**
 1. DirectPipe 메인 화면 하단의 **VST** 버튼 클릭
-2. **Controls** > **General** 탭 → **"IPC Output"** 체크
+2. **Output** 탭 → **"Enable VST Receiver Output"** 체크
 3. 키보드 단축키 **Ctrl+Shift+I**
 4. Stream Deck **IPC Toggle** 버튼
 5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
@@ -724,7 +724,7 @@ Open the Receiver VST plugin interface and select a buffer size from the **Buffe
 
 **How to enable (5 ways):**
 1. Click the **VST** button at the bottom of DirectPipe's main window
-2. **Controls** > **General** tab → check **"IPC Output"**
+2. **Output** tab → check **"Enable VST Receiver Output"**
 3. Hotkey **Ctrl+Shift+I**
 4. Stream Deck **IPC Toggle** button
 5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`

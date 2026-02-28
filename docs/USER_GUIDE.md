@@ -13,7 +13,7 @@ DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 V
 3. **Select your microphone** from the device dropdown / 마이크 선택
 4. **Scan for plugins** — click "Scan..." to discover installed VST plugins / "Scan..." 클릭으로 VST 스캔
 5. **Add plugins** to the chain — click "+ Add Plugin" / "+ Add Plugin"으로 플러그인 추가
-6. **Configure monitor output** in Monitor tab to hear yourself / Monitor 탭에서 모니터 출력 설정
+6. **Configure monitor output** in Output tab to hear yourself / Output 탭에서 모니터 출력 설정
 
 ## Audio Settings (Audio Tab) / 오디오 설정
 
@@ -64,7 +64,7 @@ Five quick-access slots for different VST chain configurations. / 5개 체인 �
 
 Slots save chain-only data (plugins, order, bypass, parameters). Audio and output settings are NOT affected. / 슬롯은 체인 데이터만 저장. 오디오/출력 설정은 영향 없음.
 
-## Monitor Settings (Monitor Tab) / 모니터 설정
+## Monitor Settings (Output Tab) / 모니터 설정
 
 ### Monitor Output / 모니터 출력
 
@@ -79,7 +79,7 @@ The main processed audio goes directly to the AudioSettings Output device. To se
 
 처리된 오디오는 AudioSettings Output 장치로 직접 전송된다. OBS, Discord 등에 보내려면 Audio 탭에서 가상 오디오 케이블(예: VB-Audio Hi-Fi Cable)을 Output 장치로 선택.
 
-The monitor output (headphones) uses a separate WASAPI device configured in the Monitor tab, so you can listen while routing to a different device. / 모니터 출력(헤드폰)은 Monitor 탭에서 설정하는 별도 WASAPI 장치를 사용하므로, 다른 장치로 라우팅하면서 동시에 청취 가능.
+The monitor output (headphones) uses a separate WASAPI device configured in the Output tab, so you can listen while routing to a different device. / 모니터 출력(헤드폰)은 Output 탭에서 설정하는 별도 WASAPI 장치를 사용하므로, 다른 장치로 라우팅하면서 동시에 청취 가능.
 
 ## VST Plugin Scanner / VST 스캐너
 
@@ -100,7 +100,7 @@ Out-of-process scanner that safely discovers all installed plugins. / 별도 프
 
 ### Start with Windows / 시작 프로그램
 
-Toggle via tray menu or Controls > General tab. Registers DirectPipe in Windows startup (HKCU Run registry). / 트레이 메뉴 또는 Controls > General 탭에서 설정. Windows 시작 시 자동 실행.
+Toggle via tray menu or Settings tab. Registers DirectPipe in Windows startup (HKCU Run registry). / 트레이 메뉴 또는 Settings 탭에서 설정. Windows 시작 시 자동 실행.
 
 ### Portable Mode / 포터블 모드
 
@@ -108,10 +108,10 @@ Place a file named `portable.flag` next to `DirectPipe.exe` to store all configu
 
 ## Audio Recording / 오디오 녹음
 
-Record processed audio (after the VST plugin chain) to a WAV file. Located in the **Monitor tab**. / 처리된 오디오(VST 체인 이후)를 WAV 파일로 녹음. **Monitor 탭**에 위치.
+Record processed audio (after the VST plugin chain) to a WAV file. Located in the **Output tab**. / 처리된 오디오(VST 체인 이후)를 WAV 파일로 녹음. **Output 탭**에 위치.
 
-- **Start/Stop recording** — Click **REC** in the Monitor tab, or use the Stream Deck Recording Toggle, HTTP API (`/api/recording/toggle`), or WebSocket (`recording_toggle`). / Monitor 탭 REC 버튼, Stream Deck, HTTP API, WebSocket으로 시작/중지.
-- **Recording indicator** — Monitor tab shows elapsed time (mm:ss). Stream Deck shows `REC mm:ss`. / Monitor 탭과 Stream Deck에 경과 시간 표시.
+- **Start/Stop recording** — Click **REC** in the Output tab, or use the Stream Deck Recording Toggle, HTTP API (`/api/recording/toggle`), or WebSocket (`recording_toggle`). / Output 탭 REC 버튼, Stream Deck, HTTP API, WebSocket으로 시작/중지.
+- **Recording indicator** — Output tab shows elapsed time (mm:ss). Stream Deck shows `REC mm:ss`. / Output 탭과 Stream Deck에 경과 시간 표시.
 - **Play last recording** — Click **Play** to open the last recorded file with your default audio player. / **Play** 클릭으로 마지막 녹음 파일을 기본 플레이어로 재생.
 - **Open Folder** — Click **Open Folder** to open the recording directory in Explorer. / **Open Folder** 클릭으로 녹음 폴더를 탐색기에서 열기.
 - **Change folder** — Click **...** to choose a different recording folder. Saved automatically. / **...** 클릭으로 녹음 폴더 변경. 자동 저장.
@@ -150,7 +150,7 @@ Choose a lower buffer for minimal latency or a higher buffer if you experience a
 
 ## Settings Save/Load / 설정 저장/불러오기
 
-Export or import your full DirectPipe settings as `.dpbackup` files. Located in **Controls > General** tab. / 전체 설정을 .dpbackup 파일로 내보내기/가져오기. **Controls > General** 탭에 위치.
+Export or import your full DirectPipe settings as `.dpbackup` files. Located in **Settings** tab. / 전체 설정을 .dpbackup 파일로 내보내기/가져오기. **Settings** 탭에 위치.
 
 - **Save Settings** — Saves audio settings, VST chain, volumes, preset slots, and control mappings to a `.dpbackup` file. / 오디오 설정, VST 체인, 볼륨, 프리셋 슬롯, 제어 매핑을 .dpbackup 파일로 저장.
 - **Load Settings** — Load a previously saved settings file. / 저장된 설정 파일 불러오기.
@@ -164,9 +164,9 @@ DirectPipe shows non-intrusive notifications in the status bar area when errors,
 - **Purple** — Info messages / 보라색 — 정보 메시지
 - Auto-fades after 3-8 seconds depending on severity / 심각도에 따라 3-8초 후 자동 사라짐
 
-## Log Tab / 로그 탭
+## Settings Tab / Settings 탭
 
-The 4th tab in the right panel (Audio / Monitor / Controls / **Log**). A real-time log viewer for diagnosing issues. / 우측 패널의 4번째 탭 (Audio / Monitor / Controls / **Log**). 문제 진단을 위한 실시간 로그 뷰어.
+The 4th tab in the right panel (Audio / Output / Controls / **Settings**). Includes real-time log viewer and maintenance tools. / 우측 패널의 4번째 탭 (Audio / Output / Controls / **Settings**). 실시간 로그 뷰어와 유지보수 도구 포함.
 
 ### Log Viewer / 로그 뷰어
 
@@ -176,7 +176,7 @@ The 4th tab in the right panel (Audio / Monitor / Controls / **Log**). A real-ti
 
 ### Maintenance / 유지보수
 
-Located at the bottom of the Log tab. All destructive actions show a confirmation dialog before proceeding. / 로그 탭 하단에 위치. 모든 파괴적 작업은 실행 전 확인 대화상자를 표시.
+Located at the bottom of the Settings tab. All destructive actions show a confirmation dialog before proceeding. / Settings 탭 하단에 위치. 모든 파괴적 작업은 실행 전 확인 대화상자를 표시.
 
 - **Clear Plugin Cache** — Deletes the scanned plugin list. Forces a re-scan on next "Scan..." click. / 스캔된 플러그인 목록 삭제. 다음 "Scan..." 클릭 시 재스캔 강제.
 - **Clear All Presets** — Deletes all quick slots (A-E) and saved presets. / 모든 퀵 슬롯(A-E)과 저장된 프리셋 삭제.
@@ -256,16 +256,16 @@ See [Control API Reference](CONTROL_API.md) for all endpoints. / 전체 엔드�
 - UI remains responsive during async loading / 비동기 로딩 중 UI 응답 유지
 
 **No monitor output? / 모니터 출력이 안 되나요?**
-- Check the monitor device is selected in Monitor tab / Monitor 탭에서 모니터 장치가 선택되어 있는지 확인
+- Check the monitor device is selected in Output tab / Output 탭에서 모니터 장치가 선택되어 있는지 확인
 - Ensure "Enable" is toggled on / "Enable"이 켜져 있는지 확인
 - The monitor uses a separate WASAPI device — it works even when main driver is ASIO / 모니터는 별도 WASAPI 장치를 사용 — ASIO 모드에서도 동작
 
 **Something went wrong but no error popup? / 오류가 발생했는데 팝업이 없나요?**
 - Check the status bar at the bottom — error notifications appear there briefly (red/orange/purple) / 하단 상태 바 확인 — 오류 알림이 잠시 표시됨 (빨강/주황/보라)
-- Open the **Log** tab for a full history of all application events / **Log** 탭에서 모든 앱 이벤트의 전체 기록 확인
+- Open the **Settings** tab for a full history of all application events / **Settings** 탭에서 모든 앱 이벤트의 전체 기록 확인
 - Use **Export Log** to save logs for troubleshooting / **Export Log**로 문제 해결용 로그 저장
 
 **Want to send audio to OBS/Discord? / OBS/Discord로 보내고 싶나요?**
 - Install a virtual audio cable driver (e.g., VB-Audio Hi-Fi Cable) / 가상 오디오 케이블 드라이버 설치
 - Select it as the Output device in the Audio tab / Audio 탭에서 Output 장치로 선택
-- Set your headphones as the monitor device in the Monitor tab / Monitor 탭에서 헤드폰을 모니터 장치로 설정
+- Set your headphones as the monitor device in the Output tab / Output 탭에서 헤드폰을 모니터 장치로 설정
