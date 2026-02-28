@@ -2,9 +2,9 @@
 
 ## Overview / 개요
 
-The DirectPipe Stream Deck plugin connects to the host via WebSocket and provides 6 button actions for controlling the VST host remotely.
+The DirectPipe Stream Deck plugin connects to the host via WebSocket and provides 7 button actions for controlling the VST host remotely.
 
-DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여 6가지 버튼 액션으로 VST 호스트를 원격 제어한다.
+DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여 7가지 버튼 액션으로 VST 호스트를 원격 제어한다.
 
 | Action / 액션 | Description / 설명 |
 |---------------|-------------------|
@@ -14,6 +14,7 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 | **Preset Switch** | Switch preset slot (A-E) or cycle presets. / 프리셋 슬롯 전환 또는 순환. |
 | **Monitor Toggle** | Toggle monitor output (headphones) on/off. / 모니터 출력(헤드폰) 켜기/끄기. |
 | **Recording Toggle** | Start/stop audio recording to WAV. Shows elapsed time. / 오디오 녹음 시작/중지. 경과 시간 표시. |
+| **IPC Toggle** | Toggle IPC output (Receiver VST) on/off. / IPC 출력(리시버 VST) 켜기/끄기. |
 
 ---
 
@@ -168,11 +169,23 @@ No settings required. / 설정 불필요.
 
 ---
 
+### IPC Toggle / IPC 토글
+
+**UUID:** `com.directpipe.directpipe.ipc-toggle`
+
+- **Press** -- Toggle IPC output (Receiver VST) on/off / IPC 출력(리시버 VST) 켜기/끄기 토글
+
+**Display:** State 0 = "IPC ON" (enabled), State 1 = "IPC OFF" (disabled) / 상태 표시
+
+No settings required. / 설정 불필요.
+
+---
+
 ## Technical Details / 기술 세부사항
 
 ### SDK Version
 
-Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 1.5.0.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 1.5.0.0. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket Client (`websocket-client.js`)
 
@@ -206,6 +219,7 @@ com.directpipe.directpipe.sdPlugin/
       preset-switch.js        Preset switch SingletonAction / 프리셋 전환 액션
       monitor-toggle.js       Monitor toggle SingletonAction / 모니터 토글 액션
       recording-toggle.js     Recording toggle SingletonAction / 녹음 토글 액션
+      ipc-toggle.js           IPC toggle SingletonAction / IPC 토글 액션
     inspectors/
       bypass-pi.html          Bypass settings (sdpi-components v4) / Bypass 설정 UI
       volume-pi.html          Volume settings (target, mode, step) / 볼륨 설정 UI

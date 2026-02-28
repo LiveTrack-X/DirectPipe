@@ -38,7 +38,8 @@ constexpr const char* EVENT_NAME = "Local\\DirectPipeDataReady";
 
 // ─── Default Audio Parameters ───────────────────────────────────
 /// Default ring buffer size in frames (must be power of 2)
-constexpr uint32_t DEFAULT_BUFFER_FRAMES = 4096;
+/// 16384 frames = ~341ms @48kHz — enough headroom for clock drift
+constexpr uint32_t DEFAULT_BUFFER_FRAMES = 16384;
 
 /// Default audio sample rate in Hz
 constexpr uint32_t DEFAULT_SAMPLE_RATE = 48000;

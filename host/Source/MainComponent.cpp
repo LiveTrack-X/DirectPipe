@@ -100,43 +100,9 @@ MainComponent::MainComponent()
     controlSettingsPanel_ = std::make_unique<ControlSettingsPanel>(
         *controlManager_, &audioEngine_.getVSTChain());
 
-    // Settings Save/Load callbacks (General tab)
-    controlSettingsPanel_->onSaveSettings = [this] {
-        auto chooser = std::make_shared<juce::FileChooser>(
-            "Save Settings",
-            juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                .getChildFile("DirectPipe_backup.dpbackup"),
-            "*.dpbackup");
-        chooser->launchAsync(juce::FileBrowserComponent::saveMode |
-                             juce::FileBrowserComponent::canSelectFiles,
-                             [this, chooser](const juce::FileChooser& fc) {
-            auto file = fc.getResult();
-            if (file != juce::File()) {
-                auto target = file.withFileExtension("dpbackup");
-                auto json = SettingsExporter::exportAll(*presetManager_, controlManager_->getConfigStore());
-                target.replaceWithText(json);
-            }
-        });
-    };
-    controlSettingsPanel_->onLoadSettings = [this] {
-        auto chooser = std::make_shared<juce::FileChooser>(
-            "Load Settings",
-            juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
-            "*.dpbackup");
-        chooser->launchAsync(juce::FileBrowserComponent::openMode |
-                             juce::FileBrowserComponent::canSelectFiles,
-                             [this, chooser](const juce::FileChooser& fc) {
-            auto file = fc.getResult();
-            if (file.existsAsFile()) {
-                auto json = file.loadFileAsString();
-                loadingSlot_ = true;
-                SettingsExporter::importAll(json, *presetManager_, controlManager_->getConfigStore());
-                controlManager_->reloadConfig();
-                loadingSlot_ = false;
-                refreshUI();
-                updateSlotButtonStates();
-            }
-        });
+    outputPanel_->onIpcToggle = [this](bool enabled) {
+        audioEngine_.setIpcEnabled(enabled);
+        markSettingsDirty();
     };
 
     // ── Right-column Tabbed Panel ──
@@ -147,13 +113,13 @@ MainComponent::MainComponent()
     // Tab colours
     auto tabBg = juce::Colour(0xFF2A2A40);
     rightTabs_->addTab("Audio",    tabBg, audioSettings_.release(), true);
-    rightTabs_->addTab("Monitor",  tabBg, outputPanel_.release(), true);
+    rightTabs_->addTab("Output",   tabBg, outputPanel_.release(), true);
     rightTabs_->addTab("Controls", tabBg, controlSettingsPanel_.release(), true);
 
-    // ── Log Panel ──
+    // ── Settings Panel (formerly Log + General) ──
     {
-        auto logPanel = std::make_unique<LogPanel>();
-        logPanel->onResetSettings = [this] {
+        auto settingsPanel = std::make_unique<LogPanel>();
+        settingsPanel->onResetSettings = [this] {
             loadingSlot_ = true;
             controlManager_->reloadConfig();
             loadSettings();
@@ -161,7 +127,44 @@ MainComponent::MainComponent()
             refreshUI();
             updateSlotButtonStates();
         };
-        rightTabs_->addTab("Log", tabBg, logPanel.release(), true);
+        settingsPanel->onSaveSettings = [this] {
+            auto chooser = std::make_shared<juce::FileChooser>(
+                "Save Settings",
+                juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+                    .getChildFile("DirectPipe_backup.dpbackup"),
+                "*.dpbackup");
+            chooser->launchAsync(juce::FileBrowserComponent::saveMode |
+                                 juce::FileBrowserComponent::canSelectFiles,
+                                 [this, chooser](const juce::FileChooser& fc) {
+                auto file = fc.getResult();
+                if (file != juce::File()) {
+                    auto target = file.withFileExtension("dpbackup");
+                    auto json = SettingsExporter::exportAll(*presetManager_, controlManager_->getConfigStore());
+                    target.replaceWithText(json);
+                }
+            });
+        };
+        settingsPanel->onLoadSettings = [this] {
+            auto chooser = std::make_shared<juce::FileChooser>(
+                "Load Settings",
+                juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+                "*.dpbackup");
+            chooser->launchAsync(juce::FileBrowserComponent::openMode |
+                                 juce::FileBrowserComponent::canSelectFiles,
+                                 [this, chooser](const juce::FileChooser& fc) {
+                auto file = fc.getResult();
+                if (file.existsAsFile()) {
+                    auto json = file.loadFileAsString();
+                    loadingSlot_ = true;
+                    SettingsExporter::importAll(json, *presetManager_, controlManager_->getConfigStore());
+                    controlManager_->reloadConfig();
+                    loadingSlot_ = false;
+                    refreshUI();
+                    updateSlotButtonStates();
+                }
+            });
+        };
+        rightTabs_->addTab("Settings", tabBg, settingsPanel.release(), true);
     }
 
     // Re-acquire raw pointers (TabbedComponent owns the components now)
@@ -252,16 +255,29 @@ MainComponent::MainComponent()
     };
     setupMuteBtn(outputMuteBtn_);
     setupMuteBtn(monitorMuteBtn_);
+    setupMuteBtn(vstMuteBtn_);
+    vstMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
     outputMuteBtn_.onClick = [this] {
+        if (audioEngine_.isMuted()) return;  // Locked during panic mute
         bool outputMuted = !audioEngine_.isOutputMuted();
         audioEngine_.setOutputMuted(outputMuted);
         markSettingsDirty();
     };
     monitorMuteBtn_.onClick = [this] {
+        if (audioEngine_.isMuted()) return;  // Locked during panic mute
         auto& router = audioEngine_.getOutputRouter();
         bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
         router.setEnabled(OutputRouter::Output::Monitor, enabled);
         audioEngine_.setMonitorEnabled(enabled);
+        markSettingsDirty();
+    };
+    vstMuteBtn_.onClick = [this] {
+        if (audioEngine_.isMuted()) return;  // Locked during panic mute
+        bool enabled = !audioEngine_.isIpcEnabled();
+        audioEngine_.setIpcEnabled(enabled);
+        // Sync Output tab toggle
+        if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
+            outPanel->setIpcToggleState(enabled);
         markSettingsDirty();
     };
 
@@ -276,14 +292,20 @@ MainComponent::MainComponent()
         if (muted) {
             preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
             preMuteOutputMuted_ = audioEngine_.isOutputMuted();
+            preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
             audioEngine_.setOutputMuted(false);
             router.setEnabled(OutputRouter::Output::Monitor, false);
             audioEngine_.setMonitorEnabled(false);
+            if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
         } else {
             audioEngine_.setOutputMuted(preMuteOutputMuted_);
             router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
             audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
+            if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
         }
+        // Sync Output tab VST toggle
+        if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
+            outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
         panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
         panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                                 juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
@@ -401,12 +423,14 @@ void MainComponent::handleAction(const ActionEvent& event)
 
         case Action::ToggleMute: {
             if (event.stringParam == "monitor") {
+                if (audioEngine_.isMuted()) break;  // Locked during panic mute
                 // Monitor mute = toggle monitor enable (headphones only)
                 auto& router = audioEngine_.getOutputRouter();
                 bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
                 router.setEnabled(OutputRouter::Output::Monitor, enabled);
                 audioEngine_.setMonitorEnabled(enabled);
             } else if (event.stringParam == "output") {
+                if (audioEngine_.isMuted()) break;  // Locked during panic mute
                 // Output mute = silence main output only, monitor keeps working
                 bool outputMuted = !audioEngine_.isOutputMuted();
                 audioEngine_.setOutputMuted(outputMuted);
@@ -417,12 +441,20 @@ void MainComponent::handleAction(const ActionEvent& event)
                 auto& router = audioEngine_.getOutputRouter();
                 if (muted) {
                     preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
+                    preMuteOutputMuted_ = audioEngine_.isOutputMuted();
+                    preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
+                    audioEngine_.setOutputMuted(false);
                     router.setEnabled(OutputRouter::Output::Monitor, false);
                     audioEngine_.setMonitorEnabled(false);
+                    if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
                 } else {
+                    audioEngine_.setOutputMuted(preMuteOutputMuted_);
                     router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
                     audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
+                    if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
                 }
+                if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
+                    outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
                 panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
                 panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                                         juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
@@ -439,14 +471,19 @@ void MainComponent::handleAction(const ActionEvent& event)
             if (muted) {
                 preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
                 preMuteOutputMuted_ = audioEngine_.isOutputMuted();
+                preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
                 audioEngine_.setOutputMuted(false);
                 router.setEnabled(OutputRouter::Output::Monitor, false);
                 audioEngine_.setMonitorEnabled(false);
+                if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
             } else {
                 audioEngine_.setOutputMuted(preMuteOutputMuted_);
                 router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
                 audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
+                if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
             }
+            if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
+                outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
             panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
             panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                                     juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
@@ -461,9 +498,10 @@ void MainComponent::handleAction(const ActionEvent& event)
             break;
 
         case Action::SetVolume:
-            if (event.stringParam == "monitor")
+            if (event.stringParam == "monitor") {
+                if (audioEngine_.isMuted()) break;  // Locked during panic mute
                 audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
-            else if (event.stringParam == "input") {
+            } else if (event.stringParam == "input") {
                 audioEngine_.setInputGain(event.floatParam);
                 inputGainSlider_.setValue(event.floatParam, juce::dontSendNotification);
             }
@@ -471,6 +509,7 @@ void MainComponent::handleAction(const ActionEvent& event)
             break;
 
         case Action::MonitorToggle: {
+            if (audioEngine_.isMuted()) break;  // Locked during panic mute
             auto& router = audioEngine_.getOutputRouter();
             bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
             router.setEnabled(OutputRouter::Output::Monitor, enabled);
@@ -509,6 +548,17 @@ void MainComponent::handleAction(const ActionEvent& event)
         case Action::SetPluginParameter: {
             audioEngine_.getVSTChain().setPluginParameter(
                 event.intParam, event.intParam2, event.floatParam);
+            break;
+        }
+
+        case Action::IpcToggle: {
+            if (audioEngine_.isMuted()) break;  // Locked during panic mute
+            bool enabled = !audioEngine_.isIpcEnabled();
+            audioEngine_.setIpcEnabled(enabled);
+            // Sync Output tab toggle
+            if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
+                outPanel->setIpcToggleState(enabled);
+            markSettingsDirty();
             break;
         }
 
@@ -699,9 +749,10 @@ void MainComponent::resized()
 
     // Mute status indicators above panic mute button (clickable)
     {
-        int indicatorW = (cw - 4) / 2;
+        int indicatorW = (cw - 8) / 3;
         outputMuteBtn_.setBounds(cx, y, indicatorW, 20);
         monitorMuteBtn_.setBounds(cx + indicatorW + 4, y, indicatorW, 20);
+        vstMuteBtn_.setBounds(cx + (indicatorW + 4) * 2, y, cw - (indicatorW + 4) * 2, 20);
         y += 24;
     }
 
@@ -774,6 +825,13 @@ void MainComponent::timerCallback()
             monitorMuteBtn_.setColour(juce::TextButton::buttonColourId,
                 monMuted ? juce::Colour(0xFFE05050) : juce::Colour(0xFF4CAF50));
         }
+
+        bool vstActive = audioEngine_.isIpcEnabled();
+        if (vstActive != cachedVstEnabled_) {
+            cachedVstEnabled_ = vstActive;
+            vstMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                vstActive ? juce::Colour(0xFF4CAF50) : juce::Colour(0xFFE05050));
+        }
     }
 
     // Main output latency: input buffer + processing + output buffer
@@ -843,6 +901,7 @@ void MainComponent::timerCallback()
         s.activeSlot = presetManager_ ? presetManager_->getActiveSlot() : 0;
         s.recording = audioEngine_.getRecorder().isRecording();
         s.recordingSeconds = audioEngine_.getRecorder().getRecordedSeconds();
+        s.ipcEnabled = audioEngine_.isIpcEnabled();
 
         s.plugins.clear();
         for (int i = 0; i < chain.getPluginCount(); ++i) {
@@ -909,8 +968,9 @@ void MainComponent::refreshUI()
     inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
 
     // Get tab content components for refresh
-    if (auto* audioSettingsComp = dynamic_cast<AudioSettings*>(rightTabs_->getTabContentComponent(0)))
+    if (auto* audioSettingsComp = dynamic_cast<AudioSettings*>(rightTabs_->getTabContentComponent(0))) {
         audioSettingsComp->refreshFromEngine();
+    }
 
     if (pluginChainEditor_)
         pluginChainEditor_->refreshList();
@@ -922,6 +982,10 @@ void MainComponent::refreshUI()
     panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
                             juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+
+    // IPC toggle state (Output tab = index 1)
+    if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
+        outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
 }
 
 // ─── Notification ─────────────────────────────────────────────────────────

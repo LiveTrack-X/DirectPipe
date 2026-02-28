@@ -26,7 +26,7 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include "VirtualMicOutput.h"
+#include "MonitorOutput.h"
 #include <atomic>
 
 namespace directpipe {
@@ -64,7 +64,7 @@ public:
     float getLevel(Output output) const;
 
     /** Wire the monitor output (non-owning pointer, separate WASAPI device). */
-    void setMonitorOutput(VirtualMicOutput* mo) { monitorOutput_ = mo; }
+    void setMonitorOutput(MonitorOutput* mo) { monitorOutput_ = mo; }
 
     /** Check if monitor output is active and receiving audio. */
     bool isMonitorOutputActive() const;
@@ -80,7 +80,7 @@ private:
 
     OutputState outputs_[kOutputCount];
 
-    VirtualMicOutput* monitorOutput_ = nullptr;
+    MonitorOutput* monitorOutput_ = nullptr;
 
     // Temporary buffer for volume-scaled output (pre-allocated)
     juce::AudioBuffer<float> scaledBuffer_;

@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "3.5.0"
+    VERSION "3.6.0"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -25,8 +25,8 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/LatencyMonitor.h
     Source/Audio/LatencyMonitor.cpp
     Source/Audio/AudioRingBuffer.h
-    Source/Audio/VirtualMicOutput.h
-    Source/Audio/VirtualMicOutput.cpp
+    Source/Audio/MonitorOutput.h
+    Source/Audio/MonitorOutput.cpp
     Source/Audio/AudioRecorder.h
     Source/Audio/AudioRecorder.cpp
     # DeviceSelector removed — merged into AudioSettings
@@ -68,6 +68,8 @@ target_sources(DirectPipe PRIVATE
     Source/Control/ControlMapping.cpp
     Source/Control/ControlManager.h
     Source/Control/ControlManager.cpp
+    Source/IPC/SharedMemWriter.h
+    Source/IPC/SharedMemWriter.cpp
 )
 
 juce_add_binary_data(DirectPipeBinaryData

@@ -24,6 +24,10 @@
 #include "LogPanel.h"
 #include "../Control/ControlMapping.h"
 
+// Forward declarations (defined in Main.cpp)
+bool isStartupEnabled();
+void setStartupEnabled(bool enable);
+
 namespace directpipe {
 
 // ═════════════════════════════════════════════════════════════
@@ -87,6 +91,26 @@ void DirectPipeLogger::clearPending()
 
 LogPanel::LogPanel()
 {
+    // ── Application section ──
+    appHeaderLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
+    appHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(appHeaderLabel_);
+
+    startupToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    startupToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+#if JUCE_WINDOWS
+    startupToggle_.setToggleState(::isStartupEnabled(), juce::dontSendNotification);
+    startupToggle_.onClick = [this] {
+        ::setStartupEnabled(startupToggle_.getToggleState());
+    };
+#endif
+    addAndMakeVisible(startupToggle_);
+
+    // ── Settings Export/Import section ──
+    settingsHeaderLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
+    settingsHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(settingsHeaderLabel_);
+
     // Log view — read-only multiline with monospaced font
     logView_.setMultiLine(true, true);
     logView_.setReadOnly(true);
@@ -106,6 +130,17 @@ LogPanel::LogPanel()
         btn.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
         addAndMakeVisible(btn);
     };
+
+    setupBtn(saveSettingsBtn_);
+    setupBtn(loadSettingsBtn_);
+
+    saveSettingsBtn_.onClick = [this] { if (onSaveSettings) onSaveSettings(); };
+    loadSettingsBtn_.onClick = [this] { if (onLoadSettings) onLoadSettings(); };
+
+    // Log header
+    logHeaderLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
+    logHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(logHeaderLabel_);
 
     setupBtn(exportBtn_);
     setupBtn(clearLogBtn_);
@@ -141,29 +176,52 @@ void LogPanel::resized()
     auto bounds = getLocalBounds().reduced(8);
     constexpr int rowH = 28;
     constexpr int gap  = 6;
-    constexpr int maintenanceSectionH = 18 + gap + rowH * 3 + gap * 2;
-    constexpr int buttonRowH = rowH + gap;
+    constexpr int headerH = 18;
 
+    // Fixed sections height (bottom):
     int x = bounds.getX();
     int w = bounds.getWidth();
     int y = bounds.getY();
 
-    // Log view takes remaining space
-    int logH = bounds.getHeight() - buttonRowH - gap - maintenanceSectionH;
+    // ── Application section ──
+    appHeaderLabel_.setBounds(x, y, w, headerH);
+    y += headerH + gap;
+
+    startupToggle_.setBounds(x, y, w, rowH);
+    y += rowH + gap;
+
+    // ── Settings Export/Import section ──
+    settingsHeaderLabel_.setBounds(x, y, w, headerH);
+    y += headerH + gap;
+
+    int btnW = (w - gap) / 2;
+    saveSettingsBtn_.setBounds(x, y, btnW, rowH);
+    loadSettingsBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
+    y += rowH + gap;
+
+    // ── Log section ──
+    logHeaderLabel_.setBounds(x, y, w, headerH);
+    y += headerH + gap;
+
+    // Bottom sections: Export/Clear + Maintenance
+    constexpr int bottomH = rowH + gap * 2       // export/clear row + gap
+                          + headerH + gap         // maintenance header
+                          + rowH * 3 + gap * 2;  // 3 maintenance buttons
+
+    int logH = bounds.getBottom() - y - gap - bottomH;
+    if (logH < 60) logH = 60;
     logView_.setBounds(x, y, w, logH);
     y += logH + gap;
 
     // Export / Clear Log row
-    int btnW = (w - gap) / 2;
     exportBtn_.setBounds(x, y, btnW, rowH);
     clearLogBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
     y += rowH + gap * 2;
 
-    // Maintenance header
-    maintenanceLabel_.setBounds(x, y, w, 18);
-    y += 18 + gap;
+    // ── Maintenance section ──
+    maintenanceLabel_.setBounds(x, y, w, headerH);
+    y += headerH + gap;
 
-    // Maintenance buttons (full width)
     clearPluginCacheBtn_.setBounds(x, y, w, rowH);
     y += rowH + gap;
 

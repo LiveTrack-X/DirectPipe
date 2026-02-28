@@ -92,6 +92,7 @@ juce::String PresetManager::exportToJSON()
     engine_.getDeviceManager().getAudioDeviceSetup(setup);
     root->setProperty("inputDevice", setup.inputDeviceName);
     root->setProperty("outputDevice", setup.outputDeviceName);
+    root->setProperty("outputNone", engine_.isOutputNone());
 
     // VST Chain
     juce::Array<juce::var> plugins;
@@ -127,6 +128,12 @@ juce::String PresetManager::exportToJSON()
     outputs->setProperty("monitorDevice",
         engine_.getMonitorDeviceName());
     root->setProperty("outputs", juce::var(outputs.release()));
+
+    // Channel mode (1=mono, 2=stereo)
+    root->setProperty("channelMode", engine_.getChannelMode());
+
+    // IPC output
+    root->setProperty("ipcEnabled", engine_.isIpcEnabled());
 
     return juce::JSON::toString(juce::var(root.release()), true);
 }
@@ -175,9 +182,15 @@ bool PresetManager::importFromJSON(const juce::String& json)
             engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
         }
     }
-    if (root->hasProperty("outputDevice")) {
+    // Restore output "None" mode first (before output device)
+    bool outputNone = false;
+    if (root->hasProperty("outputNone"))
+        outputNone = static_cast<bool>(root->getProperty("outputNone"));
+    engine_.setOutputNone(outputNone);
+
+    if (!outputNone && root->hasProperty("outputDevice")) {
         juce::String outputDev = root->getProperty("outputDevice").toString();
-        if (outputDev.isNotEmpty())
+        if (outputDev.isNotEmpty() && outputDev != "None")
             engine_.setOutputDevice(outputDev);
     }
 
@@ -215,6 +228,14 @@ bool PresetManager::importFromJSON(const juce::String& json)
             }
         }
     }
+
+    // Channel mode (1=mono, 2=stereo)
+    if (root->hasProperty("channelMode"))
+        engine_.setChannelMode(static_cast<int>(root->getProperty("channelMode")));
+
+    // IPC output
+    if (root->hasProperty("ipcEnabled"))
+        engine_.setIpcEnabled(static_cast<bool>(root->getProperty("ipcEnabled")));
 
     return true;
 }

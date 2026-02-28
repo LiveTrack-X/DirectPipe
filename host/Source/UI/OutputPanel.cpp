@@ -65,6 +65,22 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));
     addAndMakeVisible(monitorStatusLabel_);
 
+    // ── VST Receiver section ──
+    ipcHeaderLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
+    ipcHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(ipcHeaderLabel_);
+
+    ipcToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    ipcToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+    ipcToggle_.onClick = [this] {
+        if (onIpcToggle) onIpcToggle(ipcToggle_.getToggleState());
+    };
+    addAndMakeVisible(ipcToggle_);
+
+    ipcInfoLabel_.setFont(juce::Font(11.0f));
+    ipcInfoLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(ipcInfoLabel_);
+
     // ── Recording section ──
     recordingTitleLabel_.setFont(juce::Font(16.0f, juce::Font::bold));
     recordingTitleLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
@@ -148,10 +164,20 @@ void OutputPanel::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(kBgColour));
 
-    // Monitor section background
+    // Section background
     auto area = getLocalBounds().reduced(4);
     g.setColour(juce::Colour(kSurfaceColour));
     g.fillRoundedRectangle(area.toFloat(), 6.0f);
+
+    // Separator lines between sections
+    auto bounds = getLocalBounds().reduced(12);
+    g.setColour(juce::Colour(kDimTextColour).withAlpha(0.3f));
+    if (separatorY1_ > 0)
+        g.drawHorizontalLine(separatorY1_, static_cast<float>(bounds.getX()),
+                             static_cast<float>(bounds.getRight()));
+    if (separatorY2_ > 0)
+        g.drawHorizontalLine(separatorY2_, static_cast<float>(bounds.getX()),
+                             static_cast<float>(bounds.getRight()));
 }
 
 void OutputPanel::resized()
@@ -182,6 +208,20 @@ void OutputPanel::resized()
 
     monitorStatusLabel_.setBounds(x, y, w, 18);
     y += 24;
+
+    separatorY1_ = y - 4;
+
+    // ── VST Receiver ──
+    ipcHeaderLabel_.setBounds(x, y, w, rowH);
+    y += rowH + gap;
+
+    ipcToggle_.setBounds(x, y, w, rowH);
+    y += rowH + gap;
+
+    ipcInfoLabel_.setBounds(x, y, w, 18);
+    y += 24;
+
+    separatorY2_ = y - 4;
 
     // ── Recording ──
     recordingTitleLabel_.setBounds(x, y, w, rowH);
@@ -336,6 +376,11 @@ void OutputPanel::onMonitorEnableToggled()
     engine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, enabled);
     engine_.setMonitorEnabled(enabled);
     if (onSettingsChanged) onSettingsChanged();
+}
+
+void OutputPanel::setIpcToggleState(bool enabled)
+{
+    ipcToggle_.setToggleState(enabled, juce::dontSendNotification);
 }
 
 } // namespace directpipe

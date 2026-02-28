@@ -119,11 +119,13 @@ private:
     // Mute indicators (clickable) + panic mute button
     juce::TextButton outputMuteBtn_{"OUT"};
     juce::TextButton monitorMuteBtn_{"MON"};
+    juce::TextButton vstMuteBtn_{"VST"};
     juce::TextButton panicMuteBtn_{"PANIC MUTE"};
 
     // Cached mute states (avoid redundant repaints)
     bool cachedOutputMuted_ = false;
     bool cachedMonitorMuted_ = false;
+    bool cachedVstEnabled_ = false;
 
     // Status bar labels
     juce::Label latencyLabel_;
@@ -144,6 +146,7 @@ private:
     // Panic mute: remember pre-mute state for restore on unmute
     bool preMuteMonitorEnabled_ = false;
     bool preMuteOutputMuted_ = false;
+    bool preMuteVstEnabled_ = false;
 
     // Non-intrusive notification system
     NotificationBar notificationBar_;

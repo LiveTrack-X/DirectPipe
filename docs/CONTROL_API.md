@@ -189,6 +189,16 @@ Start or stop recording processed audio to a WAV file. Recording files are saved
 
 ---
 
+#### `ipc_toggle` — Toggle IPC Output / IPC 출력 토글
+
+```json
+{ "type": "action", "action": "ipc_toggle", "params": {} }
+```
+
+Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is written to shared memory for the Receiver VST plugin (e.g., in OBS). / IPC 출력(리시버 VST) 켜기/끄기 토글. 활성화 시 처리된 오디오가 공유 메모리로 기록되어 리시버 VST 플러그인(예: OBS)에서 사용 가능.
+
+---
+
 #### `set_plugin_parameter` — Set Plugin Parameter / 플러그인 파라미터 설정
 
 ```json
@@ -227,7 +237,8 @@ Start or stop recording processed audio to a WAV file. Recording files are saved
     "channel_mode": 2,
     "monitor_enabled": true,
     "recording": false,
-    "recording_seconds": 0.0
+    "recording_seconds": 0.0,
+    "ipc_enabled": false
   }
 }
 ```
@@ -256,6 +267,7 @@ Start or stop recording processed audio to a WAV file. Recording files are saved
 | `monitor_enabled` | boolean | Monitor output enabled / 모니터 출력 활성화 |
 | `recording` | boolean | Audio recording active / 오디오 녹음 중 |
 | `recording_seconds` | number | Recording elapsed time in seconds / 녹음 경과 시간 (초) |
+| `ipc_enabled` | boolean | IPC output (Receiver VST) enabled / IPC 출력 (리시버 VST) 활성화 |
 
 ---
 
@@ -279,6 +291,7 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |
 | `GET /api/gain/:delta` | Adjust input gain (dB) / 입력 게인 조절 |
 | `GET /api/recording/toggle` | Toggle audio recording on/off / 오디오 녹음 토글 |
+| `GET /api/ipc/toggle` | Toggle IPC output (Receiver VST) on/off / IPC 출력 (리시버 VST) 토글 |
 | `GET /api/plugin/:pluginIndex/param/:paramIndex/:value` | Set plugin parameter (0.0-1.0) / 플러그인 파라미터 설정 |
 
 **Success response:** `{ "ok": true, "action": "..." }`
@@ -316,6 +329,9 @@ curl http://127.0.0.1:8766/api/input-mute/toggle
 
 # Toggle recording / 녹음 토글
 curl http://127.0.0.1:8766/api/recording/toggle
+
+# Toggle IPC output / IPC 출력 토글
+curl http://127.0.0.1:8766/api/ipc/toggle
 
 # Set plugin 0, parameter 3 to 0.75 / 플러그인 0 파라미터 3 설정
 curl http://127.0.0.1:8766/api/plugin/0/param/3/0.75

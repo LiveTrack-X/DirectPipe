@@ -99,9 +99,32 @@ void AudioEngine::shutdown()
     running_ = false;
     deviceManager_.removeAudioCallback(this);
     deviceManager_.closeAudioDevice();
+    sharedMemWriter_.shutdown();
+    ipcEnabled_.store(false, std::memory_order_relaxed);
     monitorOutput_.shutdown();
     outputRouter_.shutdown();
     vstChain_.releaseResources();
+}
+
+void AudioEngine::setIpcEnabled(bool enabled)
+{
+    if (enabled == ipcEnabled_.load(std::memory_order_relaxed))
+        return;
+
+    if (enabled) {
+        uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
+        uint32_t ch = static_cast<uint32_t>(channelMode_.load(std::memory_order_relaxed));
+        if (sharedMemWriter_.initialize(sr, ch)) {
+            ipcEnabled_.store(true, std::memory_order_release);
+            juce::Logger::writeToLog("IPC output enabled");
+        } else {
+            juce::Logger::writeToLog("IPC output failed to initialize");
+        }
+    } else {
+        ipcEnabled_.store(false, std::memory_order_release);
+        sharedMemWriter_.shutdown();
+        juce::Logger::writeToLog("IPC output disabled");
+    }
 }
 
 bool AudioEngine::setInputDevice(const juce::String& deviceName)
@@ -481,6 +504,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         recorder_.writeBlock(buffer, numSamples);
     }
 
+    // 2.6. Write to shared memory for Receiver VST (if IPC enabled)
+    if (!muted && ipcEnabled_.load(std::memory_order_relaxed)) {
+        sharedMemWriter_.writeAudio(buffer, numSamples);
+    }
+
     // 3. Route processed audio to monitor (separate WASAPI device)
     if (!muted) {
         outputRouter_.routeAudio(buffer, numSamples);
@@ -499,8 +527,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         }
     }
 
-    // Measure output level
-    if (numOutputChannels > 0 && buffer.getNumChannels() > 0) {
+    // Measure output level (based on processed buffer, regardless of main output device)
+    if (buffer.getNumChannels() > 0) {
         float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
         outputLevel_.store(rms, std::memory_order_relaxed);
     }
@@ -529,6 +557,13 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     latencyMonitor_.reset(currentSampleRate_, currentBufferSize_);
 
+    // Re-initialize IPC if enabled (SR/channel may have changed)
+    if (ipcEnabled_.load(std::memory_order_relaxed)) {
+        uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
+        uint32_t ch = static_cast<uint32_t>(channelMode_.load(std::memory_order_relaxed));
+        sharedMemWriter_.initialize(sr, ch);
+    }
+
     juce::Logger::writeToLog(
         "Audio device started: " + device->getName() +
         " @ " + juce::String(currentSampleRate_) + "Hz" +
@@ -539,6 +574,7 @@ void AudioEngine::audioDeviceStopped()
 {
     vstChain_.releaseResources();
     outputRouter_.shutdown();
+    sharedMemWriter_.shutdown();
     juce::Logger::writeToLog("Audio device stopped");
 }
 

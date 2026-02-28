@@ -58,6 +58,10 @@ public:
     /** Called when the user changes any audio setting. */
     std::function<void()> onSettingsChanged;
 
+    /** Output "None" mode — mutes main output, keeps device open for input/IPC/monitor. */
+    bool isOutputNone() const { return engine_.isOutputNone(); }
+    void setOutputNone(bool none);
+
 private:
     // ChangeListener for device manager notifications
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;

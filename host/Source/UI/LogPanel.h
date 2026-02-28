@@ -69,9 +69,21 @@ public:
 
     /** Wired by MainComponent — called after Reset Settings deletes config files. */
     std::function<void()> onResetSettings;
+    std::function<void()> onSaveSettings;
+    std::function<void()> onLoadSettings;
 
 private:
+    // Application section
+    juce::Label appHeaderLabel_{"", "Application"};
+    juce::ToggleButton startupToggle_{"Start with Windows"};
+
+    // Settings Export/Import section
+    juce::Label settingsHeaderLabel_{"", "Settings"};
+    juce::TextButton saveSettingsBtn_{"Save Settings"};
+    juce::TextButton loadSettingsBtn_{"Load Settings"};
+
     // Log display
+    juce::Label logHeaderLabel_{"", "Log"};
     juce::TextEditor logView_;
     juce::TextButton exportBtn_{"Export Log"};
     juce::TextButton clearLogBtn_{"Clear Log"};

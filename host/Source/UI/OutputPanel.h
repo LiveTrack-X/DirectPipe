@@ -43,6 +43,10 @@ public:
 
     std::function<void()> onSettingsChanged;
     std::function<void()> onRecordToggle;
+    std::function<void(bool)> onIpcToggle;
+
+    /** Set the IPC toggle state externally (e.g., when loading settings). */
+    void setIpcToggleState(bool enabled);
 
     /** Update recording state display (called from MainComponent timer). */
     void updateRecordingState(bool isRecording, double seconds);
@@ -80,6 +84,11 @@ private:
     juce::ToggleButton monitorEnableButton_{"Enable"};
     juce::Label monitorStatusLabel_;
 
+    // ── VST Receiver section ──
+    juce::Label ipcHeaderLabel_{"", "VST Receiver (DirectPipe Receiver)"};
+    juce::ToggleButton ipcToggle_{"Enable VST Receiver Output"};
+    juce::Label ipcInfoLabel_{"", "Send processed audio to DirectPipe Receiver VST plugin."};
+
     // ── Recording section ──
     juce::Label recordingTitleLabel_{"", "Recording"};
     juce::TextButton recordBtn_{"REC"};
@@ -90,6 +99,10 @@ private:
     juce::Label folderPathLabel_;
     juce::File recordingFolder_;
     juce::File lastRecordedFile_;
+
+    // Separator line positions (set in resized, drawn in paint)
+    int separatorY1_ = 0;
+    int separatorY2_ = 0;
 
     static constexpr juce::uint32 kBgColour       = 0xFF1E1E2E;
     static constexpr juce::uint32 kSurfaceColour   = 0xFF2A2A40;

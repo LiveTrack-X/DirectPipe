@@ -361,6 +361,18 @@ void AudioSettings::onOutputDeviceChanged()
     auto selectedText = outputCombo_.getText();
     if (selectedText.isEmpty()) return;
 
+    // "None" = mute main output (keep device open for input)
+    if (selectedText == "None") {
+        engine_.setOutputNone(true);
+        if (onSettingsChanged) onSettingsChanged();
+        return;
+    }
+
+    // Switching away from None — unmute
+    if (engine_.isOutputNone()) {
+        engine_.setOutputNone(false);
+    }
+
     if (isAsioMode()) {
         // ASIO: set both input and output to the same device
         juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -384,7 +396,13 @@ void AudioSettings::onOutputDeviceChanged()
 
         rebuildChannelLists();
     } else {
-        engine_.setOutputDevice(selectedText);
+        // Preserve input device when switching output
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        engine_.getDeviceManager().getAudioDeviceSetup(setup);
+        setup.outputDeviceName = selectedText;
+        auto result = engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
+        if (result.isNotEmpty())
+            juce::Logger::writeToLog("Output device change failed: " + result);
     }
 
     rebuildSampleRateList();
@@ -478,9 +496,12 @@ void AudioSettings::rebuildDeviceLists()
 
     // Output devices (from current driver type)
     outputCombo_.clear(juce::dontSendNotification);
+    if (!isAsioMode())
+        outputCombo_.addItem("None", 1);
     auto outputs = engine_.getAvailableOutputDevices();
+    int outputIdOffset = isAsioMode() ? 1 : 2;  // "None" takes ID 1 in WASAPI mode
     for (int i = 0; i < outputs.size(); ++i)
-        outputCombo_.addItem(outputs[i], i + 1);
+        outputCombo_.addItem(outputs[i], i + outputIdOffset);
 
     // Select current devices
     juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -499,16 +520,20 @@ void AudioSettings::rebuildDeviceLists()
         inputCombo_.setSelectedId(1, juce::dontSendNotification);
 
     // Output selection
-    juce::String outputName = setup.outputDeviceName;
-    if (outputName.isEmpty()) {
-        if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice())
-            outputName = device->getName();
+    if (engine_.isOutputNone() && !isAsioMode()) {
+        outputCombo_.setSelectedId(1, juce::dontSendNotification); // "None"
+    } else {
+        juce::String outputName = setup.outputDeviceName;
+        if (outputName.isEmpty()) {
+            if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice())
+                outputName = device->getName();
+        }
+        int outIdx = outputs.indexOf(outputName);
+        if (outIdx >= 0)
+            outputCombo_.setSelectedId(outIdx + outputIdOffset, juce::dontSendNotification);
+        else if (outputs.size() > 0)
+            outputCombo_.setSelectedId(outputIdOffset, juce::dontSendNotification);
     }
-    int outIdx = outputs.indexOf(outputName);
-    if (outIdx >= 0)
-        outputCombo_.setSelectedId(outIdx + 1, juce::dontSendNotification);
-    else if (outputs.size() > 0)
-        outputCombo_.setSelectedId(1, juce::dontSendNotification);
 
     // Rebuild ASIO channel lists if applicable
     if (isAsioMode())
@@ -627,6 +652,17 @@ void AudioSettings::updateChannelModeDescription()
         channelModeDescLabel_.setText(
             "Mono: Mix L+R to mono, output to both channels",
             juce::dontSendNotification);
+    }
+}
+
+void AudioSettings::setOutputNone(bool none)
+{
+    engine_.setOutputNone(none);
+    if (!isAsioMode()) {
+        if (none)
+            outputCombo_.setSelectedId(1, juce::dontSendNotification); // "None"
+        else
+            rebuildDeviceLists();
     }
 }
 

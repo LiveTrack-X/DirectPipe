@@ -252,6 +252,14 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         return {200, R"({"ok": true, "action": "set_plugin_parameter"})"};
     }
 
+    // GET /api/ipc/toggle
+    if (action == "ipc" && segments.size() >= 3 && segments[2] == "toggle") {
+        ActionEvent event;
+        event.action = Action::IpcToggle;
+        dispatcher_.dispatch(event);
+        return {200, R"({"ok": true, "action": "ipc_toggle"})"};
+    }
+
     // GET /api/recording/toggle
     if (action == "recording" && segments.size() >= 3 && segments[2] == "toggle") {
         ActionEvent event;

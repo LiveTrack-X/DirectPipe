@@ -52,6 +52,7 @@ enum class Action {
     MonitorToggle,      ///< Toggle monitor output on/off
     RecordingToggle,    ///< Toggle audio recording on/off
     SetPluginParameter, ///< Set plugin parameter (intParam=pluginIndex, intParam2=paramIndex, floatParam=value 0.0~1.0)
+    IpcToggle,          ///< Toggle IPC output (Receiver VST) on/off
 };
 
 /// Carries an action with its parameters

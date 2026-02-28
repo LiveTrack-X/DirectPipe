@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU General Public License
 // along with DirectPipe. If not, see <https://www.gnu.org/licenses/>.
 
-#!/usr/bin/env node
 /**
  * Generate PNG icons from SVG sources for Stream Deck plugin.
  *
@@ -69,6 +68,11 @@ const icons = [
   { src: 'recording.svg', out: 'recording', size: 20, x2: 40 },
   { src: 'recording-off.svg', out: 'recording-off', size: 72, x2: 144 },
   { src: 'recording-on.svg', out: 'recording-on', size: 72, x2: 144 },
+
+  // IPC Toggle action
+  { src: 'ipc.svg', out: 'ipc', size: 20, x2: 40 },
+  { src: 'ipc-on.svg', out: 'ipc-on', size: 72, x2: 144 },
+  { src: 'ipc-off.svg', out: 'ipc-off', size: 72, x2: 144 },
 ];
 
 async function generateIcon({ src, out, size, x2 }) {

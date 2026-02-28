@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DirectPipe VERSION 3.5.0 LANGUAGES C CXX)
+project(DirectPipe VERSION 3.6.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,6 +63,12 @@ add_subdirectory(core)
 # JUCE Host application
 if(DIRECTPIPE_BUILD_HOST)
     add_subdirectory(host)
+endif()
+
+# Receiver VST2 plugin
+option(DIRECTPIPE_BUILD_RECEIVER "Build Receiver VST2 plugin" ON)
+if(DIRECTPIPE_BUILD_RECEIVER)
+    add_subdirectory(plugins/receiver)
 endif()
 
 # Tests
