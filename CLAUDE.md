@@ -43,7 +43,7 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **ASIO + WASAPI dual driver**: Runtime switching. ASIO: single device, dynamic SR/BS, channel routing. WASAPI: separate I/O, fixed lists.
 - **Main output**: Processed audio written directly to outputChannelData (AudioSettings Output device). Works with both WASAPI and ASIO.
 - **Monitor output**: Separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer for headphone monitoring. Independent of main driver type (works even with ASIO). Configured in Monitor tab. Status indicator (Active/Error/No device).
-- **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync). Same-chain fast path = instant switch.
+- **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync with `alive_` flag lifetime guard). Same-chain fast path = instant switch.
 - **Out-of-process VST scanner**: `--scan` child process. Auto-retry (5x), dead man's pedal. Blacklist for crashed plugins. Log: `%AppData%/DirectPipe/scanner-log.txt`.
 - **Plugin chain editor**: Drag-and-drop, bypass toggle, native GUI edit. Safe deletion via callAsync.
 - **Tabbed UI**: Audio/Monitor/Controls/Log tabs in right column. Monitor tab includes Recording section. Controls has sub-tabs: Hotkeys/MIDI/Stream Deck/General (with Settings Save/Load). Log tab has real-time log viewer + maintenance tools.
@@ -51,15 +51,15 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
 - **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
-- **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765. UDP discovery broadcast (port 8767) at startup for instant Stream Deck connection.
+- **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765. UDP discovery broadcast (port 8767) at startup for instant Stream Deck connection. `broadcastToClients` thread join outside `clientsMutex_` lock.
 - **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0). Endpoints include recording toggle and plugin parameter control.
-- **Audio recording**: Lock-free recording via `AudioRecorder` + `AudioFormatWriter::ThreadedWriter`. WAV output. RT-safe `juce::SpinLock` protects writer teardown. Timer-based duration tracking. Auto-stop on device change.
-- **Settings export/import**: `SettingsExporter` class. Full settings save/load as `.dpbackup` files via native file chooser. Located in Controls > General tab.
+- **Audio recording**: Lock-free recording via `AudioRecorder` + `AudioFormatWriter::ThreadedWriter`. WAV output. RT-safe `juce::SpinLock` protects writer teardown. Timer-based duration tracking. Auto-stop on device change. `outputStream` properly cleaned up on writer creation failure.
+- **Settings export/import**: `SettingsExporter` class. Full settings save/load as `.dpbackup` files via native file chooser. Located in Controls > General tab. Uses `controlManager_->getConfigStore()` for live config access.
 - **Plugin scanner search/sort**: Real-time text filter + column sorting (name/vendor/format) in PluginScanner dialog.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow (select plugin → select parameter → MIDI Learn). Creates `Continuous` MidiBinding with `SetPluginParameter` action.
 - **System tray tooltip**: Shows current state (preset, plugins, volumes) on hover. Atomic dirty-flag for cross-thread safety.
 - **Stream Deck plugin**: SDKVersion 3, 6 SingletonAction subclasses (Bypass/Volume/Preset/Monitor/Panic/Recording), Property Inspector HTML (sdpi-components v4), event-driven reconnection (UDP discovery + user-action trigger, no polling), SVG icons with @2x. Pending message queue (cap 50). Packaged via official `streamdeck pack` CLI.
-- **NotificationBar**: Non-intrusive status bar notifications. Temporarily replaces latency/CPU labels. Color-coded: red (errors), orange (warnings), purple (info). Auto-fades after 3-8 seconds depending on severity. Triggered by audio device errors, plugin load failures, recording failures.
+- **NotificationBar**: Non-intrusive status bar notifications. Temporarily replaces latency/CPU labels. Color-coded: red (errors), orange (warnings), purple (info). Auto-fades after 3-8 seconds depending on severity. Triggered by audio device errors, plugin load failures, recording failures. Notification queue overflow guard (capacity check before write).
 - **LogPanel**: 4th tab in right panel. Real-time log viewer with timestamped monospaced entries. Export Log (save to .txt) and Clear Log buttons. Maintenance section: Clear Plugin Cache, Clear All Presets, Reset Settings (all with confirmation dialogs).
 - **DirectPipeLogger**: Centralized logging system feeding LogPanel and NotificationBar. Captures logs from all subsystems (audio engine, plugins, WebSocket, HTTP, etc.).
 
@@ -70,14 +70,20 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - ActionDispatcher/StateBroadcaster guarantee message-thread listener delivery (callAsync for off-thread callers, synchronous for message-thread callers)
 - WebSocket/HTTP on separate threads (actions routed via ActionDispatcher's message-thread guarantee)
 - `juce::MessageManager::callAsync` for UI self-deletion safety (PluginChainEditor remove button etc.)
+- **callAsync lifetime guards**: `checkForUpdate` uses `SafePointer`; `VSTChain::replaceChainAsync`, `ActionDispatcher`, `StateBroadcaster` use `shared_ptr<atomic<bool>> alive_` flag pattern (captured by value in callAsync lambda, checked before accessing `this`). Prevents use-after-delete when background thread's callAsync fires after object destruction.
+- **MidiHandler `bindingsMutex_`**: `std::mutex` protects all access to `bindings_`. `getBindings()` returns a copy for safe iteration. Never hold the mutex across callbacks.
+- **Notification queue overflow guard**: `pushNotification` checks ring buffer capacity before write.
 - `loadingSlot_` (std::atomic<bool>) guard prevents recursive auto-save during slot loading
 - onChainChanged callback outside chainLock_ scope (deadlock prevention)
 - MidiBuffer pre-allocated in prepareToPlay, cleared after processBlock
 - VSTChain removes old I/O nodes before adding new ones in prepareToPlay
 - ActionDispatcher/StateBroadcaster: copy-before-iterate for reentrant safety
-- WebSocket broadcast on dedicated thread (non-blocking)
+- WebSocket broadcast on dedicated thread (non-blocking). `broadcastToClients` joins thread outside `clientsMutex_` lock (deadlock prevention).
 - Update check thread properly joined (no detached threads)
-- AudioRingBuffer capacity must be power-of-2 (assertion enforced)
+- AudioRingBuffer capacity must be power-of-2 (assertion enforced). `reset()` zeroes all channel data.
+- AudioEngine `setBufferSize`/`setSampleRate` log errors from `setAudioDeviceSetup`
+- AudioRecorder: `outputStream` deleted on writer creation failure (no leak)
+- **SettingsExporter**: Uses `controlManager_->getConfigStore()` for live config (not temporary `ControlMappingStore`). `getConfigStore()` accessor added to `ControlManager`.
 
 ## Modules
 - `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants)
