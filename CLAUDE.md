@@ -51,8 +51,8 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - **System tray**: Close -> tray, double-click/left-click -> restore, right-click -> Show/Quit/Start with Windows.
 - **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute.
 - **Auto-save**: Dirty-flag pattern with 1-second debounce. `onSettingsChanged` callbacks from AudioSettings/OutputPanel trigger `markSettingsDirty()`.
-- **WebSocket server**: RFC 6455 with custom SHA-1. Dead client cleanup on broadcast. Port 8765. UDP discovery broadcast (port 8767) at startup for instant Stream Deck connection. `broadcastToClients` thread join outside `clientsMutex_` lock.
-- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0). Endpoints include recording toggle and plugin parameter control.
+- **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup on broadcast. Port 8765. UDP discovery broadcast (port 8767) at startup for instant Stream Deck connection. `broadcastToClients` thread join outside `clientsMutex_` lock.
+- **HTTP server**: GET-only REST API. CORS enabled. 3-second read timeout. Port 8766. Volume range validated (0.0-1.0). Proper HTTP status codes (404/405/400) — `processRequest` returns `pair<int, string>`. Endpoints include recording toggle and plugin parameter control.
 - **Audio recording**: Lock-free recording via `AudioRecorder` + `AudioFormatWriter::ThreadedWriter`. WAV output. RT-safe `juce::SpinLock` protects writer teardown. Timer-based duration tracking. Auto-stop on device change. `outputStream` properly cleaned up on writer creation failure.
 - **Settings export/import**: `SettingsExporter` class. Full settings save/load as `.dpbackup` files via native file chooser. Located in Controls > General tab. Uses `controlManager_->getConfigStore()` for live config access.
 - **Plugin scanner search/sort**: Real-time text filter + column sorting (name/vendor/format) in PluginScanner dialog.
@@ -70,19 +70,25 @@ Hotkey/MIDI/WebSocket/HTTP -> ControlManager -> ActionDispatcher
 - ActionDispatcher/StateBroadcaster guarantee message-thread listener delivery (callAsync for off-thread callers, synchronous for message-thread callers)
 - WebSocket/HTTP on separate threads (actions routed via ActionDispatcher's message-thread guarantee)
 - `juce::MessageManager::callAsync` for UI self-deletion safety (PluginChainEditor remove button etc.)
-- **callAsync lifetime guards**: `checkForUpdate` uses `SafePointer`; `VSTChain::replaceChainAsync`, `ActionDispatcher`, `StateBroadcaster` use `shared_ptr<atomic<bool>> alive_` flag pattern (captured by value in callAsync lambda, checked before accessing `this`). Prevents use-after-delete when background thread's callAsync fires after object destruction.
-- **MidiHandler `bindingsMutex_`**: `std::mutex` protects all access to `bindings_`. `getBindings()` returns a copy for safe iteration. Never hold the mutex across callbacks.
+- **callAsync lifetime guards**: `checkForUpdate` uses `SafePointer`; `VSTChain::replaceChainAsync`, `ActionDispatcher`, `StateBroadcaster` use `shared_ptr<atomic<bool>> alive_` flag pattern (captured by value in callAsync lambda, checked before accessing `this`). `PluginChainEditor::addPluginFromDescription` and `PluginScanner` (all 3 background callAsync lambdas) use `SafePointer`. Prevents use-after-delete when background thread's callAsync fires after object destruction.
+- **MidiHandler `bindingsMutex_`**: `std::mutex` protects all access to `bindings_`. `getBindings()` returns a copy for safe iteration. Never hold the mutex across callbacks. `processCC`/`processNote` collect matching actions into local vector, dispatch OUTSIDE `bindingsMutex_` (deadlock prevention).
 - **Notification queue overflow guard**: `pushNotification` checks ring buffer capacity before write.
 - `loadingSlot_` (std::atomic<bool>) guard prevents recursive auto-save during slot loading
+- **VSTChain `chainLock_`**: mutable `CriticalSection` protects ALL chain access (readers AND writers: `getPluginSlot`, `getPluginCount`, `setPluginBypassed`, parameter access, editor open/close). Never held in `processBlock`. `prepared_` is `std::atomic<bool>`. `movePlugin` resizes `editorWindows_` before move. `processBlock` uses capacity guard.
 - onChainChanged callback outside chainLock_ scope (deadlock prevention)
 - MidiBuffer pre-allocated in prepareToPlay, cleared after processBlock
 - VSTChain removes old I/O nodes before adding new ones in prepareToPlay
 - ActionDispatcher/StateBroadcaster: copy-before-iterate for reentrant safety
-- WebSocket broadcast on dedicated thread (non-blocking). `broadcastToClients` joins thread outside `clientsMutex_` lock (deadlock prevention).
+- WebSocket broadcast on dedicated thread (non-blocking). `broadcastToClients` joins thread outside `clientsMutex_` lock (deadlock prevention). Case-insensitive HTTP header matching in handshake (RFC 7230).
 - Update check thread properly joined (no detached threads)
 - AudioRingBuffer capacity must be power-of-2 (assertion enforced). `reset()` zeroes all channel data.
 - AudioEngine `setBufferSize`/`setSampleRate` log errors from `setAudioDeviceSetup`
 - AudioRecorder: `outputStream` deleted on writer creation failure (no leak)
+- **OutputRouter**: `routeAudio()` clamps `numSamples` to `scaledBuffer_` capacity (buffer overrun prevention)
+- **AudioEngine**: notification queue indices use `uint32_t` (overflow-safe)
+- **HTTP API**: proper status codes (404/405/400) — `processRequest` returns `pair<int, string>` instead of always 200
+- **LogPanel DirectPipeLogger**: ring buffer indices use `uint32_t` (overflow-safe)
+- **Tray tooltip**: `activeSlot` clamped to 0-4 range
 - **SettingsExporter**: Uses `controlManager_->getConfigStore()` for live config (not temporary `ControlMappingStore`). `getConfigStore()` accessor added to `ControlManager`.
 
 ## Modules
