@@ -68,7 +68,10 @@ USB 마이크 → DirectPipe → VB-Cable Input
 ```
 
 **OBS (Receiver VST2 — 가상 케이블 불필요):**
-1. `DirectPipe Receiver.dll`을 VST 폴더에 복사 (`C:\Program Files\VSTPlugins\`)
+1. `DirectPipe Receiver.dll`을 아래 VST2 폴더 중 하나에 복사:
+   - `C:\Program Files\VSTPlugins\` (권장)
+   - `C:\Program Files\Common Files\VST2\`
+   - `C:\Program Files\Steinberg\VstPlugins\`
 2. DirectPipe에서 **VST** 버튼 클릭 (IPC 출력 켜기)
 3. OBS → 오디오 소스 → 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택
 
@@ -245,7 +248,10 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 
 OBS에서는 Receiver VST2를 사용하면 **가상 케이블 없이** DirectPipe 오디오를 직접 받을 수 있습니다.
 
-1. **`DirectPipe Receiver.dll`**을 VST 폴더에 복사 (`C:\Program Files\VSTPlugins\`)
+1. **`DirectPipe Receiver.dll`**을 아래 VST2 폴더 중 하나에 복사:
+   - `C:\Program Files\VSTPlugins\` (권장 / Recommended)
+   - `C:\Program Files\Common Files\VST2\`
+   - `C:\Program Files\Steinberg\VstPlugins\`
 2. **DirectPipe**에서 IPC 출력 켜기 (하단 **VST** 버튼 클릭 → 초록색)
 3. **OBS** → 오디오 소스 → 필터 → "+" → "VST 2.x 플러그인" → **DirectPipe Receiver** 선택
 4. "플러그인 인터페이스 열기" → **Connected** (초록색) 확인

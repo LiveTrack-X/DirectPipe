@@ -169,7 +169,10 @@ OBS에서는 Receiver VST2 플러그인을 사용하면 가상 케이블 없이 
 
 If you use OBS, the Receiver VST2 plugin offers a simpler setup without any virtual cable.
 
-1. `DirectPipe Receiver.dll`을 VST 폴더에 복사 (예: `C:\Program Files\VSTPlugins\`) — Copy DLL to VST folder
+1. `DirectPipe Receiver.dll`을 아래 VST2 폴더 중 하나에 복사 — Copy DLL to one of these VST2 folders:
+   - `C:\Program Files\VSTPlugins\` (권장 / Recommended)
+   - `C:\Program Files\Common Files\VST2\`
+   - `C:\Program Files\Steinberg\VstPlugins\`
 2. DirectPipe에서 **VST** 버튼 클릭 (IPC 출력 켜기) — Enable IPC output in DirectPipe
 3. OBS → 오디오 소스 → 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택 — Add VST filter in OBS
 
@@ -566,9 +569,10 @@ Normally, to route DirectPipe's processed audio to OBS, you need a **virtual aud
 
 **OBS에서 Receiver VST2 설정하기:**
 
-1. **DirectPipe Receiver.dll**을 VST 플러그인 폴더에 복사
-   - 기본 위치: `C:\Program Files\VSTPlugins\` 또는 `C:\Program Files\Steinberg\VSTPlugins\`
-   - OBS가 인식하는 VST 폴더에 넣어야 합니다
+1. **DirectPipe Receiver.dll**을 아래 VST2 폴더 중 하나에 복사
+   - `C:\Program Files\VSTPlugins\` (권장 / Recommended)
+   - `C:\Program Files\Common Files\VST2\`
+   - `C:\Program Files\Steinberg\VstPlugins\`
 
 2. **DirectPipe**에서 IPC 출력 켜기
    - DirectPipe 실행 → 하단의 **VST** 버튼 클릭 (초록색으로 변경)
@@ -597,9 +601,10 @@ OBS [DirectPipe Receiver VST 필터]
 
 **Setting up Receiver VST2 in OBS:**
 
-1. **Copy DirectPipe Receiver.dll** to your VST plugin folder
-   - Default: `C:\Program Files\VSTPlugins\` or `C:\Program Files\Steinberg\VSTPlugins\`
-   - Must be in a folder that OBS scans for VST plugins
+1. **Copy DirectPipe Receiver.dll** to one of these VST2 folders:
+   - `C:\Program Files\VSTPlugins\` (Recommended)
+   - `C:\Program Files\Common Files\VST2\`
+   - `C:\Program Files\Steinberg\VstPlugins\`
 
 2. **Enable IPC output in DirectPipe**
    - Run DirectPipe → click the **VST** button at the bottom (turns green)
