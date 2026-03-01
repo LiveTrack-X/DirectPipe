@@ -42,7 +42,7 @@ bool AudioEngine::initialize()
     );
 
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("AudioEngine init error: " + result);
+        juce::Logger::writeToLog("[AUDIO] Init error: " + result);
         return false;
     }
 
@@ -77,7 +77,7 @@ bool AudioEngine::initialize()
 
         auto setupResult = deviceManager_.setAudioDeviceSetup(setup, true);
         if (setupResult.isNotEmpty()) {
-            juce::Logger::writeToLog("AudioEngine setup error: " + setupResult);
+            juce::Logger::writeToLog("[AUDIO] Setup error: " + setupResult);
         }
     }
 
@@ -116,14 +116,14 @@ void AudioEngine::setIpcEnabled(bool enabled)
         uint32_t ch = static_cast<uint32_t>(channelMode_.load(std::memory_order_relaxed));
         if (sharedMemWriter_.initialize(sr, ch)) {
             ipcEnabled_.store(true, std::memory_order_release);
-            juce::Logger::writeToLog("IPC output enabled");
+            juce::Logger::writeToLog("[IPC] Output enabled");
         } else {
-            juce::Logger::writeToLog("IPC output failed to initialize");
+            juce::Logger::writeToLog("[IPC] Output failed to initialize");
         }
     } else {
         ipcEnabled_.store(false, std::memory_order_release);
         sharedMemWriter_.shutdown();
-        juce::Logger::writeToLog("IPC output disabled");
+        juce::Logger::writeToLog("[IPC] Output disabled");
     }
 }
 
@@ -135,7 +135,7 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("Failed to set input device: " + result);
+        juce::Logger::writeToLog("[AUDIO] Failed to set input device: " + result);
         return false;
     }
     return true;
@@ -149,7 +149,7 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("Failed to set output device: " + result);
+        juce::Logger::writeToLog("[AUDIO] Failed to set output device: " + result);
         return false;
     }
     return true;
@@ -174,7 +174,7 @@ void AudioEngine::setBufferSize(int bufferSize)
     setup.bufferSize = bufferSize;
     auto error = deviceManager_.setAudioDeviceSetup(setup, true);
     if (error.isNotEmpty())
-        juce::Logger::writeToLog("setBufferSize error: " + error);
+        juce::Logger::writeToLog("[AUDIO] setBufferSize error: " + error);
 }
 
 void AudioEngine::setChannelMode(int channels)
@@ -191,7 +191,7 @@ void AudioEngine::setSampleRate(double sampleRate)
     setup.sampleRate = sampleRate;
     auto error = deviceManager_.setAudioDeviceSetup(setup, true);
     if (error.isNotEmpty())
-        juce::Logger::writeToLog("setSampleRate error: " + error);
+        juce::Logger::writeToLog("[AUDIO] setSampleRate error: " + error);
 }
 
 juce::StringArray AudioEngine::getAvailableInputDevices() const
@@ -258,17 +258,17 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
 
                 auto result = deviceManager_.setAudioDeviceSetup(setup, true);
                 if (result.isNotEmpty()) {
-                    juce::Logger::writeToLog("AudioEngine: ASIO setup failed: " + result);
+                    juce::Logger::writeToLog("[AUDIO] ASIO setup failed: " + result);
                     // Try with device defaults
                     setup.sampleRate = 0;  // let device choose
                     setup.bufferSize = 0;
                     result = deviceManager_.setAudioDeviceSetup(setup, true);
                     if (result.isNotEmpty()) {
-                        juce::Logger::writeToLog("AudioEngine: ASIO fallback failed: " + result);
+                        juce::Logger::writeToLog("[AUDIO] ASIO fallback failed: " + result);
                         deviceManager_.setCurrentAudioDeviceType(currentType, true);
                         deviceManager_.initialiseWithDefaultDevices(2, 2);
                         deviceManager_.addAudioCallback(this);
-                        if (onDeviceError) onDeviceError("ASIO switch failed — reverted to previous driver");
+                        if (onDeviceError) onDeviceError("ASIO switch failed - reverted to previous driver");
                         return false;
                     }
                 }
@@ -278,11 +278,11 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
         // Non-ASIO: use default initialization
         auto result = deviceManager_.initialiseWithDefaultDevices(2, 2);
         if (result.isNotEmpty()) {
-            juce::Logger::writeToLog("AudioEngine: Failed to switch to " + typeName + ": " + result);
+            juce::Logger::writeToLog("[AUDIO] Failed to switch to " + typeName + ": " + result);
             deviceManager_.setCurrentAudioDeviceType(currentType, true);
             deviceManager_.initialiseWithDefaultDevices(2, 2);
             deviceManager_.addAudioCallback(this);
-            if (onDeviceError) onDeviceError("Driver switch failed — reverted to " + currentType);
+            if (onDeviceError) onDeviceError("Driver switch failed - reverted to " + currentType);
             return false;
         }
 
@@ -308,7 +308,7 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
 
     deviceManager_.addAudioCallback(this);
 
-    juce::Logger::writeToLog("AudioEngine: Switched to " + typeName);
+    juce::Logger::writeToLog("[AUDIO] Switched to " + typeName);
     return true;
 }
 
@@ -402,7 +402,7 @@ bool AudioEngine::setActiveInputChannels(int firstChannel, int numChannels)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("Failed to set input channels: " + result);
+        juce::Logger::writeToLog("[AUDIO] Failed to set input channels: " + result);
         return false;
     }
     return true;
@@ -419,7 +419,7 @@ bool AudioEngine::setActiveOutputChannels(int firstChannel, int numChannels)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("Failed to set output channels: " + result);
+        juce::Logger::writeToLog("[AUDIO] Failed to set output channels: " + result);
         return false;
     }
     return true;
@@ -579,7 +579,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     }
 
     juce::Logger::writeToLog(
-        "Audio device started: " + device->getName() +
+        "[AUDIO] Device started: " + device->getName() +
         " @ " + juce::String(currentSampleRate_) + "Hz" +
         " / " + juce::String(currentBufferSize_) + " samples");
 }
@@ -589,12 +589,12 @@ void AudioEngine::audioDeviceStopped()
     vstChain_.releaseResources();
     outputRouter_.shutdown();
     sharedMemWriter_.shutdown();
-    juce::Logger::writeToLog("Audio device stopped");
+    juce::Logger::writeToLog("[AUDIO] Device stopped");
 }
 
 void AudioEngine::audioDeviceError(const juce::String& errorMessage)
 {
-    juce::Logger::writeToLog("Audio device error: " + errorMessage);
+    juce::Logger::writeToLog("[AUDIO] Device error: " + errorMessage);
     pushNotification("Audio device error: " + errorMessage, NotificationLevel::Critical);
 }
 

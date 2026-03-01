@@ -44,7 +44,7 @@ void MidiHandler::initialize()
         if (input) {
             input->start();
             openInputs_.push_back(std::move(input));
-            juce::Logger::writeToLog("MIDI opened: " + device.name);
+            juce::Logger::writeToLog("[MIDI] Opened: " + device.name);
         }
     }
 }
@@ -116,6 +116,7 @@ void MidiHandler::startLearn(
         learnCallback_ = std::move(callback);
     }
     learning_.store(true, std::memory_order_release);
+    juce::Logger::writeToLog("[MIDI] Learn started");
 }
 
 void MidiHandler::stopLearn()
@@ -147,6 +148,7 @@ void MidiHandler::handleIncomingMidiMessage(
                     learnCallback_ = nullptr;
                 }
                 if (cb) cb(cc, -1, channel, deviceName);
+                juce::Logger::writeToLog("[MIDI] Learn: CC#" + juce::String(cc) + " ch" + juce::String(channel));
                 return;
             }
         }
@@ -168,6 +170,7 @@ void MidiHandler::handleIncomingMidiMessage(
                     learnCallback_ = nullptr;
                 }
                 if (cb) cb(-1, note, channel, deviceName);
+                juce::Logger::writeToLog("[MIDI] Learn: Note#" + juce::String(note) + " ch" + juce::String(channel));
                 return;
             }
         }
@@ -216,8 +219,13 @@ void MidiHandler::processCC(int cc, int channel, int value,
         }
     }
 
-    for (auto& event : pendingActions)
+    for (auto& event : pendingActions) {
+        if (event.action != Action::SetVolume &&
+            event.action != Action::InputGainAdjust &&
+            event.action != Action::SetPluginParameter)
+            juce::Logger::writeToLog("[MIDI] CC#" + juce::String(cc) + " ch" + juce::String(channel) + " -> " + actionToString(event.action));
         dispatcher_.dispatch(event);
+    }
 }
 
 void MidiHandler::processNote(int note, int channel, bool noteOn,
@@ -240,8 +248,10 @@ void MidiHandler::processNote(int note, int channel, bool noteOn,
         }
     }
 
-    for (auto& event : pendingActions)
+    for (auto& event : pendingActions) {
+        juce::Logger::writeToLog("[MIDI] Note#" + juce::String(note) + " ch" + juce::String(channel) + " -> " + actionToString(event.action));
         dispatcher_.dispatch(event);
+    }
 }
 
 void MidiHandler::loadFromMappings(const std::vector<MidiMapping>& mappings)

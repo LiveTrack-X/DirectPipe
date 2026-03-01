@@ -52,7 +52,7 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
     auto* outputStream = new juce::FileOutputStream(file);
     if (outputStream->failedToOpen()) {
         delete outputStream;
-        juce::Logger::writeToLog("AudioRecorder: Failed to open file for writing");
+        juce::Logger::writeToLog("[REC] Failed to open file for writing");
         return false;
     }
 
@@ -64,7 +64,7 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
 
     if (!writer) {
         delete outputStream;
-        juce::Logger::writeToLog("AudioRecorder: Failed to create WAV writer");
+        juce::Logger::writeToLog("[REC] Failed to create WAV writer");
         return false;
     }
 
@@ -74,7 +74,7 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
         writer, writerThread_, 32768);
 
     recording_.store(true, std::memory_order_release);
-    juce::Logger::writeToLog("AudioRecorder: Started recording to " + file.getFullPathName());
+    juce::Logger::writeToLog("[REC] Started recording to " + file.getFullPathName());
     return true;
 }
 
@@ -89,7 +89,7 @@ void AudioRecorder::stopRecording()
     }
 
     if (currentFile_.existsAsFile()) {
-        juce::Logger::writeToLog("AudioRecorder: Stopped. File: " + currentFile_.getFullPathName()
+        juce::Logger::writeToLog("[REC] Stopped. File: " + currentFile_.getFullPathName()
             + " (" + juce::String(getRecordedSeconds(), 1) + "s)");
     }
 }

@@ -125,4 +125,27 @@ private:
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
+/// Convert Action enum to human-readable string (for logging)
+inline const char* actionToString(Action a)
+{
+    switch (a) {
+        case Action::PluginBypass:       return "PluginBypass";
+        case Action::MasterBypass:       return "MasterBypass";
+        case Action::SetVolume:          return "SetVolume";
+        case Action::ToggleMute:         return "ToggleMute";
+        case Action::LoadPreset:         return "LoadPreset";
+        case Action::PanicMute:          return "PanicMute";
+        case Action::InputGainAdjust:    return "InputGainAdjust";
+        case Action::NextPreset:         return "NextPreset";
+        case Action::PreviousPreset:     return "PreviousPreset";
+        case Action::InputMuteToggle:    return "InputMuteToggle";
+        case Action::SwitchPresetSlot:   return "SwitchPresetSlot";
+        case Action::MonitorToggle:      return "MonitorToggle";
+        case Action::RecordingToggle:    return "RecordingToggle";
+        case Action::SetPluginParameter: return "SetPluginParameter";
+        case Action::IpcToggle:          return "IpcToggle";
+        default:                         return "Unknown";
+    }
+}
+
 } // namespace directpipe

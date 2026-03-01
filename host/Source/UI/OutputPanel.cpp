@@ -315,7 +315,7 @@ void OutputPanel::timerCallback()
         monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFE05050));
     } else {
         if (monEnabled)
-            monitorStatusLabel_.setText("No device selected — using main output", juce::dontSendNotification);
+            monitorStatusLabel_.setText("No device selected - using main output", juce::dontSendNotification);
         else
             monitorStatusLabel_.setText("", juce::dontSendNotification);
         monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF888888));

@@ -108,7 +108,7 @@ bool HotkeyHandler::registerHotkey(uint32_t modifiers, uint32_t virtualKey,
 
     BOOL result = RegisterHotKey(messageWindow_, id, winMods, virtualKey);
     if (!result) {
-        juce::Logger::writeToLog("Failed to register hotkey: " +
+        juce::Logger::writeToLog("[HOTKEY] Failed to register: " +
                                  juce::String(displayName.c_str()));
         return false;
     }
@@ -121,6 +121,7 @@ bool HotkeyHandler::registerHotkey(uint32_t modifiers, uint32_t virtualKey,
     binding.displayName = displayName;
     binding.registered = true;
     bindings_.push_back(binding);
+    juce::Logger::writeToLog("[HOTKEY] Registered: " + juce::String(displayName.c_str()));
 
     return true;
 }
@@ -200,6 +201,7 @@ void HotkeyHandler::processHotkeyMessage(int hotkeyId)
 {
     for (const auto& binding : bindings_) {
         if (binding.id == hotkeyId) {
+            juce::Logger::writeToLog("[HOTKEY] Triggered: " + juce::String(binding.displayName.c_str()));
             dispatcher_.dispatch(binding.action);
             break;
         }

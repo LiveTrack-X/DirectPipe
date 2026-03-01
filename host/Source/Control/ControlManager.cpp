@@ -66,7 +66,7 @@ void ControlManager::initialize()
     }
 
     initialized_ = true;
-    juce::Logger::writeToLog("ControlManager initialized");
+    juce::Logger::writeToLog("[CONTROL] Initialized");
 }
 
 void ControlManager::shutdown()
@@ -79,7 +79,7 @@ void ControlManager::shutdown()
     hotkeyHandler_.shutdown();
 
     initialized_ = false;
-    juce::Logger::writeToLog("ControlManager shut down");
+    juce::Logger::writeToLog("[CONTROL] Shut down");
 }
 
 void ControlManager::reloadConfig()

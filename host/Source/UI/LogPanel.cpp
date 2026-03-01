@@ -237,9 +237,39 @@ void LogPanel::resized()
 void LogPanel::flushPendingLogs()
 {
     juce::StringArray newLines;
-    if (logger_.drain(newLines) > 0) {
-        for (const auto& line : newLines)
-            appendLine(line);
+    int count = logger_.drain(newLines);
+    if (count <= 0) return;
+
+    // Batch add to logLines_
+    for (const auto& line : newLines)
+        logLines_.add(line);
+
+    // Batch trim excess
+    int excess = logLines_.size() - kMaxLogLines;
+    if (excess > 0)
+        logLines_.removeRange(0, excess);
+
+    // Batch update TextEditor (single operation instead of per-line)
+    juce::String batch;
+    for (const auto& line : newLines)
+        batch << line << "\n";
+
+    logView_.moveCaretToEnd();
+    logView_.insertTextAtCaret(batch);
+
+    // Trim TextEditor front if over limit
+    if (excess > 0) {
+        auto fullText = logView_.getText();
+        int removeUpTo = 0;
+        for (int i = 0; i < excess; ++i) {
+            int nl = fullText.indexOf(removeUpTo, "\n");
+            if (nl >= 0) removeUpTo = nl + 1;
+            else break;
+        }
+        if (removeUpTo > 0) {
+            logView_.setHighlightedRegion({0, removeUpTo});
+            logView_.insertTextAtCaret("");
+        }
     }
 }
 
@@ -290,7 +320,7 @@ void LogPanel::onExportLog()
             if (file == juce::File())
                 return;
             file.replaceWithText(safeThis->logLines_.joinIntoString("\n") + "\n");
-            juce::Logger::writeToLog("Log exported to " + file.getFullPathName());
+            juce::Logger::writeToLog("[APP] Log exported to " + file.getFullPathName());
         });
 }
 
@@ -318,7 +348,7 @@ void LogPanel::onClearPluginCache()
     dir.getChildFile("scan-deadmanspedal.txt").deleteFile();
     dir.getChildFile("scan-blacklist.txt").deleteFile();
 
-    juce::Logger::writeToLog("Plugin cache cleared");
+    juce::Logger::writeToLog("[APP] Plugin cache cleared");
 }
 
 void LogPanel::onClearAllPresets()
@@ -348,7 +378,7 @@ void LogPanel::onClearAllPresets()
     for (auto& f : presetFiles)
         f.deleteFile();
 
-    juce::Logger::writeToLog("All presets cleared");
+    juce::Logger::writeToLog("[APP] All presets cleared");
 }
 
 void LogPanel::onResetSettingsClicked()
@@ -368,7 +398,7 @@ void LogPanel::onResetSettingsClicked()
     dir.getChildFile("directpipe-controls.json").deleteFile();
     dir.getChildFile("recording-config.json").deleteFile();
 
-    juce::Logger::writeToLog("Settings reset to factory defaults");
+    juce::Logger::writeToLog("[APP] Settings reset to factory defaults");
 
     if (onResetSettings)
         onResetSettings();

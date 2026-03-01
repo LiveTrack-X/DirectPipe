@@ -29,6 +29,17 @@ namespace directpipe {
 
 void ActionDispatcher::dispatch(const ActionEvent& event)
 {
+    // Log non-frequent actions (skip SetVolume/InputGainAdjust/SetPluginParameter to avoid spam)
+    if (event.action != Action::SetVolume &&
+        event.action != Action::InputGainAdjust &&
+        event.action != Action::SetPluginParameter) {
+        juce::String logMsg("[ACTION] ");
+        logMsg << actionToString(event.action);
+        if (event.intParam != 0)    logMsg << " (index=" << event.intParam << ")";
+        if (!event.stringParam.empty()) logMsg << " (target=" << juce::String(event.stringParam) << ")";
+        juce::Logger::writeToLog(logMsg);
+    }
+
     // Always deliver to listeners on the message thread.
     // If already on message thread: synchronous (no latency).
     // If on another thread (MIDI, WebSocket, HTTP, hotkey): callAsync.

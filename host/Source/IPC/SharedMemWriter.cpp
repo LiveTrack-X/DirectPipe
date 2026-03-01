@@ -44,7 +44,7 @@ bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_
 
     // Create shared memory region
     if (!sharedMemory_.create(SHM_NAME, shmSize)) {
-        juce::Logger::writeToLog("SharedMemWriter: Failed to create shared memory");
+        juce::Logger::writeToLog("[IPC] SharedMemWriter: Failed to create shared memory");
         return false;
     }
 
@@ -53,7 +53,7 @@ bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_
 
     // Create named event for signaling
     if (!dataEvent_.create(EVENT_NAME)) {
-        juce::Logger::writeToLog("SharedMemWriter: Failed to create named event");
+        juce::Logger::writeToLog("[IPC] SharedMemWriter: Failed to create named event");
         sharedMemory_.close();
         return false;
     }
@@ -64,7 +64,7 @@ bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_
     connected_.store(true, std::memory_order_release);
     droppedFrames_.store(0, std::memory_order_relaxed);
 
-    juce::Logger::writeToLog("SharedMemWriter: Initialized — " +
+    juce::Logger::writeToLog("[IPC] SharedMemWriter: Initialized - " +
                              juce::String(sampleRate) + "Hz, " +
                              juce::String(channels) + "ch, " +
                              juce::String(bufferFrames) + " frames buffer");

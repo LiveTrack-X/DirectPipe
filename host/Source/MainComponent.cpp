@@ -45,7 +45,7 @@ MainComponent::MainComponent()
     // Initialize audio engine
     if (!audioEngine_.initialize()) {
         juce::MessageManager::callAsync([this] {
-            showNotification("Audio engine failed to start — check device settings",
+            showNotification("Audio engine failed to start - check device settings",
                              NotificationLevel::Critical);
         });
     }
@@ -58,7 +58,7 @@ MainComponent::MainComponent()
     };
     audioEngine_.getVSTChain().onPluginLoadFailed = [safeThis = juce::Component::SafePointer<MainComponent>(this)](const juce::String& name, const juce::String& err) {
         juce::MessageManager::callAsync([safeThis, name, err] {
-            if (safeThis) safeThis->showNotification("Plugin load failed: " + name + " — " + err,
+            if (safeThis) safeThis->showNotification("Plugin load failed: " + name + " - " + err,
                              NotificationLevel::Error);
         });
     };
@@ -573,7 +573,7 @@ void MainComponent::handleAction(const ActionEvent& event)
                 dir.createDirectory();
                 auto file = dir.getChildFile("DirectPipe_" + timestamp + ".wav");
                 if (!recorder.startRecording(file, sr, audioEngine_.getChannelMode()))
-                    showNotification("Recording failed — check folder permissions",
+                    showNotification("Recording failed - check folder permissions",
                                      NotificationLevel::Error);
             }
             break;

@@ -101,7 +101,14 @@ void VSTChain::prepareToPlay(double sampleRate, int blockSize)
     emptyMidi_.clear();
 
     rebuildGraph();
+
+    int pluginCount;
+    {
+        const juce::ScopedLock sl(chainLock_);
+        pluginCount = static_cast<int>(chain_.size());
+    }
     prepared_ = true;
+    juce::Logger::writeToLog("[VST] Prepare: " + juce::String(sampleRate) + "Hz, " + juce::String(blockSize) + " samples, " + juce::String(pluginCount) + " plugins");
 }
 
 void VSTChain::releaseResources()
@@ -157,7 +164,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     juce::String error;
     auto instance = loadPlugin(desc, error);
     if (!instance) {
-        juce::Logger::writeToLog("Failed to load plugin: " + error);
+        juce::Logger::writeToLog("[VST] Failed to load: " + desc.name + " - " + error);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, error);
         return -1;
     }
@@ -165,7 +172,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     // Add to graph
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
-        juce::Logger::writeToLog("Failed to add plugin to graph");
+        juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;
     }
@@ -186,6 +193,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
         resultIdx = static_cast<int>(chain_.size()) - 1;
     }
 
+    juce::Logger::writeToLog("[VST] Loaded: \"" + desc.name + "\" (" + desc.pluginFormatName + ") at index " + juce::String(resultIdx) + " - " + juce::String(desc.numInputChannels) + "in/" + juce::String(desc.numOutputChannels) + "out");
     if (onChainChanged) onChainChanged();
 
     return resultIdx;
@@ -214,7 +222,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
         }
 
         if (descriptions.isEmpty()) {
-            juce::Logger::writeToLog("Plugin not found: " + pluginPath);
+            juce::Logger::writeToLog("[VST] Plugin not found: " + pluginPath);
             if (onPluginLoadFailed) onPluginLoadFailed(pluginPath, "Plugin file not found");
             return -1;
         }
@@ -225,7 +233,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     juce::String error;
     auto instance = loadPlugin(desc, error);
     if (!instance) {
-        juce::Logger::writeToLog("Failed to load plugin: " + error);
+        juce::Logger::writeToLog("[VST] Failed to load: " + desc.name + " - " + error);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, error);
         return -1;
     }
@@ -233,7 +241,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     // Add to graph
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
-        juce::Logger::writeToLog("Failed to add plugin to graph");
+        juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;
     }
@@ -254,6 +262,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
         resultIdx = static_cast<int>(chain_.size()) - 1;
     }
 
+    juce::Logger::writeToLog("[VST] Loaded: \"" + desc.name + "\" (" + desc.pluginFormatName + ") at index " + juce::String(resultIdx) + " - " + juce::String(desc.numInputChannels) + "in/" + juce::String(desc.numOutputChannels) + "out");
     if (onChainChanged) onChainChanged();
 
     return resultIdx;
@@ -261,6 +270,8 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
 
 bool VSTChain::removePlugin(int index)
 {
+    juce::String logMsg;
+    int newCount = 0;
     {
         const juce::ScopedLock sl(chainLock_);
 
@@ -275,12 +286,17 @@ bool VSTChain::removePlugin(int index)
             editorWindows_.erase(editorWindows_.begin() + index);
         }
 
+        juce::String removedName = chain_[static_cast<size_t>(index)].name;
+        int oldCount = static_cast<int>(chain_.size());
         auto& slot = chain_[static_cast<size_t>(index)];
         graph_->removeNode(slot.nodeId);
         chain_.erase(chain_.begin() + index);
         rebuildGraph();
+        newCount = static_cast<int>(chain_.size());
+        logMsg = "[VST] Removed: \"" + removedName + "\" at index " + juce::String(index) + " (" + juce::String(oldCount) + " -> " + juce::String(newCount) + " plugins)";
     }
 
+    juce::Logger::writeToLog(logMsg);
     // Notify outside of lock to avoid deadlock if listener acquires locks
     if (onChainChanged) onChainChanged();
     return true;
@@ -288,6 +304,7 @@ bool VSTChain::removePlugin(int index)
 
 bool VSTChain::movePlugin(int fromIndex, int toIndex)
 {
+    juce::String logMsg;
     {
         const juce::ScopedLock sl(chainLock_);
 
@@ -297,6 +314,7 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
             return false;
 
         auto slot = chain_[static_cast<size_t>(fromIndex)];
+        juce::String movedName = slot.name;
         chain_.erase(chain_.begin() + fromIndex);
         chain_.insert(chain_.begin() + toIndex, slot);
 
@@ -310,14 +328,17 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
         }
 
         rebuildGraph();
+        logMsg = "[VST] Moved: \"" + movedName + "\" from index " + juce::String(fromIndex) + " to " + juce::String(toIndex);
     }
 
+    juce::Logger::writeToLog(logMsg);
     if (onChainChanged) onChainChanged();
     return true;
 }
 
 void VSTChain::setPluginBypassed(int index, bool bypassed)
 {
+    juce::String logMsg;
     {
         const juce::ScopedLock sl(chainLock_);
 
@@ -329,12 +350,14 @@ void VSTChain::setPluginBypassed(int index, bool bypassed)
             return;
 
         chain_[static_cast<size_t>(index)].bypassed = bypassed;
+        logMsg = "[VST] Bypass: \"" + chain_[static_cast<size_t>(index)].name + "\" [" + juce::String(index) + "] = " + (bypassed ? "true" : "false");
 
         if (auto* node = graph_->getNodeForId(chain_[static_cast<size_t>(index)].nodeId)) {
             node->setBypassed(bypassed);
         }
     }
 
+    juce::Logger::writeToLog(logMsg);
     // Notify outside of lock scope (deadlock prevention, consistent with removePlugin/movePlugin)
     if (onChainChanged) onChainChanged();
 }
@@ -438,6 +461,7 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
     window->centreWithSize(editor->getWidth(), editor->getHeight());
     window->setVisible(true);
     window->setAlwaysOnTop(true);
+    juce::Logger::writeToLog("[VST] Editor opened: \"" + pluginName + "\" [" + juce::String(index) + "]");
     auto aliveFlag = alive_;
     window->onClosed = [this, aliveFlag] {
         if (!aliveFlag->load()) return;
@@ -537,6 +561,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
     }
 
     asyncLoading_.store(true);
+    juce::Logger::writeToLog("[VST] Async chain load started: " + juce::String(requests.size()) + " plugins");
     uint32_t generation = asyncGeneration_.fetch_add(1) + 1;
 
     // Capture values needed by background thread
@@ -566,7 +591,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             if (inst)
                 result->entries.push_back({std::move(inst), std::move(req)});
             else {
-                juce::Logger::writeToLog("Async load failed: " + req.name + " - " + error);
+                juce::Logger::writeToLog("[VST] Async load failed: " + req.name + " - " + error);
                 result->failures.push_back({req.name, error});
             }
         }
@@ -603,6 +628,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             }
 
             rebuildGraph();
+            juce::Logger::writeToLog("[VST] Async chain load complete: " + juce::String(chain_.size()) + " plugins loaded");
             asyncLoading_.store(false);
 
             // Report any load failures

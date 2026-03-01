@@ -213,6 +213,8 @@ public:
     {
         auto args = juce::StringArray::fromTokens(commandLine, true);
 
+        juce::Logger::writeToLog("[APP] DirectPipe " + getApplicationVersion());
+
         // Check for scanner mode
         if (args.size() >= 1 && args[0] == "--scan") {
             scannerMode_ = true;

@@ -35,7 +35,9 @@ bool PresetManager::savePreset(const juce::File& file)
     auto json = exportToJSON();
     if (json.isEmpty()) return false;
 
-    return file.replaceWithText(json);
+    bool ok = file.replaceWithText(json);
+    if (ok) juce::Logger::writeToLog("[PRESET] Saved: " + file.getFileName());
+    return ok;
 }
 
 bool PresetManager::loadPreset(const juce::File& file)
@@ -43,7 +45,9 @@ bool PresetManager::loadPreset(const juce::File& file)
     if (!file.existsAsFile()) return false;
 
     auto json = file.loadFileAsString();
-    return importFromJSON(json);
+    bool ok = importFromJSON(json);
+    if (ok) juce::Logger::writeToLog("[PRESET] Loaded: " + file.getFileName());
+    return ok;
 }
 
 juce::File PresetManager::getPresetsDirectory()
@@ -448,12 +452,14 @@ bool PresetManager::saveSlot(int slotIndex)
 
     bool ok = file.replaceWithText(json);
     if (ok) activeSlot_ = slotIndex;
+    if (ok) juce::Logger::writeToLog("[PRESET] Saved slot " + juce::String(slotLabel(slotIndex)));
     return ok;
 }
 
 bool PresetManager::loadSlot(int slotIndex)
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
+    juce::Logger::writeToLog("[PRESET] Loading slot " + juce::String(slotLabel(slotIndex)));
 
     auto file = getSlotFile(slotIndex);
     if (!file.existsAsFile()) return false;
@@ -502,6 +508,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
     // Fast path: same plugins in same order -> sync (instant)
     if (isSameChain(targets, chain)) {
         applyFastPath(targets, chain);
+        juce::Logger::writeToLog("[PRESET] Slot " + juce::String(slotLabel(slotIndex)) + ": fast path (" + juce::String(targets.size()) + " plugins)");
         activeSlot_ = slotIndex;
         if (onComplete) onComplete(true);
         return;
@@ -536,6 +543,8 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         }
         requests.push_back(std::move(req));
     }
+
+    juce::Logger::writeToLog("[PRESET] Slot " + juce::String(slotLabel(slotIndex)) + ": full reload (" + juce::String(targets.size()) + " plugins)");
 
     int slot = slotIndex;
     chain.replaceChainAsync(std::move(requests), [this, slot, onComplete]() {

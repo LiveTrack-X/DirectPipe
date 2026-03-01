@@ -51,7 +51,7 @@ bool HttpApiServer::start(int port)
             }
         }
         if (!serverSocket_->isConnected()) {
-            juce::Logger::writeToLog("HTTP API: Failed to start on any port");
+            juce::Logger::writeToLog("[HTTP] Failed to start on any port");
             return false;
         }
     }
@@ -59,7 +59,7 @@ bool HttpApiServer::start(int port)
     running_.store(true, std::memory_order_release);
     serverThread_ = std::thread([this] { serverThread(); });
 
-    juce::Logger::writeToLog("HTTP API server started on port " + juce::String(port_));
+    juce::Logger::writeToLog("[HTTP] Server started on port " + juce::String(port_));
     return true;
 }
 
@@ -79,7 +79,7 @@ void HttpApiServer::stop()
     // Give in-flight detached handler threads time to check alive_ flag and exit
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-    juce::Logger::writeToLog("HTTP API server stopped");
+    juce::Logger::writeToLog("[HTTP] Server stopped");
 }
 
 void HttpApiServer::serverThread()
@@ -128,6 +128,7 @@ void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
     }
 
     auto [statusCode, responseBody] = processRequest(method, path);
+    juce::Logger::writeToLog("[HTTP] " + juce::String(method) + " " + juce::String(path) + " -> " + juce::String(statusCode));
     std::string response = makeResponse(statusCode, responseBody);
 
     client->write(response.c_str(), static_cast<int>(response.size()));
