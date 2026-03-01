@@ -87,6 +87,8 @@ void MonitorOutput::shutdown()
         deviceManager_.reset();
     }
     status_.store(VirtualCableStatus::NotConfigured, std::memory_order_relaxed);
+    actualSampleRate_.store(0.0, std::memory_order_relaxed);
+    actualBufferSize_.store(0, std::memory_order_relaxed);
     ringBuffer_.reset();
 }
 
@@ -157,7 +159,7 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         juce::Logger::writeToLog(
             "Monitor Output: Sample rate mismatch! Expected " +
             juce::String(sampleRate_) + " got " + juce::String(deviceSR));
-        status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
+        status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_relaxed);
         ringBuffer_.reset();
         return;
     }

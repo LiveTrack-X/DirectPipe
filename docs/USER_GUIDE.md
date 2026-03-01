@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.8.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.9.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -124,6 +124,10 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 
 ### 샘플레이트 & 버퍼 크기 / Sample Rate & Buffer Size
 
+> **Audio 탭의 샘플레이트가 전체 시스템에 적용됩니다**: VST 체인, 모니터 출력, IPC(Receiver VST) 모두 이 값을 따릅니다. 모니터 출력은 메인 SR에 맞지 않으면 Error 상태가 됩니다.
+>
+> **Audio tab sample rate applies globally**: VST chain, monitor output, and IPC (Receiver VST) all follow this value. Monitor output will show Error if its device cannot match the main SR.
+
 - **WASAPI**: 고정 목록 (44100, 48000 Hz / 64~2048 samples)
 - **ASIO**: 장치가 지원하는 값만 표시. ASIO Control Panel에서 설정 가능
 
@@ -222,6 +226,8 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 - **Enable VST Receiver Output** — IPC 출력 켜기/끄기 (공유 메모리로 Receiver VST2에 오디오 전송)
 - 기본값은 **꺼짐(OFF)**. OBS에서 Receiver VST2를 사용할 때만 켜면 됩니다
 - 메인 화면 **VST** 버튼, **Ctrl+Shift+I**, MIDI, Stream Deck, HTTP API로도 제어 가능
+- **샘플레이트 불일치 경고**: DirectPipe의 SR과 OBS(호스트)의 SR이 다르면 Receiver VST GUI에 경고 메시지가 표시됩니다. SR이 다르면 피치/속도가 변합니다. OBS 오디오 설정의 샘플레이트를 DirectPipe Audio 탭과 동일하게 맞춰주세요.
+- **SR mismatch warning**: If DirectPipe SR differs from the OBS (host) SR, a warning is shown in the Receiver VST GUI. Mismatched SR causes pitch/speed artifacts. Match OBS audio sample rate to the DirectPipe Audio tab setting.
 
 ### 녹음 / Recording
 

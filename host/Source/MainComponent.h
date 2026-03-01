@@ -157,7 +157,7 @@ private:
     void showUpdateDialog();
     void performUpdate();
     std::thread updateCheckThread_;
-    juce::String latestVersion_;       // e.g. "3.8.0"
+    juce::String latestVersion_;       // e.g. "3.9.0"
     juce::String latestDownloadUrl_;   // GitHub release asset URL
     bool updateAvailable_ = false;
     double downloadProgress_ = -1.0;  // -1 = indeterminate spinner

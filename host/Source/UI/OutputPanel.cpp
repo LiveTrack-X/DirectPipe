@@ -62,6 +62,10 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorBufferCombo_.onChange = [this] { onMonitorBufferSizeChanged(); };
     addAndMakeVisible(monitorBufferCombo_);
 
+    monitorLatencyLabel_.setFont(juce::Font(11.0f));
+    monitorLatencyLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(monitorLatencyLabel_);
+
     monitorEnableButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
     monitorEnableButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
     monitorEnableButton_.onClick = [this] { onMonitorEnableToggled(); };
@@ -214,7 +218,10 @@ void OutputPanel::resized()
 
     monitorBufferLabel_.setBounds(x, y, labelW, rowH);
     monitorBufferCombo_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
-    y += rowH + gap;
+    y += rowH + 2;
+
+    monitorLatencyLabel_.setBounds(x + labelW + gap, y, w - labelW - gap, 16);
+    y += 18 + gap;
 
     monitorEnableButton_.setBounds(x + labelW + gap, y, 120, rowH);
     y += rowH + gap;
@@ -271,12 +278,38 @@ void OutputPanel::timerCallback()
     if (std::abs(monitorVolumeSlider_.getValue() - actualVol) > 0.5)
         monitorVolumeSlider_.setValue(actualVol, juce::dontSendNotification);
 
+    // Update monitor latency display (only when Active, using monitor's own SR)
+    {
+        auto& monOut = engine_.getMonitorOutput();
+        if (monOut.getStatus() == VirtualCableStatus::Active) {
+            double sr = monOut.getActualSampleRate();
+            int bs = monOut.getActualBufferSize();
+            if (sr > 0.0 && bs > 0) {
+                double ms = (static_cast<double>(bs) / sr) * 1000.0;
+                monitorLatencyLabel_.setText(
+                    juce::String(ms, 2) + " ms  (" + juce::String(bs) + " samples @ "
+                        + juce::String(static_cast<int>(sr)) + " Hz)",
+                    juce::dontSendNotification);
+            } else {
+                monitorLatencyLabel_.setText("", juce::dontSendNotification);
+            }
+        } else {
+            monitorLatencyLabel_.setText("", juce::dontSendNotification);
+        }
+    }
+
     // Show monitor device status
     auto& monOut = engine_.getMonitorOutput();
     auto status = monOut.getStatus();
     if (status == VirtualCableStatus::Active) {
         monitorStatusLabel_.setText("Active: " + monOut.getDeviceName(), juce::dontSendNotification);
         monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF4CAF50));
+    } else if (status == VirtualCableStatus::SampleRateMismatch) {
+        double expected = engine_.getMonitorOutput().getActualSampleRate();
+        monitorStatusLabel_.setText(
+            "Error: sample rate mismatch (" + juce::String(static_cast<int>(expected)) + "Hz)",
+            juce::dontSendNotification);
+        monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFCC8844));
     } else if (status == VirtualCableStatus::Error) {
         monitorStatusLabel_.setText("Error: device unavailable", juce::dontSendNotification);
         monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFE05050));
@@ -419,22 +452,14 @@ void OutputPanel::refreshBufferSizeCombo()
     auto& monOut = engine_.getMonitorOutput();
     auto available = monOut.getAvailableBufferSizes();
 
-    double sr = monOut.getActualSampleRate();
-    if (sr <= 0) sr = 48000.0;
-
-    auto formatBufferItem = [sr](int bufSize) -> juce::String {
-        double latencyMs = (static_cast<double>(bufSize) / sr) * 1000.0;
-        return juce::String(bufSize) + " (~" + juce::String(latencyMs, 1) + "ms)";
-    };
-
     if (available.isEmpty()) {
         // Fallback: show common sizes when device is not yet initialized
         static const int fallback[] = { 64, 128, 256, 480, 512, 1024 };
         for (int i = 0; i < 6; ++i)
-            monitorBufferCombo_.addItem(formatBufferItem(fallback[i]), i + 1);
+            monitorBufferCombo_.addItem(juce::String(fallback[i]) + " samples", i + 1);
     } else {
         for (int i = 0; i < available.size(); ++i)
-            monitorBufferCombo_.addItem(formatBufferItem(available[i]), i + 1);
+            monitorBufferCombo_.addItem(juce::String(available[i]) + " samples", i + 1);
     }
 
     // Select the actual buffer size (what WASAPI is really using)

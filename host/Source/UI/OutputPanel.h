@@ -85,6 +85,7 @@ private:
     juce::Label monitorVolumeLabel_{"", "Volume:"};
     juce::Label monitorBufferLabel_{"", "Buffer:"};
     juce::ComboBox monitorBufferCombo_;
+    juce::Label monitorLatencyLabel_;
     juce::ToggleButton monitorEnableButton_{"Enable"};
     juce::Label monitorStatusLabel_;
 

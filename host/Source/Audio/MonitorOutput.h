@@ -37,7 +37,8 @@ namespace directpipe {
 enum class VirtualCableStatus {
     NotConfigured,  ///< No device selected
     Active,         ///< Audio flowing to virtual cable
-    Error           ///< Device open failed or sample rate mismatch
+    Error,          ///< Device open failed
+    SampleRateMismatch  ///< Device opened but SR doesn't match main device
 };
 
 /**

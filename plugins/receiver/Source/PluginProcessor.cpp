@@ -26,7 +26,7 @@ DirectPipeReceiverProcessor::createParameterLayout()
         juce::ParameterID{"mute", 1}, "Mute", false));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"buffer", 1}, "Buffer",
-        juce::StringArray{"Ultra Low (~5ms)", "Low (~10ms)", "Medium (~21ms)", "High (~42ms)", "Safe (~85ms)"},
+        juce::StringArray{"Ultra Low (256)", "Low (512)", "Medium (1024)", "High (2048)", "Safe (4096)"},
         1));  // default: Low (~10ms)
     return { params.begin(), params.end() };
 }

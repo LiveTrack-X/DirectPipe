@@ -68,13 +68,15 @@ private:
     // Index matches "buffer" AudioParameterChoice
     static constexpr int kNumBufferPresets = 5;
     static constexpr uint32_t kBufferPresets[kNumBufferPresets][2] = {
-        {  256,   768 },  // 0: Ultra Low  ~5ms
-        {  512,  1536 },  // 1: Low       ~10ms
-        { 1024,  3072 },  // 2: Medium    ~21ms
-        { 2048,  6144 },  // 3: High      ~42ms
-        { 4096, 12288 },  // 4: Safe      ~85ms
+        {  256,   768 },  // 0: Ultra Low  (256 samples)
+        {  512,  1536 },  // 1: Low        (512 samples)
+        { 1024,  3072 },  // 2: Medium     (1024 samples)
+        { 2048,  6144 },  // 3: High       (2048 samples)
+        { 4096, 12288 },  // 4: Safe       (4096 samples)
     };
+public:
     uint32_t getTargetFillFrames() const;
+private:
     uint32_t getHighFillThreshold() const;
 
     juce::AudioProcessorValueTreeState apvts_;

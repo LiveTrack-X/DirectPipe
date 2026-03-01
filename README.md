@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.8.0-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.9.0-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -106,15 +106,16 @@ External Control:
 
 - **Receiver VST2 플러그인** — OBS 등 VST2 지원 앱에서 공유 메모리(IPC)로 직접 수신. **가상 케이블 불필요** — Receive audio via shared memory IPC. **No virtual cable needed**
 - **IPC 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
-- **버퍼 크기 설정** — Receiver VST GUI에서 5단계 프리셋 선택 — 5 buffer presets in Receiver VST GUI
+- **버퍼 크기 설정** — Receiver VST GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver VST GUI. Actual latency (ms) depends on sample rate
 
-  | 프리셋 / Preset | 지연 / Latency | 용도 / Best for |
-  |---|---|---|
-  | Ultra Low | ~5ms | 최소 지연 / Minimum latency |
-  | Low (기본) | ~10ms | 일반 사용 / General use (default) |
-  | Medium | ~21ms | 안정적 / Stable |
-  | High | ~42ms | CPU 여유 적을 때 / Low CPU headroom |
-  | Safe | ~85ms | 최대 안정성 / Maximum stability |
+  | 프리셋 / Preset | 샘플 / Samples | @48kHz | @44.1kHz | 용도 / Best for |
+  |---|---|---|---|---|
+  | Ultra Low | 256 | ~5ms | ~6ms | 최소 지연 / Minimum latency |
+  | Low (기본) | 512 | ~11ms | ~12ms | 일반 사용 / General use (default) |
+  | Medium | 1024 | ~21ms | ~23ms | 안정적 / Stable |
+  | High | 2048 | ~43ms | ~46ms | CPU 여유 적을 때 / Low CPU headroom |
+  | Safe | 4096 | ~85ms | ~93ms | 최대 안정성 / Maximum stability |
+- **샘플레이트 불일치 경고** — DirectPipe 송신 SR과 OBS(호스트) SR이 다르면 Receiver GUI에 경고 표시. SR이 다르면 피치/속도 변동 발생 — SR mismatch warning shown in Receiver GUI when source and host sample rates differ
 
 ### 녹음 / Recording
 
@@ -127,7 +128,7 @@ External Control:
 
 - **2컬럼 레이아웃** — 좌: 입력 미터 + 게인 + VST 체인 + 프리셋 슬롯 + 뮤트 버튼(OUT/MON/VST) + PANIC MUTE, 우: 설정 탭 패널 + 출력 미터 — Left: input meter + chain + controls, Right: tabbed settings + output meter
 - **4개 탭** — Tab layout:
-  - **Audio**: 드라이버(WASAPI/ASIO), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드 — Driver, devices, SR, buffer, channel mode
+  - **Audio**: 드라이버(WASAPI/ASIO), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드. **Audio 탭의 샘플레이트가 VST 체인·모니터 출력·IPC 전체에 적용됨** — Driver, devices, SR, buffer, channel mode. **Audio tab SR applies to VST chain, monitor output, and IPC**
   - **Output**: 모니터 출력(장치/볼륨/상태), IPC 토글, 녹음(REC/Play/폴더) — Monitor output, IPC toggle, recording
   - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
   - **Settings**: Start with Windows, 설정 저장/불러오기(.dpbackup), 로그 뷰어, 유지보수 도구 — Startup, settings export, log viewer, maintenance
