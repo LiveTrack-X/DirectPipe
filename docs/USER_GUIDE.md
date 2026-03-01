@@ -1,299 +1,543 @@
 # DirectPipe User Guide / 사용자 가이드
 
-## What is DirectPipe? / DirectPipe란?
+> **Version 3.8.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
-DirectPipe is a real-time VST2/VST3 host for Windows. It processes your microphone input through a chain of VST plugins. The main output goes to the AudioSettings Output device (e.g., VB-Audio virtual cable for OBS/Discord). An optional separate WASAPI monitor output sends to headphones. You can control it remotely via hotkeys, MIDI, Stream Deck, or HTTP API while the app runs in the system tray.
+## DirectPipe란? / What is DirectPipe?
 
-DirectPipe는 Windows용 실시간 VST2/VST3 호스트다. 마이크 입력을 VST 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치로 직접 전송 (예: VB-Audio 가상 케이블 → OBS, Discord). 별도 WASAPI 모니터 출력(헤드폰) 선택적 사용 가능. 시스템 트레이에서 실행하면서 단축키, MIDI, Stream Deck, HTTP API로 원격 제어 가능.
+DirectPipe는 Windows용 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-## Quick Start / 빠른 시작
+DirectPipe is a real-time VST2/VST3 host for Windows. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-1. **Launch DirectPipe** / DirectPipe 실행
-2. **Select driver type** — ASIO or Windows Audio (WASAPI) in Audio tab / Audio 탭에서 드라이버 선택
-3. **Select your microphone** from the device dropdown / 마이크 선택
-4. **Scan for plugins** — click "Scan..." to discover installed VST plugins / "Scan..." 클릭으로 VST 스캔
-5. **Add plugins** to the chain — click "+ Add Plugin" / "+ Add Plugin"으로 플러그인 추가
-6. **Configure monitor output** in Output tab to hear yourself / Output 탭에서 모니터 출력 설정
+```
+USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (VB-Cable → Discord/Zoom)
+                                                 ├→ Monitor Output (헤드폰)
+                                                 ├→ IPC Output (OBS Receiver VST)
+                                                 └→ WAV Recording
+```
 
-## Audio Settings (Audio Tab) / 오디오 설정
+---
 
-### Driver Type / 드라이버 타입
+## 빠른 시작 / Quick Start
 
-- **Windows Audio (WASAPI)** — Default. Non-exclusive access — other apps can use your mic simultaneously. Separate input/output device selection. / 기본값. 비독점 접근. 입출력 장치 개별 선택.
-- **ASIO** — Lower latency. Single device selection. Dynamic sample rate and buffer size from the device. "ASIO Control Panel" button for native driver settings. ASIO channel routing (input/output pair selection). / 저지연. 단일 장치. ASIO 컨트롤 패널 + 채널 라우팅.
+### 1단계: 기본 설정 / Step 1: Basic Setup
 
-### Sample Rate & Buffer Size / 샘플레이트 & 버퍼 크기
+1. **DirectPipe 실행** — 처음 실행 시 SmartScreen 경고가 나타나면 "추가 정보" → "실행" 클릭 (오픈소스라 코드 서명이 없어서 나타나는 정상적인 경고)
+2. **Audio 탭**에서 드라이버 선택:
+   - **Windows Audio (WASAPI)** — 대부분의 사용자에게 권장 (기본값)
+   - **ASIO** — 저지연이 필요한 경우 (오디오 인터페이스 필요)
+3. **Input** — USB 마이크 선택
+4. **Output** — 가상 오디오 케이블 선택 (예: `CABLE Input (VB-Audio Virtual Cable)`)
 
-**WASAPI** — Fixed list of common values (44100, 48000 Hz; 64-2048 samples). / 고정 목록.
+---
 
-**ASIO** — Lists only what the device supports. Use the ASIO Control Panel for best results. / 장치 지원 값만 표시. ASIO 컨트롤 패널 권장.
+1. **Launch DirectPipe** — If SmartScreen warns, click "More info" → "Run anyway" (normal for unsigned open-source apps)
+2. **Audio tab** — Select driver:
+   - **Windows Audio (WASAPI)** — Recommended for most users (default)
+   - **ASIO** — For lowest latency (requires audio interface)
+3. **Input** — Select your USB microphone
+4. **Output** — Select a virtual audio cable (e.g., `CABLE Input (VB-Audio Virtual Cable)`)
 
-### Channel Mode / 채널 모드
+### 2단계: 플러그인 추가 / Step 2: Add Plugins
 
-- **Stereo** (default) — Channels pass through as-is. / 채널 그대로 통과.
-- **Mono** — Both channels mixed to mono. Best for voice. / 모노 믹스. 음성에 적합.
+1. **"Scan..."** 클릭 → 설치된 VST 플러그인 스캔 (처음 한 번만 필요)
+2. **"+ Add Plugin"** 클릭 → 목록에서 원하는 플러그인 선택
+3. 플러그인이 체인에 추가됨 — **Edit** 버튼으로 플러그인 GUI 열기
 
-## VST Plugin Chain / VST 플러그인 체인
+**추천 무료 플러그인:**
+- [ReaPlugs](https://www.reaper.fm/reaplugs/) — EQ, 컴프레서, 게이트 (무료)
+- [RNNoise](https://github.com/werman/noise-suppression-for-voice) — AI 노이즈 제거 (무료)
+- [TDR Nova](https://www.tokyodawn.net/tdr-nova/) — 다이나믹 EQ (무료)
 
-Supports both **VST2** (.dll) and **VST3** (.vst3) plugins in a serial chain. / VST2와 VST3 모두 지원.
+---
 
-- **Add** — Click "+ Add Plugin" and select from scanned list / 스캔된 목록에서 선택
-- **Remove** — Click **X** on a plugin row / X 버튼으로 제거
-- **Reorder** — Drag and drop a plugin row / 드래그 앤 드롭으로 순서 변경
-- **Bypass** — Click the bypass toggle to skip a plugin / Bypass 토글
-- **Edit** — Click **Edit** to open the native plugin GUI / 네이티브 GUI 열기
+1. Click **"Scan..."** → Scans installed VST plugins (only needed once)
+2. Click **"+ Add Plugin"** → Select a plugin from the list
+3. Plugin is added to the chain — Click **Edit** to open the plugin GUI
 
-### Plugin State / 플러그인 상태
+### 3단계: 다른 앱에서 사용 / Step 3: Use in Other Apps
 
-Plugin parameters (EQ curves, compressor settings, etc.) are automatically saved and restored: / 플러그인 파라미터 자동 저장/복원:
+**Discord / Zoom / Google Meet:**
+1. [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) 설치 (무료) → PC 재부팅
+2. DirectPipe Audio 탭: Output → `CABLE Input (VB-Audio Virtual Cable)` 선택
+3. Discord/Zoom 음성 설정: 마이크 → `CABLE Output (VB-Audio Virtual Cable)` 선택
 
-- When any setting changes (1-second debounce auto-save) / 설정 변경 시 (1초 디바운스 자동 저장)
-- When switching preset slots A-E / 프리셋 슬롯 전환 시
-- When closing a plugin editor window / 에디터 창 닫을 때
-- On application exit / 앱 종료 시
+```
+USB 마이크 → DirectPipe → VB-Cable Input
+                                ↓
+              Discord/Zoom ← VB-Cable Output (마이크로 인식)
+```
 
-## Quick Preset Slots (A-E) / 퀵 프리셋 슬롯
+**OBS (Receiver VST2 — 가상 케이블 불필요):**
+1. `DirectPipe Receiver.dll`을 VST 폴더에 복사 (`C:\Program Files\VSTPlugins\`)
+2. DirectPipe에서 **VST** 버튼 클릭 (IPC 출력 켜기)
+3. OBS → 오디오 소스 → 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택
 
-Five quick-access slots for different VST chain configurations. / 5개 체인 구성 퀵 슬롯.
+```
+USB 마이크 → DirectPipe (VST 이펙트)
+      ↓ IPC (공유 메모리)
+OBS [DirectPipe Receiver VST 필터] → 방송/녹화
+```
 
-- **Click a slot** to switch (current slot saved first) / 클릭으로 전환 (현재 슬롯 자동 저장)
-- **Same plugins** — Instant switch (only bypass and parameters change) / 같은 플러그인이면 즉시 전환
-- **Different plugins** — Async background loading, UI stays responsive / 다른 플러그인이면 비동기 로딩
-- **Active slot** highlighted in purple / 활성 슬롯 보라색 표시
-- **Occupied slots** shown lighter, **empty slots** dimmed / 사용 중인 슬롯은 밝게, 빈 슬롯은 어둡게
+> **Tip**: VB-Cable과 Receiver VST를 **동시에** 사용할 수 있습니다. Discord는 VB-Cable로, OBS는 Receiver VST로 각각 보내면 됩니다.
 
-Slots save chain-only data (plugins, order, bypass, parameters). Audio and output settings are NOT affected. / 슬롯은 체인 데이터만 저장. 오디오/출력 설정은 영향 없음.
+---
 
-## Output Tab / Output 탭
+## UI 구성 / UI Layout
 
-The Output tab has 3 sections: Monitor Output, VST Receiver (IPC), and Recording. / Output 탭은 3개 섹션으로 구성: 모니터 출력, VST Receiver (IPC), 녹음.
+DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layout.
 
-### Monitor Output / 모니터 출력
+**왼쪽 컬럼 / Left Column:**
+- INPUT 레벨 미터 (dB 로그 스케일)
+- 입력 게인 슬라이더 (0.0x ~ 2.0x)
+- VST 플러그인 체인 (드래그 앤 드롭 순서 변경)
+- Add Plugin / Scan / Remove 버튼
+- Quick Preset Slots (A ~ E)
+- Save Preset / Load Preset 버튼
+- 뮤트 인디케이터 (OUT / MON / VST)
+- PANIC MUTE 버튼
 
-- **Device** — Select output device for monitoring (headphones) / 모니터링용 출력 장치 선택 (헤드폰)
-- **Volume** — Adjust monitor volume (0-100%) / 모니터 볼륨 조절
-- **Enable** — Toggle monitor on/off / 모니터 켜기/끄기
-- **Status** — Color-coded: Active (green), Error (red), or "No device selected" (grey) / 디바이스 상태 표시: Active(녹색), Error(빨강), 미선택(회색)
+**오른쪽 컬럼 / Right Column:**
+- 4개 탭: **Audio** / **Output** / **Controls** / **Settings**
+- OUTPUT 레벨 미터
 
-The monitor output uses a separate WASAPI device, independent from the main driver (works even with ASIO). / 모니터 출력은 별도 WASAPI 장치를 사용하며 메인 드라이버와 독립적 (ASIO 모드에서도 동작).
+**하단 상태 바 / Status Bar:**
+- 레이턴시 (ms), CPU 사용률 (%), 오디오 포맷, 포터블 모드 표시
+- 오류/경고/정보 알림 (자동 페이드)
+- 버전 정보 + 업데이트 알림
+
+---
+
+## 오디오 설정 (Audio 탭) / Audio Settings
+
+### 드라이버 타입 / Driver Type
+
+| | Windows Audio (WASAPI) | ASIO |
+|---|---|---|
+| **지연** / Latency | 보통 5~15ms | 매우 낮음 2~5ms |
+| **설치** / Setup | 별도 설치 불필요 | 오디오 인터페이스 드라이버 필요 |
+| **마이크 공유** / Shared | 가능 (비독점) | 장치에 따라 다름 |
+| **장치 선택** / Devices | 입출력 개별 선택 | 단일 장치 |
+| **추천** / Best for | 대부분의 사용자 | 전문가, 실시간 모니터링 |
+
+### 샘플레이트 & 버퍼 크기 / Sample Rate & Buffer Size
+
+- **WASAPI**: 고정 목록 (44100, 48000 Hz / 64~2048 samples)
+- **ASIO**: 장치가 지원하는 값만 표시. ASIO Control Panel에서 설정 가능
+
+**버퍼 크기 가이드:**
+
+| 버퍼 / Buffer | 지연 (@48kHz) | 권장 / Recommended |
+|---|---|---|
+| 128 samples | ~2.7ms | 고사양 PC, 최소 지연 |
+| 256 samples | ~5.3ms | 일반적인 시작점 |
+| 512 samples | ~10.7ms | 안정적, 저사양 PC |
+| 1024 samples | ~21.3ms | CPU 부하 높을 때 |
+
+### 채널 모드 / Channel Mode
+
+- **Stereo** (기본값) — 채널이 그대로 통과
+- **Mono** — 양쪽 채널을 모노로 믹스. 마이크 음성에 적합
+
+---
+
+## VST 플러그인 체인 / VST Plugin Chain
+
+VST2 (.dll)와 VST3 (.vst3) 플러그인을 직렬 체인으로 연결합니다. / Connects VST2 and VST3 plugins in a serial chain.
+
+| 동작 / Action | 방법 / How |
+|---|---|
+| **추가** / Add | "+ Add Plugin" 클릭 → 목록에서 선택 |
+| **제거** / Remove | 플러그인 행의 X 버튼 또는 하단 "Remove" |
+| **순서 변경** / Reorder | 드래그 앤 드롭 |
+| **Bypass** | 플러그인 행의 Bypass 토글 클릭 |
+| **편집** / Edit | "Edit" 클릭 → 플러그인 네이티브 GUI 열기 |
+
+### 자동 저장 / Auto-Save
+
+플러그인 파라미터(EQ, 컴프레서 설정 등)는 자동으로 저장/복원됩니다:
+- 설정 변경 후 1초 뒤 자동 저장
+- 프리셋 슬롯 전환 시
+- 앱 종료 시
+
+Plugin parameters are auto-saved/restored on setting change (1-second debounce), preset slot switch, and app exit.
+
+### VST 스캐너 / Plugin Scanner
+
+- **별도 프로세스**에서 안전하게 스캔 — DirectPipe가 멈추지 않음
+- 크래시를 유발하는 플러그인은 자동 **블랙리스트** 등록 (최대 10회 재시도)
+- **검색/정렬**: 이름·벤더·포맷으로 실시간 필터링 및 컬럼 정렬
+- 스캔 로그: `%AppData%/DirectPipe/scanner-log.txt`
+
+Out-of-process scanner — crashes won't affect DirectPipe. Blacklists problematic plugins. Search and sort by name, vendor, or format.
+
+---
+
+## 퀵 프리셋 슬롯 (A~E) / Quick Preset Slots
+
+5개의 VST 체인 구성을 빠르게 저장하고 전환할 수 있습니다. / Save and switch between 5 VST chain configurations instantly.
+
+- **슬롯 클릭** → 비어있으면 현재 체인 저장, 차있으면 해당 슬롯 로드
+- **같은 플러그인** → 파라미터만 변경되어 **즉시 전환**
+- **다른 플러그인** → 백그라운드 **비동기 로딩** (UI 응답 유지)
+- **활성 슬롯**: 보라색 / **사용 중**: 밝은색 / **빈 슬롯**: 어두운색
+- **Save Preset / Load Preset** → `.dppreset` 파일로 내보내기/불러오기
+
+슬롯은 **체인 데이터만** 저장합니다 (플러그인, 순서, Bypass, 파라미터). 오디오/출력 설정은 영향 없음.
+
+**활용 예시:**
+- **A**: 게임 (노이즈 제거만)
+- **B**: 노래방 (리버브 + 컴프레서)
+- **C**: 회의 (노이즈 제거 + EQ)
+- **D**: 방송 (풀 체인: 게이트 + 디에서 + EQ + 컴프)
+
+---
+
+## Output 탭 / Output Tab
+
+Output 탭은 3개 섹션으로 구성됩니다. / The Output tab has 3 sections.
+
+### 모니터 출력 / Monitor Output
+
+자기 목소리를 헤드폰으로 실시간 확인하는 기능입니다. VST 이펙트가 적용된 소리를 들을 수 있습니다.
+
+Monitor lets you hear your own processed voice through headphones in real-time.
+
+- **Device** — 모니터링용 출력 장치 선택 (헤드폰) / Select headphone device
+- **Volume** — 모니터 볼륨 0~100% / Monitor volume
+- **Enable** — 모니터 켜기/끄기 / Toggle on/off
+- **Status** — 상태 표시 / Status indicator:
+  - 🟢 **Active** — 정상 동작 / Working
+  - 🔴 **Error** — 장치 오류 / Device error
+  - ⚫ **No device** — 장치 미선택 / Not configured
+
+> 모니터는 메인 드라이버와 **독립된 별도 WASAPI 장치**를 사용합니다. ASIO 모드에서도 정상 동작합니다.
+>
+> Monitor uses a **separate WASAPI device**, independent from the main driver. Works even with ASIO.
 
 ### VST Receiver (IPC) / VST 리시버
 
-- **Enable VST Receiver Output** — Toggle IPC output to send processed audio to Receiver VST2 plugin via shared memory / IPC 출력 토글. 공유 메모리로 Receiver VST2 플러그인에 오디오 전송
-- Also controllable via VST button on main screen, Ctrl+Shift+I, MIDI, Stream Deck, or HTTP API / 메인 화면 VST 버튼, Ctrl+Shift+I, MIDI, Stream Deck, HTTP API로도 제어 가능
+- **Enable VST Receiver Output** — IPC 출력 켜기/끄기 (공유 메모리로 Receiver VST2에 오디오 전송)
+- 기본값은 **꺼짐(OFF)**. OBS에서 Receiver VST2를 사용할 때만 켜면 됩니다
+- 메인 화면 **VST** 버튼, **Ctrl+Shift+I**, MIDI, Stream Deck, HTTP API로도 제어 가능
 
-### Main Output / 메인 출력
+### 녹음 / Recording
 
-The main processed audio goes directly to the AudioSettings Output device. To send audio to OBS, Discord, etc., select a virtual audio cable (e.g., VB-Audio Virtual Cable) as the Output device in the Audio tab.
+처리된 오디오(VST 체인 이후)를 WAV 파일로 녹음합니다. / Record post-chain audio to WAV.
 
-처리된 오디오는 AudioSettings Output 장치로 직접 전송된다. OBS, Discord 등에 보내려면 Audio 탭에서 가상 오디오 케이블(예: VB-Audio Virtual Cable)을 Output 장치로 선택.
+| 기능 / Feature | 설명 / Description |
+|---|---|
+| **REC / STOP** | 녹음 시작/중지 |
+| **경과 시간** | mm:ss 형식으로 표시 |
+| **Play** | 마지막 녹음 파일을 기본 플레이어로 재생 |
+| **Open Folder** | 녹음 폴더를 탐색기에서 열기 |
+| **... (폴더 변경)** | 녹음 폴더 변경 (자동 저장) |
 
-## VST Plugin Scanner / VST 스캐너
+- **기본 폴더**: `Documents/DirectPipe Recordings`
+- **파일명**: `DirectPipe_YYYYMMDD_HHMMSS.wav`
+- **외부 제어**: Stream Deck (경과 시간 표시), HTTP API (`/api/recording/toggle`), WebSocket (`recording_toggle`)
+- 녹음은 lock-free(실시간 안전) — 오디오 처리 성능에 영향 없음
 
-Out-of-process scanner that safely discovers all installed plugins. / 별도 프로세스에서 안전하게 플러그인 탐색.
+---
 
-1. Click **"Scan..."** / "Scan..." 클릭
-2. Default directories are pre-configured / 기본 경로 자동 설정
-3. Click **"Scan for Plugins"** — runs in a separate process / 별도 프로세스에서 스캔
-4. **Search & Sort** — Type in the search box to filter by name. Click column headers to sort by name, vendor, or format. / 검색창에 입력하여 이름으로 필터링. 컬럼 헤더 클릭으로 이름/벤더/포맷 정렬.
-5. Bad plugin crashes -> auto-retry (up to 10 times), skips problematic plugin / 불량 플러그인 크래시 시 자동 재시도, 건너뜀
-6. Scanner logs: `%AppData%/DirectPipe/scanner-log.txt` / 스캐너 로그 경로
+## IPC 출력 & Receiver VST / IPC Output & Receiver VST
 
-## System Tray / 시스템 트레이
+### OBS에서 Receiver VST2 사용하기 / Using Receiver VST2 in OBS
 
-- **Close button** — Minimizes to tray (app keeps running) / X 버튼 -> 트레이 최소화
-- **Double-click tray icon** — Shows the main window / 더블클릭 -> 창 복원
-- **Right-click tray icon** — Menu: "Show Window" / "Start with Windows" / "Quit DirectPipe" / 우클릭 -> 메뉴
+OBS에서는 Receiver VST2를 사용하면 **가상 케이블 없이** DirectPipe 오디오를 직접 받을 수 있습니다.
 
-### Start with Windows / 시작 프로그램
+1. **`DirectPipe Receiver.dll`**을 VST 폴더에 복사 (`C:\Program Files\VSTPlugins\`)
+2. **DirectPipe**에서 IPC 출력 켜기 (하단 **VST** 버튼 클릭 → 초록색)
+3. **OBS** → 오디오 소스 → 필터 → "+" → "VST 2.x 플러그인" → **DirectPipe Receiver** 선택
+4. "플러그인 인터페이스 열기" → **Connected** (초록색) 확인
 
-Toggle via tray menu or Settings tab. Registers DirectPipe in Windows startup (HKCU Run registry). / 트레이 메뉴 또는 Settings 탭에서 설정. Windows 시작 시 자동 실행.
+### IPC 켜기/끄기 (5가지 방법) / Toggle IPC (5 ways)
 
-### Portable Mode / 포터블 모드
+1. 메인 화면 하단 **VST** 버튼
+2. Output 탭 → **Enable VST Receiver Output** 체크
+3. 키보드 **Ctrl+Shift+I**
+4. Stream Deck **IPC Toggle** 버튼
+5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
 
-Place a file named `portable.flag` next to `DirectPipe.exe` to store all configuration in `./config/` instead of `%AppData%/DirectPipe/`. / exe 옆에 `portable.flag` 파일을 두면 설정이 `./config/`에 저장된다.
+### Receiver 버퍼 크기 설정 / Receiver Buffer Size
 
-## Audio Recording / 오디오 녹음
+Receiver VST GUI에서 Buffer 드롭다운으로 선택합니다. / Select in Receiver VST GUI.
 
-Record processed audio (after the VST plugin chain) to a WAV file. Located in the **Output tab**. / 처리된 오디오(VST 체인 이후)를 WAV 파일로 녹음. **Output 탭**에 위치.
+| 프리셋 / Preset | 지연 / Latency | 권장 / Recommended |
+|---|---|---|
+| **Ultra Low** | ~5ms | 최소 지연 (끊김 가능성) |
+| **Low** (기본) | ~10ms | 대부분의 상황 |
+| **Medium** | ~21ms | 안정적 |
+| **High** | ~42ms | CPU 부하 높을 때 |
+| **Safe** | ~85ms | 끊김 자주 발생 시 |
 
-- **Start/Stop recording** — Click **REC** in the Output tab, or use the Stream Deck Recording Toggle, HTTP API (`/api/recording/toggle`), or WebSocket (`recording_toggle`). / Output 탭 REC 버튼, Stream Deck, HTTP API, WebSocket으로 시작/중지.
-- **Recording indicator** — Output tab shows elapsed time (mm:ss). Stream Deck shows `REC mm:ss`. / Output 탭과 Stream Deck에 경과 시간 표시.
-- **Play last recording** — Click **Play** to open the last recorded file with your default audio player. / **Play** 클릭으로 마지막 녹음 파일을 기본 플레이어로 재생.
-- **Open Folder** — Click **Open Folder** to open the recording directory in Explorer. / **Open Folder** 클릭으로 녹음 폴더를 탐색기에서 열기.
-- **Change folder** — Click **...** to choose a different recording folder. Saved automatically. / **...** 클릭으로 녹음 폴더 변경. 자동 저장.
-- **Default folder** — `Documents/DirectPipe Recordings`. / 기본 폴더: 문서/DirectPipe Recordings.
-- Recording is lock-free (real-time safe) — it does not affect audio processing performance. / 녹음은 락프리(실시간 안전) — 오디오 처리 성능에 영향 없음.
+> DirectPipe와 OBS의 **샘플레이트를 동일하게** 맞추세요 (예: 둘 다 48000Hz).
 
-## IPC Output & Receiver VST / IPC 출력 & 리시버 VST
+---
 
-### IPC Toggle / IPC 토글
+## 시스템 트레이 / System Tray
 
-DirectPipe can send processed audio to other applications (e.g., OBS) via shared memory IPC. Toggle IPC output on/off using: / DirectPipe는 공유 메모리 IPC를 통해 처리된 오디오를 다른 앱(예: OBS)에 전송할 수 있다. IPC 출력 켜기/끄기:
+DirectPipe는 시스템 트레이에 상주합니다. X 버튼은 종료가 아닌 **트레이 최소화**입니다.
 
-- **Hotkey** — Ctrl+Shift+I (default, customizable in Controls > Hotkey tab) / 단축키: Ctrl+Shift+I (기본값, Controls > Hotkey 탭에서 변경 가능)
-- **MIDI** — Mappable in Controls > MIDI tab / MIDI: Controls > MIDI 탭에서 매핑 가능
-- **Stream Deck** — IPC Toggle button / Stream Deck: IPC Toggle 버튼
-- **HTTP API** — `GET /api/ipc/toggle` / HTTP API
-- **WebSocket** — `ipc_toggle` action / WebSocket
+DirectPipe is a tray-resident app. The X button **minimizes to tray**, not quit.
 
-### Receiver VST Plugin / 리시버 VST 플러그인
+| 동작 / Action | 방법 / How |
+|---|---|
+| **창 복원** / Restore | 트레이 아이콘 더블클릭 |
+| **메뉴** | 트레이 아이콘 우클릭 → Show / Start with Windows / Quit |
+| **완전 종료** / Quit | 우클릭 → "Quit DirectPipe" |
 
-The Receiver VST2 plugin (located at `plugins/receiver/`) can be loaded in OBS or any VST2 host to receive processed audio from DirectPipe via shared memory. / 리시버 VST2 플러그인(`plugins/receiver/`)은 OBS 또는 VST2 호스트에서 공유 메모리를 통해 DirectPipe의 처리된 오디오를 수신한다.
+**트레이 아이콘 고정하기 (Windows 11):**
+설정 → 개인 설정 → 작업 표시줄 → 기타 시스템 트레이 아이콘 → DirectPipe **켬**
 
-**Buffer Size Configuration / 버퍼 크기 설정:**
+**Pin tray icon (Windows 11):**
+Settings → Personalization → Taskbar → Other system tray icons → DirectPipe **On**
 
-The Receiver plugin offers 5 buffer size presets to balance latency vs. stability: / 리시버 플러그인은 지연 시간과 안정성 균형을 위해 5가지 버퍼 크기 프리셋을 제공한다:
+### 시작 프로그램 / Start with Windows
 
-| Preset / 프리셋 | Latency / 지연 |
-|-----------------|---------------|
-| Ultra Low | ~5ms |
-| Low | ~10ms |
-| Medium | ~21ms |
-| High | ~42ms |
-| Safe | ~85ms |
+트레이 메뉴 또는 Settings 탭에서 설정. Windows 시작 시 트레이에서 자동 실행됩니다. / Toggle via tray menu or Settings tab.
 
-Choose a lower buffer for minimal latency or a higher buffer if you experience audio dropouts. / 최소 지연을 원하면 낮은 버퍼, 오디오 끊김이 있으면 높은 버퍼를 선택.
+### 포터블 모드 / Portable Mode
 
-## Settings Save/Load / 설정 저장/불러오기
+`DirectPipe.exe` 옆에 `portable.flag` 파일을 만들면 설정이 `%AppData%` 대신 `./config/`에 저장됩니다. USB 메모리 등에서 휴대 사용 가능.
 
-Export or import your full DirectPipe settings as `.dpbackup` files. Located in **Settings** tab. / 전체 설정을 .dpbackup 파일로 내보내기/가져오기. **Settings** 탭에 위치.
+Place a `portable.flag` file next to `DirectPipe.exe` to store config in `./config/` instead of `%AppData%`.
 
-- **Save Settings** — Saves audio settings, VST chain, volumes, preset slots, and control mappings to a `.dpbackup` file. / 오디오 설정, VST 체인, 볼륨, 프리셋 슬롯, 제어 매핑을 .dpbackup 파일로 저장.
-- **Load Settings** — Load a previously saved settings file. / 저장된 설정 파일 불러오기.
+---
 
-## Error Notifications / 오류 알림
+## 뮤트 컨트롤 / Mute Controls
 
-DirectPipe shows non-intrusive notifications in the status bar area when errors, warnings, or informational events occur. These replace the latency/CPU labels temporarily and auto-fade after a few seconds. / DirectPipe는 오류, 경고, 정보 이벤트 발생 시 상태 바 영역에 비침습적 알림을 표시한다. 레이턴시/CPU 레이블을 일시적으로 대체하며 몇 초 후 자동으로 사라진다.
+메인 화면 하단에 3개의 뮤트 인디케이터와 PANIC MUTE 버튼이 있습니다.
 
-- **Red** — Errors (audio device failures, plugin load failures) / 빨간색 — 오류 (오디오 장치 실패, 플러그인 로드 실패)
-- **Orange** — Warnings / 주황색 — 경고
-- **Purple** — Info messages / 보라색 — 정보 메시지
-- Auto-fades after 3-8 seconds depending on severity / 심각도에 따라 3-8초 후 자동 사라짐
+| 버튼 | 기능 / Function | 초록색 / Green | 빨간색 / Red |
+|---|---|---|---|
+| **OUT** | 메인 출력 뮤트 | 출력 정상 | 뮤트됨 |
+| **MON** | 모니터 출력 | 모니터 켜짐 | 모니터 꺼짐 |
+| **VST** | IPC 출력 (Receiver) | IPC 켜짐 | IPC 꺼짐 |
 
-## Settings Tab / Settings 탭
+### PANIC MUTE / 패닉 뮤트
 
-The 4th tab in the right panel (Audio / Output / Controls / **Settings**). / 우측 패널의 4번째 탭.
+**전체 출력을 즉시 뮤트**합니다. 갑자기 큰 소리가 나거나 피드백이 발생했을 때 사용하세요.
 
-### Application / 앱 설정
+- 패닉 뮤트 중에는 OUT/MON/VST 버튼과 **모든 외부 제어가 잠금**됩니다
+- 해제하면 이전 상태(모니터 켜짐/꺼짐, 출력 뮤트 등)가 **자동 복원**됩니다
+- 단축키: **Ctrl+Shift+M**
 
-- **Start with Windows** — Toggle to auto-launch DirectPipe at Windows startup (HKCU registry). Also available in tray menu. / Windows 시작 시 자동 실행 토글. 트레이 메뉴에서도 설정 가능.
+Immediately mutes all outputs. During panic mute, all buttons and external controls are locked — only PanicMute/unmute can change state. Previous state is restored on unmute.
 
-### Settings Export/Import / 설정 저장/불러오기
+---
 
-- **Save Settings** — Export full settings (audio, VST chain, presets, controls) to `.dpbackup` file / 전체 설정을 .dpbackup 파일로 내보내기
-- **Load Settings** — Import a previously saved `.dpbackup` file / 저장된 .dpbackup 파일 불러오기
+## 외부 제어 / External Control
 
-### Log Viewer / 로그 뷰어
+DirectPipe는 최소화 상태에서도 다양한 방법으로 제어할 수 있습니다.
 
-- **Timestamped entries** in a monospaced font — captures logs from audio engine, plugins, WebSocket, HTTP, and more / 타임스탬프가 포함된 고정폭 폰트 엔트리 — 오디오 엔진, 플러그인, WebSocket, HTTP 등의 로그 캡처
-- **Export Log** — Save the log to a `.txt` file for sharing or analysis / 로그를 .txt 파일로 저장하여 공유 또는 분석
-- **Clear Log** — Clear the log display / 로그 표시 지우기
+### 키보드 단축키 / Keyboard Shortcuts
 
-### Maintenance / 유지보수
+모든 단축키는 **Controls > Hotkeys** 탭에서 변경할 수 있습니다. / All shortcuts customizable in Controls > Hotkeys tab.
 
-Located at the bottom of the Settings tab. All destructive actions show a confirmation dialog before proceeding. / Settings 탭 하단에 위치. 모든 파괴적 작업은 실행 전 확인 대화상자를 표시.
+| 단축키 / Shortcut | 동작 / Action |
+|---|---|
+| Ctrl+Shift+1~9 | 플러그인 1-9 Bypass 토글 |
+| Ctrl+Shift+0 | 마스터 Bypass (전체 체인) |
+| Ctrl+Shift+M | 패닉 뮤트 |
+| Ctrl+Shift+N | 입력 뮤트 토글 |
+| Ctrl+Shift+O | 출력 뮤트 토글 |
+| Ctrl+Shift+H | 모니터 토글 |
+| Ctrl+Shift+I | IPC 출력 토글 |
+| Ctrl+Shift+F1~F5 | 프리셋 슬롯 A~E |
 
-- **Clear Plugin Cache** — Deletes the scanned plugin list. Forces a re-scan on next "Scan..." click. / 스캔된 플러그인 목록 삭제. 다음 "Scan..." 클릭 시 재스캔 강제.
-- **Clear All Presets** — Deletes all quick slots (A-E) and saved presets. / 모든 퀵 슬롯(A-E)과 저장된 프리셋 삭제.
-- **Reset Settings** — Factory reset. Deletes audio settings, hotkeys, and MIDI mappings. / 공장 초기화. 오디오 설정, 단축키, MIDI 매핑 삭제.
+### MIDI 제어 / MIDI Control
 
-## In-App Update / 인앱 업데이트
+1. **Controls > MIDI** 탭에서 MIDI 장치 선택
+2. 매핑할 동작 옆의 **[Learn]** 클릭
+3. MIDI 컨트롤러의 노브/버튼/슬라이더 조작
+4. 매핑 자동 저장
 
-DirectPipe checks for updates automatically on startup. / DirectPipe는 실행 시 자동으로 업데이트를 확인한다.
+**매핑 타입**: Toggle, Momentary, Continuous, NoteOnOff
+**핫플러그**: MIDI 장치 연결 후 **[Rescan]** 클릭
 
-- **New version available** — Credit label at bottom-right shows **"NEW vX.Y.Z"** in orange / 새 버전이 있으면 하단 우측 credit 라벨에 "NEW vX.Y.Z" 주황색 표시
-- **Click the label** — Opens update dialog with 3 options: / 라벨 클릭 시 업데이트 다이얼로그:
-  - **Update Now** — Downloads from GitHub, replaces exe, auto-restarts / GitHub에서 다운로드 → exe 교체 → 자동 재시작
-  - **View on GitHub** — Opens the release page in your browser / 릴리즈 페이지를 브라우저에서 열기
-  - **Later** — Dismiss, check again on next launch / 닫기, 다음 실행 시 다시 확인
-- **Post-update** — After restart, a purple notification shows "Updated to vX.Y.Z successfully!" / 업데이트 후 재시작 시 "Updated to vX.Y.Z successfully!" 알림 표시
-- **Offline** — No error, no notification. App works normally. / 오프라인이면 오류 없이 정상 동작
+#### MIDI 플러그인 파라미터 매핑 / Plugin Parameter Mapping
 
-## External Control / 외부 제어
+MIDI CC로 VST 플러그인의 개별 파라미터를 직접 제어할 수 있습니다.
 
-DirectPipe can be controlled while minimized or in the background. / 최소화 상태에서도 제어 가능.
-
-### Keyboard Shortcuts / 키보드 단축키
-
-| Shortcut / 단축키 | Action / 동작 |
-|-------------------|---------------|
-| Ctrl+Shift+1–9 | Toggle Plugin 1-9 Bypass / 플러그인 1-9 Bypass 토글 |
-| Ctrl+Shift+0 | Master Bypass / 마스터 Bypass |
-| Ctrl+Shift+M | Panic Mute / 패닉 뮤트 |
-| Ctrl+Shift+N | Input Mute Toggle / 입력 뮤트 토글 |
-| Ctrl+Shift+O | Output Mute Toggle / 출력 뮤트 토글 |
-| Ctrl+Shift+H | Monitor Toggle / 모니터 토글 |
-| Ctrl+Shift+I | IPC Toggle / IPC 출력 토글 |
-| Ctrl+Shift+F1–F5 | Preset Slot A-E / 프리셋 슬롯 A-E |
-
-Shortcuts are customizable in Controls > Hotkey tab. / Controls > Hotkey 탭에서 단축키 변경 가능.
-
-### Panic Mute / 패닉 뮤트
-
-Immediately silences all outputs. When unmuted, previous monitor enable state is restored. During panic mute, OUT/MON/VST buttons and all external controls (hotkeys, MIDI, Stream Deck, HTTP) are locked -- only PanicMute/unmute can change state. / 전체 출력 즉시 뮤트. 해제 시 모니터 상태 복원. 패닉 뮤트 중 OUT/MON/VST 버튼과 모든 외부 제어(단축키, MIDI, Stream Deck, HTTP)가 잠금 -- PanicMute/해제만 상태 변경 가능.
-
-### MIDI Control / MIDI 제어
-
-1. Open Controls tab > MIDI section / Controls 탭 > MIDI 섹션
-2. Select your MIDI device / MIDI 장치 선택
-3. Click [Learn] next to an action / [Learn] 클릭
-4. Move a knob or press a button on your controller / 컨트롤러 조작
-5. Mapping saved automatically / 자동 저장
-
-Supports 4 mapping types: Toggle, Momentary, Continuous, NoteOnOff. Hot-plug detection with [Rescan] button. / 4가지 매핑 타입 지원. [Rescan]으로 핫플러그 감지.
-
-**MIDI Plugin Parameter Mapping / MIDI 플러그인 파라미터 매핑:**
-
-Map MIDI CC to individual VST plugin parameters for direct real-time control. / MIDI CC로 VST 플러그인 파라미터를 직접 제어.
-
-1. Click **[+ Add Param]** in the MIDI tab / MIDI 탭에서 [+ Add Param] 클릭
-2. Select the plugin from the popup menu / 팝업 메뉴에서 플러그인 선택
-3. Select the parameter to control / 제어할 파라미터 선택
-4. Move a knob or slider on your MIDI controller to assign / MIDI 컨트롤러 조작으로 할당
+1. MIDI 탭에서 **[+ Add Param]** 클릭
+2. 팝업에서 **플러그인** 선택
+3. 제어할 **파라미터** 선택
+4. MIDI 컨트롤러 **노브/슬라이더** 조작으로 할당
 
 ### Stream Deck
 
-See [Stream Deck Guide](STREAMDECK_GUIDE.md). / Stream Deck 가이드 참조.
+Elgato Marketplace에서 무료 설치: **[DirectPipe Stream Deck Plugin](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)**
 
-### HTTP API
+7가지 액션: Bypass Toggle, Volume Control (SD+ 다이얼), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle
+
+자세한 내용: [Stream Deck Guide](STREAMDECK_GUIDE.md)
+
+### HTTP REST API
+
+포트 8766에서 GET 요청으로 제어합니다. / Control via GET requests on port 8766.
 
 ```bash
-curl http://127.0.0.1:8766/api/bypass/0/toggle
-curl http://127.0.0.1:8766/api/mute/panic
-curl http://127.0.0.1:8766/api/volume/monitor/0.5
+# Bypass 토글
+curl http://localhost:8766/api/bypass/0/toggle
+
+# 패닉 뮤트
+curl http://localhost:8766/api/mute/panic
+
+# 모니터 볼륨 50%
+curl http://localhost:8766/api/volume/monitor/0.5
+
+# 녹음 토글
+curl http://localhost:8766/api/recording/toggle
+
+# IPC 토글
+curl http://localhost:8766/api/ipc/toggle
+
+# 프리셋 슬롯 A 로드
+curl http://localhost:8766/api/preset/0
+
+# 현재 상태 조회
+curl http://localhost:8766/api/state
 ```
 
-See [Control API Reference](CONTROL_API.md) for all endpoints. / 전체 엔드포인트는 Control API 참조.
+전체 엔드포인트: [Control API Reference](CONTROL_API.md)
 
-## Troubleshooting / 문제 해결
+### WebSocket
 
-**No audio input? / 오디오 입력이 없나요?**
-- Check the correct microphone is selected in Audio tab / 올바른 마이크가 선택되어 있는지 확인
-- Verify the mic works in Windows Sound Settings / Windows 사운드 설정에서 마이크 확인
-- Try switching between WASAPI and ASIO / 드라이버 타입 변경 시도
+포트 8765에서 양방향 실시간 통신. 상태 변경 시 자동 푸시. / Bidirectional real-time on port 8765 with auto state push.
 
-**Glitches or dropouts? / 글리치나 끊김?**
-- Increase the buffer size / 버퍼 크기 증가
-- For ASIO, use the ASIO Control Panel to adjust / ASIO 컨트롤 패널에서 조정
-- Close other audio-intensive applications / 다른 오디오 앱 종료
+---
 
-**Slot switching is slow? / 슬롯 전환이 느린가요?**
-- First load of different plugins takes time (plugin initialization) / 처음 다른 플러그인 로드 시 초기화 시간 필요
-- Subsequent switches between same plugins are instant / 이후 같은 플러그인 간 전환은 즉시
-- UI remains responsive during async loading / 비동기 로딩 중 UI 응답 유지
+## Settings 탭 / Settings Tab
 
-**No monitor output? / 모니터 출력이 안 되나요?**
-- Check the monitor device is selected in Output tab / Output 탭에서 모니터 장치가 선택되어 있는지 확인
-- Ensure "Enable" is toggled on / "Enable"이 켜져 있는지 확인
-- The monitor uses a separate WASAPI device — it works even when main driver is ASIO / 모니터는 별도 WASAPI 장치를 사용 — ASIO 모드에서도 동작
+우측 패널의 4번째 탭. / The 4th tab in the right panel.
 
-**Something went wrong but no error popup? / 오류가 발생했는데 팝업이 없나요?**
-- Check the status bar at the bottom — error notifications appear there briefly (red/orange/purple) / 하단 상태 바 확인 — 오류 알림이 잠시 표시됨 (빨강/주황/보라)
-- Open the **Settings** tab for a full history of all application events / **Settings** 탭에서 모든 앱 이벤트의 전체 기록 확인
-- Use **Export Log** to save logs for troubleshooting / **Export Log**로 문제 해결용 로그 저장
+### 앱 설정 / Application
 
-**Want to send audio to OBS/Discord? / OBS/Discord로 보내고 싶나요?**
-- Install a virtual audio cable driver (e.g., VB-Audio Hi-Fi Cable) / 가상 오디오 케이블 드라이버 설치
-- Select it as the Output device in the Audio tab / Audio 탭에서 Output 장치로 선택
-- Set your headphones as the monitor device in the Output tab / Output 탭에서 헤드폰을 모니터 장치로 설정
+- **Start with Windows** — Windows 시작 시 트레이에서 자동 실행
+
+### 설정 저장/불러오기 / Settings Export/Import
+
+전체 설정(오디오, VST 체인, 볼륨, 프리셋, 제어 매핑)을 `.dpbackup` 파일로 내보내기/가져오기. PC를 옮기거나 설정을 백업할 때 유용합니다.
+
+Export/import full settings as `.dpbackup` files. Useful for backups or migrating to a new PC.
+
+- **Save Settings** → `.dpbackup` 파일로 저장
+- **Load Settings** → `.dpbackup` 파일에서 복원
+
+### 로그 뷰어 / Log Viewer
+
+앱의 모든 이벤트(오디오 엔진, 플러그인, WebSocket, HTTP 등)를 실시간으로 확인합니다.
+
+- 타임스탬프 + 고정폭 폰트
+- **Export Log** — `.txt` 파일로 저장 (문제 신고 시 유용)
+- **Clear Log** — 로그 화면 지우기
+
+### 유지보수 / Maintenance
+
+모든 작업은 확인 대화상자가 먼저 표시됩니다. / All actions show a confirmation dialog.
+
+| 기능 / Function | 설명 / Description |
+|---|---|
+| **Clear Plugin Cache** | 스캔된 플러그인 목록 삭제 (다음 Scan 시 재스캔) |
+| **Clear All Presets** | 퀵 슬롯 A~E 및 저장된 프리셋 전체 삭제 |
+| **Reset Settings** | 공장 초기화 (오디오 설정, 단축키, MIDI 매핑 삭제) |
+
+---
+
+## 인앱 업데이트 / In-App Update
+
+DirectPipe는 실행 시 자동으로 GitHub에서 최신 버전을 확인합니다. / Checks for updates on startup.
+
+1. **새 버전 발견** → 하단 credit 라벨에 **"NEW vX.Y.Z"** 주황색 표시
+2. **라벨 클릭** → 업데이트 다이얼로그:
+   - **Update Now** — GitHub에서 자동 다운로드 → exe 교체 → 앱 재시작
+   - **View on GitHub** — 브라우저에서 릴리즈 페이지 열기
+   - **Later** — 닫기 (다음 실행 시 다시 알림)
+3. **업데이트 완료** → 재시작 후 **"Updated to vX.Y.Z successfully!"** 알림 (보라색)
+
+> **인터넷 미연결 시**: 오류 없이 기존 버전이 정상 동작합니다.
+>
+> **Offline**: No error, app works normally with current version.
+
+---
+
+## 오류 알림 / Error Notifications
+
+상태 바에 비침습적 알림이 자동으로 표시됩니다. / Non-intrusive notifications in the status bar.
+
+| 색상 / Color | 의미 / Meaning | 예시 / Example |
+|---|---|---|
+| 🔴 **빨간색** | 오류 | 오디오 장치 실패, 플러그인 로드 실패 |
+| 🟠 **주황색** | 경고 | 장치 변경, 설정 문제 |
+| 🟣 **보라색** | 정보 | 업데이트 완료, 설정 저장 |
+
+심각도에 따라 3~8초 후 자동 사라짐. / Auto-fades after 3-8 seconds.
+
+---
+
+## 문제 해결 / Troubleshooting
+
+### 소리가 안 나와요 / No audio
+
+1. **Audio 탭** → Input 장치가 올바른지 확인
+2. 왼쪽 **INPUT 미터** 확인 — 움직이면 마이크 입력은 정상
+3. 미터가 안 움직이면:
+   - Windows 설정 → 개인 정보 → 마이크 접근 허용 확인
+   - 다른 앱의 독점 모드 해제
+4. **OUT** 버튼이 초록색인지 확인 (빨간색 = 뮤트)
+5. **PANIC MUTE** 활성화 여부 확인
+
+### 소리가 끊기거나 지연이 커요 / Crackling or high latency
+
+1. Audio 탭 → **Buffer Size** 올리기 (256 → 512)
+2. CPU를 많이 쓰는 플러그인 Bypass 처리
+3. WASAPI 대신 **ASIO** 드라이버 사용
+4. 하단 상태 바 **CPU %** 확인 — 60% 이상이면 과부하
+
+### 모니터 출력이 안 돼요 / No monitor output
+
+1. Output 탭에서 모니터 **장치 선택** 확인
+2. **Enable** 토글이 켜져 있는지 확인
+3. **MON** 버튼이 초록색인지 확인
+4. 모니터는 별도 WASAPI 장치 — ASIO 모드에서도 동작
+
+### 플러그인 스캔이 오래 걸려요 / Plugin scan takes long
+
+- 별도 프로세스에서 실행되므로 DirectPipe는 멈추지 않음
+- 일부 플러그인은 최대 5분까지 걸릴 수 있음
+- 크래시 유발 플러그인은 자동 블랙리스트
+- 로그: `%AppData%/DirectPipe/scanner-log.txt`
+
+### Receiver VST2에서 끊김 / Receiver audio crackling
+
+1. Receiver VST GUI에서 **Buffer** 한 단계 올리기
+2. DirectPipe와 OBS **샘플레이트 동일하게** 맞추기 (48000Hz 권장)
+3. CPU 사용량 확인
+
+### 오류가 발생했는데 팝업이 없어요 / No error popup
+
+- 하단 **상태 바** 확인 — 알림이 잠시 표시됨 (빨강/주황/보라)
+- **Settings 탭** → 로그 뷰어에서 전체 이벤트 기록 확인
+- **Export Log**로 로그 저장 후 문제 신고
+
+---
+
+## 설정 파일 위치 / Config File Locations
+
+| 파일 / File | 경로 / Path |
+|---|---|
+| 기본 설정 | `%AppData%/DirectPipe/settings.json` |
+| 프리셋 슬롯 | `%AppData%/DirectPipe/presets/` |
+| 플러그인 캐시 | `%AppData%/DirectPipe/plugin-list.xml` |
+| 스캐너 로그 | `%AppData%/DirectPipe/scanner-log.txt` |
+| 녹음 폴더 | `Documents/DirectPipe Recordings/` |
+| 포터블 모드 | `./config/` (exe 옆 `portable.flag` 필요) |
+
+---
+
+## 관련 문서 / Related Documentation
+
+- [Architecture](ARCHITECTURE.md) — 시스템 설계 / System design
+- [Build Guide](BUILDING.md) — 소스 빌드 방법 / Build from source
+- [Control API](CONTROL_API.md) — WebSocket / HTTP API 레퍼런스
+- [Stream Deck Guide](STREAMDECK_GUIDE.md) — Stream Deck 플러그인 상세
