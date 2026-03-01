@@ -201,7 +201,13 @@ public:
 
     const juce::String getApplicationName() override    { return JUCE_APPLICATION_NAME_STRING; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
-    bool moreThanOneInstanceAllowed() override           { return false; }
+    bool moreThanOneInstanceAllowed() override
+    {
+        // Allow scanner child processes to run alongside the main instance
+        auto args = juce::StringArray::fromTokens(
+            juce::JUCEApplication::getCommandLineParameters(), true);
+        return args.contains("--scan");
+    }
 
     void initialise(const juce::String& commandLine) override
     {
