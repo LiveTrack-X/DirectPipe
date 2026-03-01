@@ -29,6 +29,8 @@ streamdeck-plugin/bin/
 
 # Temporary screenshots
 dist/스크린샷*
+screenshot*.png
+take_screenshot.ps1
 
 # Release binaries and packages (use GitHub Releases instead)
 dist/*.zip
