@@ -25,12 +25,14 @@
 #include <JuceHeader.h>
 #include <atomic>
 #include <functional>
+#include <mutex>
 
 namespace directpipe {
 
 /**
- * @brief Lock-free logger sink that captures juce::Logger output
+ * @brief Thread-safe logger sink that captures juce::Logger output
  *        from any thread into a ring buffer drained on the message thread.
+ *        Uses a mutex for multi-producer safety (logMessage called from many threads).
  */
 class DirectPipeLogger : public juce::Logger {
 public:
@@ -50,6 +52,7 @@ private:
     juce::String pendingBuf_[kMaxPending];
     std::atomic<uint32_t> writeIdx_{0};
     std::atomic<uint32_t> readIdx_{0};
+    std::mutex writeMutex_;  ///< Protects multi-producer writes (MPSC safety)
     juce::Logger* previousLogger_ = nullptr;
 };
 

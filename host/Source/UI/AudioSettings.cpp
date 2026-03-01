@@ -335,8 +335,11 @@ void AudioSettings::onInputDeviceChanged()
         setup.outputChannels.setRange(0, 2, true);
 
         auto result = engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
-        if (result.isNotEmpty())
+        if (result.isNotEmpty()) {
             juce::Logger::writeToLog("ASIO input device change failed: " + result);
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                "Device Error", result);
+        }
 
         // Sync output combo to match (ASIO single device)
         auto outputs = engine_.getAvailableOutputDevices();
@@ -385,8 +388,11 @@ void AudioSettings::onOutputDeviceChanged()
         setup.outputChannels.setRange(0, 2, true);
 
         auto result = engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
-        if (result.isNotEmpty())
+        if (result.isNotEmpty()) {
             juce::Logger::writeToLog("ASIO output device change failed: " + result);
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                "Device Error", result);
+        }
 
         // Sync input combo to match (ASIO single device)
         auto inputs = engine_.getAvailableInputDevices();
@@ -401,8 +407,11 @@ void AudioSettings::onOutputDeviceChanged()
         engine_.getDeviceManager().getAudioDeviceSetup(setup);
         setup.outputDeviceName = selectedText;
         auto result = engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
-        if (result.isNotEmpty())
+        if (result.isNotEmpty()) {
             juce::Logger::writeToLog("Output device change failed: " + result);
+            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                "Device Error", result);
+        }
     }
 
     rebuildSampleRateList();

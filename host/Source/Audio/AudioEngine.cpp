@@ -160,6 +160,11 @@ bool AudioEngine::setMonitorDevice(const juce::String& deviceName)
     return monitorOutput_.setDevice(deviceName);
 }
 
+bool AudioEngine::setMonitorBufferSize(int bufferSize)
+{
+    return monitorOutput_.setBufferSize(bufferSize);
+}
+
 void AudioEngine::setBufferSize(int bufferSize)
 {
     currentBufferSize_ = bufferSize;
@@ -530,6 +535,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // Measure output level (based on processed buffer, regardless of main output device)
     if (buffer.getNumChannels() > 0) {
         float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
+        if (buffer.getNumChannels() > 1)
+            rms = juce::jmax(rms, calculateRMS(buffer.getReadPointer(1), numSamples));
         outputLevel_.store(rms, std::memory_order_relaxed);
     }
 
@@ -556,6 +563,13 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     latencyMonitor_.reset(currentSampleRate_, currentBufferSize_);
+
+    // Re-initialize monitor output if configured (SR may have changed)
+    // Use monitor's own preferred buffer size (independent of main device)
+    if (monitorOutput_.getStatus() != VirtualCableStatus::NotConfigured) {
+        monitorOutput_.initialize(monitorOutput_.getDeviceName(), currentSampleRate_,
+                                  monitorOutput_.getPreferredBufferSize());
+    }
 
     // Re-initialize IPC if enabled (SR/channel may have changed)
     if (ipcEnabled_.load(std::memory_order_relaxed)) {
@@ -601,7 +615,7 @@ bool AudioEngine::popNotification(PendingNotification& out)
     uint32_t w = notifWriteIdx_.load(std::memory_order_acquire);
     if (r == w) return false;
     out = notifQueue_[r % static_cast<uint32_t>(kNotifQueueSize)];
-    notifReadIdx_.store(r + 1, std::memory_order_relaxed);
+    notifReadIdx_.store(r + 1, std::memory_order_release);
     return true;
 }
 

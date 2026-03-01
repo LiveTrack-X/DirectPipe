@@ -193,7 +193,10 @@ void WebSocketServer::sendFrame(juce::StreamingSocket* client, const std::string
     }
 
     frame.insert(frame.end(), payload.begin(), payload.end());
-    client->write(reinterpret_cast<const char*>(frame.data()), static_cast<int>(frame.size()));
+    int result = client->write(reinterpret_cast<const char*>(frame.data()), static_cast<int>(frame.size()));
+    if (result == -1) {
+        juce::Logger::writeToLog("WebSocket: sendFrame write error");
+    }
 }
 
 // ─── WebSocket Frame Decoding ────────────────────────────────────────
@@ -343,6 +346,14 @@ void WebSocketServer::serverThread()
             if (serverSocket_->isConnected()) {
                 auto accepted = serverSocket_->waitForNextConnection();
                 if (accepted) {
+                    // Reject if too many clients are connected
+                    if (clientCount_.load(std::memory_order_relaxed) >= 16) {
+                        juce::Logger::writeToLog("WebSocket: Max clients (16) reached, rejecting connection");
+                        accepted->close();
+                        delete accepted;
+                        continue;
+                    }
+
                     auto conn = std::make_unique<ClientConnection>();
                     conn->socket = std::unique_ptr<juce::StreamingSocket>(accepted);
                     auto* socketPtr = conn->socket.get();

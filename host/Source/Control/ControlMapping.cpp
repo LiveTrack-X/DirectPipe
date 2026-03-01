@@ -263,7 +263,9 @@ ActionEvent ControlMappingStore::varToActionEvent(const juce::var& v)
 {
     ActionEvent event;
     if (auto* obj = v.getDynamicObject()) {
-        event.action = static_cast<Action>(static_cast<int>(obj->getProperty("action")));
+        int actionVal = static_cast<int>(obj->getProperty("action"));
+        if (actionVal >= 0 && actionVal <= static_cast<int>(Action::IpcToggle))
+            event.action = static_cast<Action>(actionVal);
         event.intParam = obj->getProperty("intParam");
         event.floatParam = static_cast<float>(static_cast<double>(obj->getProperty("floatParam")));
         event.stringParam = obj->getProperty("stringParam").toString().toStdString();

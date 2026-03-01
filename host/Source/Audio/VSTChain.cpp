@@ -117,6 +117,11 @@ void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
     // Safety: clamp numSamples to buffer capacity
     if (numSamples > buffer.getNumSamples()) return;
 
+    // Set logical buffer size so plugins only process actual samples
+    // (prevents stateful plugins from processing extra zero-padded samples)
+    if (numSamples < buffer.getNumSamples())
+        buffer.setSize(buffer.getNumChannels(), numSamples, true, false, true);
+
     graph_->processBlock(buffer, emptyMidi_);
 
     // Clear immediately after processing to prevent MIDI output accumulation
@@ -313,23 +318,24 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
 
 void VSTChain::setPluginBypassed(int index, bool bypassed)
 {
-    const juce::ScopedLock sl(chainLock_);
+    {
+        const juce::ScopedLock sl(chainLock_);
 
-    if (index < 0 || index >= static_cast<int>(chain_.size()))
-        return;
+        if (index < 0 || index >= static_cast<int>(chain_.size()))
+            return;
 
-    // Skip if no change (avoids unnecessary saves and callbacks)
-    if (chain_[static_cast<size_t>(index)].bypassed == bypassed)
-        return;
+        // Skip if no change (avoids unnecessary saves and callbacks)
+        if (chain_[static_cast<size_t>(index)].bypassed == bypassed)
+            return;
 
-    chain_[static_cast<size_t>(index)].bypassed = bypassed;
+        chain_[static_cast<size_t>(index)].bypassed = bypassed;
 
-    if (auto* node = graph_->getNodeForId(chain_[static_cast<size_t>(index)].nodeId)) {
-        node->setBypassed(bypassed);
+        if (auto* node = graph_->getNodeForId(chain_[static_cast<size_t>(index)].nodeId)) {
+            node->setBypassed(bypassed);
+        }
     }
 
-    // Notify outside of lock — but we must unlock first
-    // Since JUCE CriticalSection is re-entrant, we keep it simple here.
+    // Notify outside of lock scope (deadlock prevention, consistent with removePlugin/movePlugin)
     if (onChainChanged) onChainChanged();
 }
 
@@ -395,38 +401,59 @@ float VSTChain::getPluginParameter(int pluginIndex, int paramIndex) const
 
 void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 {
-    const juce::ScopedLock sl(chainLock_);
-    if (index < 0 || index >= static_cast<int>(chain_.size()))
-        return;
+    juce::AudioPluginInstance* pluginInstance = nullptr;
+    juce::String pluginName;
 
-    // Ensure the editor windows vector is large enough
-    if (static_cast<size_t>(index) >= editorWindows_.size())
-        editorWindows_.resize(static_cast<size_t>(index) + 1);
+    // First lock scope: validate index, check existing window, extract plugin data
+    {
+        const juce::ScopedLock sl(chainLock_);
+        if (index < 0 || index >= static_cast<int>(chain_.size()))
+            return;
 
-    // If window already exists, just show it
-    if (editorWindows_[static_cast<size_t>(index)]) {
-        editorWindows_[static_cast<size_t>(index)]->setVisible(true);
-        editorWindows_[static_cast<size_t>(index)]->toFront(true);
-        return;
+        // Ensure the editor windows vector is large enough
+        if (static_cast<size_t>(index) >= editorWindows_.size())
+            editorWindows_.resize(static_cast<size_t>(index) + 1);
+
+        // If window already exists, just show it
+        if (editorWindows_[static_cast<size_t>(index)]) {
+            editorWindows_[static_cast<size_t>(index)]->setVisible(true);
+            editorWindows_[static_cast<size_t>(index)]->toFront(true);
+            return;
+        }
+
+        auto& slot = chain_[static_cast<size_t>(index)];
+        if (!slot.instance) return;
+
+        pluginInstance = slot.instance;
+        pluginName = slot.name;
     }
+    // Lock released — safe to create GUI without risk of deadlock from plugin callbacks
 
-    auto& slot = chain_[static_cast<size_t>(index)];
-    if (!slot.instance) return;
-
-    auto* editor = slot.instance->createEditorIfNeeded();
+    auto* editor = pluginInstance->createEditorIfNeeded();
     if (!editor) return;
 
-    auto window = std::make_unique<PluginEditorWindow>(slot.name);
+    auto window = std::make_unique<PluginEditorWindow>(pluginName);
     window->setContentOwned(editor, true);
     window->setResizable(false, false);
     window->centreWithSize(editor->getWidth(), editor->getHeight());
     window->setVisible(true);
     window->setAlwaysOnTop(true);
-    window->onClosed = [this] {
+    auto aliveFlag = alive_;
+    window->onClosed = [this, aliveFlag] {
+        if (!aliveFlag->load()) return;
         if (onEditorClosed) onEditorClosed();
     };
 
-    editorWindows_[static_cast<size_t>(index)] = std::move(window);
+    // Second lock scope: store the window in editorWindows_
+    {
+        const juce::ScopedLock sl(chainLock_);
+        // Re-validate index (chain may have been modified while lock was released)
+        if (index >= 0 && index < static_cast<int>(chain_.size())) {
+            if (static_cast<size_t>(index) >= editorWindows_.size())
+                editorWindows_.resize(static_cast<size_t>(index) + 1);
+            editorWindows_[static_cast<size_t>(index)] = std::move(window);
+        }
+    }
 }
 
 void VSTChain::closePluginEditor(int index)
@@ -510,6 +537,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
     }
 
     asyncLoading_.store(true);
+    uint32_t generation = asyncGeneration_.fetch_add(1) + 1;
 
     // Capture values needed by background thread
     double sr = currentSampleRate_;
@@ -530,7 +558,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
     loadThread_ = std::make_unique<std::thread>(
         [this, requests = std::move(requests), onComplete = std::move(onComplete),
-         sr, bs, result, aliveFlag]()
+         sr, bs, result, aliveFlag, generation]()
     {
         for (auto& req : requests) {
             juce::String error;
@@ -545,9 +573,11 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
         // Post to message thread to wire into graph
         juce::MessageManager::callAsync(
-            [this, result, onComplete, aliveFlag]()
+            [this, result, onComplete, aliveFlag, generation]()
         {
             if (!aliveFlag->load()) return;
+            // Stale callAsync from a superseded replaceChainAsync — discard
+            if (asyncGeneration_.load() != generation) return;
             const juce::ScopedLock sl(chainLock_);
 
             for (auto& entry : result->entries) {

@@ -55,7 +55,10 @@ void MidiHandler::shutdown()
         input->stop();
     }
     openInputs_.clear();
-    midiOutput_.reset();
+    {
+        std::lock_guard<std::mutex> lock(bindingsMutex_);
+        midiOutput_.reset();
+    }
 }
 
 juce::StringArray MidiHandler::getAvailableDevices() const
@@ -108,14 +111,20 @@ void MidiHandler::removeBinding(int index)
 void MidiHandler::startLearn(
     std::function<void(int, int, int, const juce::String&)> callback)
 {
-    learning_ = true;
-    learnCallback_ = std::move(callback);
+    {
+        std::lock_guard<std::mutex> lock(bindingsMutex_);
+        learnCallback_ = std::move(callback);
+    }
+    learning_.store(true, std::memory_order_release);
 }
 
 void MidiHandler::stopLearn()
 {
-    learning_ = false;
-    learnCallback_ = nullptr;
+    learning_.store(false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock(bindingsMutex_);
+        learnCallback_ = nullptr;
+    }
 }
 
 void MidiHandler::handleIncomingMidiMessage(
@@ -128,13 +137,18 @@ void MidiHandler::handleIncomingMidiMessage(
         int channel = message.getChannel();
         int value = message.getControllerValue();
 
-        if (learning_) {
-            learning_ = false;
-            if (learnCallback_) {
-                learnCallback_(cc, -1, channel, deviceName);
-                learnCallback_ = nullptr;
+        {
+            bool expected = true;
+            if (learning_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
+                std::function<void(int, int, int, const juce::String&)> cb;
+                {
+                    std::lock_guard<std::mutex> lock(bindingsMutex_);
+                    cb = std::move(learnCallback_);
+                    learnCallback_ = nullptr;
+                }
+                if (cb) cb(cc, -1, channel, deviceName);
+                return;
             }
-            return;
         }
 
         processCC(cc, channel, value, deviceName);
@@ -144,13 +158,18 @@ void MidiHandler::handleIncomingMidiMessage(
         int channel = message.getChannel();
         bool noteOn = message.isNoteOn();
 
-        if (learning_ && noteOn) {
-            learning_ = false;
-            if (learnCallback_) {
-                learnCallback_(-1, note, channel, deviceName);
-                learnCallback_ = nullptr;
+        if (noteOn) {
+            bool expected = true;
+            if (learning_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
+                std::function<void(int, int, int, const juce::String&)> cb;
+                {
+                    std::lock_guard<std::mutex> lock(bindingsMutex_);
+                    cb = std::move(learnCallback_);
+                    learnCallback_ = nullptr;
+                }
+                if (cb) cb(-1, note, channel, deviceName);
+                return;
             }
-            return;
         }
 
         processNote(note, channel, noteOn, deviceName);
@@ -260,6 +279,7 @@ std::vector<MidiMapping> MidiHandler::exportMappings() const
 
 void MidiHandler::sendFeedback(int cc, int channel, int value)
 {
+    std::lock_guard<std::mutex> lock(bindingsMutex_);
     if (midiOutput_) {
         midiOutput_->sendMessageNow(
             juce::MidiMessage::controllerEvent(channel, cc, value));

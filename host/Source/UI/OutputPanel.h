@@ -65,7 +65,9 @@ private:
 
     void onMonitorDeviceSelected();
     void onMonitorVolumeChanged();
+    void onMonitorBufferSizeChanged();
     void onMonitorEnableToggled();
+    void refreshBufferSizeCombo();
 
     /** Save recording folder to config file. */
     void saveRecordingConfig();
@@ -81,6 +83,8 @@ private:
     juce::ComboBox monitorDeviceCombo_;
     juce::Slider monitorVolumeSlider_;
     juce::Label monitorVolumeLabel_{"", "Volume:"};
+    juce::Label monitorBufferLabel_{"", "Buffer:"};
+    juce::ComboBox monitorBufferCombo_;
     juce::ToggleButton monitorEnableButton_{"Enable"};
     juce::Label monitorStatusLabel_;
 

@@ -52,6 +52,9 @@ void DirectPipeLogger::logMessage(const juce::String& message)
     auto ts = now.toString(false, true, true, true);  // HH:MM:SS.mmm
     auto line = "[" + ts + "] " + message;
 
+    // Mutex protects multi-producer writes (called from WebSocket, HTTP, audio, MIDI threads)
+    std::lock_guard<std::mutex> lock(writeMutex_);
+
     uint32_t w = writeIdx_.load(std::memory_order_relaxed);
     uint32_t r = readIdx_.load(std::memory_order_acquire);
 
@@ -75,7 +78,7 @@ int DirectPipeLogger::drain(juce::StringArray& out)
         ++count;
     }
 
-    readIdx_.store(r, std::memory_order_relaxed);
+    readIdx_.store(r, std::memory_order_release);
     return count;
 }
 
@@ -249,9 +252,20 @@ void LogPanel::appendLine(const juce::String& line)
         int excess = logLines_.size() - kMaxLogLines;
         logLines_.removeRange(0, excess);
 
-        // Rebuild TextEditor from capped logLines_
-        logView_.clear();
-        logView_.setText(logLines_.joinIntoString("\n") + "\n", false);
+        // Remove from the TextEditor front instead of full rebuild
+        auto fullText = logView_.getText();
+        int removeUpTo = 0;
+        for (int i = 0; i < excess; ++i) {
+            int nl = fullText.indexOf(removeUpTo, "\n");
+            if (nl >= 0) removeUpTo = nl + 1;
+            else break;
+        }
+        if (removeUpTo > 0) {
+            logView_.setHighlightedRegion({0, removeUpTo});
+            logView_.insertTextAtCaret("");
+        }
+        logView_.moveCaretToEnd();
+        logView_.insertTextAtCaret(line + "\n");
     } else {
         logView_.moveCaretToEnd();
         logView_.insertTextAtCaret(line + "\n");
@@ -267,13 +281,15 @@ void LogPanel::onExportLog()
     fileChooser_ = std::make_shared<juce::FileChooser>(
         "Export Log", defaultFile, "*.txt");
 
+    auto safeThis = juce::Component::SafePointer<LogPanel>(this);
     fileChooser_->launchAsync(
         juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-        [this](const juce::FileChooser& fc) {
+        [safeThis](const juce::FileChooser& fc) {
+            if (!safeThis) return;
             auto file = fc.getResult();
             if (file == juce::File())
                 return;
-            file.replaceWithText(logLines_.joinIntoString("\n") + "\n");
+            file.replaceWithText(safeThis->logLines_.joinIntoString("\n") + "\n");
             juce::Logger::writeToLog("Log exported to " + file.getFullPathName());
         });
 }
@@ -342,7 +358,7 @@ void LogPanel::onResetSettingsClicked()
         "Reset Settings",
         "This will delete all audio settings, hotkeys,\n"
         "MIDI mappings, and server config.\n\n"
-        "DirectPipe will restart with factory defaults.\n\nContinue?",
+        "DirectPipe will reload with factory defaults.\n\nContinue?",
         "OK", "Cancel", nullptr, nullptr);
 
     if (!ok) return;

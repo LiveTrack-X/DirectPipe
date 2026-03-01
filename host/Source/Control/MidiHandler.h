@@ -132,7 +132,7 @@ public:
     /**
      * @brief Check if currently in Learn mode.
      */
-    bool isLearning() const { return learning_; }
+    bool isLearning() const { return learning_.load(std::memory_order_acquire); }
 
     /**
      * @brief Load bindings from mapping config.
@@ -169,8 +169,8 @@ private:
     std::vector<std::unique_ptr<juce::MidiInput>> openInputs_;
     std::unique_ptr<juce::MidiOutput> midiOutput_;  // For LED feedback
 
-    bool learning_ = false;
-    std::function<void(int, int, int, const juce::String&)> learnCallback_;
+    std::atomic<bool> learning_{false};
+    std::function<void(int, int, int, const juce::String&)> learnCallback_;  // guarded by bindingsMutex_
 };
 
 } // namespace directpipe

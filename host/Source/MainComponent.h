@@ -104,7 +104,7 @@ private:
 
     // Layout constants
     static constexpr int kDefaultWidth  = 800;
-    static constexpr int kDefaultHeight = 700;
+    static constexpr int kDefaultHeight = 800;
     static constexpr int kStatusBarHeight = 30;
     static constexpr int kSlotBtnGap = 4;
     static constexpr int kMeterWidth = 40;
@@ -154,7 +154,14 @@ private:
 
     // Update check — show "NEW" on credit label if newer release exists
     void checkForUpdate();
+    void showUpdateDialog();
+    void performUpdate();
     std::thread updateCheckThread_;
+    juce::String latestVersion_;       // e.g. "3.8.0"
+    juce::String latestDownloadUrl_;   // GitHub release asset URL
+    bool updateAvailable_ = false;
+    double downloadProgress_ = -1.0;  // -1 = indeterminate spinner
+    std::thread downloadThread_;      // Background download thread (joined in destructor)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

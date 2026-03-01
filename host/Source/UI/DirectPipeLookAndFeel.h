@@ -62,7 +62,15 @@ public:
                               bool shouldDrawButtonAsHighlighted,
                               bool shouldDrawButtonAsDown) override;
 
+    // Font overrides for CJK (Korean/Japanese/Chinese) character support
+    juce::Typeface::Ptr getTypefaceForFont(const juce::Font& font) override;
+    juce::Font getComboBoxFont(juce::ComboBox& box) override;
+    juce::Font getPopupMenuFont() override;
+
 private:
+    juce::String cjkFontName_;              ///< Detected CJK-capable font name
+    juce::Typeface::Ptr cjkTypeface_;       ///< Cached CJK-capable typeface
+    juce::Typeface::Ptr cjkBoldTypeface_;   ///< Cached CJK-capable bold typeface
     // Color scheme
     juce::Colour bgColor_{0xFF1E1E2E};
     juce::Colour surfaceColor_{0xFF2A2A40};

@@ -78,7 +78,7 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
                     scaledBuffer_.applyGain(ch, 0, numSamples, vol);
                 }
                 for (int ch = numChannels; ch < 2; ++ch)
-                    scaledBuffer_.clear(ch, 0, numSamples);
+                    scaledBuffer_.copyFrom(ch, 0, scaledBuffer_, 0, 0, numSamples);
 
                 const float* channels[2] = {
                     scaledBuffer_.getReadPointer(0),

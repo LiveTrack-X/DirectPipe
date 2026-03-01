@@ -85,7 +85,7 @@ void DirectPipeReceiverEditor::paint(juce::Graphics& g)
     // Version
     g.setColour(juce::Colour(0xFF555577));
     g.setFont(juce::Font(10.0f));
-    g.drawText("v3.7.0", bounds.getX(), bounds.getBottom() - 14, bounds.getWidth(), 14,
+    g.drawText("v3.8.0", bounds.getX(), bounds.getBottom() - 14, bounds.getWidth(), 14,
                juce::Justification::centredRight);
 }
 

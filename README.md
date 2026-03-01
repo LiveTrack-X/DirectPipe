@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.7.0-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.8.0-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -134,6 +134,8 @@ External Control:
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원. 패닉 중 OUT/MON/VST 및 외부 제어 잠금 — Instant mute all, locks controls until unmuted
 - **상태 바** — 레이턴시, CPU %, 오디오 포맷, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU, format, portable mode, version. Auto-fade notifications
+- **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 자동 교체 → 재시작 — In-app auto-updater with one-click update from GitHub releases
+- **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Malgun Gothic Bold로 가독성 확보 — Korean/Chinese/Japanese device names rendered correctly with CJK font support
 - **다크 테마** — Custom JUCE LookAndFeel
 - **포터블 모드** — exe 옆에 `portable.flag` 파일 배치 시 설정을 `./config/`에 저장 — Place `portable.flag` next to exe to store config in `./config/`
 
@@ -741,6 +743,34 @@ Open the Receiver VST plugin interface and select a buffer size from the **Buffe
 5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
 
 When enabled, the VST button turns **green**; when disabled, it's **red**.
+</details>
+
+<details>
+<summary><b>업데이트는 어떻게 하나요? / How to update DirectPipe?</b></summary>
+
+DirectPipe v3.8.0부터 **인앱 자동 업데이트**를 지원합니다.
+
+1. 새 버전이 있으면 하단 credit 라벨에 **"NEW vX.Y.Z"** 가 주황색으로 표시됩니다
+2. 해당 라벨을 **클릭**하면 업데이트 다이얼로그가 뜹니다:
+   - **Update Now** — GitHub에서 자동 다운로드 → exe 교체 → 재시작
+   - **View on GitHub** — 릴리즈 페이지를 브라우저에서 열기
+   - **Later** — 닫기 (다음 실행 시 다시 알림)
+3. 업데이트 완료 후 앱이 자동 재시작되며, **"Updated to vX.Y.Z successfully!"** 알림이 표시됩니다
+
+인터넷이 연결되지 않은 경우에도 기존 버전은 정상적으로 동작합니다.
+
+---
+
+DirectPipe v3.8.0+ supports **in-app auto-update**.
+
+1. When a newer version is available, the bottom credit label shows **"NEW vX.Y.Z"** in orange
+2. **Click** the label to open the update dialog:
+   - **Update Now** — Auto-download from GitHub → replace exe → restart
+   - **View on GitHub** — Open the release page in your browser
+   - **Later** — Dismiss (reminder appears on next launch)
+3. After the update, the app auto-restarts and shows **"Updated to vX.Y.Z successfully!"**
+
+If you're offline, the current version continues to work normally.
 </details>
 
 ## 후원 / Support

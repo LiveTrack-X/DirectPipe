@@ -217,14 +217,16 @@ void PluginScannerComponent::addCustomDirectory()
     auto chooser = std::make_shared<juce::FileChooser>(
         "Select VST Plugin Directory", juce::File(), "", true);
 
+    auto safeThis = juce::Component::SafePointer<PluginScannerComponent>(this);
     chooser->launchAsync(juce::FileBrowserComponent::openMode |
                          juce::FileBrowserComponent::canSelectDirectories,
-                         [this, chooser](const juce::FileChooser& fc) {
+                         [safeThis, chooser](const juce::FileChooser& fc) {
+        if (!safeThis) return;
         auto result = fc.getResult();
         if (result.isDirectory()) {
-            if (!scanDirectories_.contains(result.getFullPathName())) {
-                scanDirectories_.add(result.getFullPathName());
-                directoryListBox_.updateContent();
+            if (!safeThis->scanDirectories_.contains(result.getFullPathName())) {
+                safeThis->scanDirectories_.add(result.getFullPathName());
+                safeThis->directoryListBox_.updateContent();
             }
         }
     });

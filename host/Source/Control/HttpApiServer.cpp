@@ -66,6 +66,7 @@ bool HttpApiServer::start(int port)
 void HttpApiServer::stop()
 {
     running_.store(false, std::memory_order_release);
+    alive_->store(false);
 
     if (serverSocket_) {
         serverSocket_->close();
@@ -74,6 +75,9 @@ void HttpApiServer::stop()
     if (serverThread_.joinable()) {
         serverThread_.join();
     }
+
+    // Give in-flight detached handler threads time to check alive_ flag and exit
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     juce::Logger::writeToLog("HTTP API server stopped");
 }
@@ -84,8 +88,14 @@ void HttpApiServer::serverThread()
         if (serverSocket_->waitUntilReady(true, 500) > 0) {
             auto* client = serverSocket_->waitForNextConnection();
             if (client) {
-                auto clientPtr = std::unique_ptr<juce::StreamingSocket>(client);
-                handleClient(std::move(clientPtr));
+                // Handle each client on a detached thread to prevent
+                // slow/malicious clients from blocking the accept loop
+                auto aliveFlag = alive_;
+                std::thread([this, client, aliveFlag]() {
+                    auto clientPtr = std::unique_ptr<juce::StreamingSocket>(client);
+                    if (!aliveFlag->load()) return;
+                    handleClient(std::move(clientPtr));
+                }).detach();
             }
         }
     }
@@ -93,6 +103,7 @@ void HttpApiServer::serverThread()
 
 void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
 {
+    if (!alive_->load()) return;
     if (!client || !client->isConnected()) return;
 
     // Timeout: wait up to 3 seconds for data to prevent blocking the accept loop
@@ -123,11 +134,16 @@ void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
     client->close();
 }
 
-std::pair<int, std::string> HttpApiServer::processRequest(const std::string& method, const std::string& path)
+std::pair<int, std::string> HttpApiServer::processRequest(const std::string& method, std::string path)
 {
     if (method != "GET") {
         return {405, R"({"error": "Method not allowed"})"};
     }
+
+    // Strip query string before parsing path segments
+    auto queryPos = path.find('?');
+    if (queryPos != std::string::npos)
+        path = path.substr(0, queryPos);
 
     // Parse path segments
     std::vector<std::string> segments;
@@ -166,6 +182,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
             dispatcher_.masterBypass();
             return {200, R"({"ok": true, "action": "master_bypass"})"};
         }
+        if (segments[2].find_first_not_of("0123456789") != std::string::npos)
+            return {400, R"({"error": "Invalid index"})"};
         int index = std::atoi(segments[2].c_str());
         dispatcher_.pluginBypass(index);
         return {200, R"({"ok": true, "action": "plugin_bypass", "index": )" +
@@ -197,6 +215,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     // GET /api/preset/:index
     if (action == "preset" && segments.size() >= 3) {
+        if (segments[2].find_first_not_of("0123456789") != std::string::npos)
+            return {400, R"({"error": "Invalid index"})"};
         int index = std::atoi(segments[2].c_str());
         dispatcher_.loadPreset(index);
         return {200, R"({"ok": true, "action": "load_preset", "index": )" +
@@ -213,6 +233,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     // GET /api/slot/:index
     if (action == "slot" && segments.size() >= 3) {
+        if (segments[2].find_first_not_of("0123456789") != std::string::npos)
+            return {400, R"({"error": "Invalid index"})"};
         int index = std::atoi(segments[2].c_str());
         ActionEvent event;
         event.action = Action::SwitchPresetSlot;
@@ -238,6 +260,9 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     // GET /api/plugin/:pluginIndex/param/:paramIndex/:value
     if (action == "plugin" && segments.size() >= 6 && segments[3] == "param") {
+        if (segments[2].find_first_not_of("0123456789") != std::string::npos ||
+            segments[4].find_first_not_of("0123456789") != std::string::npos)
+            return {400, R"({"error": "Invalid index"})"};
         int pluginIndex = std::atoi(segments[2].c_str());
         int paramIndex = std::atoi(segments[4].c_str());
         float value = static_cast<float>(std::atof(segments[5].c_str()));

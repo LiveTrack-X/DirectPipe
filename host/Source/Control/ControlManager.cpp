@@ -96,11 +96,11 @@ void ControlManager::saveConfig()
     currentConfig_.hotkeys = hotkeyHandler_.exportMappings();
     currentConfig_.midiMappings = midiHandler_.exportMappings();
 
-    // Save server ports
+    // Save server ports (keep user's enabled intent, not runtime state)
     currentConfig_.server.websocketPort = webSocketServer_->getPort();
-    currentConfig_.server.websocketEnabled = webSocketServer_->isRunning();
+    // Don't overwrite enabled flag with isRunning() — a transient port conflict
+    // would permanently disable servers on next launch
     currentConfig_.server.httpPort = httpApiServer_->getPort();
-    currentConfig_.server.httpEnabled = httpApiServer_->isRunning();
 
     configStore_.save(currentConfig_);
 }

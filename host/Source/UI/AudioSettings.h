@@ -123,7 +123,7 @@ private:
     juce::Label channelModeDescLabel_{"", ""};
 
     // Latency display
-    juce::Label latencyTitleLabel_{"", "Estimated Latency:"};
+    juce::Label latencyTitleLabel_{"", "Round-trip Latency:"};
     juce::Label latencyValueLabel_{"", "-- ms"};
 
     // ASIO Control Panel button (visible only in ASIO mode)

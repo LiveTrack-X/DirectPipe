@@ -198,6 +198,18 @@ Located at the bottom of the Settings tab. All destructive actions show a confir
 - **Clear All Presets** — Deletes all quick slots (A-E) and saved presets. / 모든 퀵 슬롯(A-E)과 저장된 프리셋 삭제.
 - **Reset Settings** — Factory reset. Deletes audio settings, hotkeys, and MIDI mappings. / 공장 초기화. 오디오 설정, 단축키, MIDI 매핑 삭제.
 
+## In-App Update / 인앱 업데이트
+
+DirectPipe checks for updates automatically on startup. / DirectPipe는 실행 시 자동으로 업데이트를 확인한다.
+
+- **New version available** — Credit label at bottom-right shows **"NEW vX.Y.Z"** in orange / 새 버전이 있으면 하단 우측 credit 라벨에 "NEW vX.Y.Z" 주황색 표시
+- **Click the label** — Opens update dialog with 3 options: / 라벨 클릭 시 업데이트 다이얼로그:
+  - **Update Now** — Downloads from GitHub, replaces exe, auto-restarts / GitHub에서 다운로드 → exe 교체 → 자동 재시작
+  - **View on GitHub** — Opens the release page in your browser / 릴리즈 페이지를 브라우저에서 열기
+  - **Later** — Dismiss, check again on next launch / 닫기, 다음 실행 시 다시 확인
+- **Post-update** — After restart, a purple notification shows "Updated to vX.Y.Z successfully!" / 업데이트 후 재시작 시 "Updated to vX.Y.Z successfully!" 알림 표시
+- **Offline** — No error, no notification. App works normally. / 오프라인이면 오류 없이 정상 동작
+
 ## External Control / 외부 제어
 
 DirectPipe can be controlled while minimized or in the background. / 최소화 상태에서도 제어 가능.

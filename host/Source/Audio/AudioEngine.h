@@ -108,6 +108,10 @@ public:
     juce::String getMonitorDeviceName() const { return monitorOutput_.getDeviceName(); }
     MonitorOutput& getMonitorOutput() { return monitorOutput_; }
 
+    /** Set/get the monitor output buffer size (independent of main device). */
+    bool setMonitorBufferSize(int bufferSize);
+    int getMonitorBufferSize() const { return monitorOutput_.getPreferredBufferSize(); }
+
     void setChannelMode(int channels);
     int getChannelMode() const { return channelMode_.load(std::memory_order_relaxed); }
 
@@ -170,7 +174,7 @@ private:
     SharedMemWriter sharedMemWriter_;
     std::atomic<bool> ipcEnabled_{false};
 
-    bool running_ = false;
+    std::atomic<bool> running_{false};
 
     std::atomic<float> inputLevel_{0.0f};
     std::atomic<float> outputLevel_{0.0f};
@@ -180,8 +184,8 @@ private:
     std::atomic<bool> outputMuted_{false};
     std::atomic<bool> outputNone_{false};   // "None" output device (persists)
 
-    double currentSampleRate_ = 48000.0;
-    int currentBufferSize_ = 480;
+    std::atomic<double> currentSampleRate_{48000.0};
+    std::atomic<int> currentBufferSize_{480};
 
     juce::AudioBuffer<float> workBuffer_;
 

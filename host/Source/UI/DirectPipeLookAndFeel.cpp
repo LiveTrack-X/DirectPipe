@@ -25,8 +25,40 @@
 
 namespace directpipe {
 
+namespace {
+    juce::String findCjkFontName()
+    {
+        // Try Windows CJK fonts in preference order
+        static const char* candidates[] = {
+            "Malgun Gothic",     // 맑은 고딕 (Windows 7+)
+            "Microsoft YaHei",   // Chinese fallback
+            "Yu Gothic",         // Japanese fallback
+            "Segoe UI",          // Wide Unicode coverage
+        };
+        auto allFonts = juce::Font::findAllTypefaceNames();
+        for (auto* name : candidates) {
+            if (allFonts.contains(name))
+                return name;
+        }
+        return juce::Font::getDefaultSansSerifFontName();
+    }
+}
+
 DirectPipeLookAndFeel::DirectPipeLookAndFeel()
 {
+    // Cache CJK-capable typefaces for Korean/Japanese/Chinese device name rendering
+    cjkFontName_ = findCjkFontName();
+    auto fontName = cjkFontName_;
+    // Use Semilight for normal text (thicker than plain Malgun Gothic)
+    // and Bold for bold text — ensures Korean text is legible at small sizes
+    cjkTypeface_ = juce::Typeface::createSystemTypefaceFor(
+        juce::Font(fontName, 15.0f, juce::Font::plain));
+    cjkBoldTypeface_ = juce::Typeface::createSystemTypefaceFor(
+        juce::Font(fontName, 15.0f, juce::Font::bold));
+
+    // Set JUCE default typeface so all Font() constructors use the CJK font
+    setDefaultSansSerifTypefaceName(fontName);
+
     // Set the dark color scheme
     setColour(juce::ResizableWindow::backgroundColourId, bgColor_);
     setColour(juce::DocumentWindow::backgroundColourId, bgColor_);
@@ -96,22 +128,23 @@ void DirectPipeLookAndFeel::drawToggleButton(
     bool shouldDrawButtonAsHighlighted, bool /*shouldDrawButtonAsDown*/)
 {
     auto bounds = button.getLocalBounds().toFloat();
+    float disabledAlpha = button.isEnabled() ? 1.0f : 0.4f;
     float toggleSize = 18.0f;
     float toggleX = bounds.getX() + 2.0f;
     float toggleY = bounds.getCentreY() - toggleSize / 2.0f;
 
     // Toggle background
     auto toggleBounds = juce::Rectangle<float>(toggleX, toggleY, toggleSize, toggleSize);
-    g.setColour(button.getToggleState() ? accentAlt_ : surfaceColor_);
+    g.setColour((button.getToggleState() ? accentAlt_ : surfaceColor_).withMultipliedAlpha(disabledAlpha));
     g.fillRoundedRectangle(toggleBounds, 3.0f);
 
     // Border
-    g.setColour(shouldDrawButtonAsHighlighted ? textColor_ : dimTextColor_);
+    g.setColour((shouldDrawButtonAsHighlighted ? textColor_ : dimTextColor_).withMultipliedAlpha(disabledAlpha));
     g.drawRoundedRectangle(toggleBounds, 3.0f, 1.0f);
 
     // Checkmark
     if (button.getToggleState()) {
-        g.setColour(juce::Colours::white);
+        g.setColour(juce::Colours::white.withMultipliedAlpha(disabledAlpha));
         auto checkBounds = toggleBounds.reduced(4.0f);
         juce::Path checkPath;
         checkPath.startNewSubPath(checkBounds.getX(), checkBounds.getCentreY());
@@ -121,8 +154,8 @@ void DirectPipeLookAndFeel::drawToggleButton(
     }
 
     // Label text
-    g.setColour(textColor_);
-    g.setFont(juce::Font(13.0f));
+    g.setColour(textColor_.withMultipliedAlpha(disabledAlpha));
+    g.setFont(juce::Font(cjkFontName_, 14.0f, juce::Font::bold));
     g.drawText(button.getButtonText(),
                static_cast<int>(toggleX + toggleSize + 6), 0,
                button.getWidth() - static_cast<int>(toggleSize + 8),
@@ -169,6 +202,9 @@ void DirectPipeLookAndFeel::drawButtonBackground(
     else if (shouldDrawButtonAsHighlighted)
         bgCol = bgCol.brighter(0.1f);
 
+    if (!button.isEnabled())
+        bgCol = bgCol.withAlpha(0.4f);
+
     g.setColour(bgCol);
     g.fillRoundedRectangle(bounds, 4.0f);
 
@@ -176,6 +212,30 @@ void DirectPipeLookAndFeel::drawButtonBackground(
     bool isOn = button.getToggleState() && button.getClickingTogglesState();
     g.setColour(isOn ? backgroundColour.brighter(0.3f) : juce::Colour(0xFF3A3A5A));
     g.drawRoundedRectangle(bounds, 4.0f, isOn ? 1.5f : 1.0f);
+}
+
+juce::Font DirectPipeLookAndFeel::getComboBoxFont(juce::ComboBox& box)
+{
+    return juce::Font(cjkFontName_,
+                      juce::jmin(15.0f, static_cast<float>(box.getHeight()) * 0.85f),
+                      juce::Font::bold);
+}
+
+juce::Font DirectPipeLookAndFeel::getPopupMenuFont()
+{
+    return juce::Font(cjkFontName_, 15.0f, juce::Font::bold);
+}
+
+juce::Typeface::Ptr DirectPipeLookAndFeel::getTypefaceForFont(const juce::Font& font)
+{
+    // Return cached CJK typeface for default sans-serif requests
+    if (font.getTypefaceName() == juce::Font::getDefaultSansSerifFontName() ||
+        font.getTypefaceName() == "<Sans-Serif>" ||
+        font.getTypefaceName() == cjkFontName_)
+    {
+        return font.isBold() ? cjkBoldTypeface_ : cjkTypeface_;
+    }
+    return LookAndFeel_V4::getTypefaceForFont(font);
 }
 
 } // namespace directpipe

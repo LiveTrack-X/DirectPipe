@@ -289,7 +289,8 @@ void HotkeyTab::onRemoveClicked(int bindingIndex)
         handler.unregisterHotkey(bindings[static_cast<size_t>(bindingIndex)].id);
         manager_.saveConfig();
         // Defer refresh to avoid deleting the button component from within its own callback
-        juce::MessageManager::callAsync([this] { refreshBindings(); });
+        auto safeThis = juce::Component::SafePointer<HotkeyTab>(this);
+        juce::MessageManager::callAsync([safeThis] { if (safeThis) safeThis->refreshBindings(); });
     }
 }
 
@@ -384,10 +385,12 @@ void HotkeyTab::onAddClicked()
                                  juce::dontSendNotification);
             recordingIndex_ = -2;  // special value for "new binding"
 
+            auto safeHotkey = juce::Component::SafePointer<HotkeyTab>(this);
             manager_.getHotkeyHandler().startRecording(
-                [this, action](uint32_t mods, uint32_t vk, const std::string& name) {
-                    manager_.getHotkeyHandler().registerHotkey(mods, vk, action, name);
-                    manager_.saveConfig();
+                [safeHotkey, action](uint32_t mods, uint32_t vk, const std::string& name) {
+                    if (!safeHotkey) return;
+                    safeHotkey->manager_.getHotkeyHandler().registerHotkey(mods, vk, action, name);
+                    safeHotkey->manager_.saveConfig();
                     // UI refresh happens in timerCallback
                 });
         });
@@ -694,7 +697,8 @@ void MidiTab::onRemoveClicked(int mappingIndex)
         handler.removeBinding(mappingIndex);
         manager_.saveConfig();
         // Defer refresh to avoid deleting the button component from within its own callback
-        juce::MessageManager::callAsync([this] { refreshMappings(); });
+        auto safeThis = juce::Component::SafePointer<MidiTab>(this);
+        juce::MessageManager::callAsync([safeThis] { if (safeThis) safeThis->refreshMappings(); });
     }
 }
 
@@ -790,8 +794,10 @@ void MidiTab::onAddMappingClicked()
                                  juce::dontSendNotification);
             learningIndex_ = -2;
 
+            auto safeMidi = juce::Component::SafePointer<MidiTab>(this);
             manager_.getMidiHandler().startLearn(
-                [this, action](int cc, int note, int channel, const juce::String& deviceName) {
+                [safeMidi, action](int cc, int note, int channel, const juce::String& deviceName) {
+                    if (!safeMidi) return;
                     MidiBinding newBinding;
                     newBinding.cc = cc;
                     newBinding.note = note;
@@ -799,8 +805,8 @@ void MidiTab::onAddMappingClicked()
                     newBinding.deviceName = deviceName.toStdString();
                     newBinding.action = action;
                     newBinding.type = (cc >= 0) ? MidiMappingType::Toggle : MidiMappingType::NoteOnOff;
-                    manager_.getMidiHandler().addBinding(newBinding);
-                    manager_.saveConfig();
+                    safeMidi->manager_.getMidiHandler().addBinding(newBinding);
+                    safeMidi->manager_.saveConfig();
                 });
         });
 }
@@ -876,8 +882,10 @@ void MidiTab::onAddParamClicked()
                                          juce::dontSendNotification);
                     learningIndex_ = -2;
 
+                    auto safeParam = juce::Component::SafePointer<MidiTab>(this);
                     manager_.getMidiHandler().startLearn(
-                        [this, action](int cc, int note, int channel, const juce::String& deviceName) {
+                        [safeParam, action](int cc, int note, int channel, const juce::String& deviceName) {
+                            if (!safeParam) return;
                             MidiBinding newBinding;
                             newBinding.cc = cc;
                             newBinding.note = note;
@@ -886,8 +894,8 @@ void MidiTab::onAddParamClicked()
                             newBinding.action = action;
                             newBinding.type = (cc >= 0) ? MidiMappingType::Continuous
                                                         : MidiMappingType::NoteOnOff;
-                            manager_.getMidiHandler().addBinding(newBinding);
-                            manager_.saveConfig();
+                            safeParam->manager_.getMidiHandler().addBinding(newBinding);
+                            safeParam->manager_.saveConfig();
                         });
                 });
         });

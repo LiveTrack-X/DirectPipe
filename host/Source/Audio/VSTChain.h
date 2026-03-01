@@ -193,6 +193,9 @@ public:
     /** @brief True while async chain loading is in progress. */
     bool isLoading() const { return asyncLoading_.load(); }
 
+    /** @brief Suspend/resume graph processing (for safe state changes). */
+    void suspendProcessing(bool suspend) { graph_->suspendProcessing(suspend); }
+
     // Callback when the chain changes (for UI update)
     std::function<void()> onChainChanged;
 
@@ -244,6 +247,7 @@ private:
     // Async loading state
     std::atomic<bool> asyncLoading_{false};
     std::unique_ptr<std::thread> loadThread_;
+    std::atomic<uint32_t> asyncGeneration_{0};  ///< Incremented per replaceChainAsync call
 
     // Lifetime guard for callAsync lambdas
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);

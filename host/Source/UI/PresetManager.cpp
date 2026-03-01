@@ -127,6 +127,8 @@ juce::String PresetManager::exportToJSON()
         router.isEnabled(OutputRouter::Output::Monitor));
     outputs->setProperty("monitorDevice",
         engine_.getMonitorDeviceName());
+    outputs->setProperty("monitorBufferSize",
+        engine_.getMonitorBufferSize());
     root->setProperty("outputs", juce::var(outputs.release()));
 
     // Channel mode (1=mono, 2=stereo)
@@ -221,6 +223,12 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 engine_.setMonitorEnabled(monEnabled);
             }
 
+            if (outputs->hasProperty("monitorBufferSize")) {
+                int bs = static_cast<int>(outputs->getProperty("monitorBufferSize"));
+                if (bs > 0)
+                    engine_.setMonitorBufferSize(bs);
+            }
+
             if (outputs->hasProperty("monitorDevice")) {
                 juce::String monDevice = outputs->getProperty("monitorDevice").toString();
                 if (monDevice.isNotEmpty())
@@ -294,6 +302,10 @@ bool PresetManager::isSameChain(const std::vector<TargetPlugin>& targets, VSTCha
 
 void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
 {
+    // Suspend graph processing to prevent audio thread from calling processBlock
+    // while we modify plugin state via setStateInformation (not thread-safe)
+    chain.suspendProcessing(true);
+
     for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
         auto& t = targets[static_cast<size_t>(i)];
         chain.setPluginBypassed(i, t.bypassed);
@@ -305,6 +317,8 @@ void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTC
             }
         }
     }
+
+    chain.suspendProcessing(false);
 }
 
 void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
@@ -346,9 +360,12 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
                 chain.setPluginBypassed(idx, true);
             if (target.hasState) {
                 if (auto* loadedSlot = chain.getPluginSlot(idx)) {
-                    if (loadedSlot->instance)
+                    if (loadedSlot->instance) {
+                        chain.suspendProcessing(true);
                         loadedSlot->instance->setStateInformation(
                             target.stateData.getData(), static_cast<int>(target.stateData.getSize()));
+                        chain.suspendProcessing(false);
+                    }
                 }
             }
         }

@@ -30,6 +30,7 @@
 #include "StateBroadcaster.h"
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
@@ -79,7 +80,7 @@ public:
 private:
     void serverThread();
     void handleClient(std::unique_ptr<juce::StreamingSocket> client);
-    std::pair<int, std::string> processRequest(const std::string& method, const std::string& path);
+    std::pair<int, std::string> processRequest(const std::string& method, std::string path);
     std::string makeResponse(int statusCode, const std::string& body);
 
     ActionDispatcher& dispatcher_;
@@ -89,6 +90,9 @@ private:
     std::thread serverThread_;
     std::atomic<bool> running_{false};
     int port_ = 8766;
+
+    // Lifetime guard for detached client handler threads
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
 } // namespace directpipe

@@ -49,11 +49,20 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
     };
 
     removeButton_.onClick = [this] {
+        auto pluginName = nameLabel_.getText();
+        auto safeOwner = juce::Component::SafePointer<PluginChainEditor>(&owner_);
         int idx = rowIndex_;
-        auto* chainPtr = &owner_.vstChain_;
-        juce::MessageManager::callAsync([chainPtr, idx] {
-            chainPtr->removePlugin(idx);
-        });
+        bool ok = juce::AlertWindow::showOkCancelBox(
+            juce::AlertWindow::QuestionIcon,
+            "Remove Plugin",
+            "Remove \"" + pluginName + "\" from the chain?",
+            "Remove", "Cancel", nullptr, nullptr);
+        if (ok) {
+            juce::MessageManager::callAsync([safeOwner, idx] {
+                if (safeOwner)
+                    safeOwner->vstChain_.removePlugin(idx);
+            });
+        }
     };
 
     update(rowIndex);
@@ -175,13 +184,14 @@ void PluginChainEditor::resized()
 {
     auto bounds = getLocalBounds();
 
-    // Bottom bar with buttons
+    // Bottom bar with buttons (evenly distributed)
     auto buttonBar = bounds.removeFromBottom(30);
-    addButton_.setBounds(buttonBar.removeFromLeft(120));
-    buttonBar.removeFromLeft(4);
-    scanButton_.setBounds(buttonBar.removeFromLeft(80));
-    buttonBar.removeFromLeft(4);
-    removeButton_.setBounds(buttonBar.removeFromLeft(80));
+    int gap = 4;
+    int btnW = (buttonBar.getWidth() - gap * 2) / 3;
+    int lastW = buttonBar.getWidth() - (btnW + gap) * 2;
+    addButton_.setBounds(buttonBar.getX(), buttonBar.getY(), btnW, buttonBar.getHeight());
+    scanButton_.setBounds(buttonBar.getX() + btnW + gap, buttonBar.getY(), btnW, buttonBar.getHeight());
+    removeButton_.setBounds(buttonBar.getX() + (btnW + gap) * 2, buttonBar.getY(), lastW, buttonBar.getHeight());
 
     // Plugin list takes remaining space
     pluginList_.setBounds(bounds);
@@ -250,16 +260,18 @@ void PluginChainEditor::showAddPluginMenu()
     menu.addItem(1, "Browse for plugin file...");
     menu.addItem(2, "Open Scanner...");
 
+    auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addButton_),
-        [this, types](int result) {
+        [safeThis, types](int result) {
+            if (!safeThis) return;
             if (result == 1) {
-                addPluginFromFile();
+                safeThis->addPluginFromFile();
             } else if (result == 2) {
-                openScannerDialog();
+                safeThis->openScannerDialog();
             } else if (result >= 1000) {
                 int idx = result - 1000;
                 if (idx < types.size())
-                    addPluginFromDescription(types[idx]);
+                    safeThis->addPluginFromDescription(types[idx]);
             }
         });
 }
@@ -269,8 +281,9 @@ void PluginChainEditor::openScannerDialog()
     auto* scanner = new PluginScannerComponent(vstChain_);
     scanner->setSize(550, 500);
 
-    scanner->onPluginSelected = [this](const juce::PluginDescription& desc) {
-        addPluginFromDescription(desc);
+    auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
+    scanner->onPluginSelected = [safeThis](const juce::PluginDescription& desc) {
+        if (safeThis) safeThis->addPluginFromDescription(desc);
     };
 
     juce::DialogWindow::LaunchOptions options;
@@ -300,12 +313,14 @@ void PluginChainEditor::addPluginFromFile()
         juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory),
         "*.vst3;*.dll");
 
+    auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
     chooser->launchAsync(juce::FileBrowserComponent::openMode |
                          juce::FileBrowserComponent::canSelectFiles,
-                         [this, chooser](const juce::FileChooser& fc) {
+                         [safeThis, chooser](const juce::FileChooser& fc) {
+        if (!safeThis) return;
         auto result = fc.getResult();
         if (result.existsAsFile()) {
-            vstChain_.addPlugin(result.getFullPathName());
+            safeThis->vstChain_.addPlugin(result.getFullPathName());
         }
     });
 }
@@ -314,7 +329,19 @@ void PluginChainEditor::removeSelectedPlugin()
 {
     int selected = pluginList_.getSelectedRow();
     if (selected >= 0) {
-        vstChain_.removePlugin(selected);
+        juce::String pluginName;
+        if (auto* slot = vstChain_.getPluginSlot(selected))
+            pluginName = slot->name;
+        else
+            pluginName = "Plugin " + juce::String(selected + 1);
+
+        bool ok = juce::AlertWindow::showOkCancelBox(
+            juce::AlertWindow::QuestionIcon,
+            "Remove Plugin",
+            "Remove \"" + pluginName + "\" from the chain?",
+            "Remove", "Cancel", nullptr, nullptr);
+        if (ok)
+            vstChain_.removePlugin(selected);
     }
 }
 

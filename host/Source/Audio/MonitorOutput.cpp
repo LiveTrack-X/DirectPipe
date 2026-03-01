@@ -96,6 +96,16 @@ bool MonitorOutput::setDevice(const juce::String& deviceName)
     return initialize(deviceName, sampleRate_, bufferSize_);
 }
 
+bool MonitorOutput::setBufferSize(int bufferSize)
+{
+    if (status_.load(std::memory_order_relaxed) == VirtualCableStatus::NotConfigured)
+    {
+        bufferSize_ = bufferSize;
+        return true;
+    }
+    return initialize(deviceName_, sampleRate_, bufferSize);
+}
+
 // ─── RT-safe: called from main audio callback thread ─────────────────────────
 
 int MonitorOutput::writeAudio(const float* const* channelData,
@@ -148,6 +158,7 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
             "Monitor Output: Sample rate mismatch! Expected " +
             juce::String(sampleRate_) + " got " + juce::String(deviceSR));
         status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
+        ringBuffer_.reset();
         return;
     }
 
@@ -185,6 +196,15 @@ juce::StringArray MonitorOutput::getAvailableOutputDevices() const
     }
 
     return devices;
+}
+
+juce::Array<int> MonitorOutput::getAvailableBufferSizes() const
+{
+    if (deviceManager_) {
+        if (auto* device = deviceManager_->getCurrentAudioDevice())
+            return device->getAvailableBufferSizes();
+    }
+    return {};
 }
 
 juce::String MonitorOutput::getSetupGuideMessage()

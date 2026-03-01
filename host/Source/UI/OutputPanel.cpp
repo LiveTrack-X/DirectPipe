@@ -56,6 +56,12 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorVolumeSlider_.onValueChange = [this] { onMonitorVolumeChanged(); };
     addAndMakeVisible(monitorVolumeSlider_);
 
+    monitorBufferLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(monitorBufferLabel_);
+
+    monitorBufferCombo_.onChange = [this] { onMonitorBufferSizeChanged(); };
+    addAndMakeVisible(monitorBufferCombo_);
+
     monitorEnableButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
     monitorEnableButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
     monitorEnableButton_.onClick = [this] { onMonitorEnableToggled(); };
@@ -116,6 +122,7 @@ OutputPanel::OutputPanel(AudioEngine& engine)
             recordingFolder_.startAsProcess();
     };
     addAndMakeVisible(openFolderBtn_);
+    openFolderBtn_.setEnabled(recordingFolder_.exists());
 
     changeFolderBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
     changeFolderBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
@@ -123,13 +130,15 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     changeFolderBtn_.onClick = [this] {
         auto chooser = std::make_shared<juce::FileChooser>(
             "Select Recording Folder", recordingFolder_);
+        auto safeThis = juce::Component::SafePointer<OutputPanel>(this);
         chooser->launchAsync(juce::FileBrowserComponent::openMode |
                              juce::FileBrowserComponent::canSelectDirectories,
-                             [this, chooser](const juce::FileChooser& fc) {
+                             [safeThis, chooser](const juce::FileChooser& fc) {
+            if (!safeThis) return;
             auto result = fc.getResult();
             if (result.isDirectory()) {
-                setRecordingFolder(result);
-                saveRecordingConfig();
+                safeThis->setRecordingFolder(result);
+                safeThis->saveRecordingConfig();
             }
         });
     };
@@ -201,6 +210,10 @@ void OutputPanel::resized()
 
     monitorVolumeLabel_.setBounds(x, y, labelW, rowH);
     monitorVolumeSlider_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
+    y += rowH + gap;
+
+    monitorBufferLabel_.setBounds(x, y, labelW, rowH);
+    monitorBufferCombo_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
     y += rowH + gap;
 
     monitorEnableButton_.setBounds(x + labelW + gap, y, 120, rowH);
@@ -307,6 +320,7 @@ void OutputPanel::setRecordingFolder(const juce::File& folder)
 {
     recordingFolder_ = folder;
     folderPathLabel_.setText(folder.getFullPathName(), juce::dontSendNotification);
+    openFolderBtn_.setEnabled(folder.exists());
 }
 
 void OutputPanel::saveRecordingConfig()
@@ -352,6 +366,8 @@ void OutputPanel::refreshDeviceLists()
     int idx = devices.indexOf(currentDevice);
     if (idx >= 0)
         monitorDeviceCombo_.setSelectedId(idx + 1, juce::dontSendNotification);
+
+    refreshBufferSizeCombo();
 }
 
 void OutputPanel::onMonitorDeviceSelected()
@@ -359,6 +375,7 @@ void OutputPanel::onMonitorDeviceSelected()
     auto selectedText = monitorDeviceCombo_.getText();
     if (selectedText.isNotEmpty()) {
         engine_.setMonitorDevice(selectedText);
+        refreshBufferSizeCombo();
         if (onSettingsChanged) onSettingsChanged();
     }
 }
@@ -370,12 +387,71 @@ void OutputPanel::onMonitorVolumeChanged()
     if (onSettingsChanged) onSettingsChanged();
 }
 
+void OutputPanel::onMonitorBufferSizeChanged()
+{
+    auto text = monitorBufferCombo_.getText();
+    int bufferSize = text.getIntValue();
+    if (bufferSize > 0) {
+        engine_.setMonitorBufferSize(bufferSize);
+
+        // Update combo to show the actual buffer size WASAPI applied
+        int actual = engine_.getMonitorOutput().getActualBufferSize();
+        if (actual > 0 && actual != bufferSize) {
+            refreshBufferSizeCombo();
+        }
+
+        if (onSettingsChanged) onSettingsChanged();
+    }
+}
+
 void OutputPanel::onMonitorEnableToggled()
 {
     bool enabled = monitorEnableButton_.getToggleState();
     engine_.getOutputRouter().setEnabled(OutputRouter::Output::Monitor, enabled);
     engine_.setMonitorEnabled(enabled);
     if (onSettingsChanged) onSettingsChanged();
+}
+
+void OutputPanel::refreshBufferSizeCombo()
+{
+    monitorBufferCombo_.clear(juce::dontSendNotification);
+
+    auto& monOut = engine_.getMonitorOutput();
+    auto available = monOut.getAvailableBufferSizes();
+
+    double sr = monOut.getActualSampleRate();
+    if (sr <= 0) sr = 48000.0;
+
+    auto formatBufferItem = [sr](int bufSize) -> juce::String {
+        double latencyMs = (static_cast<double>(bufSize) / sr) * 1000.0;
+        return juce::String(bufSize) + " (~" + juce::String(latencyMs, 1) + "ms)";
+    };
+
+    if (available.isEmpty()) {
+        // Fallback: show common sizes when device is not yet initialized
+        static const int fallback[] = { 64, 128, 256, 480, 512, 1024 };
+        for (int i = 0; i < 6; ++i)
+            monitorBufferCombo_.addItem(formatBufferItem(fallback[i]), i + 1);
+    } else {
+        for (int i = 0; i < available.size(); ++i)
+            monitorBufferCombo_.addItem(formatBufferItem(available[i]), i + 1);
+    }
+
+    // Select the actual buffer size (what WASAPI is really using)
+    int actual = monOut.getActualBufferSize();
+    if (actual <= 0)
+        actual = engine_.getMonitorBufferSize();  // preferred if not yet started
+
+    for (int i = 0; i < monitorBufferCombo_.getNumItems(); ++i) {
+        if (monitorBufferCombo_.getItemText(i).getIntValue() == actual) {
+            monitorBufferCombo_.setSelectedItemIndex(i, juce::dontSendNotification);
+            return;
+        }
+    }
+
+    // If actual size isn't in the list, select the closest match
+    if (monitorBufferCombo_.getNumItems() > 0)
+        monitorBufferCombo_.setSelectedItemIndex(0, juce::dontSendNotification);
 }
 
 void OutputPanel::setIpcToggleState(bool enabled)

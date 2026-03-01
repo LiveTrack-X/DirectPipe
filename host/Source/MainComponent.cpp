@@ -30,6 +30,7 @@ namespace directpipe {
 
 MainComponent::MainComponent()
 {
+    juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
     setLookAndFeel(&lookAndFeel_);
 
     // Initialize audio engine
@@ -40,15 +41,15 @@ MainComponent::MainComponent()
         });
     }
 
-    // Wire error callbacks
-    audioEngine_.onDeviceError = [this](const juce::String& msg) {
-        juce::MessageManager::callAsync([this, msg] {
-            showNotification(msg, NotificationLevel::Warning);
+    // Wire error callbacks (use SafePointer to guard callAsync lifetime)
+    audioEngine_.onDeviceError = [safeThis = juce::Component::SafePointer<MainComponent>(this)](const juce::String& msg) {
+        juce::MessageManager::callAsync([safeThis, msg] {
+            if (safeThis) safeThis->showNotification(msg, NotificationLevel::Warning);
         });
     };
-    audioEngine_.getVSTChain().onPluginLoadFailed = [this](const juce::String& name, const juce::String& err) {
-        juce::MessageManager::callAsync([this, name, err] {
-            showNotification("Plugin load failed: " + name + " — " + err,
+    audioEngine_.getVSTChain().onPluginLoadFailed = [safeThis = juce::Component::SafePointer<MainComponent>(this)](const juce::String& name, const juce::String& err) {
+        juce::MessageManager::callAsync([safeThis, name, err] {
+            if (safeThis) safeThis->showNotification("Plugin load failed: " + name + " — " + err,
                              NotificationLevel::Error);
         });
     };
@@ -326,7 +327,7 @@ MainComponent::MainComponent()
 
     // ── Status Bar Labels ──
     auto setupStatusLabel = [this](juce::Label& label) {
-        label.setFont(juce::Font(12.0f));
+        label.setFont(juce::Font(13.0f));
         label.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
         addAndMakeVisible(label);
     };
@@ -343,7 +344,7 @@ MainComponent::MainComponent()
 
     // Credit + version hyperlink (click opens GitHub)
     creditLink_.setButtonText("v" + juce::String(ProjectInfo::versionString) + " | Created by LiveTrack");
-    creditLink_.setFont(juce::Font(11.0f), false);
+    creditLink_.setFont(juce::Font(12.0f), false);
     creditLink_.setColour(juce::HyperlinkButton::textColourId, juce::Colour(0xFF666680));
     creditLink_.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(creditLink_);
@@ -368,6 +369,20 @@ MainComponent::MainComponent()
     }
     updateSlotButtonStates();
 
+    // Check if we just updated (flag file left by update batch script)
+    {
+        auto flagFile = juce::File::getSpecialLocation(
+            juce::File::currentExecutableFile).getSiblingFile("_updated.flag");
+        if (flagFile.existsAsFile()) {
+            auto version = flagFile.loadFileAsString().trim();
+            juce::MessageManager::callAsync([this, version, flagFile]() {
+                showNotification("Updated to v" + version + " successfully!",
+                                 NotificationLevel::Info);
+                flagFile.deleteFile();
+            });
+        }
+    }
+
     // Check for new release on GitHub (background thread)
     checkForUpdate();
 }
@@ -375,12 +390,15 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     stopTimer();
+    if (downloadThread_.joinable())
+        downloadThread_.join();
     if (updateCheckThread_.joinable())
         updateCheckThread_.join();
     saveSettings();
     dispatcher_.removeListener(this);
     controlManager_->shutdown();
     audioEngine_.shutdown();
+    juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
     setLookAndFeel(nullptr);
 }
 
@@ -562,6 +580,7 @@ void MainComponent::handleAction(const ActionEvent& event)
             break;
         }
 
+        case Action::LoadPreset:
         case Action::SwitchPresetSlot: {
             if (loadingSlot_) break;
             int slot = event.intParam;
@@ -587,9 +606,14 @@ void MainComponent::handleAction(const ActionEvent& event)
             int currentSlot = presetManager_->getActiveSlot();
             if (currentSlot >= 0)
                 presetManager_->saveSlot(currentSlot);
-            int nextSlot = (event.action == Action::NextPreset)
-                ? (currentSlot + 1) % kNumPresetSlots
-                : (currentSlot - 1 + kNumPresetSlots) % kNumPresetSlots;
+            int nextSlot;
+            if (currentSlot < 0) {
+                nextSlot = 0;  // No active slot: default to slot A
+            } else {
+                nextSlot = (event.action == Action::NextPreset)
+                    ? (currentSlot + 1) % kNumPresetSlots
+                    : (currentSlot - 1 + kNumPresetSlots) % kNumPresetSlots;
+            }
             loadingSlot_ = true;
             setSlotButtonsEnabled(false);
             presetManager_->loadSlotAsync(nextSlot, [this](bool /*ok*/) {
@@ -743,20 +767,26 @@ void MainComponent::resized()
         y += 30;
     }
 
-    int vstH = bounds.getBottom() - y - 40;
-    pluginChainEditor_->setBounds(cx, y, cw, vstH - 60);
-    y += vstH - 56;
+    // Bottom controls: OUT/MON/VST indicators (24px) + gap (4px) + PANIC MUTE (28px) = 56px
+    int bottomControlsH = 24 + 4 + 28;
+    int bottomY = bounds.getBottom() - kStatusBarHeight - bottomControlsH;
 
-    // Mute status indicators above panic mute button (clickable)
+    // Plugin chain fills remaining space between preset slots and bottom controls
+    int chainH = bottomY - y - 4;
+    pluginChainEditor_->setBounds(cx, y, cw, chainH);
+
+    // Mute status indicators (OUT / MON / VST)
     {
-        int indicatorW = (cw - 8) / 3;
-        outputMuteBtn_.setBounds(cx, y, indicatorW, 20);
-        monitorMuteBtn_.setBounds(cx + indicatorW + 4, y, indicatorW, 20);
-        vstMuteBtn_.setBounds(cx + (indicatorW + 4) * 2, y, cw - (indicatorW + 4) * 2, 20);
-        y += 24;
+        int gap = 4;
+        int indicatorW = (cw - gap * 2) / 3;
+        int lastW = cw - (indicatorW + gap) * 2;
+        outputMuteBtn_.setBounds(cx, bottomY, indicatorW, 24);
+        monitorMuteBtn_.setBounds(cx + indicatorW + gap, bottomY, indicatorW, 24);
+        vstMuteBtn_.setBounds(cx + (indicatorW + gap) * 2, bottomY, lastW, 24);
     }
 
-    panicMuteBtn_.setBounds(cx, y, cw, 28);
+    // PANIC MUTE button (below indicators: 24px height + 4px gap)
+    panicMuteBtn_.setBounds(cx, bottomY + 24 + 4, cw, 28);
 
     // ═══ Right Column: Tabbed Panel + Output Meter ═══
     int rx = bounds.getX() + halfW + 10;
@@ -879,7 +909,7 @@ void MainComponent::timerCallback()
         s.muted = muted;
         s.outputMuted = audioEngine_.isOutputMuted();
         s.inputMuted = muted;
-        s.masterBypassed = false;
+        s.masterBypassed = true;
         s.latencyMs = static_cast<float>(mainLatency);
         if (monEnabled) {
             double monitorLat = mainLatency;
@@ -915,6 +945,7 @@ void MainComponent::timerCallback()
                 if (!ps.bypassed && ps.loaded) s.masterBypassed = false;
             }
         }
+        if (s.plugins.empty()) s.masterBypassed = false;
     });
 
     // Update recording state in OutputPanel (Monitor tab)
@@ -1007,9 +1038,7 @@ void MainComponent::showNotification(const juce::String& message, NotificationLe
 
 void MainComponent::checkForUpdate()
 {
-    // Parse current version components
     auto currentVersion = juce::String(ProjectInfo::versionString);
-
     auto safeThis = juce::Component::SafePointer<MainComponent>(this);
 
     updateCheckThread_ = std::thread([safeThis, currentVersion]() {
@@ -1017,17 +1046,13 @@ void MainComponent::checkForUpdate()
         auto response = url.readEntireTextStream(false);
         if (response.isEmpty()) return;
 
-        // Simple JSON parse for "tag_name"
         auto parsed = juce::JSON::parse(response);
         if (auto* obj = parsed.getDynamicObject()) {
             auto tagName = obj->getProperty("tag_name").toString();
-            // Strip leading 'v' if present
             if (tagName.startsWithChar('v') || tagName.startsWithChar('V'))
                 tagName = tagName.substring(1);
 
-            // Compare versions (simple string compare works for semver)
             if (tagName.isNotEmpty() && tagName != currentVersion) {
-                // Check if remote is actually newer (parse major.minor.patch)
                 auto parseVer = [](const juce::String& v) -> std::tuple<int,int,int> {
                     auto parts = juce::StringArray::fromTokens(v, ".", "");
                     return { parts.size() > 0 ? parts[0].getIntValue() : 0,
@@ -1037,20 +1062,265 @@ void MainComponent::checkForUpdate()
                 auto [rMaj, rMin, rPat] = parseVer(tagName);
                 auto [cMaj, cMin, cPat] = parseVer(currentVersion);
 
-                bool isNewer = std::tie(rMaj, rMin, rPat) > std::tie(cMaj, cMin, cPat);
-                if (isNewer) {
-                    juce::MessageManager::callAsync([safeThis, tagName]() {
+                if (std::tie(rMaj, rMin, rPat) > std::tie(cMaj, cMin, cPat)) {
+                    // Find download URL from assets (prefer ZIP, fallback to exe)
+                    juce::String downloadUrl;
+                    if (auto* assets = obj->getProperty("assets").getArray()) {
+                        juce::String exeUrl;
+                        for (auto& asset : *assets) {
+                            if (auto* assetObj = asset.getDynamicObject()) {
+                                auto name = assetObj->getProperty("name").toString();
+                                auto assetUrl = assetObj->getProperty("browser_download_url").toString();
+                                // Prefer ZIP (contains exe + VST + docs)
+                                if (name.endsWithIgnoreCase(".zip") &&
+                                    name.containsIgnoreCase("DirectPipe")) {
+                                    downloadUrl = assetUrl;
+                                    break;
+                                }
+                                // Fallback: standalone exe
+                                if (name.endsWithIgnoreCase(".exe") &&
+                                    name.containsIgnoreCase("DirectPipe")) {
+                                    exeUrl = assetUrl;
+                                }
+                            }
+                        }
+                        if (downloadUrl.isEmpty())
+                            downloadUrl = exeUrl;
+                    }
+
+                    juce::MessageManager::callAsync([safeThis, tagName, downloadUrl]() {
                         if (auto* self = safeThis.getComponent()) {
+                            self->latestVersion_ = tagName;
+                            self->latestDownloadUrl_ = downloadUrl;
+                            self->updateAvailable_ = true;
+
                             self->creditLink_.setButtonText(
                                 "NEW v" + tagName + " | v" +
                                 juce::String(ProjectInfo::versionString) + " | Created by LiveTrack");
                             self->creditLink_.setColour(juce::HyperlinkButton::textColourId,
-                                                  juce::Colour(0xFFFFAA33)); // orange highlight
+                                                        juce::Colour(0xFFFFAA33));
+
+                            // Override click to show update dialog instead of opening browser
+                            self->creditLink_.setURL({});
+                            self->creditLink_.onClick = [self]() {
+                                self->showUpdateDialog();
+                            };
                         }
                     });
                 }
             }
         }
+    });
+}
+
+void MainComponent::showUpdateDialog()
+{
+    auto* window = new juce::AlertWindow(
+        "Update Available",
+        "New version v" + latestVersion_ + " is available.\n"
+        "Current version: v" + juce::String(ProjectInfo::versionString) + "\n\n"
+        "Would you like to update?",
+        juce::MessageBoxIconType::InfoIcon);
+
+    window->addButton("Update Now", 1);
+    window->addButton("View on GitHub", 2);
+    window->addButton("Later", 0);
+
+    auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+    window->enterModalState(true, juce::ModalCallbackFunction::create(
+        [safeThis](int result) {
+            if (!safeThis) return;
+            if (result == 1) {
+                safeThis->performUpdate();
+            } else if (result == 2) {
+                juce::URL("https://github.com/LiveTrack-X/DirectPipe/releases/latest")
+                    .launchInDefaultBrowser();
+            }
+        }), true);
+}
+
+void MainComponent::performUpdate()
+{
+    if (latestDownloadUrl_.isEmpty()) {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon,
+            "Update Error",
+            "Download URL not found.\nPlease download manually from GitHub.",
+            "OK");
+        juce::URL("https://github.com/LiveTrack-X/DirectPipe/releases/latest")
+            .launchInDefaultBrowser();
+        return;
+    }
+
+    // Determine paths
+    auto currentExe = juce::File::getSpecialLocation(
+        juce::File::currentExecutableFile);
+    auto updateDir = currentExe.getParentDirectory().getChildFile("_update");
+    auto batchFile = currentExe.getSiblingFile("_update.bat");
+
+    // Show progress (indeterminate spinner)
+    auto progressDlg = std::make_shared<std::unique_ptr<juce::AlertWindow>>(
+        std::make_unique<juce::AlertWindow>("Updating...",
+            "Downloading v" + latestVersion_ + "...",
+            juce::MessageBoxIconType::NoIcon));
+    downloadProgress_ = -1.0;
+    (*progressDlg)->addProgressBarComponent(downloadProgress_);
+    (*progressDlg)->enterModalState(true, nullptr, false);
+
+    auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+    auto downloadUrl = latestDownloadUrl_;
+    auto version = latestVersion_;
+    bool isZip = downloadUrl.endsWithIgnoreCase(".zip");
+
+    // Download in background thread (joined in destructor)
+    if (downloadThread_.joinable())
+        downloadThread_.join();
+    downloadThread_ = std::thread([safeThis, downloadUrl, updateDir, batchFile, currentExe, version, isZip, progressDlg]() {
+        // Download the file
+        juce::URL url(downloadUrl);
+        int statusCode = 0;
+        auto stream = url.createInputStream(
+            juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
+                .withConnectionTimeoutMs(15000)
+                .withStatusCode(&statusCode));
+
+        if (!stream || statusCode != 200) {
+            juce::MessageManager::callAsync([safeThis, progressDlg]() {
+                if (safeThis) {
+                    if (*progressDlg)
+                        (*progressDlg)->exitModalState(0);
+                    juce::AlertWindow::showMessageBoxAsync(
+                        juce::MessageBoxIconType::WarningIcon,
+                        "Download Failed",
+                        "Could not download the update.\nPlease try again or download manually.",
+                        "OK");
+                }
+            });
+            return;
+        }
+
+        // Determine download target
+        auto downloadFile = isZip
+            ? currentExe.getSiblingFile("DirectPipe_update.zip")
+            : currentExe.getSiblingFile("DirectPipe_update.exe");
+
+        // Write to file
+        {
+            juce::FileOutputStream output(downloadFile);
+            if (!output.openedOk()) {
+                juce::MessageManager::callAsync([safeThis, progressDlg]() {
+                    if (safeThis) {
+                        if (*progressDlg)
+                            (*progressDlg)->exitModalState(0);
+                        juce::AlertWindow::showMessageBoxAsync(
+                            juce::MessageBoxIconType::WarningIcon,
+                            "Update Error",
+                            "Could not write update file.\nCheck write permissions.",
+                            "OK");
+                    }
+                });
+                return;
+            }
+
+            char buffer[8192];
+            while (!stream->isExhausted()) {
+                auto bytesRead = stream->read(buffer, sizeof(buffer));
+                if (bytesRead <= 0) break;
+                output.write(buffer, static_cast<size_t>(bytesRead));
+            }
+            output.flush();
+        }
+
+        // Verify downloaded file
+        if (!downloadFile.existsAsFile() || downloadFile.getSize() < 100 * 1024) {
+            downloadFile.deleteFile();
+            juce::MessageManager::callAsync([safeThis, progressDlg]() {
+                if (safeThis) {
+                    if (*progressDlg)
+                        (*progressDlg)->exitModalState(0);
+                    juce::AlertWindow::showMessageBoxAsync(
+                        juce::MessageBoxIconType::WarningIcon,
+                        "Download Failed",
+                        "Downloaded file appears invalid.\nPlease download manually.",
+                        "OK");
+                }
+            });
+            return;
+        }
+
+        // Create update batch script
+        auto exeDir = currentExe.getParentDirectory().getFullPathName().replace("/", "\\");
+        auto currentPath = currentExe.getFullPathName().replace("/", "\\");
+        auto downloadPath = downloadFile.getFullPathName().replace("/", "\\");
+        auto backupPath = currentExe.getSiblingFile("DirectPipe_backup.exe")
+                              .getFullPathName().replace("/", "\\");
+        auto batchPath = batchFile.getFullPathName().replace("/", "\\");
+        auto updateDirPath = updateDir.getFullPathName().replace("/", "\\");
+
+        juce::String script;
+        script << "@echo off\r\n";
+        script << "chcp 65001 > nul\r\n";
+        script << "echo.\r\n";
+        script << "echo  Updating DirectPipe to v" << version << " ...\r\n";
+        script << "echo  Waiting for DirectPipe to close...\r\n";
+        script << "timeout /t 3 /nobreak > nul\r\n";
+        script << ":waitloop\r\n";
+        script << "tasklist /FI \"IMAGENAME eq DirectPipe.exe\" 2>nul | find /I \"DirectPipe.exe\" > nul\r\n";
+        script << "if not errorlevel 1 (\r\n";
+        script << "    timeout /t 1 /nobreak > nul\r\n";
+        script << "    goto waitloop\r\n";
+        script << ")\r\n";
+
+        auto flagPath = currentExe.getSiblingFile("_updated.flag")
+                            .getFullPathName().replace("/", "\\");
+
+        if (isZip) {
+            // Extract ZIP using PowerShell, then copy DirectPipe.exe
+            script << "echo  Extracting update...\r\n";
+            script << "if exist \"" << updateDirPath << "\" rd /s /q \"" << updateDirPath << "\"\r\n";
+            script << "powershell -NoProfile -Command \"Expand-Archive -Path '" << downloadPath
+                   << "' -DestinationPath '" << updateDirPath << "' -Force\"\r\n";
+            // Backup current exe
+            script << "if exist \"" << backupPath << "\" del /f \"" << backupPath << "\"\r\n";
+            script << "move /y \"" << currentPath << "\" \"" << backupPath << "\"\r\n";
+            // Copy new exe from extracted folder (may be in root or subfolder)
+            script << "for /r \"" << updateDirPath << "\" %%f in (DirectPipe.exe) do (\r\n";
+            script << "    copy /y \"%%f\" \"" << currentPath << "\" > nul\r\n";
+            script << "    goto :found_exe\r\n";
+            script << ")\r\n";
+            script << ":found_exe\r\n";
+            // Clean up: remove extracted folder, zip, and backup
+            script << "rd /s /q \"" << updateDirPath << "\"\r\n";
+            script << "del /f \"" << downloadPath << "\"\r\n";
+            script << "del /f \"" << backupPath << "\"\r\n";
+        } else {
+            // Simple exe replacement
+            script << "echo  Applying update...\r\n";
+            script << "if exist \"" << backupPath << "\" del /f \"" << backupPath << "\"\r\n";
+            script << "move /y \"" << currentPath << "\" \"" << backupPath << "\"\r\n";
+            script << "move /y \"" << downloadPath << "\" \"" << currentPath << "\"\r\n";
+            script << "del /f \"" << backupPath << "\"\r\n";
+        }
+
+        // Write flag file so app shows "Update Complete" on next launch
+        script << "echo " << version << " > \"" << flagPath << "\"\r\n";
+        script << "start \"\" \"" << currentPath << "\"\r\n";
+        script << "timeout /t 3 /nobreak > nul\r\n";
+        script << "del /f \"" << batchPath << "\"\r\n";
+
+        batchFile.replaceWithText(script);
+
+        juce::MessageManager::callAsync([safeThis, batchFile, progressDlg]() {
+            if (!safeThis) return;
+
+            // Dismiss progress dialog
+            if (*progressDlg)
+                (*progressDlg)->exitModalState(0);
+
+            // Launch batch script and quit
+            batchFile.startAsProcess();
+            juce::JUCEApplication::getInstance()->systemRequestedQuit();
+        });
     });
 }
 

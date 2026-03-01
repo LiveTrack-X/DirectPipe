@@ -56,12 +56,15 @@ public:
     bool initialize(const juce::String& deviceName, double sampleRate, int bufferSize);
     void shutdown();
     bool setDevice(const juce::String& deviceName);
+    bool setBufferSize(int bufferSize);
+    int getPreferredBufferSize() const { return bufferSize_; }
 
     // --- RT-safe audio push (called from MAIN audio callback) ---
     int writeAudio(const float* const* channelData, int numChannels, int numFrames);
 
     // --- Device enumeration ---
     juce::StringArray getAvailableOutputDevices() const;
+    juce::Array<int> getAvailableBufferSizes() const;
 
     // --- Status queries ---
     VirtualCableStatus getStatus() const { return status_.load(std::memory_order_relaxed); }
