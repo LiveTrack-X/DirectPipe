@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.9.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.9.1** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -441,6 +441,7 @@ Export/import full settings as `.dpbackup` files. Useful for backups or migratin
 앱의 모든 이벤트(오디오 엔진, 플러그인, WebSocket, HTTP 등)를 실시간으로 확인합니다.
 
 - 타임스탬프 + 고정폭 폰트
+- **카테고리 태그**: `[APP]` `[AUDIO]` `[VST]` `[PRESET]` `[ACTION]` `[HOTKEY]` `[MIDI]` `[WS]` `[HTTP]` `[MONITOR]` `[IPC]` `[REC]` `[CONTROL]` — 서브시스템별 구분 / Category tags per subsystem
 - **Export Log** — `.txt` 파일로 저장 (문제 신고 시 유용)
 - **Clear Log** — 로그 화면 지우기
 
