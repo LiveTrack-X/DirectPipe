@@ -1305,7 +1305,7 @@ void MainComponent::performUpdate()
         script << "echo " << version << " > \"" << flagPath << "\"\r\n";
         script << "start \"\" \"" << currentPath << "\"\r\n";
         script << "timeout /t 3 /nobreak > nul\r\n";
-        script << "del /f \"" << batchPath << "\"\r\n";
+        script << "(del /f \"" << batchPath << "\") & exit\r\n";
 
         batchFile.replaceWithText(script);
 
