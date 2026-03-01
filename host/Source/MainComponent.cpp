@@ -369,6 +369,17 @@ MainComponent::MainComponent()
     }
     updateSlotButtonStates();
 
+    // Clean up leftover update files from previous update
+    {
+        auto exeDir = juce::File::getSpecialLocation(
+            juce::File::currentExecutableFile).getParentDirectory();
+        exeDir.getChildFile("_update.bat").deleteFile();
+        exeDir.getChildFile("_update").deleteRecursively();
+        exeDir.getChildFile("DirectPipe_update.zip").deleteFile();
+        exeDir.getChildFile("DirectPipe_update.exe").deleteFile();
+        exeDir.getChildFile("DirectPipe_backup.exe").deleteFile();
+    }
+
     // Check if we just updated (flag file left by update batch script)
     {
         auto flagFile = juce::File::getSpecialLocation(
@@ -1303,9 +1314,9 @@ void MainComponent::performUpdate()
 
         // Write flag file so app shows "Update Complete" on next launch
         script << "echo " << version << " > \"" << flagPath << "\"\r\n";
-        script << "start \"\" \"" << currentPath << "\"\r\n";
-        script << "timeout /t 3 /nobreak > nul\r\n";
-        script << "(del /f \"" << batchPath << "\") & exit\r\n";
+        // Launch new exe as fully detached process (not child of cmd)
+        script << "powershell -NoProfile -Command \"Start-Process -FilePath '" << currentPath << "'\"\r\n";
+        script << "exit\r\n";
 
         batchFile.replaceWithText(script);
 
