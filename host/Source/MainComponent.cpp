@@ -1283,12 +1283,11 @@ void MainComponent::performUpdate()
             // Backup current exe
             script << "if exist \"" << backupPath << "\" del /f \"" << backupPath << "\"\r\n";
             script << "move /y \"" << currentPath << "\" \"" << backupPath << "\"\r\n";
-            // Copy new exe from extracted folder (may be in root or subfolder)
-            script << "for /r \"" << updateDirPath << "\" %%f in (DirectPipe.exe) do (\r\n";
-            script << "    copy /y \"%%f\" \"" << currentPath << "\" > nul\r\n";
-            script << "    goto :found_exe\r\n";
-            script << ")\r\n";
-            script << ":found_exe\r\n";
+            // Find and copy DirectPipe.exe from extracted folder (may be in subfolder)
+            // Use PowerShell for reliable recursive file search (avoids cmd for/goto issues)
+            script << "powershell -NoProfile -Command \"$f = Get-ChildItem -Path '" << updateDirPath
+                   << "' -Recurse -Filter 'DirectPipe.exe' | Select-Object -First 1; "
+                   << "if ($f) { Copy-Item $f.FullName -Destination '" << currentPath << "' -Force }\"\r\n";
             // Clean up: remove extracted folder, zip, and backup
             script << "rd /s /q \"" << updateDirPath << "\"\r\n";
             script << "del /f \"" << downloadPath << "\"\r\n";
