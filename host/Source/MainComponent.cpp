@@ -26,6 +26,15 @@
 #include "UI/SettingsExporter.h"  // Used by onSaveSettings/onLoadSettings callbacks
 #include <thread>
 
+namespace {
+    constexpr const char* kUpdateBatchFile = "_update.bat";
+    constexpr const char* kUpdateDir       = "_update";
+    constexpr const char* kUpdateZip       = "DirectPipe_update.zip";
+    constexpr const char* kUpdateExe       = "DirectPipe_update.exe";
+    constexpr const char* kBackupExe       = "DirectPipe_backup.exe";
+    constexpr const char* kUpdatedFlag     = "_updated.flag";
+}
+
 namespace directpipe {
 
 MainComponent::MainComponent()
@@ -369,21 +378,17 @@ MainComponent::MainComponent()
     }
     updateSlotButtonStates();
 
-    // Clean up leftover update files from previous update
+    // Clean up leftover update files and check post-update flag
     {
         auto exeDir = juce::File::getSpecialLocation(
             juce::File::currentExecutableFile).getParentDirectory();
-        exeDir.getChildFile("_update.bat").deleteFile();
-        exeDir.getChildFile("_update").deleteRecursively();
-        exeDir.getChildFile("DirectPipe_update.zip").deleteFile();
-        exeDir.getChildFile("DirectPipe_update.exe").deleteFile();
-        exeDir.getChildFile("DirectPipe_backup.exe").deleteFile();
-    }
+        exeDir.getChildFile(kUpdateBatchFile).deleteFile();
+        exeDir.getChildFile(kUpdateDir).deleteRecursively();
+        exeDir.getChildFile(kUpdateZip).deleteFile();
+        exeDir.getChildFile(kUpdateExe).deleteFile();
+        exeDir.getChildFile(kBackupExe).deleteFile();
 
-    // Check if we just updated (flag file left by update batch script)
-    {
-        auto flagFile = juce::File::getSpecialLocation(
-            juce::File::currentExecutableFile).getSiblingFile("_updated.flag");
+        auto flagFile = exeDir.getChildFile(kUpdatedFlag);
         if (flagFile.existsAsFile()) {
             auto version = flagFile.loadFileAsString().trim();
             juce::MessageManager::callAsync([this, version, flagFile]() {
@@ -1166,8 +1171,8 @@ void MainComponent::performUpdate()
     // Determine paths
     auto currentExe = juce::File::getSpecialLocation(
         juce::File::currentExecutableFile);
-    auto updateDir = currentExe.getParentDirectory().getChildFile("_update");
-    auto batchFile = currentExe.getSiblingFile("_update.bat");
+    auto updateDir = currentExe.getParentDirectory().getChildFile(kUpdateDir);
+    auto batchFile = currentExe.getSiblingFile(kUpdateBatchFile);
 
     // Show progress (indeterminate spinner)
     auto progressDlg = std::make_shared<std::unique_ptr<juce::AlertWindow>>(
@@ -1212,8 +1217,8 @@ void MainComponent::performUpdate()
 
         // Determine download target
         auto downloadFile = isZip
-            ? currentExe.getSiblingFile("DirectPipe_update.zip")
-            : currentExe.getSiblingFile("DirectPipe_update.exe");
+            ? currentExe.getSiblingFile(kUpdateZip)
+            : currentExe.getSiblingFile(kUpdateExe);
 
         // Write to file
         {
@@ -1263,7 +1268,7 @@ void MainComponent::performUpdate()
         auto exeDir = currentExe.getParentDirectory().getFullPathName().replace("/", "\\");
         auto currentPath = currentExe.getFullPathName().replace("/", "\\");
         auto downloadPath = downloadFile.getFullPathName().replace("/", "\\");
-        auto backupPath = currentExe.getSiblingFile("DirectPipe_backup.exe")
+        auto backupPath = currentExe.getSiblingFile(kBackupExe)
                               .getFullPathName().replace("/", "\\");
         auto batchPath = batchFile.getFullPathName().replace("/", "\\");
         auto updateDirPath = updateDir.getFullPathName().replace("/", "\\");
@@ -1282,7 +1287,7 @@ void MainComponent::performUpdate()
         script << "    goto waitloop\r\n";
         script << ")\r\n";
 
-        auto flagPath = currentExe.getSiblingFile("_updated.flag")
+        auto flagPath = currentExe.getSiblingFile(kUpdatedFlag)
                             .getFullPathName().replace("/", "\\");
 
         if (isZip) {
