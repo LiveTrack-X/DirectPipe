@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.9.4-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.9.5-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -418,8 +418,10 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 
 **그래도 끊긴다면:**
 - 플러그인 수를 줄이거나, CPU를 많이 쓰는 플러그인을 Bypass 처리
-- WASAPI 대신 **ASIO** 드라이버 사용 (더 낮은 지연 가능)
+- 오디오 인터페이스가 있다면 **ASIO** 드라이버 사용 (더 낮은 지연 가능)
 - 하단 상태 바의 **CPU %** 수치를 확인 — 60% 이상이면 과부하
+- 하단 상태 바의 **XRun** 수치를 확인 — 1분간 버퍼 언더런 횟수 표시
+- **Windows Audio (Low Latency)** 모드에서 끊긴다면 → **Windows Audio (Shared)** 로 변경 시도 (FAQ의 드라이버 가이드 참조)
 
 ---
 
@@ -431,23 +433,96 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 
 **Still crackling?**
 - Reduce the number of plugins, or Bypass CPU-heavy ones
-- Switch from WASAPI to **ASIO** driver (allows even lower latency)
+- If you have an audio interface, switch to **ASIO** driver (allows even lower latency)
 - Check the **CPU %** in the bottom status bar — above 60% indicates overload
+- Check the **XRun** count in the status bar — shows buffer underruns in the last 60 seconds
+- If crackling in **Windows Audio (Low Latency)** → try switching to **Windows Audio (Shared)** (see Driver Guide FAQ)
 </details>
 
 <details>
-<summary><b>ASIO가 뭔가요? 꼭 필요한가요? / What is ASIO? Do I need it?</b></summary>
+<summary><b>오디오 드라이버 종류와 선택 가이드 / Audio Driver Types & Selection Guide</b></summary>
 
-**ASIO**는 저지연 오디오 드라이버입니다. 대부분의 USB 마이크는 **WASAPI** 모드로 충분히 잘 동작하므로 반드시 필요하지는 않습니다.
+DirectPipe는 5가지 오디오 드라이버를 지원합니다. Audio 탭의 **Driver** 드롭다운에서 선택할 수 있습니다.
 
-**ASIO** is a low-latency audio driver protocol. Most USB microphones work perfectly fine with **WASAPI** mode, so ASIO is not required.
+DirectPipe supports 5 audio driver types. Select from the **Driver** dropdown in the Audio tab.
 
-| | WASAPI Shared | ASIO |
-|---|---|---|
-| 지연 / Latency | 보통 / Normal (5–15ms) | 매우 낮음 / Very low (2–5ms) |
-| 설치 / Setup | 별도 설치 불필요 / No extra install | 오디오 인터페이스 드라이버 필요 / Requires audio interface driver |
-| 다른 앱 동시 사용 / Shared access | 가능 (비독점) / Yes (non-exclusive) | 장치에 따라 다름 / Depends on device |
-| 추천 대상 / Best for | 일반 사용자 / Most users | 전문가, 실시간 모니터링 / Pros, real-time monitoring |
+### DirectSound (레거시 / Legacy)
+
+Windows XP 시절의 오디오 API입니다. JUCE가 자동으로 등록하며 목록에 표시되지만, **WASAPI보다 지연이 크고 기능이 제한적이므로 사용할 이유가 없습니다.**
+
+Legacy audio API from the Windows XP era. JUCE registers it automatically, but **it has higher latency and fewer features than WASAPI — there is no reason to use it.**
+
+- **지연 / Latency**: 50-100ms+ (가장 높음 / highest)
+- **버퍼 제어 / Buffer control**: 제한적 / Limited
+- **다른 앱 동시 사용 / Shared access**: O
+- **추천 / Recommended for**: 사용하지 마세요. Windows Audio (Shared)를 쓰세요 / Don't use this. Use Windows Audio (Shared)
+
+### Windows Audio (Shared) -- 추천 / Recommended
+
+Windows WASAPI 공유 모드. 다른 앱과 동시에 같은 장치를 사용할 수 있습니다. **대부분의 사용자에게 가장 안정적인 선택입니다.**
+
+Windows WASAPI shared mode. Other apps can use the same device simultaneously. **The most reliable choice for most users.**
+
+- **지연 / Latency**: 3-10ms (버퍼 크기에 따라 / depends on buffer size)
+- **버퍼 제어 / Buffer control**: 144 samples (~3ms @ 48kHz)부터 선택 가능 / Selectable from 144 samples
+- **다른 앱 동시 사용 / Shared access**: O
+- **추천 / Recommended for**: 대부분의 사용자, USB 마이크 사용자 / Most users, USB mic users
+
+### Windows Audio (Low Latency)
+
+WASAPI 공유 모드이면서 저지연. Windows 10 1607+ 에서 IAudioClient3를 사용해 최소 주기(period)로 동작합니다.
+
+Low-latency shared WASAPI mode. Uses IAudioClient3 on Windows 10 1607+ for minimum audio periods.
+
+- **지연 / Latency**: 하드웨어에 따라 다름 / Varies by hardware
+- **버퍼 제어 / Buffer control**: 하드웨어가 보고한 최소 단위로 세밀 조절 / Fine-grained, hardware-defined steps
+- **다른 앱 동시 사용 / Shared access**: O
+- **참고 / Note**: USB 마이크 등 많은 오디오 장치가 IAudioClient3를 제대로 지원하지 않습니다 / Many audio devices (especially USB mics) don't properly support IAudioClient3
+
+> **주의 / Warning**: LL 모드의 실제 성능은 **오디오 드라이버의 IAudioClient3 구현에 전적으로 의존**합니다. 많은 USB 마이크와 일반 오디오 장치의 드라이버는 IAudioClient3의 `GetSharedModeEnginePeriod()`에서 최소/최대/기본 주기를 동일한 값(예: 480 samples = 10ms)으로 보고합니다. 이 경우 **일반 Windows Audio (Shared) 모드가 오히려 더 낮은 버퍼(144 samples = ~3ms)를 사용할 수 있어 지연이 더 적습니다.** LL 모드에서 버퍼 크기를 변경할 수 없거나 일반 모드보다 높은 지연이 나타난다면, Windows Audio (Shared)를 사용하세요.
+>
+> **Warning**: LL mode performance **depends entirely on your audio driver's IAudioClient3 implementation**. Many USB mics and generic audio devices report the same value for min/max/default period in `GetSharedModeEnginePeriod()` (e.g., 480 samples = 10ms). In such cases, **standard Windows Audio (Shared) mode can actually achieve lower buffers (144 samples = ~3ms) and thus lower latency.** If you can't change the buffer size in LL mode or see higher latency than standard mode, use Windows Audio (Shared) instead.
+
+### Windows Audio (Exclusive)
+
+WASAPI 독점 모드. 해당 장치를 앱이 독점하므로 다른 앱의 소리가 나지 않습니다.
+
+WASAPI exclusive mode. The app takes exclusive control of the device -- other apps cannot output sound.
+
+- **지연 / Latency**: 10-20ms
+- **버퍼 제어 / Buffer control**: 앱이 직접 제어 / App-controlled
+- **다른 앱 동시 사용 / Shared access**: **X** (독점 / exclusive)
+- **추천 / Recommended for**: 녹음 전용 환경 / Dedicated recording setups
+- **참고 / Note**: Windows 사운드 설정 > 장치 속성 > "앱이 이 기기를 독점적으로 제어" 체크 필요 / Enable "Allow apps to take exclusive control" in Windows Sound settings
+
+### ASIO
+
+전문가용 저지연 드라이버. 오디오 인터페이스의 네이티브 ASIO 드라이버가 필요합니다.
+
+Professional low-latency driver. Requires native ASIO driver from your audio interface.
+
+- **지연 / Latency**: 2-5ms (가장 낮음 / lowest)
+- **버퍼 제어 / Buffer control**: ASIO Control Panel에서 세밀 조절 / Fine control via ASIO Control Panel
+- **다른 앱 동시 사용 / Shared access**: 장치에 따라 다름 / Depends on device
+- **추천 / Recommended for**: 전문가, 오디오 인터페이스 사용자 / Pros, audio interface users
+
+### 비교 요약 / Comparison
+
+| | DirectSound | Shared | Low Latency | Exclusive | ASIO |
+|---|---|---|---|---|---|
+| 지연 / Latency | 50-100ms+ | **3-10ms** | 드라이버 의존 / Driver-dependent | 10-20ms | **2-5ms** |
+| 다른 앱 동시 / Shared | O | O | O | X | - |
+| 버퍼 세밀도 / Buffer granularity | 제한적 / Limited | 보통 / Moderate | 드라이버 의존 / Driver-dependent | 보통 / Moderate | **세밀 / Fine** |
+| 호환성 / Compatibility | 모든 장치 / All | **모든 장치 / All devices** | 제한적 / Limited | 대부분 / Most | 전용 드라이버 / Driver needed |
+| 설치 / Setup | 없음 / None | 없음 / None | 없음 / None | 없음 / None | 드라이버 필요 / Driver needed |
+| 추천 / Recommended | X | **O** | 장치에 따라 / Depends | 녹음 전용 / Recording | 전문가 / Pro |
+
+### 선택 가이드 / Quick Selection Guide
+
+1. **USB 마이크 사용자** -> **Windows Audio (Shared)** 사용 (가장 안정적, 충분히 낮은 지연) / Use Shared (most reliable, low enough latency)
+2. **오디오 인터페이스가 있다면** -> **ASIO** 사용 (최저 지연) / Use ASIO (lowest latency)
+3. **LL 모드를 시도해봤는데 버퍼 변경이 안 되거나 지연이 높다면** -> **Windows Audio (Shared)** 로 돌아가세요 / If LL mode doesn't allow buffer changes or has higher latency, go back to Shared
+4. **녹음 전용 PC라면** -> Exclusive도 고려 / Consider Exclusive
 </details>
 
 <details>

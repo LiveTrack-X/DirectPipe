@@ -832,12 +832,14 @@ void MainComponent::resized()
 
     // ── Status Bar ──
     int statusY = getHeight() - kStatusBarHeight + 3;
-    int infoW = getWidth() / 2;   // left half for latency/cpu/format
-    latencyLabel_.setBounds(5, statusY, infoW * 4 / 10, 24);
-    cpuLabel_.setBounds(5 + infoW * 4 / 10, statusY, infoW * 2 / 10, 24);
-    formatLabel_.setBounds(5 + infoW * 6 / 10, statusY, infoW * 4 / 10, 24);
+    int creditW = 200;
+    int infoW = getWidth() - creditW - 10;  // all space minus credit area
+    int col3 = infoW / 3;
+    latencyLabel_.setBounds(5, statusY, col3, 24);
+    cpuLabel_.setBounds(5 + col3, statusY, col3, 24);
+    formatLabel_.setBounds(5 + col3 * 2, statusY, col3, 24);
     portableLabel_.setBounds(5 + infoW, statusY, 100, 24);
-    creditLink_.setBounds(getWidth() - 300, statusY, 290, 24);
+    creditLink_.setBounds(getWidth() - creditW, statusY, creditW - 5, 24);
     notificationBar_.setBounds(0, statusY - 3, getWidth(), kStatusBarHeight);
 }
 
@@ -915,9 +917,18 @@ void MainComponent::timerCallback()
 
     latencyLabel_.setText(latencyText, juce::dontSendNotification);
 
-    cpuLabel_.setText(
-        "CPU: " + juce::String(monitor.getCpuUsagePercent(), 1) + "%",
-        juce::dontSendNotification);
+    {
+        audioEngine_.updateXRunTracking();
+        juce::String cpuText = "CPU: " + juce::String(monitor.getCpuUsagePercent(), 1) + "%";
+        int xruns = audioEngine_.getRecentXRunCount();
+        if (xruns > 0) {
+            cpuText += " | XRun: " + juce::String(xruns);
+            cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF6B6B));
+        } else {
+            cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
+        }
+        cpuLabel_.setText(cpuText, juce::dontSendNotification);
+    }
 
     formatLabel_.setText(
         juce::String(static_cast<int>(monitor.getSampleRate())) + "Hz / " +

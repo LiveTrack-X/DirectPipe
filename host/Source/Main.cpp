@@ -34,6 +34,8 @@
 
 #if JUCE_WINDOWS
 #include <Windows.h>
+#include <timeapi.h>
+#pragma comment(lib, "winmm.lib")
 
 static const wchar_t* kRunKeyPath = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
 static const wchar_t* kRunValueName = L"DirectPipe";
@@ -224,6 +226,19 @@ public:
             return;
         }
 
+    #if JUCE_WINDOWS
+        // Reduce Windows timer granularity to 1ms (matched by timeEndPeriod in shutdown)
+        timeBeginPeriod(1);
+
+        // Disable Power Throttling (prevents Intel E-core scheduling on hybrid CPUs)
+        PROCESS_POWER_THROTTLING_STATE throttling{};
+        throttling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+        throttling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+        throttling.StateMask = 0;
+        SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling,
+                              &throttling, sizeof(throttling));
+    #endif
+
         mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *this);
     }
 
@@ -232,6 +247,9 @@ public:
         if (scannerMode_) return;
         trayIcon_.reset();
         mainWindow_.reset();
+    #if JUCE_WINDOWS
+        timeEndPeriod(1);
+    #endif
     }
 
     void systemRequestedQuit() override

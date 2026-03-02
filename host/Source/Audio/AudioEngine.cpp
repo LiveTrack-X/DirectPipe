@@ -174,8 +174,41 @@ void AudioEngine::setBufferSize(int bufferSize)
     deviceManager_.getAudioDeviceSetup(setup);
     setup.bufferSize = bufferSize;
     auto error = deviceManager_.setAudioDeviceSetup(setup, true);
-    if (error.isNotEmpty())
-        juce::Logger::writeToLog("[AUDIO] setBufferSize error: " + error);
+
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    if (!device) return;
+
+    int actual = device->getCurrentBufferSizeSamples();
+
+    // If the requested size didn't apply, find the best alternative from device-supported sizes
+    if (actual != bufferSize || error.isNotEmpty()) {
+        auto supported = device->getAvailableBufferSizes();
+
+        if (supported.size() > 0) {
+            // Find closest supported size <= requested (prefer lower latency)
+            int best = supported.getFirst();
+            for (int s : supported) {
+                if (s <= bufferSize)
+                    best = s;
+                else if (best > bufferSize)
+                    best = juce::jmin(best, s);  // all are larger, pick smallest
+            }
+
+            // Try the best alternative if different from what we already got
+            if (best != actual) {
+                setup.bufferSize = best;
+                deviceManager_.setAudioDeviceSetup(setup, true);
+                actual = device->getCurrentBufferSizeSamples();
+            }
+        }
+
+        juce::Logger::writeToLog("[AUDIO] Buffer: requested " + juce::String(bufferSize)
+            + " -> applied " + juce::String(actual));
+        pushNotification("Buffer: " + juce::String(bufferSize) + " -> "
+            + juce::String(actual) + " smp", NotificationLevel::Info);
+    }
+
+    currentBufferSize_ = actual;
 }
 
 void AudioEngine::setChannelMode(int channels)
@@ -346,25 +379,10 @@ juce::Array<double> AudioEngine::getAvailableSampleRates() const
 
 juce::Array<int> AudioEngine::getAvailableBufferSizes() const
 {
-    juce::Array<int> sizes;
-    if (auto* device = deviceManager_.getCurrentAudioDevice()) {
-        for (auto bs : device->getAvailableBufferSizes())
-            sizes.add(bs);
-    }
-    if (sizes.isEmpty()) {
-        // Fallback defaults including small sizes for ASIO
-        sizes.add(32);
-        sizes.add(48);
-        sizes.add(64);
-        sizes.add(96);
-        sizes.add(128);
-        sizes.add(192);
-        sizes.add(256);
-        sizes.add(480);
-        sizes.add(512);
-        sizes.add(1024);
-    }
-    return sizes;
+    if (auto* device = deviceManager_.getCurrentAudioDevice())
+        return device->getAvailableBufferSizes();
+
+    return {};
 }
 
 bool AudioEngine::showAsioControlPanel()
@@ -376,6 +394,65 @@ bool AudioEngine::showAsioControlPanel()
         }
     }
     return false;
+}
+
+int AudioEngine::getRecentXRunCount() const
+{
+    return recentXRuns_.load(std::memory_order_relaxed);
+}
+
+void AudioEngine::updateXRunTracking()
+{
+    // Called from message-thread timer (~30Hz). Accumulates xrun deltas
+    // into 1-second buckets in a 60-slot circular buffer.
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    if (!device) return;
+
+    // Handle reset signal from audioDeviceAboutToStart (device thread)
+    if (xrunResetRequested_.exchange(false, std::memory_order_acquire)) {
+        int xruns = device->getXRunCount();
+        lastDeviceXRunCount_ = (xruns >= 0) ? xruns : 0;
+        std::memset(xrunHistory_, 0, sizeof(xrunHistory_));
+        xrunHistoryIdx_ = 0;
+        xrunAccumulatorTime_ = 0.0;
+        return;
+    }
+
+    int currentCount = device->getXRunCount();
+    if (currentCount < 0) return;  // Unsupported
+
+    int delta = currentCount - lastDeviceXRunCount_;
+    if (delta < 0) delta = 0;  // Device was reset
+    lastDeviceXRunCount_ = currentCount;
+
+    // Accumulate time (~33ms per call at 30Hz)
+    xrunAccumulatorTime_ += 1.0 / 30.0;
+
+    // Every ~1 second, rotate the circular buffer
+    if (xrunAccumulatorTime_ >= 1.0) {
+        xrunAccumulatorTime_ -= 1.0;
+
+        // Move to next slot, subtract the old value from total
+        xrunHistoryIdx_ = (xrunHistoryIdx_ + 1) % 60;
+        xrunHistory_[xrunHistoryIdx_] = 0;
+
+        // Recompute total from all 60 slots
+        int total = 0;
+        for (int i = 0; i < 60; ++i)
+            total += xrunHistory_[i];
+        recentXRuns_.store(total, std::memory_order_relaxed);
+    }
+
+    // Add current delta to the active slot
+    if (delta > 0) {
+        xrunHistory_[xrunHistoryIdx_] += delta;
+
+        // Update total immediately
+        int total = 0;
+        for (int i = 0; i < 60; ++i)
+            total += xrunHistory_[i];
+        recentXRuns_.store(total, std::memory_order_relaxed);
+    }
 }
 
 juce::StringArray AudioEngine::getInputChannelNames() const
@@ -452,6 +529,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     int numSamples,
     const juce::AudioIODeviceCallbackContext& /*context*/)
 {
+    // Flush denormalized floats to zero — prevents 10-100x CPU spikes
+    // when VST plugins process near-silence (reverb tails, compressor release, etc.)
+    juce::ScopedNoDenormals noDenormals;
+
     latencyMonitor_.markCallbackStart();
 
     const int chMode = channelMode_.load(std::memory_order_relaxed);
@@ -459,12 +540,24 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     const bool muted = muted_.load(std::memory_order_relaxed);
     const bool outputMuted = outputMuted_.load(std::memory_order_relaxed);
 
+    numSamples = juce::jmin(numSamples, workBuffer_.getNumSamples());
+
+    // ── Fast path: panic muted → zero output, skip all processing ──
+    if (muted) {
+        for (int ch = 0; ch < numOutputChannels; ++ch)
+            std::memset(outputChannelData[ch], 0,
+                        sizeof(float) * static_cast<size_t>(numSamples));
+        inputLevel_.store(0.0f, std::memory_order_relaxed);
+        outputLevel_.store(0.0f, std::memory_order_relaxed);
+        latencyMonitor_.markCallbackEnd();
+        return;
+    }
+
     // 1. Copy input data into the pre-allocated work buffer (no heap allocation)
     auto& buffer = workBuffer_;
     int workChannels = juce::jmin(
         juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels)),
         buffer.getNumChannels());
-    numSamples = juce::jmin(numSamples, buffer.getNumSamples());
     buffer.clear();
 
     if (chMode == 1) {
@@ -488,43 +581,37 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         }
     }
 
-    // Apply input gain
+    // Apply input gain (SIMD-optimized inside JUCE)
     if (std::abs(gain - 1.0f) > 0.001f) {
         buffer.applyGain(gain);
     }
 
-    // Measure input level (RMS)
-    if (buffer.getNumChannels() > 0) {
+    // Measure input level (RMS) — decimated: every 4th callback (~23Hz at 48kHz/512smp).
+    // UI timer runs at 30Hz so per-callback RMS is wasted work.
+    const bool measureThisCallback = (++rmsDecimationCounter_ & 3) == 0;
+    if (measureThisCallback && buffer.getNumChannels() > 0) {
         float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
         inputLevel_.store(rms, std::memory_order_relaxed);
     }
 
     // 2. Process through VST plugin chain (inline, zero additional latency)
     //    Each plugin's bypass flag is atomic — can be toggled from any thread
-    if (!muted) {
-        vstChain_.processBlock(buffer, numSamples);
-    }
+    vstChain_.processBlock(buffer, numSamples);
 
     // 2.5. Write processed audio to recorder (lock-free)
-    if (!muted) {
-        recorder_.writeBlock(buffer, numSamples);
-    }
+    recorder_.writeBlock(buffer, numSamples);
 
     // 2.6. Write to shared memory for Receiver VST (if IPC enabled)
-    if (!muted && ipcEnabled_.load(std::memory_order_acquire)) {
+    if (ipcEnabled_.load(std::memory_order_acquire)) {
         sharedMemWriter_.writeAudio(buffer, numSamples);
     }
 
     // 3. Route processed audio to monitor (separate WASAPI device)
-    if (!muted) {
-        outputRouter_.routeAudio(buffer, numSamples);
-    }
+    outputRouter_.routeAudio(buffer, numSamples);
 
     // 4. Copy processed audio to main output (AudioSettings Output device)
-    //    Silence if panic muted OR output muted
-    const bool mainSilence = muted || outputMuted;
     for (int ch = 0; ch < numOutputChannels; ++ch) {
-        if (ch < buffer.getNumChannels() && !mainSilence) {
+        if (ch < buffer.getNumChannels() && !outputMuted) {
             std::memcpy(outputChannelData[ch], buffer.getReadPointer(ch),
                         sizeof(float) * static_cast<size_t>(numSamples));
         } else {
@@ -533,8 +620,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         }
     }
 
-    // Measure output level (based on processed buffer, regardless of main output device)
-    if (buffer.getNumChannels() > 0) {
+    // Measure output level — same decimation as input
+    if (measureThisCallback && buffer.getNumChannels() > 0) {
         float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
         if (buffer.getNumChannels() > 1)
             rms = juce::jmax(rms, calculateRMS(buffer.getReadPointer(1), numSamples));
@@ -555,11 +642,33 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     currentSampleRate_ = device->getCurrentSampleRate();
     currentBufferSize_ = device->getCurrentBufferSizeSamples();
 
+    // Log device capabilities for diagnostics
+    {
+        auto typeName = device->getTypeName();
+        auto bs = device->getAvailableBufferSizes();
+        juce::String bsList;
+        for (int i = 0; i < bs.size(); ++i)
+            bsList += (i > 0 ? ", " : "") + juce::String(bs[i]);
+        juce::Logger::writeToLog("[AUDIO] Device started: " + typeName
+            + " | SR=" + juce::String(currentSampleRate_.load())
+            + " | BS=" + juce::String(currentBufferSize_.load())
+            + " | Available BS: [" + bsList + "]");
+    }
+
+    // Signal message-thread to reset xrun tracking (avoids data race
+    // between device thread writing and message-thread timer reading).
+    recentXRuns_.store(0, std::memory_order_relaxed);
+    xrunResetRequested_.store(true, std::memory_order_release);
+
     // Pre-allocate work buffer conservatively to avoid heap allocation in audio callback
     // Use 8 channels minimum to handle any device channel configuration
     int maxChannels = juce::jmax(8, device->getActiveInputChannels().countNumberOfSetBits(),
                                     device->getActiveOutputChannels().countNumberOfSetBits());
     workBuffer_.setSize(maxChannels, currentBufferSize_);
+
+    // Touch all buffer pages to prevent page faults in the RT audio callback.
+    // On first access, virtual memory pages may trigger soft faults, causing latency spikes.
+    workBuffer_.clear();
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
@@ -643,9 +752,8 @@ float AudioEngine::calculateRMS(const float* data, int numSamples)
     if (numSamples <= 0) return 0.0f;
 
     float sum = 0.0f;
-    for (int i = 0; i < numSamples; ++i) {
+    for (int i = 0; i < numSamples; ++i)
         sum += data[i] * data[i];
-    }
     return std::sqrt(sum / static_cast<float>(numSamples));
 }
 

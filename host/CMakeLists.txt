@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "3.9.4"
+    VERSION "3.9.5"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -103,7 +103,7 @@ target_compile_definitions(DirectPipe PRIVATE
     JUCE_PLUGINHOST_VST3=1
     JUCE_PLUGINHOST_VST=1
     JUCE_WASAPI=1
-    JUCE_WASAPI_EXCLUSIVE=0
+    JUCE_WASAPI_EXCLUSIVE=1
     JUCE_ASIO=$<BOOL:${DIRECTPIPE_HAS_ASIO}>
 )
 

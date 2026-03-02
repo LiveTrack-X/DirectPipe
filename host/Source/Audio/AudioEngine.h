@@ -142,6 +142,11 @@ public:
 
     bool isRunning() const { return running_; }
 
+    /** @brief Get the number of xruns in the last 60 seconds. Returns -1 if unsupported. */
+    int getRecentXRunCount() const;
+    /** @brief Call from UI timer (~30Hz) to update the rolling xrun window. */
+    void updateXRunTracking();
+
     std::function<void(float)> onInputLevelChanged;
     std::function<void(float)> onOutputLevelChanged;
     std::function<void(const juce::String&)> onDeviceError;
@@ -189,7 +194,18 @@ private:
     std::atomic<double> currentSampleRate_{48000.0};
     std::atomic<int> currentBufferSize_{480};
 
+    // Rolling 60-second xrun tracking (updated from message thread timer).
+    // xrunResetRequested_ signals message-thread to reinitialize tracking state
+    // (avoids data race between device thread and message thread).
+    std::atomic<int> recentXRuns_{0};
+    std::atomic<bool> xrunResetRequested_{false};
+    int lastDeviceXRunCount_ = 0;
+    int xrunHistory_[60] = {};
+    int xrunHistoryIdx_ = 0;
+    double xrunAccumulatorTime_ = 0.0;
+
     juce::AudioBuffer<float> workBuffer_;
+    uint32_t rmsDecimationCounter_ = 0;  // RMS computed every 4th callback (RT thread only, no atomic needed)
 
     // Lock-free notification queue (device thread -> message thread)
     static constexpr int kNotifQueueSize = 8;
