@@ -52,17 +52,16 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
         auto pluginName = nameLabel_.getText();
         auto safeOwner = juce::Component::SafePointer<PluginChainEditor>(&owner_);
         int idx = rowIndex_;
-        bool ok = juce::AlertWindow::showOkCancelBox(
-            juce::AlertWindow::QuestionIcon,
-            "Remove Plugin",
-            "Remove \"" + pluginName + "\" from the chain?",
-            "Remove", "Cancel", nullptr, nullptr);
-        if (ok) {
-            juce::MessageManager::callAsync([safeOwner, idx] {
-                if (safeOwner)
-                    safeOwner->vstChain_.removePlugin(idx);
-            });
-        }
+        auto options = juce::MessageBoxOptions()
+            .withIconType(juce::MessageBoxIconType::QuestionIcon)
+            .withTitle("Remove Plugin")
+            .withMessage("Remove \"" + pluginName + "\" from the chain?")
+            .withButton("Remove")
+            .withButton("Cancel");
+        juce::AlertWindow::showAsync(options, [safeOwner, idx](int result) {
+            if (result == 1 && safeOwner)
+                safeOwner->vstChain_.removePlugin(idx);
+        });
     };
 
     update(rowIndex);
@@ -335,13 +334,17 @@ void PluginChainEditor::removeSelectedPlugin()
         else
             pluginName = "Plugin " + juce::String(selected + 1);
 
-        bool ok = juce::AlertWindow::showOkCancelBox(
-            juce::AlertWindow::QuestionIcon,
-            "Remove Plugin",
-            "Remove \"" + pluginName + "\" from the chain?",
-            "Remove", "Cancel", nullptr, nullptr);
-        if (ok)
-            vstChain_.removePlugin(selected);
+        auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
+        auto options = juce::MessageBoxOptions()
+            .withIconType(juce::MessageBoxIconType::QuestionIcon)
+            .withTitle("Remove Plugin")
+            .withMessage("Remove \"" + pluginName + "\" from the chain?")
+            .withButton("Remove")
+            .withButton("Cancel");
+        juce::AlertWindow::showAsync(options, [safeThis, selected](int result) {
+            if (result == 1 && safeThis)
+                safeThis->vstChain_.removePlugin(selected);
+        });
     }
 }
 

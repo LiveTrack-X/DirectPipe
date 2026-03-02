@@ -44,9 +44,11 @@ MainComponent::MainComponent()
 
     // Initialize audio engine
     if (!audioEngine_.initialize()) {
-        juce::MessageManager::callAsync([this] {
-            showNotification("Audio engine failed to start - check device settings",
-                             NotificationLevel::Critical);
+        auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+        juce::MessageManager::callAsync([safeThis] {
+            if (safeThis)
+                safeThis->showNotification("Audio engine failed to start - check device settings",
+                                           NotificationLevel::Critical);
         });
     }
 

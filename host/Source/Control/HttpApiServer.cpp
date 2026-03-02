@@ -229,8 +229,10 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     // GET /api/volume/:target/:value
     if (action == "volume" && segments.size() >= 4) {
         float value = static_cast<float>(std::atof(segments[3].c_str()));
-        if (value < 0.0f || value > 1.0f)
-            return {400, R"({"error": "value must be 0.0-1.0"})"};
+        // Input gain range is 0.0-2.0 (multiplier), others are 0.0-1.0
+        float maxValue = (segments[2] == "input") ? 2.0f : 1.0f;
+        if (value < 0.0f || value > maxValue)
+            return {400, R"({"error": "value out of range"})"};
         dispatcher_.setVolume(segments[2], value);
         return {200, R"({"ok": true, "action": "set_volume", "target": ")" +
                segments[2] + R"(", "value": )" +

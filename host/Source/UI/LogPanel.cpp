@@ -338,75 +338,84 @@ void LogPanel::onClearLog()
 
 void LogPanel::onClearPluginCache()
 {
-    bool ok = juce::AlertWindow::showOkCancelBox(
-        juce::AlertWindow::WarningIcon,
-        "Clear Plugin Cache",
-        "This will delete the scanned plugin list.\n"
-        "DirectPipe will need to re-scan all plugins.\n\nContinue?",
-        "OK", "Cancel", nullptr, nullptr);
+    auto safeThis = juce::Component::SafePointer<LogPanel>(this);
+    auto options = juce::MessageBoxOptions()
+        .withIconType(juce::MessageBoxIconType::WarningIcon)
+        .withTitle("Clear Plugin Cache")
+        .withMessage("This will delete the scanned plugin list.\n"
+                     "DirectPipe will need to re-scan all plugins.\n\nContinue?")
+        .withButton("OK")
+        .withButton("Cancel");
+    juce::AlertWindow::showAsync(options, [safeThis](int result) {
+        if (result != 1 || !safeThis) return;
 
-    if (!ok) return;
+        auto dir = getConfigDir();
+        dir.getChildFile("plugin-cache.xml").deleteFile();
+        dir.getChildFile("scan-result.xml").deleteFile();
+        dir.getChildFile("scan-deadmanspedal.txt").deleteFile();
+        dir.getChildFile("scan-blacklist.txt").deleteFile();
 
-    auto dir = getConfigDir();
-    dir.getChildFile("plugin-cache.xml").deleteFile();
-    dir.getChildFile("scan-result.xml").deleteFile();
-    dir.getChildFile("scan-deadmanspedal.txt").deleteFile();
-    dir.getChildFile("scan-blacklist.txt").deleteFile();
-
-    juce::Logger::writeToLog("[APP] Plugin cache cleared");
+        juce::Logger::writeToLog("[APP] Plugin cache cleared");
+    });
 }
 
 void LogPanel::onClearAllPresets()
 {
-    bool ok = juce::AlertWindow::showOkCancelBox(
-        juce::AlertWindow::WarningIcon,
-        "Clear All Presets",
-        "This will delete all 5 quick slot presets (A-E)\n"
-        "and all saved user presets.\n\nThis cannot be undone. Continue?",
-        "OK", "Cancel", nullptr, nullptr);
+    auto safeThis = juce::Component::SafePointer<LogPanel>(this);
+    auto options = juce::MessageBoxOptions()
+        .withIconType(juce::MessageBoxIconType::WarningIcon)
+        .withTitle("Clear All Presets")
+        .withMessage("This will delete all 5 quick slot presets (A-E)\n"
+                     "and all saved user presets.\n\nThis cannot be undone. Continue?")
+        .withButton("OK")
+        .withButton("Cancel");
+    juce::AlertWindow::showAsync(options, [safeThis](int result) {
+        if (result != 1 || !safeThis) return;
 
-    if (!ok) return;
+        auto dir = getConfigDir();
 
-    auto dir = getConfigDir();
+        // Quick slots A-E
+        auto slotsDir = dir.getChildFile("Slots");
+        for (int i = 0; i < 5; ++i) {
+            char label = static_cast<char>('A' + i);
+            slotsDir.getChildFile(juce::String("slot_") + juce::String::charToString(label) + ".dppreset").deleteFile();
+        }
 
-    // Quick slots A-E
-    auto slotsDir = dir.getChildFile("Slots");
-    for (int i = 0; i < 5; ++i) {
-        char label = static_cast<char>('A' + i);
-        slotsDir.getChildFile(juce::String("slot_") + juce::String::charToString(label) + ".dppreset").deleteFile();
-    }
+        // User presets
+        auto presetsDir = dir.getChildFile("Presets");
+        auto presetFiles = presetsDir.findChildFiles(
+            juce::File::findFiles, false, "*.dppreset");
+        for (auto& f : presetFiles)
+            f.deleteFile();
 
-    // User presets
-    auto presetsDir = dir.getChildFile("Presets");
-    auto presetFiles = presetsDir.findChildFiles(
-        juce::File::findFiles, false, "*.dppreset");
-    for (auto& f : presetFiles)
-        f.deleteFile();
-
-    juce::Logger::writeToLog("[APP] All presets cleared");
+        juce::Logger::writeToLog("[APP] All presets cleared");
+    });
 }
 
 void LogPanel::onResetSettingsClicked()
 {
-    bool ok = juce::AlertWindow::showOkCancelBox(
-        juce::AlertWindow::WarningIcon,
-        "Reset Settings",
-        "This will delete all audio settings, hotkeys,\n"
-        "MIDI mappings, and server config.\n\n"
-        "DirectPipe will reload with factory defaults.\n\nContinue?",
-        "OK", "Cancel", nullptr, nullptr);
+    auto safeThis = juce::Component::SafePointer<LogPanel>(this);
+    auto options = juce::MessageBoxOptions()
+        .withIconType(juce::MessageBoxIconType::WarningIcon)
+        .withTitle("Reset Settings")
+        .withMessage("This will delete all audio settings, hotkeys,\n"
+                     "MIDI mappings, and server config.\n\n"
+                     "DirectPipe will reload with factory defaults.\n\nContinue?")
+        .withButton("OK")
+        .withButton("Cancel");
+    juce::AlertWindow::showAsync(options, [safeThis](int result) {
+        if (result != 1 || !safeThis) return;
 
-    if (!ok) return;
+        auto dir = getConfigDir();
+        dir.getChildFile("settings.dppreset").deleteFile();
+        dir.getChildFile("directpipe-controls.json").deleteFile();
+        dir.getChildFile("recording-config.json").deleteFile();
 
-    auto dir = getConfigDir();
-    dir.getChildFile("settings.dppreset").deleteFile();
-    dir.getChildFile("directpipe-controls.json").deleteFile();
-    dir.getChildFile("recording-config.json").deleteFile();
+        juce::Logger::writeToLog("[APP] Settings reset to factory defaults");
 
-    juce::Logger::writeToLog("[APP] Settings reset to factory defaults");
-
-    if (onResetSettings)
-        onResetSettings();
+        if (safeThis->onResetSettings)
+            safeThis->onResetSettings();
+    });
 }
 
 juce::File LogPanel::getConfigDir()
