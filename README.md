@@ -421,7 +421,7 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 - 오디오 인터페이스가 있다면 **ASIO** 드라이버 사용 (더 낮은 지연 가능)
 - 하단 상태 바의 **CPU %** 수치를 확인 — 60% 이상이면 과부하
 - 하단 상태 바의 **XRun** 수치를 확인 — 1분간 버퍼 언더런 횟수 표시
-- **Windows Audio (Low Latency)** 모드에서 끊긴다면 → **Windows Audio (Shared)** 로 변경 시도 (FAQ의 드라이버 가이드 참조)
+- **Windows Audio (Low Latency)** 모드에서 끊긴다면 → **Windows Audio**로 변경 시도 (FAQ의 드라이버 가이드 참조)
 
 ---
 
@@ -436,7 +436,7 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 - If you have an audio interface, switch to **ASIO** driver (allows even lower latency)
 - Check the **CPU %** in the bottom status bar — above 60% indicates overload
 - Check the **XRun** count in the status bar — shows buffer underruns in the last 60 seconds
-- If crackling in **Windows Audio (Low Latency)** → try switching to **Windows Audio (Shared)** (see Driver Guide FAQ)
+- If crackling in **Windows Audio (Low Latency)** → try switching to **Windows Audio** (see Driver Guide FAQ)
 </details>
 
 <details>
@@ -455,9 +455,9 @@ Legacy audio API from the Windows XP era. JUCE registers it automatically, but *
 - **지연 / Latency**: 50-100ms+ (가장 높음 / highest)
 - **버퍼 제어 / Buffer control**: 제한적 / Limited
 - **다른 앱 동시 사용 / Shared access**: O
-- **추천 / Recommended for**: 사용하지 마세요. Windows Audio (Shared)를 쓰세요 / Don't use this. Use Windows Audio (Shared)
+- **추천 / Recommended for**: 사용하지 마세요. **Windows Audio**를 쓰세요 / Don't use this. Use **Windows Audio**
 
-### Windows Audio (Shared) -- 추천 / Recommended
+### Windows Audio -- 추천 / Recommended
 
 Windows WASAPI 공유 모드. 다른 앱과 동시에 같은 장치를 사용할 수 있습니다. **대부분의 사용자에게 가장 안정적인 선택입니다.**
 
@@ -479,11 +479,11 @@ Low-latency shared WASAPI mode. Uses IAudioClient3 on Windows 10 1607+ for minim
 - **다른 앱 동시 사용 / Shared access**: O
 - **참고 / Note**: USB 마이크 등 많은 오디오 장치가 IAudioClient3를 제대로 지원하지 않습니다 / Many audio devices (especially USB mics) don't properly support IAudioClient3
 
-> **주의 / Warning**: LL 모드의 실제 성능은 **오디오 드라이버의 IAudioClient3 구현에 전적으로 의존**합니다. 많은 USB 마이크와 일반 오디오 장치의 드라이버는 IAudioClient3의 `GetSharedModeEnginePeriod()`에서 최소/최대/기본 주기를 동일한 값(예: 480 samples = 10ms)으로 보고합니다. 이 경우 **일반 Windows Audio (Shared) 모드가 오히려 더 낮은 버퍼(144 samples = ~3ms)를 사용할 수 있어 지연이 더 적습니다.** LL 모드에서 버퍼 크기를 변경할 수 없거나 일반 모드보다 높은 지연이 나타난다면, Windows Audio (Shared)를 사용하세요.
+> **주의 / Warning**: LL 모드의 실제 성능은 **오디오 드라이버의 IAudioClient3 구현에 전적으로 의존**합니다. 많은 USB 마이크와 일반 오디오 장치의 드라이버는 IAudioClient3의 `GetSharedModeEnginePeriod()`에서 최소/최대/기본 주기를 동일한 값(예: 480 samples = 10ms)으로 보고합니다. 이 경우 **일반 Windows Audio 모드가 오히려 더 낮은 버퍼(144 samples = ~3ms)를 사용할 수 있어 지연이 더 적습니다.** LL 모드에서 버퍼 크기를 변경할 수 없거나 일반 모드보다 높은 지연이 나타난다면, **Windows Audio**를 사용하세요.
 >
-> **Warning**: LL mode performance **depends entirely on your audio driver's IAudioClient3 implementation**. Many USB mics and generic audio devices report the same value for min/max/default period in `GetSharedModeEnginePeriod()` (e.g., 480 samples = 10ms). In such cases, **standard Windows Audio (Shared) mode can actually achieve lower buffers (144 samples = ~3ms) and thus lower latency.** If you can't change the buffer size in LL mode or see higher latency than standard mode, use Windows Audio (Shared) instead.
+> **Warning**: LL mode performance **depends entirely on your audio driver's IAudioClient3 implementation**. Many USB mics and generic audio devices report the same value for min/max/default period in `GetSharedModeEnginePeriod()` (e.g., 480 samples = 10ms). In such cases, **standard Windows Audio mode can actually achieve lower buffers (144 samples = ~3ms) and thus lower latency.** If you can't change the buffer size in LL mode or see higher latency than standard mode, use **Windows Audio** instead.
 
-### Windows Audio (Exclusive)
+### Windows Audio (Exclusive Mode)
 
 WASAPI 독점 모드. 해당 장치를 앱이 독점하므로 다른 앱의 소리가 나지 않습니다.
 
@@ -508,7 +508,7 @@ Professional low-latency driver. Requires native ASIO driver from your audio int
 
 ### 비교 요약 / Comparison
 
-| | DirectSound | Shared | Low Latency | Exclusive | ASIO |
+| | DirectSound | Windows Audio | Low Latency | Exclusive Mode | ASIO |
 |---|---|---|---|---|---|
 | 지연 / Latency | 50-100ms+ | **3-10ms** | 드라이버 의존 / Driver-dependent | 10-20ms | **2-5ms** |
 | 다른 앱 동시 / Shared | O | O | O | X | - |
@@ -519,10 +519,10 @@ Professional low-latency driver. Requires native ASIO driver from your audio int
 
 ### 선택 가이드 / Quick Selection Guide
 
-1. **USB 마이크 사용자** -> **Windows Audio (Shared)** 사용 (가장 안정적, 충분히 낮은 지연) / Use Shared (most reliable, low enough latency)
+1. **USB 마이크 사용자** -> **Windows Audio** 사용 (가장 안정적, 충분히 낮은 지연) / Use Windows Audio (most reliable, low enough latency)
 2. **오디오 인터페이스가 있다면** -> **ASIO** 사용 (최저 지연) / Use ASIO (lowest latency)
-3. **LL 모드를 시도해봤는데 버퍼 변경이 안 되거나 지연이 높다면** -> **Windows Audio (Shared)** 로 돌아가세요 / If LL mode doesn't allow buffer changes or has higher latency, go back to Shared
-4. **녹음 전용 PC라면** -> Exclusive도 고려 / Consider Exclusive
+3. **LL 모드를 시도해봤는데 버퍼 변경이 안 되거나 지연이 높다면** -> **Windows Audio**로 돌아가세요 / If LL mode doesn't allow buffer changes or has higher latency, go back to Windows Audio
+4. **녹음 전용 PC라면** -> **Windows Audio (Exclusive Mode)** 도 고려 / Consider Exclusive Mode
 </details>
 
 <details>
