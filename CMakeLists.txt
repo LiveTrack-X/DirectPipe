@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DirectPipe VERSION 3.9.1 LANGUAGES C CXX)
+project(DirectPipe VERSION 3.9.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

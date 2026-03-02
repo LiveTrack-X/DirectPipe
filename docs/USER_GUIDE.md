@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.9.1** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.9.2** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -142,8 +142,8 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 
 ### 채널 모드 / Channel Mode
 
-- **Stereo** (기본값) — 채널이 그대로 통과
-- **Mono** — 양쪽 채널을 모노로 믹스. 마이크 음성에 적합
+- **Stereo** (기본값) — 입력 채널이 그대로 L/R로 통과 / Input channels pass through as-is
+- **Mono** — 모든 입력 채널을 합산하여 모노로 만든 뒤 양쪽(L/R)으로 출력. 이후 VST 체인·메인 출력·모니터·IPC·녹음 모두 스테레오로 처리됨. 마이크 1개만 사용하면 볼륨 손실 없음. 2개 이상 입력 시 합산 (클리핑 발생 시 입력 게인으로 조절) / Sums all input channels to mono, then outputs to both L/R. Everything downstream (VST chain, main output, monitor, IPC, recording) processes as stereo. No volume loss for single-mic input. Multiple inputs are summed at full gain (adjust input gain if clipping occurs)
 
 ---
 
@@ -220,6 +220,14 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 > 모니터는 메인 드라이버와 **독립된 별도 WASAPI 장치**를 사용합니다. ASIO 모드에서도 정상 동작합니다.
 >
 > Monitor uses a **separate WASAPI device**, independent from the main driver. Works even with ASIO.
+
+> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 WASAPI 장치를 경유하기 때문에 메인 출력 대비 **~15-20ms 추가 지연**이 발생합니다. 이는 WASAPI Shared Mode 듀얼 디바이스 구조의 하한선이며, 소프트웨어로 줄일 수 없는 한계입니다. 실시간 모니터링 시 지연이 거슬린다면 다음을 권장합니다:
+> - **ASIO 드라이버 사용** — 입력과 출력이 하나의 ASIO 디바이스에서 처리되어 별도 모니터 장치 없이 최소 지연으로 자기 목소리를 들을 수 있습니다
+> - **하드웨어 다이렉트 모니터링** — 오디오 인터페이스 자체의 Direct Monitor 기능을 사용하면 컴퓨터를 거치지 않아 지연이 0입니다
+>
+> **⚠️ Monitor latency note**: Monitor output routes through a separate WASAPI device, adding **~15-20ms extra latency** compared to the main output. This is the inherent floor of the dual-device WASAPI Shared Mode architecture and cannot be reduced by software. If monitoring latency is noticeable, consider:
+> - **ASIO driver** — Input and output share a single ASIO device, so you can hear yourself with minimal latency without a separate monitor device
+> - **Hardware direct monitoring** — Use your audio interface's built-in Direct Monitor feature for zero latency (bypasses the computer entirely)
 
 ### VST Receiver (IPC) / VST 리시버
 

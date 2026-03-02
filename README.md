@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.9.1-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.9.2-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -17,13 +17,26 @@
   </a>
 </p>
 
-Windows용 실시간 VST2/VST3 호스트. 마이크 입력에 VST 플러그인 체인을 걸어 실시간으로 처리하고, 메인 출력(AudioSettings Output 장치)으로 직접 전송한다. 별도 WASAPI 장치를 통한 모니터 출력(헤드폰)도 지원. Light Host와 비슷하지만 키보드 단축키 / MIDI CC / Stream Deck / HTTP API를 통한 외부 제어와 빠른 프리셋 전환에 초점을 맞추었다.
+**스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** Windows용 실시간 마이크 프로세서.
 
-Real-time VST2/VST3 host for Windows. Processes microphone input through a VST plugin chain, with main output going directly to the AudioSettings Output device. Optional separate WASAPI monitor output for headphones. Similar to Light Host, but focused on external control (hotkeys, MIDI CC, Stream Deck, HTTP API) and fast preset switching.
+USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 즉시 전환할 수 있다.
+
+**Real-time microphone processor for streamers, podcasters, gamers, and voice chat users** on Windows.
+
+Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deliver clean audio directly to Discord, Zoom, or OBS. Switch effects, adjust volume, and mute with a single Stream Deck button while live — or use hotkeys during gameplay, MIDI controllers for hands-on mixing. Set up a professional mic chain without a DAW, and instantly switch between situation presets (A-E).
 
 <p align="center">
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
 </p>
+
+**Who is DirectPipe for?**
+
+| | 사용 예 / Use Case |
+|---|---|
+| **스트리머 / Streamers** | OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. Receiver VST로 가상 케이블 없이 OBS 직접 연결 |
+| **팟캐스터 / Podcasters** | 노이즈 제거 + EQ + 컴프레서 체인을 한 번 설정하면 매번 자동 적용. 녹음 기능 내장 |
+| **게이머 / Gamers** | 단축키(Ctrl+Shift)로 게임 중 뮤트/프리셋 전환. 시스템 트레이 상주, 리소스 최소 사용 |
+| **보이스챗 / Voice Chat** | VB-Cable로 Discord/Zoom에 처리된 음성 전달. 상대방에게 깨끗한 마이크 음질 제공 |
 
 ---
 
@@ -78,7 +91,7 @@ External Control:
 - **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
 - WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor (Output 탭, 별도 WASAPI) + IPC (Receiver VST) — Three output paths: main, monitor headphones, IPC to OBS
-- **Mono / Stereo** 채널 모드 — Channel mode selection
+- **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
 
@@ -484,6 +497,8 @@ Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (rev
 - Main Output과는 별도의 WASAPI 장치를 사용하므로 **독립적으로 동작**
 - **MON** 버튼으로 켜기/끄기
 
+> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 WASAPI 장치를 사용하기 때문에 **~15-20ms의 추가 지연**이 발생합니다. 이 지연은 WASAPI Shared Mode 듀얼 디바이스 구조의 한계입니다. 자기 목소리를 지연 없이 듣고 싶다면 **ASIO 드라이버 사용** (입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
+
 ---
 
 **Monitor** lets you hear your own processed voice through headphones in real-time, with all VST effects applied.
@@ -491,6 +506,8 @@ Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (rev
 - Select your headphone device in the **Output** tab
 - Uses a separate WASAPI device from the Main Output, so it **works independently**
 - Toggle on/off with the **MON** button
+
+> **Latency note**: Monitor output uses a separate WASAPI device, which adds **~15-20ms of extra latency** due to the dual-device WASAPI Shared Mode architecture. For zero-latency monitoring, use an **ASIO driver** (single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
 </details>
 
 <details>

@@ -572,7 +572,7 @@ void MainComponent::handleAction(const ActionEvent& event)
                         juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
                 dir.createDirectory();
                 auto file = dir.getChildFile("DirectPipe_" + timestamp + ".wav");
-                if (!recorder.startRecording(file, sr, audioEngine_.getChannelMode()))
+                if (!recorder.startRecording(file, sr, 2))
                     showNotification("Recording failed - check folder permissions",
                                      NotificationLevel::Error);
             }

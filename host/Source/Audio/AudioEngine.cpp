@@ -113,8 +113,7 @@ void AudioEngine::setIpcEnabled(bool enabled)
 
     if (enabled) {
         uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
-        uint32_t ch = static_cast<uint32_t>(channelMode_.load(std::memory_order_relaxed));
-        if (sharedMemWriter_.initialize(sr, ch)) {
+        if (sharedMemWriter_.initialize(sr, 2)) {
             ipcEnabled_.store(true, std::memory_order_release);
             juce::Logger::writeToLog("[IPC] Output enabled");
         } else {
@@ -467,17 +466,17 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     buffer.clear();
 
     if (chMode == 1) {
-        // Mono mode: mix all input channels to channel 0 with equal gain
+        // Mono mode: sum all input channels to channel 0 (full gain, no attenuation)
         if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
-            if (numInputChannels > 1 && inputChannelData[1] != nullptr) {
-                // Two channels: average them (0.5 * ch0 + 0.5 * ch1)
-                buffer.copyFrom(0, 0, inputChannelData[0], numSamples, 0.5f);
-                buffer.addFrom(0, 0, inputChannelData[1], numSamples, 0.5f);
-            } else {
-                // Single channel: copy as-is
-                buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
+            buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
+            for (int ch = 1; ch < numInputChannels; ++ch) {
+                if (inputChannelData[ch] != nullptr)
+                    buffer.addFrom(0, 0, inputChannelData[ch], numSamples);
             }
         }
+        // Duplicate mono to channel 1 so both L/R outputs carry the same signal
+        if (buffer.getNumChannels() > 1)
+            buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
     } else {
         // Stereo mode: copy channels as-is
         for (int ch = 0; ch < numInputChannels && ch < workChannels; ++ch) {
@@ -571,11 +570,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                                   monitorOutput_.getPreferredBufferSize());
     }
 
-    // Re-initialize IPC if enabled (SR/channel may have changed)
+    // Re-initialize IPC if enabled (SR may have changed)
     if (ipcEnabled_.load(std::memory_order_relaxed)) {
         uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
-        uint32_t ch = static_cast<uint32_t>(channelMode_.load(std::memory_order_relaxed));
-        sharedMemWriter_.initialize(sr, ch);
+        sharedMemWriter_.initialize(sr, 2);
     }
 
     juce::Logger::writeToLog(

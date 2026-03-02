@@ -169,9 +169,13 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
         return -1;
     }
 
-    // Add to graph
+    // Suspend processing before modifying the graph to prevent race with audio thread
+    graph_->suspendProcessing(true);
+
+    // Add to graph (safe — audio thread is suspended)
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
+        graph_->suspendProcessing(false);
         juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;
@@ -189,6 +193,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
+        // rebuildGraph will resume processing after rebuilding connections
         rebuildGraph();
         resultIdx = static_cast<int>(chain_.size()) - 1;
     }
@@ -238,9 +243,13 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
         return -1;
     }
 
-    // Add to graph
+    // Suspend processing before modifying the graph to prevent race with audio thread
+    graph_->suspendProcessing(true);
+
+    // Add to graph (safe — audio thread is suspended)
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
+        graph_->suspendProcessing(false);
         juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;
@@ -258,6 +267,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
+        // rebuildGraph will resume processing after rebuilding connections
         rebuildGraph();
         resultIdx = static_cast<int>(chain_.size()) - 1;
     }
@@ -289,8 +299,11 @@ bool VSTChain::removePlugin(int index)
         juce::String removedName = chain_[static_cast<size_t>(index)].name;
         int oldCount = static_cast<int>(chain_.size());
         auto& slot = chain_[static_cast<size_t>(index)];
+        // Suspend processing before modifying graph to prevent race with audio thread
+        graph_->suspendProcessing(true);
         graph_->removeNode(slot.nodeId);
         chain_.erase(chain_.begin() + index);
+        // rebuildGraph will resume processing after rebuilding connections
         rebuildGraph();
         newCount = static_cast<int>(chain_.size());
         logMsg = "[VST] Removed: \"" + removedName + "\" at index " + juce::String(index) + " (" + juce::String(oldCount) + " -> " + juce::String(newCount) + " plugins)";
@@ -553,10 +566,13 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
     // Clear current chain immediately (audio goes silent)
     {
         const juce::ScopedLock sl(chainLock_);
+        // Suspend processing before modifying graph to prevent race with audio thread
+        graph_->suspendProcessing(true);
         editorWindows_.clear();
         for (auto& slot : chain_)
             graph_->removeNode(slot.nodeId);
         chain_.clear();
+        // rebuildGraph will resume processing after rebuilding connections
         rebuildGraph();
     }
 
@@ -605,6 +621,9 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             if (asyncGeneration_.load() != generation) return;
             const juce::ScopedLock sl(chainLock_);
 
+            // Suspend processing before modifying graph to prevent race with audio thread
+            graph_->suspendProcessing(true);
+
             for (auto& entry : result->entries) {
                 auto node = graph_->addNode(std::move(entry.instance));
                 if (!node) continue;
@@ -627,6 +646,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
                         static_cast<int>(entry.request.stateData.getSize()));
             }
 
+            // rebuildGraph will resume processing after rebuilding connections
             rebuildGraph();
             juce::Logger::writeToLog("[VST] Async chain load complete: " + juce::String(chain_.size()) + " plugins loaded");
             asyncLoading_.store(false);
