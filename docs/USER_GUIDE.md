@@ -104,7 +104,8 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 - OUTPUT 레벨 미터
 
 **하단 상태 바 / Status Bar:**
-- 레이턴시 (ms), CPU 사용률 (%), 오디오 포맷, 포터블 모드 표시
+- 레이턴시 (ms), CPU 사용률 (%) + XRun 카운터 (60초간), 오디오 포맷, 포터블 모드 표시
+- XRun 발생 시 빨간색으로 강조 / XRun count highlighted in red when > 0
 - 오류/경고/정보 알림 (자동 페이드)
 - 버전 정보 + 업데이트 알림
 
@@ -114,13 +115,20 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 
 ### 드라이버 타입 / Driver Type
 
-| | Windows Audio (WASAPI) | ASIO |
-|---|---|---|
-| **지연** / Latency | 보통 5~15ms | 매우 낮음 2~5ms |
-| **설치** / Setup | 별도 설치 불필요 | 오디오 인터페이스 드라이버 필요 |
-| **마이크 공유** / Shared | 가능 (비독점) | 장치에 따라 다름 |
-| **장치 선택** / Devices | 입출력 개별 선택 | 단일 장치 |
-| **추천** / Best for | 대부분의 사용자 | 전문가, 실시간 모니터링 |
+Audio 탭의 **Driver** 드롭다운에서 5가지 드라이버를 선택할 수 있습니다. / Select from 5 driver types in the Audio tab Driver dropdown.
+
+| | Windows Audio | Low Latency | Exclusive Mode | ASIO |
+|---|---|---|---|---|
+| **지연** / Latency | **3-10ms** | 드라이버 의존 | 10-20ms | **2-5ms** |
+| **설치** / Setup | 없음 | 없음 | 없음 | 드라이버 필요 |
+| **마이크 공유** / Shared | O | O | X | 장치에 따라 다름 |
+| **추천** / Best for | **대부분의 사용자** | 제한적 | 녹음 전용 | 전문가 |
+
+- **DirectSound** — 레거시 API. 사용하지 마세요. / Legacy API, don't use.
+- **Windows Audio** (추천) — WASAPI 공유 모드. 대부분의 사용자에게 가장 안정적 / WASAPI Shared mode, most reliable for most users
+- **Windows Audio (Low Latency)** — IAudioClient3 기반. **많은 USB 마이크가 제대로 지원하지 않아** 일반 Windows Audio보다 오히려 버퍼가 크게 나올 수 있음 / IAudioClient3-based. Many USB mics don't properly support it — may have higher buffers than standard mode
+- **Windows Audio (Exclusive Mode)** — 독점 모드. 다른 앱이 해당 장치를 사용할 수 없음 / Exclusive mode, no other apps can use the device
+- **ASIO** — 오디오 인터페이스의 네이티브 ASIO 드라이버 필요. 최저 지연 / Requires native ASIO driver, lowest latency
 
 ### 샘플레이트 & 버퍼 크기 / Sample Rate & Buffer Size
 
@@ -128,7 +136,7 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 >
 > **Audio tab sample rate applies globally**: VST chain, monitor output, and IPC (Receiver VST) all follow this value. Monitor output will show Error if its device cannot match the main SR.
 
-- **WASAPI**: 고정 목록 (44100, 48000 Hz / 64~2048 samples)
+- **WASAPI**: 장치가 지원하는 크기만 표시. 지원하지 않는 크기 선택 시 가장 가까운 값으로 자동 전환 + 알림 표시 / Shows device-supported sizes only. Auto-fallback to closest supported size with notification
 - **ASIO**: 장치가 지원하는 값만 표시. ASIO Control Panel에서 설정 가능
 
 **버퍼 크기 가이드:**
@@ -512,8 +520,9 @@ DirectPipe는 실행 시 자동으로 GitHub에서 최신 버전을 확인합니
 
 1. Audio 탭 → **Buffer Size** 올리기 (256 → 512)
 2. CPU를 많이 쓰는 플러그인 Bypass 처리
-3. WASAPI 대신 **ASIO** 드라이버 사용
-4. 하단 상태 바 **CPU %** 확인 — 60% 이상이면 과부하
+3. 오디오 인터페이스가 있다면 **ASIO** 드라이버 사용
+4. 하단 상태 바 **CPU %** 및 **XRun** 수치 확인 — CPU 60% 이상이면 과부하, XRun은 60초간 버퍼 언더런 횟수
+5. **Windows Audio (Low Latency)** 에서 끊기면 → **Windows Audio**로 변경 시도 (LL 모드가 제대로 지원되지 않는 장치가 많음)
 
 ### 모니터 출력이 안 돼요 / No monitor output
 
