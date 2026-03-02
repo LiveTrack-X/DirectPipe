@@ -39,6 +39,7 @@ namespace directpipe {
 class PresetManager {
 public:
     explicit PresetManager(AudioEngine& engine);
+    ~PresetManager() { alive_->store(false); }
 
     /**
      * @brief Save current settings to a preset file.
@@ -144,6 +145,9 @@ private:
 
     AudioEngine& engine_;
     int activeSlot_ = -1;
+
+    // Lifetime guard for callAsync lambdas (replaceChainAsync completion)
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
     static constexpr const char* kPresetExtension = ".dppreset";
 };

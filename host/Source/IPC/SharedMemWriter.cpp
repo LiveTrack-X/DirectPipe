@@ -23,6 +23,7 @@
 
 #include "SharedMemWriter.h"
 #include "directpipe/Protocol.h"
+#include <thread>
 
 namespace directpipe {
 
@@ -35,7 +36,14 @@ SharedMemWriter::~SharedMemWriter()
 
 bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_t bufferFrames)
 {
-    shutdown();  // Clean up any previous state
+    bool wasConnected = connected_.load(std::memory_order_relaxed);
+    shutdown();  // Clean up any previous state (sets producer_active=false)
+
+    // Brief pause after shutdown to let the consumer (Receiver VST) detect
+    // producer_active=false and disconnect before we reinitialize the header.
+    // Without this, initAsProducer stomps the header while the consumer reads it.
+    if (wasConnected)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
     channels_ = channels;
 
@@ -75,6 +83,17 @@ bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_
 void SharedMemWriter::shutdown()
 {
     connected_.store(false, std::memory_order_release);
+
+    // Signal receiver that producer is gone BEFORE unmapping shared memory.
+    // The receiver checks producer_active to detect clean disconnects.
+    if (ringBuffer_.isValid()) {
+        auto* data = sharedMemory_.getData();
+        if (data) {
+            auto* header = static_cast<directpipe::DirectPipeHeader*>(data);
+            header->producer_active.store(false, std::memory_order_release);
+        }
+    }
+
     dataEvent_.close();
     sharedMemory_.close();
     interleaveBuffer_.clear();
@@ -86,7 +105,9 @@ void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int num
     if (numSamples <= 0) return;
 
     const int numChannels = juce::jmin(buffer.getNumChannels(), static_cast<int>(channels_));
-    const auto samples = static_cast<size_t>(numSamples);
+    // Clamp to interleaveBuffer_ capacity to prevent buffer overrun
+    const auto maxFrames = interleaveBuffer_.size() / (std::max)(static_cast<size_t>(channels_), size_t{1});
+    const auto samples = (std::min)(static_cast<size_t>(numSamples), maxFrames);
 
     // Convert from JUCE's non-interleaved format to interleaved
     // JUCE: [L0 L1 L2 ...][R0 R1 R2 ...]
@@ -108,12 +129,12 @@ void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int num
 
     // Write to ring buffer (lock-free)
     uint32_t written = ringBuffer_.write(interleaveBuffer_.data(),
-                                          static_cast<uint32_t>(numSamples));
+                                          static_cast<uint32_t>(samples));
 
-    if (written < static_cast<uint32_t>(numSamples)) {
+    if (written < static_cast<uint32_t>(samples)) {
         // Buffer overrun — some frames were dropped
         droppedFrames_.fetch_add(
-            static_cast<uint32_t>(numSamples) - written,
+            static_cast<uint32_t>(samples) - written,
             std::memory_order_relaxed);
     }
 

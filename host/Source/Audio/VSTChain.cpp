@@ -169,10 +169,8 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
         return -1;
     }
 
-    // Suspend processing before modifying the graph to prevent race with audio thread
+    // Suspend processing while modifying graph to prevent audio thread races
     graph_->suspendProcessing(true);
-
-    // Add to graph (safe — audio thread is suspended)
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
         graph_->suspendProcessing(false);
@@ -193,8 +191,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
-        // rebuildGraph will resume processing after rebuilding connections
-        rebuildGraph();
+        rebuildGraph();  // rebuildGraph calls suspendProcessing(false) internally
         resultIdx = static_cast<int>(chain_.size()) - 1;
     }
 
@@ -243,10 +240,8 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
         return -1;
     }
 
-    // Suspend processing before modifying the graph to prevent race with audio thread
+    // Suspend processing while modifying graph to prevent audio thread races
     graph_->suspendProcessing(true);
-
-    // Add to graph (safe — audio thread is suspended)
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
         graph_->suspendProcessing(false);
@@ -267,7 +262,6 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
-        // rebuildGraph will resume processing after rebuilding connections
         rebuildGraph();
         resultIdx = static_cast<int>(chain_.size()) - 1;
     }
@@ -280,6 +274,10 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
 
 bool VSTChain::removePlugin(int index)
 {
+    // Close editor window BEFORE acquiring chainLock_ to avoid
+    // GUI destruction under lock (plugin editors may trigger JUCE callbacks)
+    closePluginEditor(index);
+
     juce::String logMsg;
     int newCount = 0;
     {
@@ -288,10 +286,7 @@ bool VSTChain::removePlugin(int index)
         if (index < 0 || index >= static_cast<int>(chain_.size()))
             return false;
 
-        // Close editor window for this plugin
-        closePluginEditor(index);
-
-        // Shift editor windows down (remove slot at index)
+        // Erase editor window slot (already reset by closePluginEditor above)
         if (static_cast<size_t>(index) < editorWindows_.size()) {
             editorWindows_.erase(editorWindows_.begin() + index);
         }
@@ -299,11 +294,8 @@ bool VSTChain::removePlugin(int index)
         juce::String removedName = chain_[static_cast<size_t>(index)].name;
         int oldCount = static_cast<int>(chain_.size());
         auto& slot = chain_[static_cast<size_t>(index)];
-        // Suspend processing before modifying graph to prevent race with audio thread
-        graph_->suspendProcessing(true);
         graph_->removeNode(slot.nodeId);
         chain_.erase(chain_.begin() + index);
-        // rebuildGraph will resume processing after rebuilding connections
         rebuildGraph();
         newCount = static_cast<int>(chain_.size());
         logMsg = "[VST] Removed: \"" + removedName + "\" at index " + juce::String(index) + " (" + juce::String(oldCount) + " -> " + juce::String(newCount) + " plugins)";
@@ -347,6 +339,26 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
     juce::Logger::writeToLog(logMsg);
     if (onChainChanged) onChainChanged();
     return true;
+}
+
+void VSTChain::togglePluginBypassed(int index)
+{
+    bool current;
+    {
+        const juce::ScopedLock sl(chainLock_);
+        if (index < 0 || index >= static_cast<int>(chain_.size()))
+            return;
+        current = chain_[static_cast<size_t>(index)].bypassed;
+    }
+    setPluginBypassed(index, !current);
+}
+
+bool VSTChain::isPluginBypassed(int index) const
+{
+    const juce::ScopedLock sl(chainLock_);
+    if (index < 0 || index >= static_cast<int>(chain_.size()))
+        return false;
+    return chain_[static_cast<size_t>(index)].bypassed;
 }
 
 void VSTChain::setPluginBypassed(int index, bool bypassed)
@@ -566,13 +578,10 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
     // Clear current chain immediately (audio goes silent)
     {
         const juce::ScopedLock sl(chainLock_);
-        // Suspend processing before modifying graph to prevent race with audio thread
-        graph_->suspendProcessing(true);
         editorWindows_.clear();
         for (auto& slot : chain_)
             graph_->removeNode(slot.nodeId);
         chain_.clear();
-        // rebuildGraph will resume processing after rebuilding connections
         rebuildGraph();
     }
 
@@ -619,39 +628,42 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             if (!aliveFlag->load()) return;
             // Stale callAsync from a superseded replaceChainAsync — discard
             if (asyncGeneration_.load() != generation) return;
-            const juce::ScopedLock sl(chainLock_);
 
-            // Suspend processing before modifying graph to prevent race with audio thread
-            graph_->suspendProcessing(true);
+            juce::String logMsg;
+            {
+                const juce::ScopedLock sl(chainLock_);
 
-            for (auto& entry : result->entries) {
-                auto node = graph_->addNode(std::move(entry.instance));
-                if (!node) continue;
+                graph_->suspendProcessing(true);
+                for (auto& entry : result->entries) {
+                    auto node = graph_->addNode(std::move(entry.instance));
+                    if (!node) continue;
 
-                PluginSlot slot;
-                slot.name = entry.request.name;
-                slot.path = entry.request.path;
-                slot.desc = entry.request.desc;
-                slot.nodeId = node->nodeID;
-                slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
-                slot.bypassed = entry.request.bypassed;
-                chain_.push_back(slot);
+                    PluginSlot slot;
+                    slot.name = entry.request.name;
+                    slot.path = entry.request.path;
+                    slot.desc = entry.request.desc;
+                    slot.nodeId = node->nodeID;
+                    slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
+                    slot.bypassed = entry.request.bypassed;
+                    chain_.push_back(slot);
 
-                if (slot.bypassed)
-                    node->setBypassed(true);
+                    if (slot.bypassed)
+                        node->setBypassed(true);
 
-                if (entry.request.hasState && slot.instance)
-                    slot.instance->setStateInformation(
-                        entry.request.stateData.getData(),
-                        static_cast<int>(entry.request.stateData.getSize()));
+                    if (entry.request.hasState && slot.instance)
+                        slot.instance->setStateInformation(
+                            entry.request.stateData.getData(),
+                            static_cast<int>(entry.request.stateData.getSize()));
+                }
+
+                rebuildGraph();
+                logMsg = "[VST] Async chain load complete: " + juce::String(chain_.size()) + " plugins loaded";
             }
 
-            // rebuildGraph will resume processing after rebuilding connections
-            rebuildGraph();
-            juce::Logger::writeToLog("[VST] Async chain load complete: " + juce::String(chain_.size()) + " plugins loaded");
+            juce::Logger::writeToLog(logMsg);
             asyncLoading_.store(false);
 
-            // Report any load failures
+            // Report any load failures (outside lock)
             if (onPluginLoadFailed) {
                 for (auto& [name, err] : result->failures)
                     onPluginLoadFailed(name, err);

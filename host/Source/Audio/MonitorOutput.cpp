@@ -81,14 +81,15 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
 
 void MonitorOutput::shutdown()
 {
+    // Set status BEFORE teardown so producer (writeAudio) stops writing to ring buffer
+    status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
+    actualSampleRate_.store(0.0, std::memory_order_relaxed);
+    actualBufferSize_.store(0, std::memory_order_relaxed);
     if (deviceManager_) {
         deviceManager_->removeAudioCallback(this);
         deviceManager_->closeAudioDevice();
         deviceManager_.reset();
     }
-    status_.store(VirtualCableStatus::NotConfigured, std::memory_order_relaxed);
-    actualSampleRate_.store(0.0, std::memory_order_relaxed);
-    actualBufferSize_.store(0, std::memory_order_relaxed);
     ringBuffer_.reset();
 }
 
@@ -113,7 +114,7 @@ bool MonitorOutput::setBufferSize(int bufferSize)
 int MonitorOutput::writeAudio(const float* const* channelData,
                                   int numChannels, int numFrames)
 {
-    if (status_.load(std::memory_order_relaxed) != VirtualCableStatus::Active)
+    if (status_.load(std::memory_order_acquire) != VirtualCableStatus::Active)
         return 0;
 
     int written = ringBuffer_.write(channelData, numChannels, numFrames);
@@ -133,6 +134,15 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
     int numSamples,
     const juce::AudioIODeviceCallbackContext& /*context*/)
 {
+    // Guard: if not Active, output silence without touching ring buffer.
+    // Prevents data race when reset() is called from another thread.
+    if (status_.load(std::memory_order_acquire) != VirtualCableStatus::Active) {
+        for (int ch = 0; ch < numOutputChannels; ++ch)
+            std::memset(outputChannelData[ch], 0,
+                        static_cast<size_t>(numSamples) * sizeof(float));
+        return;
+    }
+
     int read = ringBuffer_.read(outputChannelData, numOutputChannels, numSamples);
 
     // Fill remaining samples with silence on underrun
@@ -159,13 +169,17 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         juce::Logger::writeToLog(
             "[MONITOR] Sample rate mismatch! Expected " +
             juce::String(sampleRate_) + " got " + juce::String(deviceSR));
-        status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_relaxed);
+        // Set status BEFORE reset so the consumer callback sees non-Active
+        // and skips ring buffer access (prevents data race on reset)
+        status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_release);
         ringBuffer_.reset();
         return;
     }
 
+    // Set non-Active before reset to prevent consumer from reading during reset
+    status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
     ringBuffer_.reset();
-    status_.store(VirtualCableStatus::Active, std::memory_order_relaxed);
+    status_.store(VirtualCableStatus::Active, std::memory_order_release);
 
     juce::Logger::writeToLog(
         "[MONITOR] Active on " + device->getName() +

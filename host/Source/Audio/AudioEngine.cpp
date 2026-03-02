@@ -81,12 +81,13 @@ bool AudioEngine::initialize()
         }
     }
 
-    // Register as the audio callback
-    deviceManager_.addAudioCallback(this);
-
-    // Initialize the output router and wire outputs
+    // Initialize the output router and wire outputs BEFORE registering callback
+    // to ensure scaledBuffer_ is sized before the first audio callback fires
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     outputRouter_.setMonitorOutput(&monitorOutput_);
+
+    // Register as the audio callback
+    deviceManager_.addAudioCallback(this);
 
     running_ = true;
     return true;
@@ -96,6 +97,7 @@ void AudioEngine::shutdown()
 {
     if (!running_) return;
 
+    alive_->store(false);
     running_ = false;
     deviceManager_.removeAudioCallback(this);
     deviceManager_.closeAudioDevice();
@@ -509,7 +511,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     }
 
     // 2.6. Write to shared memory for Receiver VST (if IPC enabled)
-    if (!muted && ipcEnabled_.load(std::memory_order_relaxed)) {
+    if (!muted && ipcEnabled_.load(std::memory_order_acquire)) {
         sharedMemWriter_.writeAudio(buffer, numSamples);
     }
 
@@ -563,17 +565,30 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     latencyMonitor_.reset(currentSampleRate_, currentBufferSize_);
 
-    // Re-initialize monitor output if configured (SR may have changed)
-    // Use monitor's own preferred buffer size (independent of main device)
+    // Re-initialize monitor output if configured (SR may have changed).
+    // Deferred to message thread to avoid blocking device startup with
+    // monitor WASAPI teardown/restart (potential deadlock between device managers).
     if (monitorOutput_.getStatus() != VirtualCableStatus::NotConfigured) {
-        monitorOutput_.initialize(monitorOutput_.getDeviceName(), currentSampleRate_,
-                                  monitorOutput_.getPreferredBufferSize());
+        auto devName = monitorOutput_.getDeviceName();
+        double sr = currentSampleRate_;
+        int bs = monitorOutput_.getPreferredBufferSize();
+        auto aliveFlag = alive_;
+        juce::MessageManager::callAsync([this, aliveFlag, devName, sr, bs]() {
+            if (!aliveFlag->load()) return;
+            monitorOutput_.initialize(devName, sr, bs);
+        });
     }
 
-    // Re-initialize IPC if enabled (SR may have changed)
-    if (ipcEnabled_.load(std::memory_order_relaxed)) {
+    // Re-initialize IPC if it was enabled before device stopped
+    if (ipcWasEnabled_) {
         uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
-        sharedMemWriter_.initialize(sr, 2);
+        if (sharedMemWriter_.initialize(sr, 2)) {
+            ipcEnabled_.store(true, std::memory_order_release);
+            ipcWasEnabled_ = false;
+        } else {
+            juce::Logger::writeToLog("[IPC] Failed to re-initialize after device restart");
+            ipcWasEnabled_ = false;
+        }
     }
 
     juce::Logger::writeToLog(
@@ -584,6 +599,12 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
 void AudioEngine::audioDeviceStopped()
 {
+    // Remember IPC state for re-init in audioDeviceAboutToStart,
+    // then disable before shutdown to prevent audio callback from
+    // calling writeAudio on a shutdown writer during device restart
+    ipcWasEnabled_ = ipcEnabled_.load(std::memory_order_acquire);
+    ipcEnabled_.store(false, std::memory_order_release);
+
     vstChain_.releaseResources();
     outputRouter_.shutdown();
     sharedMemWriter_.shutdown();

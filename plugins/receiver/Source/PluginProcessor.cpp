@@ -134,10 +134,10 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    // Ensure interleaved buffer is large enough
-    size_t needed = static_cast<size_t>(toRead) * channels;
-    if (interleavedBuffer_.size() < needed)
-        interleavedBuffer_.resize(needed, 0.0f);
+    // Clamp read to pre-allocated interleaved buffer capacity (no heap alloc in RT callback)
+    uint32_t maxFrames = static_cast<uint32_t>(interleavedBuffer_.size()) / (std::max)(channels, 1u);
+    if (toRead > maxFrames)
+        toRead = maxFrames;
 
     uint32_t readCount = ringBuffer_.read(interleavedBuffer_.data(), toRead);
     if (readCount == 0) {
@@ -208,8 +208,9 @@ void DirectPipeReceiverProcessor::skipToFreshPosition()
         uint32_t chunkFrames = static_cast<uint32_t>(interleavedBuffer_.size()) / (std::max)(channels, 1u);
         while (skip > 0) {
             uint32_t chunk = (std::min)(skip, chunkFrames);
-            ringBuffer_.read(interleavedBuffer_.data(), chunk);
-            skip -= chunk;
+            uint32_t actualRead = ringBuffer_.read(interleavedBuffer_.data(), chunk);
+            if (actualRead == 0) break;  // Defensive: prevent infinite loop on read failure
+            skip -= (std::min)(actualRead, skip);
         }
     }
 }

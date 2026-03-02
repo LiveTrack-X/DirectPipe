@@ -322,17 +322,21 @@ void WebSocketServer::stop()
         serverThread_.join();
     }
 
+    // Close all client sockets under lock, then join threads outside lock
+    // to prevent deadlock (thread.join blocks while holding mutex)
+    std::vector<std::unique_ptr<ClientConnection>> toJoin;
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
         for (auto& client : clients_) {
-            if (client->socket) {
+            if (client->socket)
                 client->socket->close();
-            }
-            if (client->thread.joinable()) {
-                client->thread.join();
-            }
         }
+        toJoin = std::move(clients_);
         clients_.clear();
+    }
+    for (auto& conn : toJoin) {
+        if (conn && conn->thread.joinable())
+            conn->thread.join();
     }
 
     clientCount_.store(0, std::memory_order_relaxed);
@@ -506,7 +510,7 @@ void WebSocketServer::broadcastToClients(const std::string& message)
         }
     }
 
-    // Join dead threads outside the lock
+    // Join dead threads outside the lock (clientThread already decremented clientCount_)
     for (auto& conn : deadConns) {
         if (conn && conn->thread.joinable())
             conn->thread.join();

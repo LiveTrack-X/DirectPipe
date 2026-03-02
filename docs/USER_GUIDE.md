@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.9.2** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.9.3** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 

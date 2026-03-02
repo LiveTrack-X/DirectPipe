@@ -143,13 +143,15 @@ MainComponent::MainComponent()
                 juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
                     .getChildFile("DirectPipe_backup.dpbackup"),
                 "*.dpbackup");
+            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
             chooser->launchAsync(juce::FileBrowserComponent::saveMode |
                                  juce::FileBrowserComponent::canSelectFiles,
-                                 [this, chooser](const juce::FileChooser& fc) {
+                                 [safeThis, chooser](const juce::FileChooser& fc) {
+                if (!safeThis) return;
                 auto file = fc.getResult();
                 if (file != juce::File()) {
                     auto target = file.withFileExtension("dpbackup");
-                    auto json = SettingsExporter::exportAll(*presetManager_, controlManager_->getConfigStore());
+                    auto json = SettingsExporter::exportAll(*safeThis->presetManager_, safeThis->controlManager_->getConfigStore());
                     target.replaceWithText(json);
                 }
             });
@@ -159,18 +161,20 @@ MainComponent::MainComponent()
                 "Load Settings",
                 juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
                 "*.dpbackup");
+            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
             chooser->launchAsync(juce::FileBrowserComponent::openMode |
                                  juce::FileBrowserComponent::canSelectFiles,
-                                 [this, chooser](const juce::FileChooser& fc) {
+                                 [safeThis, chooser](const juce::FileChooser& fc) {
+                if (!safeThis) return;
                 auto file = fc.getResult();
                 if (file.existsAsFile()) {
                     auto json = file.loadFileAsString();
-                    loadingSlot_ = true;
-                    SettingsExporter::importAll(json, *presetManager_, controlManager_->getConfigStore());
-                    controlManager_->reloadConfig();
-                    loadingSlot_ = false;
-                    refreshUI();
-                    updateSlotButtonStates();
+                    safeThis->loadingSlot_ = true;
+                    SettingsExporter::importAll(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore());
+                    safeThis->controlManager_->reloadConfig();
+                    safeThis->loadingSlot_ = false;
+                    safeThis->refreshUI();
+                    safeThis->updateSlotButtonStates();
                 }
             });
         };
@@ -210,13 +214,15 @@ MainComponent::MainComponent()
     savePresetBtn_.onClick = [this] {
         auto chooser = std::make_shared<juce::FileChooser>(
             "Save Preset", PresetManager::getPresetsDirectory(), "*.dppreset");
+        auto safeThis = juce::Component::SafePointer<MainComponent>(this);
         chooser->launchAsync(juce::FileBrowserComponent::saveMode |
                              juce::FileBrowserComponent::canSelectFiles,
-                             [this, chooser](const juce::FileChooser& fc) {
+                             [safeThis, chooser](const juce::FileChooser& fc) {
+            if (!safeThis) return;
             auto file = fc.getResult();
             if (file != juce::File()) {
                 auto target = file.withFileExtension("dppreset");
-                presetManager_->savePreset(target);
+                safeThis->presetManager_->savePreset(target);
             }
         });
     };
@@ -228,16 +234,18 @@ MainComponent::MainComponent()
     loadPresetBtn_.onClick = [this] {
         auto chooser = std::make_shared<juce::FileChooser>(
             "Load Preset", PresetManager::getPresetsDirectory(), "*.dppreset");
+        auto safeThis = juce::Component::SafePointer<MainComponent>(this);
         chooser->launchAsync(juce::FileBrowserComponent::openMode |
                              juce::FileBrowserComponent::canSelectFiles,
-                             [this, chooser](const juce::FileChooser& fc) {
+                             [safeThis, chooser](const juce::FileChooser& fc) {
+            if (!safeThis) return;
             auto file = fc.getResult();
             if (file.existsAsFile()) {
-                loadingSlot_ = true;
-                presetManager_->loadPreset(file);
-                loadingSlot_ = false;
-                refreshUI();
-                updateSlotButtonStates();
+                safeThis->loadingSlot_ = true;
+                safeThis->presetManager_->loadPreset(file);
+                safeThis->loadingSlot_ = false;
+                safeThis->refreshUI();
+                safeThis->updateSlotButtonStates();
             }
         });
     };
@@ -391,8 +399,10 @@ MainComponent::MainComponent()
         auto flagFile = exeDir.getChildFile(kUpdatedFlag);
         if (flagFile.existsAsFile()) {
             auto version = flagFile.loadFileAsString().trim();
-            juce::MessageManager::callAsync([this, version, flagFile]() {
-                showNotification("Updated to v" + version + " successfully!",
+            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+            juce::MessageManager::callAsync([safeThis, version, flagFile]() {
+                if (!safeThis) return;
+                safeThis->showNotification("Updated to v" + version + " successfully!",
                                  NotificationLevel::Info);
                 flagFile.deleteFile();
             });
@@ -430,17 +440,14 @@ void MainComponent::handleAction(const ActionEvent& event)
 {
     switch (event.action) {
         case Action::PluginBypass: {
-            auto* slot = audioEngine_.getVSTChain().getPluginSlot(event.intParam);
-            if (slot)
-                audioEngine_.getVSTChain().setPluginBypassed(event.intParam, !slot->bypassed);
+            audioEngine_.getVSTChain().togglePluginBypassed(event.intParam);
             break;
         }
 
         case Action::MasterBypass: {
             bool anyActive = false;
             for (int i = 0; i < audioEngine_.getVSTChain().getPluginCount(); ++i) {
-                auto* slot = audioEngine_.getVSTChain().getPluginSlot(i);
-                if (slot && !slot->bypassed) { anyActive = true; break; }
+                if (!audioEngine_.getVSTChain().isPluginBypassed(i)) { anyActive = true; break; }
             }
             // Suppress auto-save during batch bypass toggle (save once at end)
             loadingSlot_ = true;
@@ -606,12 +613,13 @@ void MainComponent::handleAction(const ActionEvent& event)
                 presetManager_->saveSlot(currentSlot);
             loadingSlot_ = true;
             setSlotButtonsEnabled(false);
-            presetManager_->loadSlotAsync(slot, [this](bool /*ok*/) {
-                loadingSlot_ = false;
-                setSlotButtonsEnabled(true);
-                refreshUI();
-                updateSlotButtonStates();
-                markSettingsDirty();
+            presetManager_->loadSlotAsync(slot, [safeThis = juce::Component::SafePointer<MainComponent>(this)](bool /*ok*/) {
+                if (!safeThis) return;
+                safeThis->loadingSlot_ = false;
+                safeThis->setSlotButtonsEnabled(true);
+                safeThis->refreshUI();
+                safeThis->updateSlotButtonStates();
+                safeThis->markSettingsDirty();
             });
             break;
         }
@@ -632,12 +640,13 @@ void MainComponent::handleAction(const ActionEvent& event)
             }
             loadingSlot_ = true;
             setSlotButtonsEnabled(false);
-            presetManager_->loadSlotAsync(nextSlot, [this](bool /*ok*/) {
-                loadingSlot_ = false;
-                setSlotButtonsEnabled(true);
-                refreshUI();
-                updateSlotButtonStates();
-                markSettingsDirty();
+            presetManager_->loadSlotAsync(nextSlot, [safeThis = juce::Component::SafePointer<MainComponent>(this)](bool /*ok*/) {
+                if (!safeThis) return;
+                safeThis->loadingSlot_ = false;
+                safeThis->setSlotButtonsEnabled(true);
+                safeThis->refreshUI();
+                safeThis->updateSlotButtonStates();
+                safeThis->markSettingsDirty();
             });
             break;
         }
@@ -664,11 +673,13 @@ void MainComponent::onSlotClicked(int slotIndex)
         if (presetManager_->isSlotOccupied(slotIndex)) {
             loadingSlot_ = true;
             setSlotButtonsEnabled(false);
-            presetManager_->loadSlotAsync(slotIndex, [this](bool /*ok*/) {
-                loadingSlot_ = false;
-                setSlotButtonsEnabled(true);
-                refreshUI();
-                updateSlotButtonStates();
+            presetManager_->loadSlotAsync(slotIndex, [safeThis = juce::Component::SafePointer<MainComponent>(this)](bool /*ok*/) {
+                if (!safeThis) return;
+                safeThis->loadingSlot_ = false;
+                safeThis->setSlotButtonsEnabled(true);
+                safeThis->refreshUI();
+                safeThis->updateSlotButtonStates();
+                safeThis->markSettingsDirty();
             });
             // Update button state immediately to show selection
             updateSlotButtonStates();
@@ -1118,8 +1129,8 @@ void MainComponent::checkForUpdate()
 
                             // Override click to show update dialog instead of opening browser
                             self->creditLink_.setURL({});
-                            self->creditLink_.onClick = [self]() {
-                                self->showUpdateDialog();
+                            self->creditLink_.onClick = [safeThis]() {
+                                if (safeThis) safeThis->showUpdateDialog();
                             };
                         }
                     });

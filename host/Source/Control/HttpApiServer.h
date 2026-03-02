@@ -91,8 +91,16 @@ private:
     std::atomic<bool> running_{false};
     int port_ = 8766;
 
-    // Lifetime guard for detached client handler threads
+    // Lifetime guard for client handler threads
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+
+    // Tracked handler threads with completion flags
+    struct HandlerThread {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
+    std::mutex handlersMutex_;
+    std::vector<HandlerThread> handlerThreads_;
 };
 
 } // namespace directpipe

@@ -547,7 +547,9 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
     juce::Logger::writeToLog("[PRESET] Slot " + juce::String(slotLabel(slotIndex)) + ": full reload (" + juce::String(targets.size()) + " plugins)");
 
     int slot = slotIndex;
-    chain.replaceChainAsync(std::move(requests), [this, slot, onComplete]() {
+    auto aliveFlag = alive_;
+    chain.replaceChainAsync(std::move(requests), [this, slot, onComplete, aliveFlag]() {
+        if (!aliveFlag->load()) return;
         activeSlot_ = slot;
         if (onComplete) onComplete(true);
     });

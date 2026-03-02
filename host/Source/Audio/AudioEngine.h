@@ -173,7 +173,9 @@ private:
     AudioRecorder recorder_;
     SharedMemWriter sharedMemWriter_;
     std::atomic<bool> ipcEnabled_{false};
+    bool ipcWasEnabled_ = false;  // Remembers IPC state across device stop/start
 
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
     std::atomic<bool> running_{false};
 
     std::atomic<float> inputLevel_{0.0f};

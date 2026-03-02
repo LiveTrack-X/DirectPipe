@@ -124,6 +124,17 @@ public:
     void setPluginBypassed(int index, bool bypassed);
 
     /**
+     * @brief Toggle bypass state (read under lock, then call setPluginBypassed).
+     * @param index Position in the chain.
+     */
+    void togglePluginBypassed(int index);
+
+    /**
+     * @brief Check if a plugin is bypassed (safe single-lock read).
+     */
+    bool isPluginBypassed(int index) const;
+
+    /**
      * @brief Get the number of plugins in the chain.
      */
     int getPluginCount() const;

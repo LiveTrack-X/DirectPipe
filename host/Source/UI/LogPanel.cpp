@@ -68,8 +68,12 @@ void DirectPipeLogger::logMessage(const juce::String& message)
 
 int DirectPipeLogger::drain(juce::StringArray& out)
 {
+    // Lock required to prevent data race on juce::String slots in pendingBuf_
+    // when the ring buffer wraps and a writer is mid-assignment on a slot
+    std::lock_guard<std::mutex> lock(writeMutex_);
+
     uint32_t r = readIdx_.load(std::memory_order_relaxed);
-    uint32_t w = writeIdx_.load(std::memory_order_acquire);
+    uint32_t w = writeIdx_.load(std::memory_order_relaxed);
     int count = 0;
 
     while (r != w) {
@@ -78,12 +82,13 @@ int DirectPipeLogger::drain(juce::StringArray& out)
         ++count;
     }
 
-    readIdx_.store(r, std::memory_order_release);
+    readIdx_.store(r, std::memory_order_relaxed);
     return count;
 }
 
 void DirectPipeLogger::clearPending()
 {
+    std::lock_guard<std::mutex> lock(writeMutex_);
     readIdx_.store(writeIdx_.load(std::memory_order_relaxed),
                    std::memory_order_relaxed);
 }

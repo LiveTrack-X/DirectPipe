@@ -22,6 +22,8 @@
  */
 
 #include "HttpApiServer.h"
+#include <algorithm>
+#include <mutex>
 
 namespace directpipe {
 
@@ -76,8 +78,14 @@ void HttpApiServer::stop()
         serverThread_.join();
     }
 
-    // Give in-flight detached handler threads time to check alive_ flag and exit
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // Join all tracked handler threads (closing server socket above
+    // will cause client reads to fail, unblocking the handlers)
+    {
+        std::lock_guard<std::mutex> lock(handlersMutex_);
+        for (auto& h : handlerThreads_)
+            if (h.thread.joinable()) h.thread.join();
+        handlerThreads_.clear();
+    }
 
     juce::Logger::writeToLog("[HTTP] Server stopped");
 }
@@ -88,14 +96,29 @@ void HttpApiServer::serverThread()
         if (serverSocket_->waitUntilReady(true, 500) > 0) {
             auto* client = serverSocket_->waitForNextConnection();
             if (client) {
-                // Handle each client on a detached thread to prevent
-                // slow/malicious clients from blocking the accept loop
                 auto aliveFlag = alive_;
-                std::thread([this, client, aliveFlag]() {
-                    auto clientPtr = std::unique_ptr<juce::StreamingSocket>(client);
-                    if (!aliveFlag->load()) return;
-                    handleClient(std::move(clientPtr));
-                }).detach();
+                std::lock_guard<std::mutex> lock(handlersMutex_);
+                // Clean up finished handler threads before adding new ones
+                handlerThreads_.erase(
+                    std::remove_if(handlerThreads_.begin(), handlerThreads_.end(),
+                        [](HandlerThread& h) {
+                            if (h.done->load()) {
+                                if (h.thread.joinable()) h.thread.join();
+                                return true;
+                            }
+                            return false;
+                        }),
+                    handlerThreads_.end());
+                auto doneFlag = std::make_shared<std::atomic<bool>>(false);
+                handlerThreads_.push_back({
+                    std::thread([this, client, aliveFlag, doneFlag]() {
+                        auto clientPtr = std::unique_ptr<juce::StreamingSocket>(client);
+                        if (aliveFlag->load())
+                            handleClient(std::move(clientPtr));
+                        doneFlag->store(true, std::memory_order_release);
+                    }),
+                    doneFlag
+                });
             }
         }
     }
