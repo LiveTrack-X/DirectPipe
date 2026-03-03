@@ -64,6 +64,7 @@ public:
     int writeAudio(const float* const* channelData, int numChannels, int numFrames);
 
     // --- Device enumeration ---
+    void scanDevices();
     juce::StringArray getAvailableOutputDevices() const;
     juce::Array<int> getAvailableBufferSizes() const;
 
@@ -74,6 +75,11 @@ public:
     int getDroppedFrames() const { return droppedFrames_.load(std::memory_order_relaxed); }
     int getActualBufferSize() const { return actualBufferSize_.load(std::memory_order_relaxed); }
     double getActualSampleRate() const { return actualSampleRate_.load(std::memory_order_relaxed); }
+
+    /** @brief Check and attempt monitor device reconnection (call from message thread timer). */
+    void checkReconnection();
+    /** @brief True if the monitor device was lost (error/disconnect). */
+    bool isDeviceLost() const { return monitorLost_.load(std::memory_order_relaxed); }
 
     // --- Setup guide ---
     static juce::String getSetupGuideMessage();
@@ -87,6 +93,7 @@ private:
         const juce::AudioIODeviceCallbackContext& context) override;
     void audioDeviceAboutToStart(juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
+    void audioDeviceError(const juce::String& errorMessage) override;
 
     AudioRingBuffer ringBuffer_;
     std::unique_ptr<juce::AudioDeviceManager> deviceManager_;
@@ -99,6 +106,10 @@ private:
     std::atomic<int> droppedFrames_{0};
     std::atomic<int> actualBufferSize_{0};
     std::atomic<double> actualSampleRate_{0.0};
+
+    // Device reconnection tracking
+    std::atomic<bool> monitorLost_{false};
+    int reconnectCooldown_ = 0;  // Ticks before next attempt (message thread only)
 };
 
 } // namespace directpipe

@@ -64,6 +64,12 @@ MainComponent::MainComponent()
                              NotificationLevel::Error);
         });
     };
+    audioEngine_.onDeviceReconnected = [safeThis = juce::Component::SafePointer<MainComponent>(this)]() {
+        juce::MessageManager::callAsync([safeThis] {
+            if (safeThis)
+                safeThis->refreshUI();
+        });
+    };
 
     // Initialize external control system
     controlManager_ = std::make_unique<ControlManager>(dispatcher_, broadcaster_);
@@ -972,6 +978,8 @@ void MainComponent::timerCallback()
         s.recording = audioEngine_.getRecorder().isRecording();
         s.recordingSeconds = audioEngine_.getRecorder().getRecordedSeconds();
         s.ipcEnabled = audioEngine_.isIpcEnabled();
+        s.deviceLost = audioEngine_.isDeviceLost();
+        s.monitorLost = audioEngine_.getMonitorOutput().isDeviceLost();
 
         s.plugins.clear();
         for (int i = 0; i < chain.getPluginCount(); ++i) {
@@ -994,6 +1002,9 @@ void MainComponent::timerCallback()
         double recSecs = audioEngine_.getRecorder().getRecordedSeconds();
         outputPanelPtr_->updateRecordingState(isRec, recSecs);
     }
+
+    // Device reconnection check (~3s interval fallback for missed change notifications)
+    audioEngine_.checkReconnection();
 
     // Dirty-flag auto-save with 1-second debounce (30 ticks at 30Hz)
     if (settingsDirty_ && dirtyCooldown_ > 0) {

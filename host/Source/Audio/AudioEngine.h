@@ -55,7 +55,8 @@ struct PendingNotification {
  * 3. Output routing to monitor (headphones via separate WASAPI device)
  * 4. Mono/Stereo channel mode selection
  */
-class AudioEngine : public juce::AudioIODeviceCallback {
+class AudioEngine : public juce::AudioIODeviceCallback,
+                     public juce::ChangeListener {
 public:
     AudioEngine();
     ~AudioEngine() override;
@@ -147,15 +148,23 @@ public:
     /** @brief Call from UI timer (~30Hz) to update the rolling xrun window. */
     void updateXRunTracking();
 
+    /** @brief Check and attempt device reconnection (call from message thread timer). */
+    void checkReconnection();
+    /** @brief True if the audio device was lost (error/disconnect). */
+    bool isDeviceLost() const { return deviceLost_.load(std::memory_order_relaxed); }
+
     std::function<void(float)> onInputLevelChanged;
     std::function<void(float)> onOutputLevelChanged;
     std::function<void(const juce::String&)> onDeviceError;
+    std::function<void()> onDeviceReconnected;
 
     /** Drain pending notifications (call from message thread timer). */
     bool popNotification(PendingNotification& out);
 
 private:
     void pushNotification(const juce::String& msg, NotificationLevel level);
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+    void attemptReconnection();
     void audioDeviceIOCallbackWithContext(
         const float* const* inputChannelData,
         int numInputChannels,
@@ -203,6 +212,13 @@ private:
     int xrunHistory_[60] = {};
     int xrunHistoryIdx_ = 0;
     double xrunAccumulatorTime_ = 0.0;
+
+    // Device reconnection tracking (all accessed from message thread only)
+    juce::String desiredInputDevice_;
+    juce::String desiredOutputDevice_;
+    std::atomic<bool> deviceLost_{false};
+    bool attemptingReconnection_ = false;  // Re-entrancy guard (message thread only)
+    int reconnectCooldown_ = 0;  // Ticks before next reconnect attempt (30Hz timer)
 
     juce::AudioBuffer<float> workBuffer_;
     uint32_t rmsDecimationCounter_ = 0;  // RMS computed every 4th callback (RT thread only, no atomic needed)

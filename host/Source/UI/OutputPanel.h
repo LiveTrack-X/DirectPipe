@@ -62,6 +62,8 @@ public:
 
 private:
     void timerCallback() override;
+    // Refresh device list when combo is clicked (before popup opens)
+    void mouseDown(const juce::MouseEvent& event) override;
 
     void onMonitorDeviceSelected();
     void onMonitorVolumeChanged();

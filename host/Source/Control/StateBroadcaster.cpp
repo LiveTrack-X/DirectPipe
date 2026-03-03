@@ -133,6 +133,8 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("recording", state.recording);
     data->setProperty("recording_seconds", state.recordingSeconds);
     data->setProperty("ipc_enabled", state.ipcEnabled);
+    data->setProperty("device_lost", state.deviceLost);
+    data->setProperty("monitor_lost", state.monitorLost);
 
     root->setProperty("data", juce::var(data));
 

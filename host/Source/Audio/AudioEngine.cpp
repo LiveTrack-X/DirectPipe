@@ -89,6 +89,9 @@ bool AudioEngine::initialize()
     // Register as the audio callback
     deviceManager_.addAudioCallback(this);
 
+    // Listen for device list changes (plug/unplug detection)
+    deviceManager_.addChangeListener(this);
+
     running_ = true;
     return true;
 }
@@ -99,6 +102,7 @@ void AudioEngine::shutdown()
 
     alive_->store(false);
     running_ = false;
+    deviceManager_.removeChangeListener(this);
     deviceManager_.removeAudioCallback(this);
     deviceManager_.closeAudioDevice();
     sharedMemWriter_.shutdown();
@@ -130,6 +134,8 @@ void AudioEngine::setIpcEnabled(bool enabled)
 
 bool AudioEngine::setInputDevice(const juce::String& deviceName)
 {
+    desiredInputDevice_ = deviceName;
+
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.inputDeviceName = deviceName;
@@ -144,6 +150,8 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName)
 
 bool AudioEngine::setOutputDevice(const juce::String& deviceName)
 {
+    desiredOutputDevice_ = deviceName;
+
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.outputDeviceName = deviceName;
@@ -635,6 +643,17 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
 
+    // Device is running — clear lost flag and save current device names
+    deviceLost_.store(false, std::memory_order_relaxed);
+    {
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        deviceManager_.getAudioDeviceSetup(setup);
+        if (setup.inputDeviceName.isNotEmpty())
+            desiredInputDevice_ = setup.inputDeviceName;
+        if (setup.outputDeviceName.isNotEmpty())
+            desiredOutputDevice_ = setup.outputDeviceName;
+    }
+
     // Stop recording before device parameters change (prevents WAV corruption)
     if (recorder_.isRecording())
         recorder_.stopRecording();
@@ -723,7 +742,90 @@ void AudioEngine::audioDeviceStopped()
 void AudioEngine::audioDeviceError(const juce::String& errorMessage)
 {
     juce::Logger::writeToLog("[AUDIO] Device error: " + errorMessage);
-    pushNotification("Audio device error: " + errorMessage, NotificationLevel::Critical);
+    pushNotification("Device disconnected", NotificationLevel::Warning);
+    deviceLost_.store(true, std::memory_order_relaxed);
+}
+
+// ─── Device reconnection ────────────────────────────────────────────────────
+
+void AudioEngine::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
+{
+    // Device list changed (plug/unplug). If we lost our device, try to reconnect.
+    if (deviceLost_.load(std::memory_order_relaxed))
+        attemptReconnection();
+}
+
+void AudioEngine::checkReconnection()
+{
+    // Main device reconnection
+    if (deviceLost_.load(std::memory_order_relaxed)) {
+        if (reconnectCooldown_ > 0) {
+            --reconnectCooldown_;
+        } else {
+            reconnectCooldown_ = 90;  // ~3 seconds at 30Hz
+            attemptReconnection();
+        }
+    }
+
+    // Monitor device reconnection (independent check)
+    bool wasMonitorLost = monitorOutput_.isDeviceLost();
+    monitorOutput_.checkReconnection();
+    if (wasMonitorLost && !monitorOutput_.isDeviceLost())
+        pushNotification("Monitor reconnected", NotificationLevel::Info);
+}
+
+void AudioEngine::attemptReconnection()
+{
+    if (!deviceLost_.load(std::memory_order_relaxed)) return;
+    if (attemptingReconnection_) return;  // Re-entrancy guard
+    attemptingReconnection_ = true;
+
+    auto* type = deviceManager_.getCurrentDeviceTypeObject();
+    if (!type) {
+        juce::Logger::writeToLog("[AUDIO] Reconnection failed: no device type available");
+        attemptingReconnection_ = false;
+        return;
+    }
+
+    // Rescan to pick up newly connected devices
+    type->scanForDevices();
+
+    auto inputs = type->getDeviceNames(true);
+    auto outputs = type->getDeviceNames(false);
+
+    // Check if our desired devices are available
+    bool inputOk = desiredInputDevice_.isEmpty() || inputs.contains(desiredInputDevice_);
+    bool outputOk = desiredOutputDevice_.isEmpty() || outputs.contains(desiredOutputDevice_);
+
+    if (!inputOk || !outputOk) {
+        juce::Logger::writeToLog("[AUDIO] Reconnection: waiting for devices"
+            + juce::String(!inputOk ? " (input: " + desiredInputDevice_ + ")" : "")
+            + juce::String(!outputOk ? " (output: " + desiredOutputDevice_ + ")" : ""));
+        attemptingReconnection_ = false;
+        return;
+    }
+
+    // Re-apply previous setup with desired device names.
+    // Preserve SR, BS, and channel routing (important for ASIO channel pairs).
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+    if (desiredInputDevice_.isNotEmpty())
+        setup.inputDeviceName = desiredInputDevice_;
+    if (desiredOutputDevice_.isNotEmpty())
+        setup.outputDeviceName = desiredOutputDevice_;
+
+    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
+    if (result.isEmpty()) {
+        // deviceLost_ cleared in audioDeviceAboutToStart
+        reconnectCooldown_ = 0;
+        juce::Logger::writeToLog("[AUDIO] Device reconnected: "
+            + setup.inputDeviceName + " / " + setup.outputDeviceName);
+        pushNotification("Device reconnected", NotificationLevel::Info);
+        if (onDeviceReconnected) onDeviceReconnected();
+    } else {
+        juce::Logger::writeToLog("[AUDIO] Reconnection failed: " + result);
+    }
+    attemptingReconnection_ = false;
 }
 
 // ─── Notification queue ─────────────────────────────────────────────────────

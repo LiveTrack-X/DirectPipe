@@ -66,6 +66,8 @@ struct AppState {
     bool recording = false;
     double recordingSeconds = 0.0;
     bool ipcEnabled = false;
+    bool deviceLost = false;
+    bool monitorLost = false;
 };
 
 /// Listener for state changes

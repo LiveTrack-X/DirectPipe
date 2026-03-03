@@ -158,6 +158,8 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
 
+    monitorLost_.store(false, std::memory_order_relaxed);
+
     double deviceSR = device->getCurrentSampleRate();
     int deviceBS = device->getCurrentBufferSizeSamples();
 
@@ -189,11 +191,58 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
 void MonitorOutput::audioDeviceStopped()
 {
-    status_.store(VirtualCableStatus::NotConfigured, std::memory_order_relaxed);
-    juce::Logger::writeToLog("[MONITOR] Device stopped");
+    // shutdown() removes callback BEFORE closeAudioDevice(), so this only
+    // fires on external events (device unplug, driver error) — not our own teardown.
+    monitorLost_.store(true, std::memory_order_relaxed);
+    status_.store(VirtualCableStatus::Error, std::memory_order_release);
+    juce::Logger::writeToLog("[MONITOR] Device stopped (lost)");
+}
+
+void MonitorOutput::audioDeviceError(const juce::String& errorMessage)
+{
+    juce::Logger::writeToLog("[MONITOR] Device error: " + errorMessage);
+    monitorLost_.store(true, std::memory_order_relaxed);
+    status_.store(VirtualCableStatus::Error, std::memory_order_release);
 }
 
 // ─── Device enumeration ───────────────────────────────────────────────────────
+
+void MonitorOutput::scanDevices()
+{
+    if (deviceManager_) {
+        if (auto* type = deviceManager_->getCurrentDeviceTypeObject())
+            type->scanForDevices();
+    }
+}
+
+void MonitorOutput::checkReconnection()
+{
+    if (!monitorLost_.load(std::memory_order_relaxed)) return;
+    if (deviceName_.isEmpty()) return;
+
+    if (reconnectCooldown_ > 0) {
+        --reconnectCooldown_;
+        return;
+    }
+    reconnectCooldown_ = 90;  // ~3 seconds at 30Hz
+
+    juce::Logger::writeToLog("[MONITOR] Reconnection attempt: " + deviceName_);
+
+    scanDevices();
+    auto devices = getAvailableOutputDevices();
+    if (!devices.contains(deviceName_)) {
+        juce::Logger::writeToLog("[MONITOR] Device not yet available");
+        return;
+    }
+
+    if (initialize(deviceName_, sampleRate_, bufferSize_)) {
+        // monitorLost_ cleared in audioDeviceAboutToStart
+        reconnectCooldown_ = 0;
+        juce::Logger::writeToLog("[MONITOR] Device reconnected: " + deviceName_);
+    } else {
+        juce::Logger::writeToLog("[MONITOR] Reconnection failed: initialize returned false");
+    }
+}
 
 juce::StringArray MonitorOutput::getAvailableOutputDevices() const
 {

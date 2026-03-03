@@ -65,6 +65,9 @@ public:
 private:
     // ChangeListener for device manager notifications
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+    // Refresh device list when combo is clicked (before popup opens).
+    // Component inherits MouseListener — mouseDown fires before ComboBox::mouseUp shows popup.
+    void mouseDown(const juce::MouseEvent& event) override;
 
     // Callbacks
     void onDriverTypeChanged();

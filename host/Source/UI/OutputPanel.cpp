@@ -155,6 +155,9 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     // Load recording folder config
     loadRecordingConfig();
 
+    // Refresh device list when monitor combo is clicked
+    monitorDeviceCombo_.addMouseListener(this, true);
+
     refreshDeviceLists();
 
     auto& router = engine_.getOutputRouter();
@@ -170,6 +173,7 @@ OutputPanel::OutputPanel(AudioEngine& engine)
 
 OutputPanel::~OutputPanel()
 {
+    monitorDeviceCombo_.removeMouseListener(this);
     stopTimer();
 }
 
@@ -386,6 +390,17 @@ void OutputPanel::loadRecordingConfig()
     }
 
     setRecordingFolder(defaultFolder);
+}
+
+void OutputPanel::mouseDown(const juce::MouseEvent& event)
+{
+    // Only rescan when clicking on monitor device combo (not panel background)
+    auto* src = event.eventComponent;
+    if (src == &monitorDeviceCombo_ || monitorDeviceCombo_.isParentOf(src))
+    {
+        engine_.getMonitorOutput().scanDevices();
+        refreshDeviceLists();
+    }
 }
 
 void OutputPanel::refreshDeviceLists()

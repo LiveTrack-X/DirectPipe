@@ -130,12 +130,18 @@ AudioSettings::AudioSettings(AudioEngine& engine)
     // Listen for device changes
     engine_.getDeviceManager().addChangeListener(this);
 
+    // Refresh device list when combos are clicked (scan before popup opens)
+    inputCombo_.addMouseListener(this, true);
+    outputCombo_.addMouseListener(this, true);
+
     // Synchronise the UI with current engine state
     refreshFromEngine();
 }
 
 AudioSettings::~AudioSettings()
 {
+    inputCombo_.removeMouseListener(this);
+    outputCombo_.removeMouseListener(this);
     engine_.getDeviceManager().removeChangeListener(this);
 }
 
@@ -287,10 +293,25 @@ void AudioSettings::refreshFromEngine()
 
 void AudioSettings::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
 {
-    // Device manager changed — rebuild dynamic lists
+    // Device manager changed — rebuild all lists (handles device plug/unplug)
+    rebuildDeviceLists();
     rebuildSampleRateList();
     rebuildBufferSizeList();
     updateLatencyDisplay();
+}
+
+void AudioSettings::mouseDown(const juce::MouseEvent& event)
+{
+    // Only rescan when clicking on device combos (not panel background).
+    // mouseDown fires before ComboBox::mouseUp opens the popup.
+    auto* src = event.eventComponent;
+    if (src == &inputCombo_  || inputCombo_.isParentOf(src) ||
+        src == &outputCombo_ || outputCombo_.isParentOf(src))
+    {
+        if (auto* type = engine_.getDeviceManager().getCurrentDeviceTypeObject())
+            type->scanForDevices();
+        rebuildDeviceLists();
+    }
 }
 
 // ─── Callbacks ──────────────────────────────────────────────────────────────
