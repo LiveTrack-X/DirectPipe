@@ -128,6 +128,9 @@ private:
 
     // Lifetime guard for callAsync lambdas
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+
+    // Throttle: skip broadcast when scalar state is unchanged
+    uint32_t lastBroadcastHash_ = 0;
 };
 
 } // namespace directpipe

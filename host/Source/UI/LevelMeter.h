@@ -34,17 +34,24 @@ namespace directpipe {
  * - Current RMS level (green → yellow → red)
  * - Peak hold indicator
  * - Clipping indicator
+ *
+ * No internal timer — call tick() from the parent's timer callback.
  */
-class LevelMeter : public juce::Component,
-                   public juce::Timer {
+class LevelMeter : public juce::Component {
 public:
     explicit LevelMeter(const juce::String& label = "");
-    ~LevelMeter() override;
+    ~LevelMeter() override = default;
 
     /**
      * @brief Set the current level (0.0 - 1.0). Thread-safe.
      */
     void setLevel(float level);
+
+    /**
+     * @brief Advance smoothing and repaint if display changed.
+     * Call from parent's timerCallback (e.g., 30Hz).
+     */
+    void tick();
 
     /**
      * @brief Set orientation.
@@ -56,8 +63,6 @@ public:
     void resized() override;
 
 private:
-    void timerCallback() override;
-
     juce::String label_;
     bool vertical_ = true;
 

@@ -193,13 +193,35 @@ public:
     /**
      * @brief Replace the entire chain asynchronously (non-blocking).
      *
-     * Clears the current chain immediately, loads plugins on a background
-     * thread, then wires them into the graph on the message thread.
+     * Clears current chain immediately (audio goes silent), then loads
+     * new plugins on a background thread. Wires them into the graph
+     * on the message thread via callAsync when done.
      * @param requests Plugins to load.
      * @param onComplete Called on message thread when loading finishes.
      */
     void replaceChainAsync(std::vector<PluginLoadRequest> requests,
-                           std::function<void()> onComplete);
+                           std::function<void()> onComplete,
+                           std::function<void()> preWork = nullptr);
+
+    /**
+     * @brief A pre-loaded plugin instance ready for graph insertion.
+     */
+    struct PreloadedPlugin {
+        std::unique_ptr<juce::AudioPluginInstance> instance;
+        PluginLoadRequest request;
+    };
+
+    /**
+     * @brief Replace the entire chain with pre-loaded instances (synchronous).
+     *
+     * Must be called on the message thread. Used with PluginPreloadCache
+     * to skip DLL loading entirely. Old chain continues processing until
+     * swap completes (~10-50ms suspend).
+     * @param preloaded Pre-created plugin instances with metadata.
+     * @param onComplete Called after swap is complete.
+     */
+    void replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
+                                   std::function<void()> onComplete);
 
     /** @brief True while async chain loading is in progress. */
     bool isLoading() const { return asyncLoading_.load(); }

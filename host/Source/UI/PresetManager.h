@@ -23,7 +23,9 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
 #include "../Audio/AudioEngine.h"
+#include "../Audio/PluginPreloadCache.h"
 
 namespace directpipe {
 
@@ -111,6 +113,21 @@ public:
     void loadSlotAsync(int slotIndex, std::function<void(bool)> onComplete);
 
     /**
+     * @brief Copy one slot's data to another slot (file copy).
+     * @param fromSlot Source slot index (0..4).
+     * @param toSlot Destination slot index (0..4).
+     * @return true if copied successfully.
+     */
+    bool copySlot(int fromSlot, int toSlot);
+
+    /**
+     * @brief Delete a slot's saved data.
+     * @param slotIndex 0..4 (A..E)
+     * @return true if deleted successfully.
+     */
+    bool deleteSlot(int slotIndex);
+
+    /**
      * @brief Check if a slot has saved data.
      */
     bool isSlotOccupied(int slotIndex) const;
@@ -121,12 +138,32 @@ public:
     int getActiveSlot() const { return activeSlot_; }
 
     /**
+     * @brief Set the active slot index (for selecting empty slots).
+     */
+    void setActiveSlot(int slotIndex) { activeSlot_ = slotIndex; }
+
+    /**
      * @brief Get slot label character ('A'..'E').
      */
     static char slotLabel(int slotIndex) { return 'A' + static_cast<char>(slotIndex); }
 
     /** @brief Get the file path for a quick slot. */
     static juce::File getSlotFile(int slotIndex);
+
+    /**
+     * @brief Start background pre-loading of other slots' plugins.
+     * Called after a slot is loaded or at app startup.
+     */
+    void triggerPreload(std::function<void()> onComplete = nullptr);
+
+    /** @brief Invalidate all cached plugin instances (e.g., on SR/BS change). */
+    void invalidatePreloadCache();
+
+    /** @brief Refresh slot occupancy cache from filesystem. */
+    void refreshSlotOccupancy() { refreshSlotOccupancyCache(); }
+
+    /** @brief Get the preload cache (for shutdown cleanup). */
+    PluginPreloadCache& getPreloadCache() { return preloadCache_; }
 
 private:
     struct TargetPlugin {
@@ -146,8 +183,16 @@ private:
     AudioEngine& engine_;
     int activeSlot_ = -1;
 
+    // Cached slot occupancy (avoids filesystem queries in hot paths like NextPreset)
+    std::array<bool, kNumSlots> slotOccupiedCache_{};
+    void refreshSlotOccupancyCache();
+    bool querySlotOccupied(int slotIndex) const;  ///< Filesystem query (no cache)
+
     // Lifetime guard for callAsync lambdas (replaceChainAsync completion)
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+
+    PluginPreloadCache preloadCache_;
+    std::atomic<bool> suppressPreload_{false};  ///< Suppress deferred triggerPreload during async load
 
     static constexpr const char* kPresetExtension = ".dppreset";
 };

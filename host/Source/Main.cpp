@@ -27,6 +27,7 @@
 #include "BinaryData.h"
 #include "MainComponent.h"
 #include "Control/StateBroadcaster.h"
+#include "Control/Log.h"
 
 // ═══════════════════════════════════════════════════════════════════
 // Windows startup (Run registry) helpers
@@ -215,9 +216,9 @@ public:
     {
         auto args = juce::StringArray::fromTokens(commandLine, true);
 
-        juce::Logger::writeToLog("[APP] DirectPipe " + getApplicationVersion());
+        sessionStartMs_ = juce::Time::getMillisecondCounter();
 
-        // Check for scanner mode
+        // Check for scanner mode (before session header — scanner has its own logging)
         if (args.size() >= 1 && args[0] == "--scan") {
             scannerMode_ = true;
             int result = runScannerMode(args);
@@ -239,12 +240,45 @@ public:
                               &throttling, sizeof(throttling));
     #endif
 
+        // Log session header (OS, CPU, process info)
+        directpipe::Log::sessionStart(getApplicationVersion());
+
         mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *this);
+
+        // Log audio/plugin configuration after MainComponent fully initialized
+        auto safeWindow = mainWindow_.get();
+        juce::MessageManager::callAsync([safeWindow]() {
+            if (!safeWindow) return;
+            auto* mc = dynamic_cast<directpipe::MainComponent*>(safeWindow->getContentComponent());
+            if (!mc) return;
+
+            auto& engine = mc->getAudioEngine();
+            auto* device = engine.getDeviceManager().getCurrentAudioDevice();
+            if (device) {
+                auto setup = engine.getDeviceManager().getAudioDeviceSetup();
+                directpipe::Log::audioConfig(
+                    engine.getDeviceManager().getCurrentAudioDeviceType(),
+                    setup.inputDeviceName,
+                    setup.outputDeviceName,
+                    device->getCurrentSampleRate(),
+                    device->getCurrentBufferSizeSamples());
+            }
+
+            auto& chain = engine.getVSTChain();
+            juce::StringArray pluginNames;
+            for (int i = 0; i < chain.getPluginCount(); ++i) {
+                auto* slot = chain.getPluginSlot(i);
+                if (slot) pluginNames.add(slot->name);
+            }
+            auto* pm = mc->getPresetManager();
+            directpipe::Log::pluginChain(pluginNames, pm ? pm->getActiveSlot() : -1, "");
+        });
     }
 
     void shutdown() override
     {
         if (scannerMode_) return;
+        directpipe::Log::sessionEnd(sessionStartMs_);
         trayIcon_.reset();
         mainWindow_.reset();
     #if JUCE_WINDOWS
@@ -290,6 +324,7 @@ public:
 
 private:
     bool scannerMode_ = false;
+    juce::int64 sessionStartMs_ = 0;
 
     // ─── System Tray Icon ─────────────────────────────────────────
     class DirectPipeTrayIcon : public juce::SystemTrayIconComponent,
@@ -366,7 +401,7 @@ private:
                 if (snapshot.outputMuted)
                     tooltip += " | OUT-MUTE";
                 if (!snapshot.monitorEnabled)
-                    tooltip += " | MON-OFF";
+                    tooltip += " | MON-MUTE";
             }
 
             setIconTooltip(tooltip);
@@ -423,7 +458,7 @@ private:
             setResizable(true, true);
             setResizeLimits(600, 800, 1400, 1200);
             centreWithSize(getWidth(), getHeight());
-            setVisible(true);
+            // setVisible deferred — MainComponent shows window after initial load completes
 
         #if JUCE_WINDOWS
             SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);

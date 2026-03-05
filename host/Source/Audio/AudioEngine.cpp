@@ -22,6 +22,7 @@
  */
 
 #include "AudioEngine.h"
+#include "../Control/Log.h"
 #include <cmath>
 
 namespace directpipe {
@@ -42,7 +43,7 @@ bool AudioEngine::initialize()
     );
 
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("[AUDIO] Init error: " + result);
+        Log::error("AUDIO", "Device manager init failed: " + result);
         return false;
     }
 
@@ -77,8 +78,24 @@ bool AudioEngine::initialize()
 
         auto setupResult = deviceManager_.setAudioDeviceSetup(setup, true);
         if (setupResult.isNotEmpty()) {
-            juce::Logger::writeToLog("[AUDIO] Setup error: " + setupResult);
+            Log::error("AUDIO", "Device setup failed (SR=" + juce::String(static_cast<int>(setup.sampleRate))
+                + " BS=" + juce::String(setup.bufferSize) + " in='" + setup.inputDeviceName
+                + "' out='" + setup.outputDeviceName + "'): " + setupResult);
         }
+    }
+
+    // Audit: log all available device types and devices at startup
+    if (Log::isAuditMode()) {
+        juce::String auditInfo = "Available device types: ";
+        for (auto* type : deviceManager_.getAvailableDeviceTypes()) {
+            auditInfo += type->getTypeName() + ", ";
+            type->scanForDevices();
+            auto ins = type->getDeviceNames(true);
+            auto outs = type->getDeviceNames(false);
+            Log::audit("AUDIO", "  " + type->getTypeName() + " inputs: " + ins.joinIntoString(", "));
+            Log::audit("AUDIO", "  " + type->getTypeName() + " outputs: " + outs.joinIntoString(", "));
+        }
+        Log::audit("AUDIO", auditInfo);
     }
 
     // Initialize the output router and wire outputs BEFORE registering callback
@@ -121,14 +138,14 @@ void AudioEngine::setIpcEnabled(bool enabled)
         uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
         if (sharedMemWriter_.initialize(sr, 2)) {
             ipcEnabled_.store(true, std::memory_order_release);
-            juce::Logger::writeToLog("[IPC] Output enabled");
+            Log::info("IPC", "Output enabled (SR=" + juce::String(sr) + ")");
         } else {
-            juce::Logger::writeToLog("[IPC] Output failed to initialize");
+            Log::error("IPC", "Output failed to initialize (SR=" + juce::String(sr) + ")");
         }
     } else {
         ipcEnabled_.store(false, std::memory_order_release);
         sharedMemWriter_.shutdown();
-        juce::Logger::writeToLog("[IPC] Output disabled");
+        Log::info("IPC", "Output disabled");
     }
 }
 
@@ -142,9 +159,11 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("[AUDIO] Failed to set input device: " + result);
+        Log::error("AUDIO", "Failed to set input device '" + deviceName + "': " + result);
         return false;
     }
+    Log::info("AUDIO", "Input device set: " + deviceName);
+    Log::audit("AUDIO", "Input device change: '" + setup.inputDeviceName + "' SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
     return true;
 }
 
@@ -158,9 +177,11 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("[AUDIO] Failed to set output device: " + result);
+        Log::error("AUDIO", "Failed to set output device '" + deviceName + "': " + result);
         return false;
     }
+    Log::info("AUDIO", "Output device set: " + deviceName);
+    Log::audit("AUDIO", "Output device change: '" + setup.outputDeviceName + "' SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
     return true;
 }
 
@@ -210,8 +231,12 @@ void AudioEngine::setBufferSize(int bufferSize)
             }
         }
 
-        juce::Logger::writeToLog("[AUDIO] Buffer: requested " + juce::String(bufferSize)
-            + " -> applied " + juce::String(actual));
+        Log::info("AUDIO", "Buffer: requested " + juce::String(bufferSize) + " -> applied " + juce::String(actual));
+        Log::audit("AUDIO", "Available buffer sizes: " + [&]() {
+            juce::String s;
+            for (int sz : supported) s += (s.isEmpty() ? "" : ", ") + juce::String(sz);
+            return s;
+        }());
         pushNotification("Buffer: " + juce::String(bufferSize) + " -> "
             + juce::String(actual) + " smp", NotificationLevel::Info);
     }
@@ -233,7 +258,9 @@ void AudioEngine::setSampleRate(double sampleRate)
     setup.sampleRate = sampleRate;
     auto error = deviceManager_.setAudioDeviceSetup(setup, true);
     if (error.isNotEmpty())
-        juce::Logger::writeToLog("[AUDIO] setSampleRate error: " + error);
+        Log::error("AUDIO", "setSampleRate failed (requested=" + juce::String(sampleRate) + "): " + error);
+    else
+        Log::audit("AUDIO", "Sample rate set: " + juce::String(sampleRate));
 }
 
 juce::StringArray AudioEngine::getAvailableInputDevices() const
@@ -300,13 +327,13 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
 
                 auto result = deviceManager_.setAudioDeviceSetup(setup, true);
                 if (result.isNotEmpty()) {
-                    juce::Logger::writeToLog("[AUDIO] ASIO setup failed: " + result);
+                    Log::warn("AUDIO", "ASIO setup failed (device='" + devices[0] + "' SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + "): " + result);
                     // Try with device defaults
                     setup.sampleRate = 0;  // let device choose
                     setup.bufferSize = 0;
                     result = deviceManager_.setAudioDeviceSetup(setup, true);
                     if (result.isNotEmpty()) {
-                        juce::Logger::writeToLog("[AUDIO] ASIO fallback failed: " + result);
+                        Log::error("AUDIO", "ASIO fallback failed (device='" + devices[0] + "'): " + result);
                         deviceManager_.setCurrentAudioDeviceType(currentType, true);
                         deviceManager_.initialiseWithDefaultDevices(2, 2);
                         deviceManager_.addAudioCallback(this);
@@ -320,7 +347,7 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
         // Non-ASIO: use default initialization
         auto result = deviceManager_.initialiseWithDefaultDevices(2, 2);
         if (result.isNotEmpty()) {
-            juce::Logger::writeToLog("[AUDIO] Failed to switch to " + typeName + ": " + result);
+            Log::error("AUDIO", "Failed to switch to " + typeName + ": " + result);
             deviceManager_.setCurrentAudioDeviceType(currentType, true);
             deviceManager_.initialiseWithDefaultDevices(2, 2);
             deviceManager_.addAudioCallback(this);
@@ -350,7 +377,22 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
 
     deviceManager_.addAudioCallback(this);
 
-    juce::Logger::writeToLog("[AUDIO] Switched to " + typeName);
+    Log::info("AUDIO", "Switched to " + typeName + " (SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + ")");
+    if (Log::isAuditMode()) {
+        if (auto* dev = deviceManager_.getCurrentAudioDevice()) {
+            Log::audit("AUDIO", "Driver switch details: device='" + dev->getName() + "' type=" + dev->getTypeName());
+            auto sr = dev->getAvailableSampleRates();
+            juce::String srList;
+            for (auto r : sr) srList += (srList.isEmpty() ? "" : ", ") + juce::String(r);
+            Log::audit("AUDIO", "  Available SR: " + srList);
+            auto bs = dev->getAvailableBufferSizes();
+            juce::String bsList;
+            for (int b : bs) bsList += (bsList.isEmpty() ? "" : ", ") + juce::String(b);
+            Log::audit("AUDIO", "  Available BS: " + bsList);
+            Log::audit("AUDIO", "  Input channels: " + dev->getInputChannelNames().joinIntoString(", "));
+            Log::audit("AUDIO", "  Output channels: " + dev->getOutputChannelNames().joinIntoString(", "));
+        }
+    }
     return true;
 }
 
@@ -488,9 +530,10 @@ bool AudioEngine::setActiveInputChannels(int firstChannel, int numChannels)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("[AUDIO] Failed to set input channels: " + result);
+        Log::error("AUDIO", "Failed to set input channels (first=" + juce::String(firstChannel) + " num=" + juce::String(numChannels) + "): " + result);
         return false;
     }
+    Log::audit("AUDIO", "Input channels set: first=" + juce::String(firstChannel) + " num=" + juce::String(numChannels));
     return true;
 }
 
@@ -505,9 +548,10 @@ bool AudioEngine::setActiveOutputChannels(int firstChannel, int numChannels)
 
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("[AUDIO] Failed to set output channels: " + result);
+        Log::error("AUDIO", "Failed to set output channels (first=" + juce::String(firstChannel) + " num=" + juce::String(numChannels) + "): " + result);
         return false;
     }
+    Log::audit("AUDIO", "Output channels set: first=" + juce::String(firstChannel) + " num=" + juce::String(numChannels));
     return true;
 }
 
@@ -566,7 +610,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     int workChannels = juce::jmin(
         juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels)),
         buffer.getNumChannels());
-    buffer.clear();
+    // Only clear the channels we'll use (not all 8 pre-allocated channels)
+    for (int ch = 0; ch < workChannels; ++ch)
+        juce::FloatVectorOperations::clear(buffer.getWritePointer(ch), numSamples);
 
     if (chMode == 1) {
         // Mono mode: sum all input channels to channel 0 (full gain, no attenuation)
@@ -668,10 +714,28 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         juce::String bsList;
         for (int i = 0; i < bs.size(); ++i)
             bsList += (i > 0 ? ", " : "") + juce::String(bs[i]);
-        juce::Logger::writeToLog("[AUDIO] Device started: " + typeName
+        Log::info("AUDIO", "Device started: " + typeName
             + " | SR=" + juce::String(currentSampleRate_.load())
             + " | BS=" + juce::String(currentBufferSize_.load())
             + " | Available BS: [" + bsList + "]");
+
+        // Audit: full device capabilities snapshot
+        if (Log::isAuditMode()) {
+            Log::audit("AUDIO", "Device name: " + device->getName());
+            Log::audit("AUDIO", "Device type: " + typeName);
+            auto sr = device->getAvailableSampleRates();
+            juce::String srList;
+            for (auto r : sr) srList += (srList.isEmpty() ? "" : ", ") + juce::String(r);
+            Log::audit("AUDIO", "Available SR: " + srList);
+            Log::audit("AUDIO", "Available BS: " + bsList);
+            Log::audit("AUDIO", "Input channels: " + device->getInputChannelNames().joinIntoString(", "));
+            Log::audit("AUDIO", "Output channels: " + device->getOutputChannelNames().joinIntoString(", "));
+            Log::audit("AUDIO", "Active input bits: " + device->getActiveInputChannels().toString(2));
+            Log::audit("AUDIO", "Active output bits: " + device->getActiveOutputChannels().toString(2));
+            Log::audit("AUDIO", "Input latency: " + juce::String(device->getInputLatencyInSamples()) + " samples");
+            Log::audit("AUDIO", "Output latency: " + juce::String(device->getOutputLatencyInSamples()) + " samples");
+            Log::audit("AUDIO", "Desired devices: in='" + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
+        }
     }
 
     // Signal message-thread to reset xrun tracking (avoids data race
@@ -714,15 +778,14 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             ipcEnabled_.store(true, std::memory_order_release);
             ipcWasEnabled_ = false;
         } else {
-            juce::Logger::writeToLog("[IPC] Failed to re-initialize after device restart");
+            Log::error("IPC", "Failed to re-initialize after device restart (SR=" + juce::String(sr) + ")");
             ipcWasEnabled_ = false;
         }
     }
 
-    juce::Logger::writeToLog(
-        "[AUDIO] Device started: " + device->getName() +
-        " @ " + juce::String(currentSampleRate_) + "Hz" +
-        " / " + juce::String(currentBufferSize_) + " samples");
+    Log::info("AUDIO", "Device ready: " + device->getName()
+        + " @ " + juce::String(currentSampleRate_) + "Hz"
+        + " / " + juce::String(currentBufferSize_) + " samples");
 }
 
 void AudioEngine::audioDeviceStopped()
@@ -736,12 +799,13 @@ void AudioEngine::audioDeviceStopped()
     vstChain_.releaseResources();
     outputRouter_.shutdown();
     sharedMemWriter_.shutdown();
-    juce::Logger::writeToLog("[AUDIO] Device stopped");
+    Log::info("AUDIO", "Device stopped");
+    Log::audit("AUDIO", "Device stopped: ipcWasEnabled=" + juce::String(ipcWasEnabled_ ? "true" : "false"));
 }
 
 void AudioEngine::audioDeviceError(const juce::String& errorMessage)
 {
-    juce::Logger::writeToLog("[AUDIO] Device error: " + errorMessage);
+    Log::error("AUDIO", "Device error: " + errorMessage);
     pushNotification("Device disconnected", NotificationLevel::Warning);
     deviceLost_.store(true, std::memory_order_relaxed);
 }
@@ -782,7 +846,7 @@ void AudioEngine::attemptReconnection()
 
     auto* type = deviceManager_.getCurrentDeviceTypeObject();
     if (!type) {
-        juce::Logger::writeToLog("[AUDIO] Reconnection failed: no device type available");
+        Log::error("AUDIO", "Reconnection failed: no device type available");
         attemptingReconnection_ = false;
         return;
     }
@@ -793,12 +857,15 @@ void AudioEngine::attemptReconnection()
     auto inputs = type->getDeviceNames(true);
     auto outputs = type->getDeviceNames(false);
 
+    Log::audit("AUDIO", "Reconnection scan: inputs=[" + inputs.joinIntoString(", ") + "] outputs=[" + outputs.joinIntoString(", ") + "]");
+    Log::audit("AUDIO", "Reconnection desired: in='" + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
+
     // Check if our desired devices are available
     bool inputOk = desiredInputDevice_.isEmpty() || inputs.contains(desiredInputDevice_);
     bool outputOk = desiredOutputDevice_.isEmpty() || outputs.contains(desiredOutputDevice_);
 
     if (!inputOk || !outputOk) {
-        juce::Logger::writeToLog("[AUDIO] Reconnection: waiting for devices"
+        Log::info("AUDIO", "Reconnection: waiting for devices"
             + juce::String(!inputOk ? " (input: " + desiredInputDevice_ + ")" : "")
             + juce::String(!outputOk ? " (output: " + desiredOutputDevice_ + ")" : ""));
         attemptingReconnection_ = false;
@@ -818,12 +885,12 @@ void AudioEngine::attemptReconnection()
     if (result.isEmpty()) {
         // deviceLost_ cleared in audioDeviceAboutToStart
         reconnectCooldown_ = 0;
-        juce::Logger::writeToLog("[AUDIO] Device reconnected: "
-            + setup.inputDeviceName + " / " + setup.outputDeviceName);
+        Log::info("AUDIO", "Device reconnected: " + setup.inputDeviceName + " / " + setup.outputDeviceName);
+        Log::audit("AUDIO", "Reconnection success: SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
         pushNotification("Device reconnected", NotificationLevel::Info);
         if (onDeviceReconnected) onDeviceReconnected();
     } else {
-        juce::Logger::writeToLog("[AUDIO] Reconnection failed: " + result);
+        Log::error("AUDIO", "Reconnection failed (in='" + setup.inputDeviceName + "' out='" + setup.outputDeviceName + "'): " + result);
     }
     attemptingReconnection_ = false;
 }
@@ -852,9 +919,17 @@ bool AudioEngine::popNotification(PendingNotification& out)
 float AudioEngine::calculateRMS(const float* data, int numSamples)
 {
     if (numSamples <= 0) return 0.0f;
-
-    float sum = 0.0f;
-    for (int i = 0; i < numSamples; ++i)
+    // Loop unrolled for MSVC auto-vectorization (4 accumulators reduce dependency chain)
+    float sum0 = 0.0f, sum1 = 0.0f, sum2 = 0.0f, sum3 = 0.0f;
+    int i = 0;
+    for (; i + 3 < numSamples; i += 4) {
+        sum0 += data[i]   * data[i];
+        sum1 += data[i+1] * data[i+1];
+        sum2 += data[i+2] * data[i+2];
+        sum3 += data[i+3] * data[i+3];
+    }
+    float sum = sum0 + sum1 + sum2 + sum3;
+    for (; i < numSamples; ++i)
         sum += data[i] * data[i];
     return std::sqrt(sum / static_cast<float>(numSamples));
 }

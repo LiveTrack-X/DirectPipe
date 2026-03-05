@@ -78,7 +78,10 @@ MainComponent::MainComponent()
 
     // ── Audio Settings ──
     audioSettings_ = std::make_unique<AudioSettings>(audioEngine_);
-    audioSettings_->onSettingsChanged = [this] { markSettingsDirty(); };
+    audioSettings_->onSettingsChanged = [this] {
+        markSettingsDirty();
+        presetManager_->invalidatePreloadCache();  // SR/BS may have changed
+    };
 
     // ── Plugin Chain Editor ──
     pluginChainEditor_ = std::make_unique<PluginChainEditor>(audioEngine_.getVSTChain());
@@ -137,13 +140,36 @@ MainComponent::MainComponent()
     // ── Settings Panel (formerly Log + General) ──
     {
         auto settingsPanel = std::make_unique<LogPanel>();
+        settingsPanel->onPresetsCleared = [this] {
+            loadingSlot_ = true;   // suppress auto-save from recreating deleted slots
+            // Clear the active chain
+            auto& chain = audioEngine_.getVSTChain();
+            for (int i = chain.getPluginCount() - 1; i >= 0; --i)
+                chain.removePlugin(i);
+            presetManager_->setActiveSlot(-1);
+            presetManager_->refreshSlotOccupancy();
+            presetManager_->invalidatePreloadCache();
+            loadingSlot_ = false;
+            markSettingsDirty();
+            updateSlotButtonStates();
+            pluginChainEditor_->refreshList();
+        };
         settingsPanel->onResetSettings = [this] {
             loadingSlot_ = true;
+            // Clear active chain
+            auto& chain = audioEngine_.getVSTChain();
+            for (int i = chain.getPluginCount() - 1; i >= 0; --i)
+                chain.removePlugin(i);
+            presetManager_->setActiveSlot(-1);
+            presetManager_->refreshSlotOccupancy();
+            presetManager_->invalidatePreloadCache();
+            // Reload with factory defaults
             controlManager_->reloadConfig();
             loadSettings();
             loadingSlot_ = false;
             refreshUI();
             updateSlotButtonStates();
+            pluginChainEditor_->refreshList();
         };
         settingsPanel->onSaveSettings = [this] {
             auto chooser = std::make_shared<juce::FileChooser>(
@@ -178,11 +204,67 @@ MainComponent::MainComponent()
                 if (file.existsAsFile()) {
                     auto json = file.loadFileAsString();
                     safeThis->loadingSlot_ = true;
-                    SettingsExporter::importAll(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore());
+                    if (!SettingsExporter::importAll(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore())) {
+                        safeThis->loadingSlot_ = false;
+                        juce::Logger::writeToLog("[APP] Failed to import settings from " + file.getFullPathName());
+                        return;
+                    }
                     safeThis->controlManager_->reloadConfig();
                     safeThis->loadingSlot_ = false;
+                    safeThis->markSettingsDirty();
                     safeThis->refreshUI();
                     safeThis->updateSlotButtonStates();
+                }
+            });
+        };
+        settingsPanel->onFullBackup = [this] {
+            auto chooser = std::make_shared<juce::FileChooser>(
+                "Full Backup",
+                juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+                    .getChildFile("DirectPipe_full.dpfullbackup"),
+                "*.dpfullbackup");
+            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+            chooser->launchAsync(juce::FileBrowserComponent::saveMode |
+                                 juce::FileBrowserComponent::canSelectFiles,
+                                 [safeThis, chooser](const juce::FileChooser& fc) {
+                if (!safeThis) return;
+                auto file = fc.getResult();
+                if (file != juce::File()) {
+                    auto target = file.withFileExtension("dpfullbackup");
+                    auto json = SettingsExporter::exportFullBackup(*safeThis->presetManager_, safeThis->controlManager_->getConfigStore());
+                    target.replaceWithText(json);
+                    juce::Logger::writeToLog("[APP] Full backup saved to " + target.getFullPathName());
+                }
+            });
+        };
+        settingsPanel->onFullRestore = [this] {
+            auto chooser = std::make_shared<juce::FileChooser>(
+                "Full Restore",
+                juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+                "*.dpfullbackup");
+            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+            chooser->launchAsync(juce::FileBrowserComponent::openMode |
+                                 juce::FileBrowserComponent::canSelectFiles,
+                                 [safeThis, chooser](const juce::FileChooser& fc) {
+                if (!safeThis) return;
+                auto file = fc.getResult();
+                if (file.existsAsFile()) {
+                    auto json = file.loadFileAsString();
+                    safeThis->loadingSlot_ = true;
+                    if (!SettingsExporter::importFullBackup(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore())) {
+                        safeThis->loadingSlot_ = false;
+                        juce::Logger::writeToLog("[APP] Failed to import full backup from " + file.getFullPathName());
+                        return;
+                    }
+                    safeThis->controlManager_->reloadConfig();
+                    safeThis->presetManager_->refreshSlotOccupancy();
+                    safeThis->presetManager_->invalidatePreloadCache();
+                    safeThis->loadingSlot_ = false;
+                    safeThis->markSettingsDirty();
+                    safeThis->refreshUI();
+                    safeThis->updateSlotButtonStates();
+                    safeThis->pluginChainEditor_->refreshList();
+                    juce::Logger::writeToLog("[APP] Full backup restored");
                 }
             });
         };
@@ -201,7 +283,7 @@ MainComponent::MainComponent()
 
     // Auto-save chain to active slot when chain changes
     pluginChainEditor_->onChainModified = [this] {
-        if (loadingSlot_) return;
+        if (loadingSlot_ || partialLoad_) return;
         int slot = presetManager_->getActiveSlot();
         if (slot >= 0)
             presetManager_->saveSlot(slot);
@@ -210,6 +292,7 @@ MainComponent::MainComponent()
 
     // Auto-save when a plugin editor window is closed (captures parameter changes)
     audioEngine_.getVSTChain().onEditorClosed = [this] {
+        if (loadingSlot_ || partialLoad_) return;
         int slot = presetManager_->getActiveSlot();
         if (slot >= 0)
             presetManager_->saveSlot(slot);
@@ -252,6 +335,7 @@ MainComponent::MainComponent()
                 safeThis->loadingSlot_ = true;
                 safeThis->presetManager_->loadPreset(file);
                 safeThis->loadingSlot_ = false;
+                safeThis->markSettingsDirty();
                 safeThis->refreshUI();
                 safeThis->updateSlotButtonStates();
             }
@@ -264,13 +348,19 @@ MainComponent::MainComponent()
         auto label = juce::String::charToString(PresetManager::slotLabel(i));
         slotButtons_[static_cast<size_t>(i)] = std::make_unique<juce::TextButton>(label);
         auto* btn = slotButtons_[static_cast<size_t>(i)].get();
-        btn->setClickingTogglesState(true);
+        btn->setClickingTogglesState(false);
         btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A2A40));
         btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF7B6FFF));
         btn->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-        btn->setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFAAAAAA));
+        btn->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
         btn->onClick = [this, i] { onSlotClicked(i); };
         addAndMakeVisible(*btn);
+    }
+
+    // Right-click on slot buttons → "Copy to..." menu
+    for (int i = 0; i < kNumPresetSlots; ++i) {
+        slotButtons_[static_cast<size_t>(i)]->setMouseClickGrabsKeyboardFocus(false);
+        slotButtons_[static_cast<size_t>(i)]->addMouseListener(this, false);
     }
 
     // ── Mute Status Indicators (clickable) ──
@@ -285,6 +375,7 @@ MainComponent::MainComponent()
     vstMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
     outputMuteBtn_.onClick = [this] {
         if (audioEngine_.isMuted()) return;  // Locked during panic mute
+        if (audioEngine_.isOutputNone()) return;  // Can't unmute when output is "None"
         bool outputMuted = !audioEngine_.isOutputMuted();
         audioEngine_.setOutputMuted(outputMuted);
         markSettingsDirty();
@@ -324,7 +415,9 @@ MainComponent::MainComponent()
             audioEngine_.setMonitorEnabled(false);
             if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
         } else {
-            audioEngine_.setOutputMuted(preMuteOutputMuted_);
+            // Respect outputNone_ — keep muted if output is "None"
+            bool restoreMuted = audioEngine_.isOutputNone() ? true : preMuteOutputMuted_;
+            audioEngine_.setOutputMuted(restoreMuted);
             router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
             audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
             if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
@@ -424,6 +517,9 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     stopTimer();
+    // Remove slot button mouse listeners (right-click menu)
+    for (int i = 0; i < kNumPresetSlots; ++i)
+        slotButtons_[static_cast<size_t>(i)]->removeMouseListener(this);
     if (downloadThread_.joinable())
         downloadThread_.join();
     if (updateCheckThread_.joinable())
@@ -464,7 +560,7 @@ void MainComponent::handleAction(const ActionEvent& event)
             loadingSlot_ = false;
             // Save once after all bypass changes
             int activeSlot = presetManager_->getActiveSlot();
-            if (activeSlot >= 0)
+            if (activeSlot >= 0 && !partialLoad_.load())
                 presetManager_->saveSlot(activeSlot);
             markSettingsDirty();
             break;
@@ -480,6 +576,7 @@ void MainComponent::handleAction(const ActionEvent& event)
                 audioEngine_.setMonitorEnabled(enabled);
             } else if (event.stringParam == "output") {
                 if (audioEngine_.isMuted()) break;  // Locked during panic mute
+                if (audioEngine_.isOutputNone()) break;  // Can't unmute when output is "None"
                 // Output mute = silence main output only, monitor keeps working
                 bool outputMuted = !audioEngine_.isOutputMuted();
                 audioEngine_.setOutputMuted(outputMuted);
@@ -497,7 +594,8 @@ void MainComponent::handleAction(const ActionEvent& event)
                     audioEngine_.setMonitorEnabled(false);
                     if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
                 } else {
-                    audioEngine_.setOutputMuted(preMuteOutputMuted_);
+                    bool restoreMuted = audioEngine_.isOutputNone() ? true : preMuteOutputMuted_;
+                    audioEngine_.setOutputMuted(restoreMuted);
                     router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
                     audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
                     if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
@@ -526,7 +624,8 @@ void MainComponent::handleAction(const ActionEvent& event)
                 audioEngine_.setMonitorEnabled(false);
                 if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
             } else {
-                audioEngine_.setOutputMuted(preMuteOutputMuted_);
+                bool restoreMuted = audioEngine_.isOutputNone() ? true : preMuteOutputMuted_;
+                audioEngine_.setOutputMuted(restoreMuted);
                 router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
                 audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
                 if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
@@ -550,11 +649,12 @@ void MainComponent::handleAction(const ActionEvent& event)
             if (event.stringParam == "monitor") {
                 if (audioEngine_.isMuted()) break;  // Locked during panic mute
                 audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
+                markSettingsDirty();
             } else if (event.stringParam == "input") {
                 audioEngine_.setInputGain(event.floatParam);
                 inputGainSlider_.setValue(event.floatParam, juce::dontSendNotification);
+                markSettingsDirty();
             }
-            markSettingsDirty();
             break;
 
         case Action::MonitorToggle: {
@@ -613,49 +713,28 @@ void MainComponent::handleAction(const ActionEvent& event)
 
         case Action::LoadPreset:
         case Action::SwitchPresetSlot: {
-            if (loadingSlot_) break;
             int slot = event.intParam;
-            // Save current slot first (captures plugin internal state)
-            int currentSlot = presetManager_->getActiveSlot();
-            if (currentSlot >= 0 && currentSlot != slot)
-                presetManager_->saveSlot(currentSlot);
-            loadingSlot_ = true;
-            setSlotButtonsEnabled(false);
-            presetManager_->loadSlotAsync(slot, [safeThis = juce::Component::SafePointer<MainComponent>(this)](bool /*ok*/) {
-                if (!safeThis) return;
-                safeThis->loadingSlot_ = false;
-                safeThis->setSlotButtonsEnabled(true);
-                safeThis->refreshUI();
-                safeThis->updateSlotButtonStates();
-                safeThis->markSettingsDirty();
-            });
+            if (slot >= 0 && slot < kNumPresetSlots) {
+                if (loadingSlot_) {
+                    pendingSlot_ = slot;  // queue latest, process after current load
+                } else {
+                    onSlotClicked(slot);
+                }
+            }
             break;
         }
 
         case Action::NextPreset:
         case Action::PreviousPreset: {
-            if (loadingSlot_) break;
             int currentSlot = presetManager_->getActiveSlot();
-            if (currentSlot >= 0)
-                presetManager_->saveSlot(currentSlot);
-            int nextSlot;
-            if (currentSlot < 0) {
-                nextSlot = 0;  // No active slot: default to slot A
+            int direction = (event.action == Action::NextPreset) ? 1 : -1;
+            int start = (currentSlot < 0) ? 0 : currentSlot;
+            int nextSlot = (start + direction + kNumPresetSlots) % kNumPresetSlots;
+            if (loadingSlot_) {
+                pendingSlot_ = nextSlot;
             } else {
-                nextSlot = (event.action == Action::NextPreset)
-                    ? (currentSlot + 1) % kNumPresetSlots
-                    : (currentSlot - 1 + kNumPresetSlots) % kNumPresetSlots;
+                onSlotClicked(nextSlot);
             }
-            loadingSlot_ = true;
-            setSlotButtonsEnabled(false);
-            presetManager_->loadSlotAsync(nextSlot, [safeThis = juce::Component::SafePointer<MainComponent>(this)](bool /*ok*/) {
-                if (!safeThis) return;
-                safeThis->loadingSlot_ = false;
-                safeThis->setSlotButtonsEnabled(true);
-                safeThis->refreshUI();
-                safeThis->updateSlotButtonStates();
-                safeThis->markSettingsDirty();
-            });
             break;
         }
 
@@ -666,37 +745,147 @@ void MainComponent::handleAction(const ActionEvent& event)
 
 // ─── Preset Slots ───────────────────────────────────────────────────────────
 
+void MainComponent::mouseDown(const juce::MouseEvent& event)
+{
+    // Right-click on slot buttons → "Copy to..." context menu
+    if (!event.mods.isPopupMenu()) return;
+    if (loadingSlot_) return;  // Prevent context menu during async slot load
+
+    auto* src = event.eventComponent;
+    int sourceSlot = -1;
+    for (int i = 0; i < kNumPresetSlots; ++i) {
+        if (src == slotButtons_[static_cast<size_t>(i)].get()) {
+            sourceSlot = i;
+            break;
+        }
+    }
+    if (sourceSlot < 0 || !presetManager_->isSlotOccupied(sourceSlot)) return;
+
+    auto slotChar = juce::String::charToString(PresetManager::slotLabel(sourceSlot));
+
+    juce::PopupMenu copyMenu;
+    for (int i = 0; i < kNumPresetSlots; ++i) {
+        if (i == sourceSlot) continue;
+        copyMenu.addItem(i + 1, "-> " + juce::String::charToString(PresetManager::slotLabel(i)));
+    }
+
+    juce::PopupMenu menu;
+    menu.addSubMenu("Copy " + slotChar, copyMenu);
+    menu.addSeparator();
+    menu.addItem(100, "Delete " + slotChar);
+
+    auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+    menu.showMenuAsync(juce::PopupMenu::Options(),
+        [safeThis, sourceSlot, slotChar](int result) {
+            if (!safeThis || result == 0) return;
+
+            if (result == 100) {
+                // Was this the active slot?
+                bool wasActive = (safeThis->presetManager_->getActiveSlot() == sourceSlot);
+                if (safeThis->presetManager_->deleteSlot(sourceSlot)) {
+                    // If we deleted the active slot, clear the loaded chain
+                    if (wasActive) {
+                        // Suppress onChainModified auto-save during chain clear
+                        safeThis->loadingSlot_ = true;
+                        auto& chain = safeThis->audioEngine_.getVSTChain();
+                        while (chain.getPluginCount() > 0)
+                            chain.removePlugin(0);
+                        safeThis->loadingSlot_ = false;
+                        if (safeThis->pluginChainEditor_)
+                            safeThis->pluginChainEditor_->refreshList();
+                    }
+                    safeThis->updateSlotButtonStates();
+                    safeThis->showNotification("Deleted slot " + slotChar,
+                                               NotificationLevel::Info);
+                    safeThis->markSettingsDirty();
+                }
+                return;
+            }
+
+            int targetSlot = result - 1;
+
+            // Save current active slot first (captures live plugin state)
+            int active = safeThis->presetManager_->getActiveSlot();
+            if (active == sourceSlot && !safeThis->partialLoad_.load())
+                safeThis->presetManager_->saveSlot(sourceSlot);
+
+            if (safeThis->presetManager_->copySlot(sourceSlot, targetSlot)) {
+                safeThis->updateSlotButtonStates();
+                safeThis->showNotification(
+                    "Copied slot " + slotChar
+                    + " to " + juce::String::charToString(PresetManager::slotLabel(targetSlot)),
+                    NotificationLevel::Info);
+            }
+        });
+}
+
 void MainComponent::onSlotClicked(int slotIndex)
 {
     if (loadingSlot_) return;  // Prevent double-click during load
 
+    // Same slot click = just save current state
     if (presetManager_->getActiveSlot() == slotIndex) {
-        presetManager_->saveSlot(slotIndex);
-    } else {
-        // Save current slot first (captures plugin internal state)
-        int currentSlot = presetManager_->getActiveSlot();
-        if (currentSlot >= 0)
-            presetManager_->saveSlot(currentSlot);
-
-        if (presetManager_->isSlotOccupied(slotIndex)) {
-            loadingSlot_ = true;
-            setSlotButtonsEnabled(false);
-            presetManager_->loadSlotAsync(slotIndex, [safeThis = juce::Component::SafePointer<MainComponent>(this)](bool /*ok*/) {
-                if (!safeThis) return;
-                safeThis->loadingSlot_ = false;
-                safeThis->setSlotButtonsEnabled(true);
-                safeThis->refreshUI();
-                safeThis->updateSlotButtonStates();
-                safeThis->markSettingsDirty();
-            });
-            // Update button state immediately to show selection
-            updateSlotButtonStates();
-            return;
-        } else {
+        if (!partialLoad_.load())
             presetManager_->saveSlot(slotIndex);
-        }
+        updateSlotButtonStates();
+        return;
     }
-    updateSlotButtonStates();
+
+    // Save current slot first (captures plugin internal state)
+    // Skip save if previous load was partial (preserve original slot file)
+    int currentSlot = presetManager_->getActiveSlot();
+    if (currentSlot >= 0 && !partialLoad_.load())
+        presetManager_->saveSlot(currentSlot);
+    partialLoad_ = false;
+    settingsDirty_ = false;
+    dirtyCooldown_ = 0;
+
+    // Slot has data → async load
+    if (presetManager_->isSlotOccupied(slotIndex)) {
+        loadingSlot_ = true;
+        setSlotButtonsEnabled(false);
+        pluginChainEditor_->showLoadingState();
+        presetManager_->loadSlotAsync(slotIndex, [safeThis = juce::Component::SafePointer<MainComponent>(this)](bool ok) {
+            if (!safeThis) return;
+            safeThis->loadingSlot_ = false;
+            safeThis->partialLoad_ = !ok;  // protect slot file from overwrite on partial load
+            safeThis->setSlotButtonsEnabled(true);
+            safeThis->pluginChainEditor_->hideLoadingState();
+            safeThis->refreshUI();
+            safeThis->updateSlotButtonStates();
+            if (ok) safeThis->markSettingsDirty();
+
+            // Process queued slot request (from rapid switching)
+            if (safeThis->pendingSlot_ >= 0) {
+                int pending = safeThis->pendingSlot_;
+                safeThis->pendingSlot_ = -1;
+                safeThis->onSlotClicked(pending);
+            }
+        });
+    } else {
+        // Empty slot → clear chain, select the empty slot
+        // Set loadingSlot_ to suppress onChainModified auto-save during the clear.
+        // Without this, each removePlugin fires onChainChanged → onChainModified →
+        // saveSlot(oldActiveSlot) with a partially-cleared chain, corrupting the old slot file.
+        loadingSlot_ = true;
+        auto& chain = audioEngine_.getVSTChain();
+        while (chain.getPluginCount() > 0)
+            chain.removePlugin(chain.getPluginCount() - 1);
+        presetManager_->setActiveSlot(slotIndex);
+        loadingSlot_ = false;
+        markSettingsDirty();
+    }
+
+    // Immediately show target slot as selected
+    for (int i = 0; i < kNumPresetSlots; ++i) {
+        auto* btn = slotButtons_[static_cast<size_t>(i)].get();
+        bool isTarget = (i == slotIndex);
+        btn->setToggleState(isTarget, juce::dontSendNotification);
+        btn->setColour(juce::TextButton::buttonColourId,
+                       juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
+        btn->setColour(juce::TextButton::buttonOnColourId,
+                       juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
+    }
 }
 
 void MainComponent::updateSlotButtonStates()
@@ -705,19 +894,21 @@ void MainComponent::updateSlotButtonStates()
     for (int i = 0; i < kNumPresetSlots; ++i) {
         auto* btn = slotButtons_[static_cast<size_t>(i)].get();
         bool isActive = (i == active);
-        bool occupied = presetManager_->isSlotOccupied(i);
 
         btn->setToggleState(isActive, juce::dontSendNotification);
 
+        // Set ALL 4 colour IDs to prevent stale colours
+        // Non-active slots all share same appearance (no occupied vs empty distinction)
         if (isActive) {
+            btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF7B6FFF));
             btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF7B6FFF));
+            btn->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
             btn->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-        } else if (occupied) {
-            btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5A));
-            btn->setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFCCCCCC));
         } else {
             btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A2A40));
-            btn->setColour(juce::TextButton::textColourOffId, juce::Colour(0xFF999999));
+            btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF2A2A40));
+            btn->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            btn->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
         }
         btn->repaint();
     }
@@ -861,10 +1052,13 @@ void MainComponent::timerCallback()
 
         notificationBar_.tick();
         bool notifActive = notificationBar_.isActive();
-        latencyLabel_.setVisible(!notifActive);
-        cpuLabel_.setVisible(!notifActive);
-        formatLabel_.setVisible(!notifActive);
-        portableLabel_.setVisible(!notifActive);
+        if (notifActive != cachedNotifActive_) {
+            cachedNotifActive_ = notifActive;
+            latencyLabel_.setVisible(!notifActive);
+            cpuLabel_.setVisible(!notifActive);
+            formatLabel_.setVisible(!notifActive);
+            portableLabel_.setVisible(!notifActive);
+        }
     }
 
     // ── Flush log entries to Log tab ──
@@ -876,6 +1070,8 @@ void MainComponent::timerCallback()
     bool muted = audioEngine_.isMuted();
     inputMeter_->setLevel(audioEngine_.getInputLevel());
     outputMeter_->setLevel(muted ? 0.0f : audioEngine_.getOutputLevel());
+    inputMeter_->tick();
+    outputMeter_->tick();
 
     // Update mute indicator colours (cached to avoid redundant repaints)
     {
@@ -909,38 +1105,66 @@ void MainComponent::timerCallback()
     auto& router = audioEngine_.getOutputRouter();
     bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
 
-    juce::String latencyText = "Latency: " + juce::String(mainLatency, 1) + "ms";
-    if (monEnabled) {
-        double monitorLatency = mainLatency;
-        if (monOut.isActive()) {
-            // Separate monitor device: add its buffer latency
-            double monSR = monOut.getActualSampleRate();
-            if (monSR > 0.0)
-                monitorLatency += (static_cast<double>(monOut.getActualBufferSize()) / monSR) * 1000.0;
+    // Latency label — only rebuild string when values change
+    {
+        double monitorLatency = 0.0;
+        if (monEnabled) {
+            monitorLatency = mainLatency;
+            if (monOut.isActive()) {
+                double monSR = monOut.getActualSampleRate();
+                if (monSR > 0.0)
+                    monitorLatency += (static_cast<double>(monOut.getActualBufferSize()) / monSR) * 1000.0;
+            }
         }
-        latencyText += " | Mon: " + juce::String(monitorLatency, 1) + "ms";
+        // Check if values changed (0.05ms precision)
+        if (std::abs(mainLatency - cachedMainLatency_) > 0.05 ||
+            std::abs(monitorLatency - cachedMonitorLatency_) > 0.05 ||
+            monEnabled != cachedMonEnabled_)
+        {
+            cachedMainLatency_ = mainLatency;
+            cachedMonitorLatency_ = monitorLatency;
+            cachedMonEnabled_ = monEnabled;
+            juce::String latencyText = "Latency: " + juce::String(mainLatency, 1) + "ms";
+            if (monEnabled)
+                latencyText += " | Mon: " + juce::String(monitorLatency, 1) + "ms";
+            latencyLabel_.setText(latencyText, juce::dontSendNotification);
+        }
     }
 
-    latencyLabel_.setText(latencyText, juce::dontSendNotification);
-
+    // CPU/XRun label — only rebuild when values change
     {
         audioEngine_.updateXRunTracking();
-        juce::String cpuText = "CPU: " + juce::String(monitor.getCpuUsagePercent(), 1) + "%";
+        double cpuPct = monitor.getCpuUsagePercent();
         int xruns = audioEngine_.getRecentXRunCount();
-        if (xruns > 0) {
-            cpuText += " | XRun: " + juce::String(xruns);
-            cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF6B6B));
-        } else {
-            cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
+        if (std::abs(cpuPct - cachedCpuPercent_) > 0.1 || xruns != cachedXruns_) {
+            cachedCpuPercent_ = cpuPct;
+            cachedXruns_ = xruns;
+            juce::String cpuText = "CPU: " + juce::String(cpuPct, 1) + "%";
+            if (xruns > 0) {
+                cpuText += " | XRun: " + juce::String(xruns);
+                cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF6B6B));
+            } else {
+                cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
+            }
+            cpuLabel_.setText(cpuText, juce::dontSendNotification);
         }
-        cpuLabel_.setText(cpuText, juce::dontSendNotification);
     }
 
-    formatLabel_.setText(
-        juce::String(static_cast<int>(monitor.getSampleRate())) + "Hz / " +
-        juce::String(monitor.getBufferSize()) + " smp / " +
-        juce::String(audioEngine_.getChannelMode() == 1 ? "Mono" : "Stereo"),
-        juce::dontSendNotification);
+    // Format label — SR/BS/channel rarely change, only rebuild on change
+    {
+        int sr = static_cast<int>(monitor.getSampleRate());
+        int bs = monitor.getBufferSize();
+        int cm = audioEngine_.getChannelMode();
+        if (sr != cachedSampleRate_ || bs != cachedBufferSize_ || cm != cachedChannelMode_) {
+            cachedSampleRate_ = sr;
+            cachedBufferSize_ = bs;
+            cachedChannelMode_ = cm;
+            formatLabel_.setText(
+                juce::String(sr) + "Hz / " + juce::String(bs) + " smp / " +
+                juce::String(cm == 1 ? "Mono" : "Stereo"),
+                juce::dontSendNotification);
+        }
+    }
 
     float currentGain = audioEngine_.getInputGain();
     if (std::abs(static_cast<float>(inputGainSlider_.getValue()) - currentGain) > 0.01f) {
@@ -1009,8 +1233,13 @@ void MainComponent::timerCallback()
     // Dirty-flag auto-save with 1-second debounce (30 ticks at 30Hz)
     if (settingsDirty_ && dirtyCooldown_ > 0) {
         if (--dirtyCooldown_ == 0) {
-            settingsDirty_ = false;
-            saveSettings();
+            // Defer save if chain is in transitional state (async loading)
+            if (loadingSlot_.load() || audioEngine_.getVSTChain().isLoading()) {
+                dirtyCooldown_ = 10;  // retry in ~300ms
+            } else {
+                settingsDirty_ = false;
+                saveSettings();
+            }
         }
     }
 }
@@ -1025,9 +1254,15 @@ void MainComponent::markSettingsDirty()
 
 void MainComponent::saveSettings()
 {
+    // Skip saving during async chain load — chain is in transitional state
+    // (empty or partially loaded). Saving now would corrupt the active slot file.
+    if (loadingSlot_.load() || audioEngine_.getVSTChain().isLoading())
+        return;
+
     // Save current slot's chain state (captures plugin internal state)
+    // Skip slot save if partial load (some plugins failed) — preserve original slot file
     int currentSlot = presetManager_->getActiveSlot();
-    if (currentSlot >= 0)
+    if (currentSlot >= 0 && !partialLoad_.load())
         presetManager_->saveSlot(currentSlot);
 
     auto file = PresetManager::getAutoSaveFile();
@@ -1040,9 +1275,48 @@ void MainComponent::loadSettings()
     if (file.existsAsFile()) {
         loadingSlot_ = true;
         presetManager_->loadPreset(file);
+
+        // Self-healing: if settings.dppreset had an empty/corrupt chain but the
+        // active slot file is valid, reload chain from the slot file.
+        int activeSlot = presetManager_->getActiveSlot();
+        if (activeSlot >= 0 && presetManager_->isSlotOccupied(activeSlot)
+            && audioEngine_.getVSTChain().getPluginCount() == 0) {
+            juce::Logger::writeToLog("[PRESET] Self-healing: reloading slot "
+                + juce::String::charToString(PresetManager::slotLabel(activeSlot)) + " from file");
+            presetManager_->loadSlot(activeSlot);
+        }
+
         loadingSlot_ = false;
         refreshUI();
+        updateSlotButtonStates();
+
+        // Sync Settings tab UI (audit mode toggle, pending logs) before window is shown
+        if (auto* settingsPanel = dynamic_cast<LogPanel*>(rightTabs_->getTabContentComponent(3)))
+            settingsPanel->flushPendingLogs();
+
+        // Pre-load other slots in background for instant switching.
+        // Deferred via callAsync to ensure audio device is fully started
+        // before preload thread uses formatManager.
+        // Window is shown AFTER preload completes (prevents "frozen UI" appearance).
+        auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+        juce::MessageManager::callAsync([safeThis]() {
+            if (!safeThis) return;
+            safeThis->presetManager_->triggerPreload([safeThis]() {
+                if (!safeThis) return;
+                if (auto* w = safeThis->getTopLevelComponent())
+                    w->setVisible(true);
+            });
+        });
+        return;  // window will be shown by preload callback
     }
+
+    // No settings file → show window immediately
+    auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+    juce::MessageManager::callAsync([safeThis]() {
+        if (!safeThis) return;
+        if (auto* w = safeThis->getTopLevelComponent())
+            w->setVisible(true);
+    });
 }
 
 void MainComponent::refreshUI()
@@ -1094,7 +1368,11 @@ void MainComponent::checkForUpdate()
 
     updateCheckThread_ = std::thread([safeThis, currentVersion]() {
         juce::URL url("https://api.github.com/repos/LiveTrack-X/DirectPipe/releases/latest");
-        auto response = url.readEntireTextStream(false);
+        auto stream = url.createInputStream(
+            juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
+                .withConnectionTimeoutMs(10000));
+        juce::String response;
+        if (stream) response = stream->readEntireStreamAsString();
         if (response.isEmpty()) return;
 
         auto parsed = juce::JSON::parse(response);
@@ -1223,9 +1501,16 @@ void MainComponent::performUpdate()
     auto version = latestVersion_;
     bool isZip = downloadUrl.endsWithIgnoreCase(".zip");
 
-    // Download in background thread (joined in destructor)
-    if (downloadThread_.joinable())
-        downloadThread_.join();
+    // If a previous download is still running, reject the request (don't block message thread)
+    if (downloadThread_.joinable()) {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon,
+            "Update in Progress",
+            "A download is already in progress. Please wait for it to finish.",
+            "OK");
+        (*progressDlg)->exitModalState(0);
+        return;
+    }
     downloadThread_ = std::thread([safeThis, downloadUrl, updateDir, batchFile, currentExe, version, isZip, progressDlg]() {
         // Download the file
         juce::URL url(downloadUrl);

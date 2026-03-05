@@ -87,6 +87,7 @@ private:
 
     double sampleRate_ = 48000.0;
     int bufferSize_ = 128;
+    uint32_t rmsDecimationCounter_ = 0;  ///< RMS decimation for monitor level (RT thread only)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OutputRouter)
 };

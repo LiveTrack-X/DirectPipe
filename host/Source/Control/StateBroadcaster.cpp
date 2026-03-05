@@ -33,11 +33,47 @@ AppState StateBroadcaster::getState() const
     return state_;
 }
 
+// Fast hash of the state fields that change frequently (volumes, levels, CPU, recording)
+// to skip full JSON serialization + broadcast when nothing changed.
+static uint32_t quickStateHash(const AppState& s)
+{
+    uint32_t h = 0;
+    auto hashFloat = [&](float v) {
+        // Quantize to reduce jitter: 0.05 precision for levels/CPU
+        auto q = static_cast<uint32_t>(v * 20.0f);
+        h = h * 31u + q;
+    };
+    hashFloat(s.inputGain);
+    hashFloat(s.monitorVolume);
+    hashFloat(s.latencyMs);
+    hashFloat(s.monitorLatencyMs);
+    hashFloat(s.inputLevelDb);
+    hashFloat(s.cpuPercent);
+    h = h * 31u + static_cast<uint32_t>(s.muted);
+    h = h * 31u + static_cast<uint32_t>(s.outputMuted);
+    h = h * 31u + static_cast<uint32_t>(s.monitorEnabled);
+    h = h * 31u + static_cast<uint32_t>(s.masterBypassed);
+    h = h * 31u + static_cast<uint32_t>(s.activeSlot);
+    h = h * 31u + static_cast<uint32_t>(s.recording);
+    h = h * 31u + static_cast<uint32_t>(s.recordingSeconds * 2.0);  // 0.5s precision
+    h = h * 31u + static_cast<uint32_t>(s.ipcEnabled);
+    h = h * 31u + static_cast<uint32_t>(s.deviceLost);
+    h = h * 31u + static_cast<uint32_t>(s.monitorLost);
+    h = h * 31u + static_cast<uint32_t>(s.plugins.size());
+    for (const auto& p : s.plugins)
+        h = h * 31u + static_cast<uint32_t>(p.bypassed);
+    return h;
+}
+
 void StateBroadcaster::updateState(std::function<void(AppState&)> updater)
 {
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         updater(state_);
+        // Skip broadcast if state hasn't meaningfully changed
+        uint32_t hash = quickStateHash(state_);
+        if (hash == lastBroadcastHash_) return;
+        lastBroadcastHash_ = hash;
     }
     notifyListeners();
 }

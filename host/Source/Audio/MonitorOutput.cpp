@@ -22,6 +22,7 @@
  */
 
 #include "MonitorOutput.h"
+#include "../Control/Log.h"
 
 namespace directpipe {
 
@@ -51,7 +52,7 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
 
     auto result = deviceManager_->initialiseWithDefaultDevices(0, 2);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("[MONITOR] Init error: " + result);
+        Log::error("MONITOR", "Init error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
         status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
         return false;
     }
@@ -67,7 +68,7 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
 
     result = deviceManager_->setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
-        juce::Logger::writeToLog("[MONITOR] Setup error: " + result);
+        Log::error("MONITOR", "Setup error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
         status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
         return false;
     }
@@ -75,7 +76,8 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     // Register as the audio callback for this device
     deviceManager_->addAudioCallback(this);
 
-    juce::Logger::writeToLog("[MONITOR] Initialized on " + deviceName);
+    Log::info("MONITOR", "Initialized on " + deviceName + " (SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + ")");
+    Log::audit("MONITOR", "Ring buffer: 4096 frames, 2 channels");
     return true;
 }
 
@@ -168,9 +170,7 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     // Check sample rate match
     if (std::abs(deviceSR - sampleRate_) > 1.0) {
-        juce::Logger::writeToLog(
-            "[MONITOR] Sample rate mismatch! Expected " +
-            juce::String(sampleRate_) + " got " + juce::String(deviceSR));
+        Log::warn("MONITOR", "Sample rate mismatch! Expected " + juce::String(sampleRate_) + " got " + juce::String(deviceSR));
         // Set status BEFORE reset so the consumer callback sees non-Active
         // and skips ring buffer access (prevents data race on reset)
         status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_release);
@@ -183,10 +183,16 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
     ringBuffer_.reset();
     status_.store(VirtualCableStatus::Active, std::memory_order_release);
 
-    juce::Logger::writeToLog(
-        "[MONITOR] Active on " + device->getName() +
-        " @ " + juce::String(deviceSR) + "Hz / " +
-        juce::String(deviceBS) + " samples");
+    Log::info("MONITOR", "Active on " + device->getName() + " @ " + juce::String(deviceSR) + "Hz / " + juce::String(deviceBS) + " samples");
+    if (Log::isAuditMode()) {
+        Log::audit("MONITOR", "Device type: " + device->getTypeName());
+        Log::audit("MONITOR", "Output channels: " + device->getOutputChannelNames().joinIntoString(", "));
+        Log::audit("MONITOR", "Input latency: " + juce::String(device->getInputLatencyInSamples()) + " Output latency: " + juce::String(device->getOutputLatencyInSamples()));
+        auto bsSizes = device->getAvailableBufferSizes();
+        juce::String bsList;
+        for (int b : bsSizes) bsList += (bsList.isEmpty() ? "" : ", ") + juce::String(b);
+        Log::audit("MONITOR", "Available BS: " + bsList);
+    }
 }
 
 void MonitorOutput::audioDeviceStopped()
@@ -195,12 +201,12 @@ void MonitorOutput::audioDeviceStopped()
     // fires on external events (device unplug, driver error) — not our own teardown.
     monitorLost_.store(true, std::memory_order_relaxed);
     status_.store(VirtualCableStatus::Error, std::memory_order_release);
-    juce::Logger::writeToLog("[MONITOR] Device stopped (lost)");
+    Log::warn("MONITOR", "Device stopped (lost): " + deviceName_);
 }
 
 void MonitorOutput::audioDeviceError(const juce::String& errorMessage)
 {
-    juce::Logger::writeToLog("[MONITOR] Device error: " + errorMessage);
+    Log::error("MONITOR", "Device error on '" + deviceName_ + "': " + errorMessage);
     monitorLost_.store(true, std::memory_order_relaxed);
     status_.store(VirtualCableStatus::Error, std::memory_order_release);
 }
@@ -226,21 +232,23 @@ void MonitorOutput::checkReconnection()
     }
     reconnectCooldown_ = 90;  // ~3 seconds at 30Hz
 
-    juce::Logger::writeToLog("[MONITOR] Reconnection attempt: " + deviceName_);
+    Log::info("MONITOR", "Reconnection attempt: " + deviceName_);
 
     scanDevices();
     auto devices = getAvailableOutputDevices();
+    Log::audit("MONITOR", "Available devices: [" + devices.joinIntoString(", ") + "]");
+
     if (!devices.contains(deviceName_)) {
-        juce::Logger::writeToLog("[MONITOR] Device not yet available");
+        Log::info("MONITOR", "Device '" + deviceName_ + "' not yet available");
         return;
     }
 
     if (initialize(deviceName_, sampleRate_, bufferSize_)) {
         // monitorLost_ cleared in audioDeviceAboutToStart
         reconnectCooldown_ = 0;
-        juce::Logger::writeToLog("[MONITOR] Device reconnected: " + deviceName_);
+        Log::info("MONITOR", "Device reconnected: " + deviceName_);
     } else {
-        juce::Logger::writeToLog("[MONITOR] Reconnection failed: initialize returned false");
+        Log::error("MONITOR", "Reconnection failed: initialize returned false (device='" + deviceName_ + "' SR=" + juce::String(sampleRate_) + " BS=" + juce::String(bufferSize_) + ")");
     }
 }
 

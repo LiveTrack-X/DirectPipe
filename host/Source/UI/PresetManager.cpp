@@ -22,18 +22,25 @@
  */
 
 #include "PresetManager.h"
+#include "../Control/ControlMapping.h"
+#include "../Control/Log.h"
 
 namespace directpipe {
 
 PresetManager::PresetManager(AudioEngine& engine)
     : engine_(engine)
 {
+    refreshSlotOccupancyCache();
 }
 
 bool PresetManager::savePreset(const juce::File& file)
 {
     auto json = exportToJSON();
     if (json.isEmpty()) return false;
+
+    // Keep a backup of the previous file in case shutdown interrupts the write
+    if (file.existsAsFile())
+        file.copyFileTo(file.withFileExtension("dppreset.backup"));
 
     bool ok = file.replaceWithText(json);
     if (ok) juce::Logger::writeToLog("[PRESET] Saved: " + file.getFileName());
@@ -42,28 +49,45 @@ bool PresetManager::savePreset(const juce::File& file)
 
 bool PresetManager::loadPreset(const juce::File& file)
 {
+    if (!file.existsAsFile()) {
+        // Main file missing — try backup (may have been lost during forced shutdown)
+        auto backup = file.withFileExtension("dppreset.backup");
+        if (backup.existsAsFile()) {
+            juce::Logger::writeToLog("[PRESET] Main file missing, restoring from backup");
+            backup.copyFileTo(file);
+        }
+    }
     if (!file.existsAsFile()) return false;
 
     auto json = file.loadFileAsString();
     bool ok = importFromJSON(json);
+    if (!ok) {
+        // Corrupt file — try backup
+        auto backup = file.withFileExtension("dppreset.backup");
+        if (backup.existsAsFile()) {
+            juce::Logger::writeToLog("[PRESET] Settings corrupt, restoring from backup");
+            json = backup.loadFileAsString();
+            ok = importFromJSON(json);
+            if (ok) {
+                // Replace corrupt main file with working backup
+                backup.copyFileTo(file);
+            }
+        }
+    }
     if (ok) juce::Logger::writeToLog("[PRESET] Loaded: " + file.getFileName());
     return ok;
 }
 
 juce::File PresetManager::getPresetsDirectory()
 {
-    auto appData = juce::File::getSpecialLocation(
-        juce::File::userApplicationDataDirectory);
-    auto presetsDir = appData.getChildFile("DirectPipe").getChildFile("Presets");
+    auto presetsDir = ControlMappingStore::getConfigDirectory().getChildFile("Presets");
     presetsDir.createDirectory();
     return presetsDir;
 }
 
 juce::File PresetManager::getAutoSaveFile()
 {
-    auto appData = juce::File::getSpecialLocation(
-        juce::File::userApplicationDataDirectory);
-    auto dir = appData.getChildFile("DirectPipe");
+    auto dir = ControlMappingStore::getConfigDirectory();
     dir.createDirectory();
     return dir.getChildFile("settings.dppreset");
 }
@@ -141,6 +165,12 @@ juce::String PresetManager::exportToJSON()
     // IPC output
     root->setProperty("ipcEnabled", engine_.isIpcEnabled());
 
+    // Output mute state
+    root->setProperty("outputMuted", engine_.isOutputMuted());
+
+    // Audit mode
+    root->setProperty("auditMode", Log::isAuditMode());
+
     return juce::JSON::toString(juce::var(root.release()), true);
 }
 
@@ -156,9 +186,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
     int version = root->getProperty("version");
     if (version < 1) return false;
 
-    // Restore active slot
-    if (root->hasProperty("activeSlot"))
-        activeSlot_ = static_cast<int>(root->getProperty("activeSlot"));
+    // Restore active slot (clamp to valid range)
+    if (root->hasProperty("activeSlot")) {
+        int slot = static_cast<int>(root->getProperty("activeSlot"));
+        activeSlot_ = juce::jlimit(-1, kNumSlots - 1, slot);
+    }
 
     // Restore device type first (affects which devices are available)
     if (root->hasProperty("deviceType")) {
@@ -249,6 +281,14 @@ bool PresetManager::importFromJSON(const juce::String& json)
     if (root->hasProperty("ipcEnabled"))
         engine_.setIpcEnabled(static_cast<bool>(root->getProperty("ipcEnabled")));
 
+    // Output mute state
+    if (root->hasProperty("outputMuted"))
+        engine_.setOutputMuted(static_cast<bool>(root->getProperty("outputMuted")));
+
+    // Audit mode
+    if (root->hasProperty("auditMode"))
+        Log::setAuditMode(static_cast<bool>(root->getProperty("auditMode")));
+
     return true;
 }
 
@@ -330,7 +370,15 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
     while (chain.getPluginCount() > 0)
         chain.removePlugin(0);
 
-    for (auto& target : targets) {
+    // Collect loaded plugin indices for batch state restore
+    struct LoadedPlugin {
+        int idx;
+        size_t targetIdx;
+    };
+    std::vector<LoadedPlugin> loaded;
+
+    for (size_t ti = 0; ti < targets.size(); ++ti) {
+        auto& target = targets[ti];
         int idx = -1;
 
         if (target.hasDesc)
@@ -362,17 +410,25 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
         if (idx >= 0) {
             if (target.bypassed)
                 chain.setPluginBypassed(idx, true);
-            if (target.hasState) {
-                if (auto* loadedSlot = chain.getPluginSlot(idx)) {
-                    if (loadedSlot->instance) {
-                        chain.suspendProcessing(true);
-                        loadedSlot->instance->setStateInformation(
-                            target.stateData.getData(), static_cast<int>(target.stateData.getSize()));
-                        chain.suspendProcessing(false);
-                    }
+            if (target.hasState)
+                loaded.push_back({idx, ti});
+        }
+    }
+
+    // Batch state restore under single suspend (prevents audio thread from
+    // seeing partially-restored state between plugins)
+    if (!loaded.empty()) {
+        chain.suspendProcessing(true);
+        for (auto& lp : loaded) {
+            if (auto* loadedSlot = chain.getPluginSlot(lp.idx)) {
+                if (loadedSlot->instance) {
+                    auto& t = targets[lp.targetIdx];
+                    loadedSlot->instance->setStateInformation(
+                        t.stateData.getData(), static_cast<int>(t.stateData.getSize()));
                 }
             }
         }
+        chain.suspendProcessing(false);
     }
 }
 
@@ -435,37 +491,83 @@ bool PresetManager::importChainFromJSON(const juce::String& json)
 
 juce::File PresetManager::getSlotFile(int slotIndex)
 {
-    auto appData = juce::File::getSpecialLocation(
-        juce::File::userApplicationDataDirectory);
-    auto dir = appData.getChildFile("DirectPipe").getChildFile("Slots");
+    auto dir = ControlMappingStore::getConfigDirectory().getChildFile("Slots");
     dir.createDirectory();
-    return dir.getChildFile("slot_" + juce::String(slotLabel(slotIndex)) + ".dppreset");
+
+    auto newFile = dir.getChildFile("slot_" + juce::String::charToString(slotLabel(slotIndex)) + ".dppreset");
+
+    // Migrate from old numeric filenames (slot_65.dppreset -> slot_A.dppreset)
+    if (!newFile.existsAsFile()) {
+        auto oldFile = dir.getChildFile("slot_" + juce::String(static_cast<int>(slotLabel(slotIndex))) + ".dppreset");
+        if (oldFile.existsAsFile())
+            oldFile.moveFileTo(newFile);
+    }
+
+    return newFile;
 }
 
 bool PresetManager::saveSlot(int slotIndex)
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
 
+    // If all plugins were removed, delete the slot file to reflect empty state
+    if (engine_.getVSTChain().getPluginCount() == 0) {
+        auto file = getSlotFile(slotIndex);
+        if (file.existsAsFile()) {
+            file.deleteFile();
+            file.withFileExtension("dppreset.backup").deleteFile();
+            preloadCache_.invalidateSlot(slotIndex);
+            slotOccupiedCache_[static_cast<size_t>(slotIndex)] = false;
+            juce::Logger::writeToLog("[PRESET] Cleared empty slot " + juce::String::charToString(slotLabel(slotIndex)));
+        }
+        return true;  // empty-chain clear is a successful operation
+    }
+
     auto file = getSlotFile(slotIndex);
     auto json = exportChainToJSON();
     if (json.isEmpty()) return false;
 
+    // Keep backup in case shutdown interrupts the write
+    if (file.existsAsFile())
+        file.copyFileTo(file.withFileExtension("dppreset.backup"));
+
     bool ok = file.replaceWithText(json);
-    if (ok) activeSlot_ = slotIndex;
-    if (ok) juce::Logger::writeToLog("[PRESET] Saved slot " + juce::String(slotLabel(slotIndex)));
+    if (ok) {
+        activeSlot_ = slotIndex;
+        preloadCache_.invalidateSlot(slotIndex);
+        slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
+        juce::Logger::writeToLog("[PRESET] Saved slot " + juce::String::charToString(slotLabel(slotIndex)));
+    }
     return ok;
 }
 
 bool PresetManager::loadSlot(int slotIndex)
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
-    juce::Logger::writeToLog("[PRESET] Loading slot " + juce::String(slotLabel(slotIndex)));
+    juce::Logger::writeToLog("[PRESET] Loading slot " + juce::String::charToString(slotLabel(slotIndex)));
 
     auto file = getSlotFile(slotIndex);
+    if (!file.existsAsFile()) {
+        // Try backup (may have been lost during forced shutdown)
+        auto backup = file.withFileExtension("dppreset.backup");
+        if (backup.existsAsFile()) {
+            juce::Logger::writeToLog("[PRESET] Slot file missing, restoring from backup");
+            backup.copyFileTo(file);
+        }
+    }
     if (!file.existsAsFile()) return false;
 
     auto json = file.loadFileAsString();
     bool ok = importChainFromJSON(json);
+    if (!ok) {
+        auto backup = file.withFileExtension("dppreset.backup");
+        if (backup.existsAsFile()) {
+            juce::Logger::writeToLog("[PRESET] Slot file corrupt, restoring from backup");
+            json = backup.loadFileAsString();
+            ok = importChainFromJSON(json);
+            if (ok) backup.copyFileTo(file);
+        }
+    }
     if (ok) activeSlot_ = slotIndex;
     return ok;
 }
@@ -477,7 +579,17 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         return;
     }
 
+    Log::audit("PRESET", "loadSlotAsync called: slot=" + juce::String(slotIndex)
+        + " activeSlot=" + juce::String(activeSlot_));
+
     auto file = getSlotFile(slotIndex);
+    if (!file.existsAsFile()) {
+        auto backup = file.withFileExtension("dppreset.backup");
+        if (backup.existsAsFile()) {
+            juce::Logger::writeToLog("[PRESET] Slot file missing, restoring from backup");
+            backup.copyFileTo(file);
+        }
+    }
     if (!file.existsAsFile()) {
         if (onComplete) onComplete(false);
         return;
@@ -485,6 +597,16 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
 
     auto json = file.loadFileAsString();
     auto parsed = juce::JSON::parse(json);
+    if (!parsed.isObject()) {
+        // Try backup for corrupt file
+        auto backup = file.withFileExtension("dppreset.backup");
+        if (backup.existsAsFile()) {
+            juce::Logger::writeToLog("[PRESET] Slot file corrupt, restoring from backup");
+            json = backup.loadFileAsString();
+            parsed = juce::JSON::parse(json);
+            if (parsed.isObject()) backup.copyFileTo(file);
+        }
+    }
     if (!parsed.isObject()) {
         if (onComplete) onComplete(false);
         return;
@@ -508,13 +630,83 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
     // Fast path: same plugins in same order -> sync (instant)
     if (isSameChain(targets, chain)) {
         applyFastPath(targets, chain);
-        juce::Logger::writeToLog("[PRESET] Slot " + juce::String(slotLabel(slotIndex)) + ": fast path (" + juce::String(targets.size()) + " plugins)");
+        juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex)) + ": fast path (" + juce::String(targets.size()) + " plugins)");
         activeSlot_ = slotIndex;
         if (onComplete) onComplete(true);
+        // Defer preload to avoid blocking message thread
+        auto alivePreload = alive_;
+        juce::MessageManager::callAsync([this, alivePreload]() {
+            if (!alivePreload->load()) return;
+            if (suppressPreload_.load()) return;  // async load in progress, skip
+            triggerPreload();
+        });
         return;
     }
 
-    // Slow path: different chain -> async (non-blocking)
+    // Cache path: pre-loaded instances available → instant swap (~10-50ms)
+    // Check cache BEFORE cancelAndWait — preload thread may still be populating it.
+    // replaceChainWithPreloaded does NOT use formatManager, so no concurrent access risk.
+    {
+        auto* device = engine_.getDeviceManager().getCurrentAudioDevice();
+        double sr = device ? device->getCurrentSampleRate() : 48000.0;
+        int bs = device ? device->getCurrentBufferSizeSamples() : 128;
+        Log::audit("PRESET", "Cache check: slot=" + juce::String(slotIndex)
+            + " sr=" + juce::String(static_cast<int>(sr)) + " bs=" + juce::String(bs));
+        auto cached = preloadCache_.take(slotIndex, sr, bs);
+        if (cached) {
+            Log::audit("PRESET", "Cache hit: " + juce::String(static_cast<int>(cached->entries.size()))
+                + " entries, cacheSR=" + juce::String(static_cast<int>(cached->sampleRate))
+                + " cacheBS=" + juce::String(cached->blockSize));
+            // Request preload stop (non-blocking) — thread will finish current plugin then exit
+            preloadCache_.requestCancel();
+
+            std::vector<VSTChain::PreloadedPlugin> preloaded;
+            for (auto& ce : cached->entries) {
+                VSTChain::PreloadedPlugin pp;
+                pp.instance = std::move(ce.instance);
+                pp.request.desc = ce.desc;
+                pp.request.name = ce.name;
+                pp.request.path = ce.path;
+                pp.request.bypassed = ce.bypassed;
+                pp.request.stateData = std::move(ce.stateData);
+                pp.request.hasState = ce.hasState;
+                preloaded.push_back(std::move(pp));
+            }
+
+            int expectedCount = static_cast<int>(preloaded.size());
+            juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex))
+                + ": cache hit (" + juce::String(expectedCount) + " plugins)");
+
+            chain.replaceChainWithPreloaded(std::move(preloaded),
+                [this, slotIndex, expectedCount, onComplete]() {
+                    activeSlot_ = slotIndex;
+                    bool allLoaded = (engine_.getVSTChain().getPluginCount() == expectedCount);
+                    if (onComplete) onComplete(allLoaded);
+                });
+
+            // Defer preload restart — triggerPreload is non-blocking (old thread
+            // joined on new preload thread, not message thread).
+            auto alivePreload = alive_;
+            juce::MessageManager::callAsync([this, alivePreload]() {
+                if (!alivePreload->load()) return;
+                if (suppressPreload_.load()) return;  // async load in progress, skip
+                triggerPreload();
+            });
+            return;
+        }
+    }
+
+    // Slow path: cache miss → need formatManager on background thread
+    Log::audit("PRESET", "Cache miss for slot " + juce::String(slotIndex) + " - using async load path");
+    // Suppress deferred triggerPreloads from earlier cache-hit switches.
+    // Without this, those deferred callAsyncs start new preload threads
+    // that block the loadThread's preWork (joinPreloadThread).
+    suppressPreload_ = true;
+    // Signal preload to stop (non-blocking). The load thread will join it
+    // before using formatManager, keeping the message thread responsive.
+    preloadCache_.requestCancel();
+
+    // Build load requests from targets
     std::vector<VSTChain::PluginLoadRequest> requests;
     for (auto& t : targets) {
         VSTChain::PluginLoadRequest req;
@@ -544,21 +736,124 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         requests.push_back(std::move(req));
     }
 
-    juce::Logger::writeToLog("[PRESET] Slot " + juce::String(slotLabel(slotIndex)) + ": full reload (" + juce::String(targets.size()) + " plugins)");
+    // Async load (non-blocking — plugins loaded on background thread)
+    juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex))
+        + ": full reload (" + juce::String(requests.size()) + " plugins)");
 
     int slot = slotIndex;
+    int expectedCount = static_cast<int>(requests.size());
     auto aliveFlag = alive_;
-    chain.replaceChainAsync(std::move(requests), [this, slot, onComplete, aliveFlag]() {
-        if (!aliveFlag->load()) return;
-        activeSlot_ = slot;
-        if (onComplete) onComplete(true);
-    });
+    chain.replaceChainAsync(std::move(requests),
+        [this, slot, expectedCount, onComplete, aliveFlag]() {
+            if (!aliveFlag->load()) return;
+            activeSlot_ = slot;
+            // Report failure if some plugins failed to load (prevents auto-save of incomplete chain)
+            bool allLoaded = (engine_.getVSTChain().getPluginCount() == expectedCount);
+            if (!allLoaded)
+                juce::Logger::writeToLog("[PRESET] Partial load: " + juce::String(engine_.getVSTChain().getPluginCount())
+                    + "/" + juce::String(expectedCount) + " plugins loaded");
+            suppressPreload_ = false;  // allow deferred triggerPreloads again
+            if (onComplete) onComplete(allLoaded);
+            triggerPreload();
+        },
+        // preWork: cancel + join preload thread on background thread (avoids blocking message thread)
+        [this]() {
+            preloadCache_.requestCancel();
+            preloadCache_.joinPreloadThread();
+        });
+}
+
+bool PresetManager::copySlot(int fromSlot, int toSlot)
+{
+    if (fromSlot < 0 || fromSlot >= kNumSlots) return false;
+    if (toSlot < 0 || toSlot >= kNumSlots) return false;
+    if (fromSlot == toSlot) return false;
+
+    auto srcFile = getSlotFile(fromSlot);
+    if (!srcFile.existsAsFile()) return false;
+
+    auto dstFile = getSlotFile(toSlot);
+    bool ok = srcFile.copyFileTo(dstFile);
+    if (ok) {
+        // Remove stale backup of destination (it no longer matches the copied data)
+        dstFile.withFileExtension("dppreset.backup").deleteFile();
+        preloadCache_.invalidateSlot(toSlot);
+        slotOccupiedCache_[static_cast<size_t>(toSlot)] = true;
+        juce::Logger::writeToLog("[PRESET] Copied slot "
+            + juce::String::charToString(slotLabel(fromSlot)) + " -> " + juce::String::charToString(slotLabel(toSlot)));
+    }
+    return ok;
+}
+
+bool PresetManager::deleteSlot(int slotIndex)
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
+
+    auto file = getSlotFile(slotIndex);
+    if (!file.existsAsFile()) return false;
+
+    bool ok = file.deleteFile();
+    if (ok) {
+        // Also remove backup file
+        file.withFileExtension("dppreset.backup").deleteFile();
+        // If we deleted the active slot, clear activeSlot
+        if (activeSlot_ == slotIndex)
+            activeSlot_ = -1;
+        preloadCache_.invalidateSlot(slotIndex);
+        slotOccupiedCache_[static_cast<size_t>(slotIndex)] = false;
+        juce::Logger::writeToLog("[PRESET] Deleted slot " + juce::String::charToString(slotLabel(slotIndex)));
+    }
+    return ok;
 }
 
 bool PresetManager::isSlotOccupied(int slotIndex) const
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
-    return getSlotFile(slotIndex).existsAsFile();
+    return slotOccupiedCache_[static_cast<size_t>(slotIndex)];
+}
+
+bool PresetManager::querySlotOccupied(int slotIndex) const
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
+    auto file = getSlotFile(slotIndex);
+    return file.existsAsFile() || file.withFileExtension("dppreset.backup").existsAsFile();
+}
+
+void PresetManager::refreshSlotOccupancyCache()
+{
+    for (int i = 0; i < kNumSlots; ++i)
+        slotOccupiedCache_[static_cast<size_t>(i)] = querySlotOccupied(i);
+}
+
+void PresetManager::triggerPreload(std::function<void()> onComplete)
+{
+    auto& chain = engine_.getVSTChain();
+    double sr = 48000.0;  // will be overridden from chain
+    int bs = 128;
+
+    // Get current SR/BS from the engine's audio device
+    auto* device = engine_.getDeviceManager().getCurrentAudioDevice();
+    if (device) {
+        sr = device->getCurrentSampleRate();
+        bs = device->getCurrentBufferSizeSamples();
+    }
+
+    preloadCache_.preloadAllSlots(
+        activeSlot_, sr, bs,
+        chain.getFormatManager(),
+        chain.getKnownPlugins(),
+        [](int slotIndex) -> juce::String {
+            auto file = getSlotFile(slotIndex);
+            if (file.existsAsFile())
+                return file.loadFileAsString();
+            return {};
+        },
+        std::move(onComplete));
+}
+
+void PresetManager::invalidatePreloadCache()
+{
+    preloadCache_.invalidateAll();
 }
 
 } // namespace directpipe

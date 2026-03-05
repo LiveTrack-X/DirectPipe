@@ -26,6 +26,7 @@
 #include <atomic>
 #include <functional>
 #include <mutex>
+#include <fstream>
 
 namespace directpipe {
 
@@ -33,6 +34,7 @@ namespace directpipe {
  * @brief Thread-safe logger sink that captures juce::Logger output
  *        from any thread into a ring buffer drained on the message thread.
  *        Uses a mutex for multi-producer safety (logMessage called from many threads).
+ *        Also writes all log messages to directpipe.log on disk for crash diagnosis.
  */
 class DirectPipeLogger : public juce::Logger {
 public:
@@ -47,6 +49,9 @@ public:
     /** Discard all pending entries. */
     void clearPending();
 
+    /** Get the log file path (for user reference). */
+    juce::File getLogFile() const { return logFile_; }
+
 private:
     static constexpr int kMaxPending = 512;
     juce::String pendingBuf_[kMaxPending];
@@ -54,6 +59,10 @@ private:
     std::atomic<uint32_t> readIdx_{0};
     std::mutex writeMutex_;  ///< Protects multi-producer writes (MPSC safety)
     juce::Logger* previousLogger_ = nullptr;
+
+    // File logging for crash diagnosis
+    juce::File logFile_;
+    std::ofstream logStream_;
 };
 
 /**
@@ -74,6 +83,10 @@ public:
     std::function<void()> onResetSettings;
     std::function<void()> onSaveSettings;
     std::function<void()> onLoadSettings;
+    /** Wired by MainComponent — called after Clear All Presets deletes slot files. */
+    std::function<void()> onPresetsCleared;
+    std::function<void()> onFullBackup;
+    std::function<void()> onFullRestore;
 
 private:
     // Application section
@@ -87,15 +100,18 @@ private:
 
     // Log display
     juce::Label logHeaderLabel_{"", "Log"};
+    juce::ToggleButton auditModeToggle_{"Audit Mode"};
     juce::TextEditor logView_;
     juce::TextButton exportBtn_{"Export Log"};
     juce::TextButton clearLogBtn_{"Clear Log"};
 
     // Maintenance section
     juce::Label maintenanceLabel_{"", "Maintenance"};
+    juce::TextButton fullBackupBtn_{"Full Backup"};
+    juce::TextButton fullRestoreBtn_{"Full Restore"};
     juce::TextButton clearPluginCacheBtn_{"Clear Plugin Cache"};
     juce::TextButton clearPresetsBtn_{"Clear All Presets"};
-    juce::TextButton resetSettingsBtn_{"Reset Settings"};
+    juce::TextButton resetSettingsBtn_{"Factory Reset"};
 
     // In-memory log history
     juce::StringArray logLines_;

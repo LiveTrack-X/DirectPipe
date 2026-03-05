@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.9.6-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.9.7-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -84,12 +84,13 @@ External Control:
 - **드래그 앤 드롭** 플러그인 체인 편집 — Drag & drop to reorder plugins, toggle bypass, open native plugin GUIs
 - **Out-of-process 스캐너** — 별도 프로세스에서 안전 스캔. 크래시 시 자동 재시도 (10회), 블랙리스트 자동 등록 — Scans in a separate process; auto-retry up to 10 times, blacklists crashed plugins
 - **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 실시간 검색 및 컬럼 정렬 — Real-time search and column sort by name, vendor, or format
-- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 즉시 전환, 다른 체인이면 비동기 로딩. Save/Load 버튼으로 .dppreset 파일 저장/불러오기 — 5 chain-only presets with instant or async switching. Save/Load buttons for .dppreset files
+- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 즉시 전환, 다른 체인이면 비동기 로딩 (Keep-Old-Until-Ready: 로딩 중에도 이전 체인이 오디오 처리를 유지하여 끊김 없이 전환). Save/Load 버튼으로 .dppreset 파일 저장/불러오기 — 5 chain-only presets with instant or async switching (Keep-Old-Until-Ready: old chain keeps processing audio during loading for seamless transition). Save/Load buttons for .dppreset files
 
 ### 오디오 / Audio
 
 - **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
 - WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
+- **장치 자동 재연결** — USB 장치 분리 시 알림, 재연결 시 3초 이내 자동 복구 (SR/BS/채널 설정 보존). 모니터 장치도 독립적으로 재연결 — Auto-reconnection on USB disconnect/reconnect within 3 seconds (preserves SR/BS/channel settings). Monitor device reconnects independently
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor (Output 탭, 별도 WASAPI) + IPC (Receiver VST) — Three output paths: main, monitor headphones, IPC to OBS
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
@@ -144,7 +145,7 @@ External Control:
   - **Audio**: 드라이버(WASAPI/ASIO), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드. **Audio 탭의 샘플레이트가 VST 체인·모니터 출력·IPC 전체에 적용됨** — Driver, devices, SR, buffer, channel mode. **Audio tab SR applies to VST chain, monitor output, and IPC**
   - **Output**: 모니터 출력(장치/볼륨/상태), IPC 토글, 녹음(REC/Play/폴더) — Monitor output, IPC toggle, recording
   - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
-  - **Settings**: Start with Windows, 설정 저장/불러오기(.dpbackup), 로그 뷰어, 유지보수 도구 — Startup, settings export, log viewer, maintenance
+  - **Settings**: Start with Windows, 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore, Clear Cache/Presets, Factory Reset) — Startup, settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore, Clear Cache/Presets, Factory Reset)
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원. 패닉 중 OUT/MON/VST 및 외부 제어 잠금 — Instant mute all, locks controls until unmuted
 - **상태 바** — 레이턴시, CPU %, 오디오 포맷, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU, format, portable mode, version. Auto-fade notifications

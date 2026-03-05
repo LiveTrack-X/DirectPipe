@@ -56,10 +56,17 @@ public:
 
     void refreshList();
 
+    /** @brief Show loading overlay (disables interaction, shows message). */
+    void showLoadingState();
+
+    /** @brief Hide loading overlay and refresh list. */
+    void hideLoadingState();
+
     /** @brief Called when chain content changes (add/remove/reorder/bypass). */
     std::function<void()> onChainModified;
 
 private:
+    bool loading_ = false;
     friend class PluginRowComponent;
 
     void showAddPluginMenu();

@@ -22,6 +22,7 @@
  */
 
 #include "AudioRecorder.h"
+#include "../Control/Log.h"
 
 namespace directpipe {
 
@@ -52,7 +53,7 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
     auto* outputStream = new juce::FileOutputStream(file);
     if (outputStream->failedToOpen()) {
         delete outputStream;
-        juce::Logger::writeToLog("[REC] Failed to open file for writing");
+        Log::error("REC", "Failed to open file for writing: " + file.getFullPathName());
         return false;
     }
 
@@ -64,7 +65,7 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
 
     if (!writer) {
         delete outputStream;
-        juce::Logger::writeToLog("[REC] Failed to create WAV writer");
+        Log::error("REC", "Failed to create WAV writer (SR=" + juce::String(sampleRate) + " ch=" + juce::String(numChannels) + ")");
         return false;
     }
 
@@ -74,7 +75,8 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
         writer, writerThread_, 32768);
 
     recording_.store(true, std::memory_order_release);
-    juce::Logger::writeToLog("[REC] Started recording to " + file.getFullPathName());
+    Log::info("REC", "Started recording to " + file.getFullPathName());
+    Log::audit("REC", "Recording config: SR=" + juce::String(sampleRate) + " ch=" + juce::String(numChannels) + " bits=24 FIFO=32768");
     return true;
 }
 
@@ -89,8 +91,10 @@ void AudioRecorder::stopRecording()
     }
 
     if (currentFile_.existsAsFile()) {
-        juce::Logger::writeToLog("[REC] Stopped. File: " + currentFile_.getFullPathName()
-            + " (" + juce::String(getRecordedSeconds(), 1) + "s)");
+        auto seconds = getRecordedSeconds();
+        auto fileSize = currentFile_.getSize();
+        Log::info("REC", "Stopped. File: " + currentFile_.getFullPathName() + " (" + juce::String(seconds, 1) + "s)");
+        Log::audit("REC", "Recording stats: duration=" + juce::String(seconds, 2) + "s fileSize=" + juce::String(fileSize) + " bytes samples=" + juce::String(samplesWritten_.load()));
     }
 }
 

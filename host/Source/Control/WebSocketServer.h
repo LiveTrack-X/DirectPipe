@@ -74,7 +74,7 @@ private:
 
     // RFC 6455 WebSocket helpers
     static bool performHandshake(juce::StreamingSocket* client);
-    static void sendFrame(juce::StreamingSocket* client, const std::string& payload, uint8_t opcode = 0x1);
+    static bool sendFrame(juce::StreamingSocket* client, const std::string& payload, uint8_t opcode = 0x1);
     static std::string readFrame(juce::StreamingSocket* client, uint8_t& opcodeOut);
 
     // SHA-1 for WebSocket handshake (RFC 6455 requires it)

@@ -29,12 +29,6 @@ namespace directpipe {
 LevelMeter::LevelMeter(const juce::String& label)
     : label_(label)
 {
-    startTimerHz(30);
-}
-
-LevelMeter::~LevelMeter()
-{
-    stopTimer();
 }
 
 // Convert linear RMS level to logarithmic display scale.
@@ -132,9 +126,13 @@ void LevelMeter::resized()
 {
 }
 
-void LevelMeter::timerCallback()
+void LevelMeter::tick()
 {
     float target = targetLevel_.load(std::memory_order_relaxed);
+
+    float prevDisplay = displayLevel_;
+    float prevPeak = peakLevel_;
+    bool prevClip = clipping_;
 
     // Smooth level display
     if (target > displayLevel_) {
@@ -159,7 +157,13 @@ void LevelMeter::timerCallback()
     // Clipping detection
     clipping_ = target >= 0.99f;
 
-    repaint();
+    // Only repaint if display state actually changed
+    if (std::abs(displayLevel_ - prevDisplay) > 0.001f ||
+        std::abs(peakLevel_ - prevPeak) > 0.005f ||
+        clipping_ != prevClip)
+    {
+        repaint();
+    }
 }
 
 } // namespace directpipe

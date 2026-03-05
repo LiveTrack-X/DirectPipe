@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.9.6** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.9.7** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -193,7 +193,7 @@ Out-of-process scanner — crashes won't affect DirectPipe. Blacklists problemat
 
 - **슬롯 클릭** → 비어있으면 현재 체인 저장, 차있으면 해당 슬롯 로드
 - **같은 플러그인** → 파라미터만 변경되어 **즉시 전환**
-- **다른 플러그인** → 백그라운드 **비동기 로딩** (UI 응답 유지)
+- **다른 플러그인** → 백그라운드 **비동기 로딩** (Keep-Old-Until-Ready: 로딩 중 이전 체인이 오디오 처리를 유지하여 **끊김 없이** 전환) — Async loading with Keep-Old-Until-Ready: old chain keeps processing audio during loading for **seamless** transition
 - **활성 슬롯**: 보라색 / **사용 중**: 밝은색 / **빈 슬롯**: 어두운색
 - **Save Preset / Load Preset** → `.dppreset` 파일로 내보내기/불러오기
 
@@ -445,12 +445,12 @@ curl http://localhost:8766/api/state
 
 ### 설정 저장/불러오기 / Settings Export/Import
 
-전체 설정(오디오, VST 체인, 볼륨, 프리셋, 제어 매핑)을 `.dpbackup` 파일로 내보내기/가져오기. PC를 옮기거나 설정을 백업할 때 유용합니다.
+오디오, 출력, 컨트롤 매핑(핫키, MIDI) 설정을 `.dpbackup` 파일로 저장/복원합니다. VST 체인과 프리셋 슬롯은 포함되지 않습니다 (슬롯 A-E에서 별도 관리).
 
-Export/import full settings as `.dpbackup` files. Useful for backups or migrating to a new PC.
+Save/load audio, output, and control settings as `.dpbackup` files. VST chain and preset slots are NOT included (managed separately via slots A-E).
 
-- **Save Settings** → `.dpbackup` 파일로 저장
-- **Load Settings** → `.dpbackup` 파일에서 복원
+- **Save Settings** → `.dpbackup` 파일로 저장 (설정만)
+- **Load Settings** → `.dpbackup` 파일에서 복원 (설정만)
 
 ### 로그 뷰어 / Log Viewer
 
@@ -467,9 +467,11 @@ Export/import full settings as `.dpbackup` files. Useful for backups or migratin
 
 | 기능 / Function | 설명 / Description |
 |---|---|
+| **Full Backup** | 전체 백업 (설정 + VST 체인 + 슬롯 A-E + 컨트롤) → `.dpfullbackup` 파일 |
+| **Full Restore** | `.dpfullbackup` 파일에서 전체 복원 |
 | **Clear Plugin Cache** | 스캔된 플러그인 목록 삭제 (다음 Scan 시 재스캔) |
-| **Clear All Presets** | 퀵 슬롯 A~E 및 저장된 프리셋 전체 삭제 |
-| **Reset Settings** | 공장 초기화 (오디오 설정, 단축키, MIDI 매핑 삭제) |
+| **Clear All Presets** | 퀵 슬롯 A~E + 백업 파일 + 사용자 프리셋 전체 삭제, 현재 체인도 클리어 |
+| **Factory Reset** | 공장 초기화 — 모든 데이터 삭제 (설정, 컨트롤, 프리셋, 플러그인 캐시, 녹음 설정) |
 
 ---
 
@@ -523,6 +525,17 @@ DirectPipe는 실행 시 자동으로 GitHub에서 최신 버전을 확인합니
 3. 오디오 인터페이스가 있다면 **ASIO** 드라이버 사용
 4. 하단 상태 바 **CPU %** 및 **XRun** 수치 확인 — CPU 60% 이상이면 과부하, XRun은 60초간 버퍼 언더런 횟수
 5. **Windows Audio (Low Latency)** 에서 끊기면 → **Windows Audio**로 변경 시도 (LL 모드가 제대로 지원되지 않는 장치가 많음)
+
+### 오디오 장치가 갑자기 끊겼어요 / Audio device disconnected
+
+DirectPipe는 USB 오디오 장치가 분리되면 **자동 재연결**을 시도합니다. / DirectPipe auto-reconnects when USB audio devices are unplugged.
+
+- **분리 시** → 하단 상태 바에 **주황색 경고** 표시 / Orange warning on disconnect
+- **재연결 시** → 3초 이내 자동 재연결 + **보라색 알림** / Auto-reconnects within 3 seconds with purple notification
+- **설정 보존** → 샘플레이트, 버퍼 크기, 채널 라우팅 유지 / SR, buffer size, and channel routing preserved
+- **모니터 장치** → 메인 장치와 독립적으로 자동 재연결 / Monitor device reconnects independently
+
+> **Tip**: 재연결이 안 되면 Audio 탭에서 장치 콤보박스를 클릭하세요 — 클릭 시 자동으로 장치 목록을 새로고침합니다. / If reconnection fails, click the device combo box in the Audio tab — it auto-refreshes the device list on click.
 
 ### 모니터 출력이 안 돼요 / No monitor output
 

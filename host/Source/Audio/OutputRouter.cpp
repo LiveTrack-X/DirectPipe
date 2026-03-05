@@ -73,10 +73,11 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
                 };
                 monitorOutput_->writeAudio(channels, 2, numSamples);
             } else {
-                for (int ch = 0; ch < numChannels; ++ch) {
-                    scaledBuffer_.copyFrom(ch, 0, buffer, ch, 0, numSamples);
-                    scaledBuffer_.applyGain(ch, 0, numSamples, vol);
-                }
+                // Single-pass copy+gain via SIMD-optimized copyWithMultiply
+                for (int ch = 0; ch < numChannels; ++ch)
+                    juce::FloatVectorOperations::copyWithMultiply(
+                        scaledBuffer_.getWritePointer(ch),
+                        buffer.getReadPointer(ch), vol, numSamples);
                 for (int ch = numChannels; ch < 2; ++ch)
                     scaledBuffer_.copyFrom(ch, 0, scaledBuffer_, 0, 0, numSamples);
 
@@ -88,7 +89,8 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
             }
         }
 
-        if (numChannels > 0) {
+        // Decimate monitor RMS (every 4th callback, ~23Hz) — UI only needs 30Hz
+        if ((++rmsDecimationCounter_ & 3) == 0 && numChannels > 0) {
             float rms = buffer.getRMSLevel(0, 0, numSamples) * vol;
             outputs_[static_cast<int>(Output::Monitor)].level.store(rms, std::memory_order_relaxed);
         }

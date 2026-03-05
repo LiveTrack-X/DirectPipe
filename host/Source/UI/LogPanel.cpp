@@ -23,6 +23,7 @@
 
 #include "LogPanel.h"
 #include "../Control/ControlMapping.h"
+#include "../Control/Log.h"
 
 // Forward declarations (defined in Main.cpp)
 bool isStartupEnabled();
@@ -38,10 +39,30 @@ DirectPipeLogger::DirectPipeLogger()
 {
     previousLogger_ = juce::Logger::getCurrentLogger();
     juce::Logger::setCurrentLogger(this);
+
+    // Open log file for crash diagnosis
+    logFile_ = ControlMappingStore::getConfigDirectory().getChildFile("directpipe.log");
+    auto path = logFile_.getFullPathName().toStdString();
+
+    // Rotate: keep previous session log as .prev, start fresh
+    auto prevFile = logFile_.getSiblingFile("directpipe.log.prev");
+    if (logFile_.existsAsFile())
+        logFile_.moveFileTo(prevFile);
+
+    logStream_.open(path, std::ios::out | std::ios::trunc);
+    if (logStream_.is_open()) {
+        auto now = juce::Time::getCurrentTime();
+        auto dateStr = now.toString(true, true, true, true);
+        logStream_ << "=== DirectPipe session started: " << dateStr.toStdString() << " ===" << std::endl;
+    }
 }
 
 DirectPipeLogger::~DirectPipeLogger()
 {
+    if (logStream_.is_open()) {
+        logStream_ << "=== DirectPipe session ended ===" << std::endl;
+        logStream_.close();
+    }
     juce::Logger::setCurrentLogger(previousLogger_);
 }
 
@@ -54,6 +75,12 @@ void DirectPipeLogger::logMessage(const juce::String& message)
 
     // Mutex protects multi-producer writes (called from WebSocket, HTTP, audio, MIDI threads)
     std::lock_guard<std::mutex> lock(writeMutex_);
+
+    // Write to disk (flush immediately for crash safety)
+    if (logStream_.is_open()) {
+        logStream_ << line.toStdString() << '\n';
+        logStream_.flush();
+    }
 
     uint32_t w = writeIdx_.load(std::memory_order_relaxed);
     uint32_t r = readIdx_.load(std::memory_order_acquire);
@@ -150,6 +177,17 @@ LogPanel::LogPanel()
     logHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
     addAndMakeVisible(logHeaderLabel_);
 
+    auditModeToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    auditModeToggle_.setToggleState(Log::isAuditMode(), juce::dontSendNotification);
+    auditModeToggle_.onClick = [this] {
+        Log::setAuditMode(auditModeToggle_.getToggleState());
+        if (auditModeToggle_.getToggleState())
+            Log::info("APP", "Audit mode enabled - verbose logging active");
+        else
+            Log::info("APP", "Audit mode disabled");
+    };
+    addAndMakeVisible(auditModeToggle_);
+
     setupBtn(exportBtn_);
     setupBtn(clearLogBtn_);
 
@@ -162,6 +200,8 @@ LogPanel::LogPanel()
     addAndMakeVisible(maintenanceLabel_);
 
     // Maintenance buttons
+    setupBtn(fullBackupBtn_);
+    setupBtn(fullRestoreBtn_);
     setupBtn(clearPluginCacheBtn_);
     setupBtn(clearPresetsBtn_);
     setupBtn(resetSettingsBtn_);
@@ -169,6 +209,8 @@ LogPanel::LogPanel()
     // Reset button with red tint
     resetSettingsBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kRedColour).withAlpha(0.3f));
 
+    fullBackupBtn_.onClick       = [this] { if (onFullBackup) onFullBackup(); };
+    fullRestoreBtn_.onClick      = [this] { if (onFullRestore) onFullRestore(); };
     clearPluginCacheBtn_.onClick = [this] { onClearPluginCache(); };
     clearPresetsBtn_.onClick     = [this] { onClearAllPresets(); };
     resetSettingsBtn_.onClick    = [this] { onResetSettingsClicked(); };
@@ -208,13 +250,14 @@ void LogPanel::resized()
     y += rowH + gap;
 
     // ── Log section ──
-    logHeaderLabel_.setBounds(x, y, w, headerH);
+    logHeaderLabel_.setBounds(x, y, w / 2, headerH);
+    auditModeToggle_.setBounds(x + w / 2, y, w / 2, headerH);
     y += headerH + gap;
 
     // Bottom sections: Export/Clear + Maintenance
     constexpr int bottomH = rowH + gap * 2       // export/clear row + gap
                           + headerH + gap         // maintenance header
-                          + rowH * 3 + gap * 2;  // 3 maintenance buttons
+                          + rowH * 4 + gap * 3;  // 4 rows: backup/restore, cache, presets, reset
 
     int logH = bounds.getBottom() - y - gap - bottomH;
     if (logH < 60) logH = 60;
@@ -230,6 +273,10 @@ void LogPanel::resized()
     maintenanceLabel_.setBounds(x, y, w, headerH);
     y += headerH + gap;
 
+    fullBackupBtn_.setBounds(x, y, btnW, rowH);
+    fullRestoreBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
+    y += rowH + gap;
+
     clearPluginCacheBtn_.setBounds(x, y, w, rowH);
     y += rowH + gap;
 
@@ -241,6 +288,10 @@ void LogPanel::resized()
 
 void LogPanel::flushPendingLogs()
 {
+    // Sync toggle UI with global audit mode (may be changed by loadSettings)
+    if (auditModeToggle_.getToggleState() != Log::isAuditMode())
+        auditModeToggle_.setToggleState(Log::isAuditMode(), juce::dontSendNotification);
+
     juce::StringArray newLines;
     int count = logger_.drain(newLines);
     if (count <= 0) return;
@@ -374,21 +425,27 @@ void LogPanel::onClearAllPresets()
 
         auto dir = getConfigDir();
 
-        // Quick slots A-E
+        // Quick slots A-E (main + backup + temp files)
         auto slotsDir = dir.getChildFile("Slots");
         for (int i = 0; i < 5; ++i) {
             char label = static_cast<char>('A' + i);
-            slotsDir.getChildFile(juce::String("slot_") + juce::String::charToString(label) + ".dppreset").deleteFile();
+            auto base = juce::String("slot_") + juce::String::charToString(label);
+            slotsDir.getChildFile(base + ".dppreset").deleteFile();
+            slotsDir.getChildFile(base + ".dppreset.backup").deleteFile();
         }
+        // Clean up any leftover temp files
+        for (auto& f : slotsDir.findChildFiles(juce::File::findFiles, false, "*"))
+            f.deleteFile();
 
         // User presets
         auto presetsDir = dir.getChildFile("Presets");
-        auto presetFiles = presetsDir.findChildFiles(
-            juce::File::findFiles, false, "*.dppreset");
-        for (auto& f : presetFiles)
+        for (auto& f : presetsDir.findChildFiles(juce::File::findFiles, false, "*"))
             f.deleteFile();
 
         juce::Logger::writeToLog("[APP] All presets cleared");
+
+        if (safeThis->onPresetsCleared)
+            safeThis->onPresetsCleared();
     });
 }
 
@@ -397,21 +454,52 @@ void LogPanel::onResetSettingsClicked()
     auto safeThis = juce::Component::SafePointer<LogPanel>(this);
     auto options = juce::MessageBoxOptions()
         .withIconType(juce::MessageBoxIconType::WarningIcon)
-        .withTitle("Reset Settings")
-        .withMessage("This will delete all audio settings, hotkeys,\n"
-                     "MIDI mappings, and server config.\n\n"
-                     "DirectPipe will reload with factory defaults.\n\nContinue?")
+        .withTitle("Factory Reset")
+        .withMessage("This will delete ALL data and restore DirectPipe\n"
+                     "to its initial state:\n\n"
+                     "  - Audio settings\n"
+                     "  - Hotkeys / MIDI mappings\n"
+                     "  - Quick slot presets (A-E)\n"
+                     "  - User presets\n"
+                     "  - Plugin scan cache\n"
+                     "  - Recording config\n\n"
+                     "This cannot be undone. Continue?")
         .withButton("OK")
         .withButton("Cancel");
     juce::AlertWindow::showAsync(options, [safeThis](int result) {
         if (result != 1 || !safeThis) return;
 
         auto dir = getConfigDir();
+
+        // Settings
         dir.getChildFile("settings.dppreset").deleteFile();
+        dir.getChildFile("settings.dppreset.backup").deleteFile();
         dir.getChildFile("directpipe-controls.json").deleteFile();
         dir.getChildFile("recording-config.json").deleteFile();
 
-        juce::Logger::writeToLog("[APP] Settings reset to factory defaults");
+        // Plugin cache
+        dir.getChildFile("plugin-cache.xml").deleteFile();
+        dir.getChildFile("scan-result.xml").deleteFile();
+        dir.getChildFile("scan-deadmanspedal.txt").deleteFile();
+        dir.getChildFile("scan-blacklist.txt").deleteFile();
+
+        // Quick slots A-E (main + backup + temp)
+        auto slotsDir = dir.getChildFile("Slots");
+        for (int i = 0; i < 5; ++i) {
+            char label = static_cast<char>('A' + i);
+            auto base = juce::String("slot_") + juce::String::charToString(label);
+            slotsDir.getChildFile(base + ".dppreset").deleteFile();
+            slotsDir.getChildFile(base + ".dppreset.backup").deleteFile();
+        }
+        for (auto& f : slotsDir.findChildFiles(juce::File::findFiles, false, "*"))
+            f.deleteFile();
+
+        // User presets
+        auto presetsDir = dir.getChildFile("Presets");
+        for (auto& f : presetsDir.findChildFiles(juce::File::findFiles, false, "*"))
+            f.deleteFile();
+
+        juce::Logger::writeToLog("[APP] Factory reset complete");
 
         if (safeThis->onResetSettings)
             safeThis->onResetSettings();

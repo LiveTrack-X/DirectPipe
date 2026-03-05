@@ -22,6 +22,7 @@
  */
 
 #include "WebSocketServer.h"
+#include "Log.h"
 #include <algorithm>
 #include <cstring>
 #include <sstream>
@@ -174,7 +175,7 @@ bool WebSocketServer::performHandshake(juce::StreamingSocket* client)
 
 // ─── WebSocket Frame Encoding ────────────────────────────────────────
 
-void WebSocketServer::sendFrame(juce::StreamingSocket* client, const std::string& payload, uint8_t opcode)
+bool WebSocketServer::sendFrame(juce::StreamingSocket* client, const std::string& payload, uint8_t opcode)
 {
     std::vector<uint8_t> frame;
     frame.push_back(0x80 | opcode); // FIN + opcode
@@ -195,8 +196,9 @@ void WebSocketServer::sendFrame(juce::StreamingSocket* client, const std::string
     frame.insert(frame.end(), payload.begin(), payload.end());
     int result = client->write(reinterpret_cast<const char*>(frame.data()), static_cast<int>(frame.size()));
     if (result == -1) {
-        juce::Logger::writeToLog("[WS] sendFrame write error");
+        return false;
     }
+    return true;
 }
 
 // ─── WebSocket Frame Decoding ────────────────────────────────────────
@@ -287,7 +289,7 @@ bool WebSocketServer::start(int port)
             }
         }
         if (!serverSocket_->isConnected()) {
-            juce::Logger::writeToLog("[WS] Failed to start on any port");
+            Log::error("WS", "Failed to start on any port (tried " + juce::String(port) + "-" + juce::String(port + 5) + ")");
             return false;
         }
     }
@@ -300,7 +302,7 @@ bool WebSocketServer::start(int port)
     // Send UDP discovery broadcast so Stream Deck plugin can connect immediately
     sendDiscoveryBroadcast();
 
-    juce::Logger::writeToLog("[WS] Server started on port " + juce::String(port_));
+    Log::info("WS", "Server started on port " + juce::String(port_));
     return true;
 }
 
@@ -340,7 +342,7 @@ void WebSocketServer::stop()
     }
 
     clientCount_.store(0, std::memory_order_relaxed);
-    juce::Logger::writeToLog("[WS] Server stopped");
+    Log::info("WS", "Server stopped");
 }
 
 void WebSocketServer::serverThread()
@@ -352,7 +354,7 @@ void WebSocketServer::serverThread()
                 if (accepted) {
                     // Reject if too many clients are connected
                     if (clientCount_.load(std::memory_order_relaxed) >= 16) {
-                        juce::Logger::writeToLog("[WS] Max clients (16) reached, rejecting connection");
+                        Log::warn("WS", "Max clients (16) reached, rejecting connection");
                         accepted->close();
                         delete accepted;
                         continue;
@@ -367,9 +369,9 @@ void WebSocketServer::serverThread()
 
                     std::lock_guard<std::mutex> lock(clientsMutex_);
                     clients_.push_back(std::move(conn));
-                    clientCount_.fetch_add(1, std::memory_order_relaxed);
+                    int count = clientCount_.fetch_add(1, std::memory_order_relaxed) + 1;
 
-                    juce::Logger::writeToLog("[WS] Client connected");
+                    Log::info("WS", "Client connected (total=" + juce::String(count) + ")");
                 }
             }
         }
@@ -382,7 +384,7 @@ void WebSocketServer::clientThread(juce::StreamingSocket* client)
 
     // Perform RFC 6455 WebSocket handshake
     if (!performHandshake(client)) {
-        juce::Logger::writeToLog("[WS] Handshake failed");
+        Log::warn("WS", "Handshake failed");
         clientCount_.fetch_sub(1, std::memory_order_relaxed);
         return;
     }
@@ -390,6 +392,7 @@ void WebSocketServer::clientThread(juce::StreamingSocket* client)
     // Send initial state as WebSocket text frame
     auto stateJson = broadcaster_.toJSON();
     sendFrame(client, stateJson);
+    Log::audit("WS", "Initial state sent (" + juce::String(stateJson.size()) + " bytes)");
 
     // Read WebSocket frames
     while (running_.load(std::memory_order_acquire) && client->isConnected()) {
@@ -416,8 +419,8 @@ void WebSocketServer::clientThread(juce::StreamingSocket* client)
         }
     }
 
-    clientCount_.fetch_sub(1, std::memory_order_relaxed);
-    juce::Logger::writeToLog("[WS] Client disconnected");
+    int remaining = clientCount_.fetch_sub(1, std::memory_order_relaxed) - 1;
+    Log::info("WS", "Client disconnected (remaining=" + juce::String(remaining) + ")");
 }
 
 void WebSocketServer::processMessage(const std::string& message)
@@ -432,7 +435,8 @@ void WebSocketServer::processMessage(const std::string& message)
     if (type != "action") return;
 
     auto actionStr = obj->getProperty("action").toString();
-    juce::Logger::writeToLog("[WS] Command: " + actionStr);
+    Log::info("WS", "Command: " + actionStr);
+    Log::audit("WS", "Message payload: " + juce::String(message));
     auto* params = obj->getProperty("params").getDynamicObject();
 
     ActionEvent event;
@@ -505,7 +509,10 @@ void WebSocketServer::broadcastToClients(const std::string& message)
 
         for (auto& conn : clients_) {
             if (conn->socket && conn->socket->isConnected()) {
-                sendFrame(conn->socket.get(), message);
+                if (!sendFrame(conn->socket.get(), message)) {
+                    // Write failed — close socket so next sweep removes it
+                    conn->socket->close();
+                }
             }
         }
     }
@@ -523,7 +530,7 @@ void WebSocketServer::sendDiscoveryBroadcast()
     if (udp.bindToPort(0)) {
         std::string msg = "DIRECTPIPE_READY:" + std::to_string(port_);
         udp.write("127.0.0.1", 8767, msg.c_str(), static_cast<int>(msg.size()));
-        juce::Logger::writeToLog("[WS] UDP discovery broadcast (port " + juce::String(port_) + ")");
+        Log::info("WS", "UDP discovery broadcast (port " + juce::String(port_) + ")");
     }
 }
 

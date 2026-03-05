@@ -22,8 +22,51 @@
  */
 
 #include "VSTChain.h"
+#include "../Control/Log.h"
+
+#if JUCE_WINDOWS
+ #include <objbase.h>   // CoInitializeEx / CoUninitialize (VST3 COM requirement)
+#endif
 
 namespace directpipe {
+
+namespace {
+    juce::String dumpPluginParams(const juce::AudioPluginInstance* inst, int maxParams = 50) {
+        if (!inst) return "(null)";
+        try {
+            auto& params = inst->getParameters();
+            juce::String s;
+            int count = juce::jmin(params.size(), maxParams);
+            for (int p = 0; p < count; ++p) {
+                if (p > 0) s += ", ";
+                s += params[p]->getName(32) + "=" + juce::String(params[p]->getValue(), 4);
+            }
+            if (params.size() > maxParams)
+                s += " ... (" + juce::String(params.size()) + " total)";
+            return s;
+        } catch (...) {
+            return "(error reading params)";
+        }
+    }
+
+    juce::String buildChainOrderStr(const std::vector<PluginSlot>& chain) {
+        if (chain.empty()) return "(empty)";
+        juce::String s;
+        for (size_t i = 0; i < chain.size(); ++i) {
+            if (i > 0) s += " -> ";
+            s += "[" + juce::String(i) + "] " + chain[i].name;
+            s += "(bypass=" + juce::String(chain[i].bypassed ? "Y" : "N");
+            try {
+                if (chain[i].instance)
+                    s += ", params=" + juce::String(chain[i].instance->getParameters().size());
+            } catch (...) {
+                s += ", params=ERR";
+            }
+            s += ")";
+        }
+        return s;
+    }
+} // anonymous namespace
 
 // ─── Plugin Editor Window ───────────────────────────────────────
 // Custom DocumentWindow that properly handles the close button.
@@ -77,6 +120,9 @@ void VSTChain::prepareToPlay(double sampleRate, int blockSize)
     graph_->setPlayConfigDetails(2, 2, sampleRate, blockSize);
     graph_->prepareToPlay(sampleRate, blockSize);
 
+    // Suspend processing during graph structural changes (I/O node swap)
+    graph_->suspendProcessing(true);
+
     // Remove old I/O nodes to prevent accumulation on repeated prepareToPlay calls
     if (inputNodeId_.uid != 0)
         graph_->removeNode(inputNodeId_);
@@ -124,12 +170,15 @@ void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
     // Safety: clamp numSamples to buffer capacity
     if (numSamples > buffer.getNumSamples()) return;
 
-    // Set logical buffer size so plugins only process actual samples
-    // (prevents stateful plugins from processing extra zero-padded samples)
-    if (numSamples < buffer.getNumSamples())
-        buffer.setSize(buffer.getNumChannels(), numSamples, true, false, true);
-
-    graph_->processBlock(buffer, emptyMidi_);
+    // Use a lightweight sub-buffer view instead of mutating the buffer size.
+    // This avoids setSize overhead (channel pointer recalculation) on every callback.
+    if (numSamples < buffer.getNumSamples()) {
+        juce::AudioBuffer<float> subBuffer(buffer.getArrayOfWritePointers(),
+                                            buffer.getNumChannels(), numSamples);
+        graph_->processBlock(subBuffer, emptyMidi_);
+    } else {
+        graph_->processBlock(buffer, emptyMidi_);
+    }
 
     // Clear immediately after processing to prevent MIDI output accumulation
     // (avoids heap growth if plugins write MIDI into the buffer)
@@ -160,6 +209,12 @@ void VSTChain::scanForPlugins(const juce::StringArray& directoriesToScan)
 
 int VSTChain::addPlugin(const juce::PluginDescription& desc)
 {
+    // Prevent adding plugins while async chain replacement is in progress
+    if (asyncLoading_.load()) {
+        juce::Logger::writeToLog("[VST] Blocked addPlugin during async chain load: " + desc.name);
+        return -1;
+    }
+
     // Load the plugin directly from the description (preferred for scanned plugins)
     juce::String error;
     auto instance = loadPlugin(desc, error);
@@ -188,14 +243,19 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
 
     int resultIdx;
+    juce::String auditOrder;
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
         rebuildGraph();  // rebuildGraph calls suspendProcessing(false) internally
         resultIdx = static_cast<int>(chain_.size()) - 1;
+        if (Log::isAuditMode())
+            auditOrder = buildChainOrderStr(chain_);
     }
 
     juce::Logger::writeToLog("[VST] Loaded: \"" + desc.name + "\" (" + desc.pluginFormatName + ") at index " + juce::String(resultIdx) + " - " + juce::String(desc.numInputChannels) + "in/" + juce::String(desc.numOutputChannels) + "out");
+    if (auditOrder.isNotEmpty())
+        Log::audit("VST", auditOrder);
     if (onChainChanged) onChainChanged();
 
     return resultIdx;
@@ -203,6 +263,12 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
 
 int VSTChain::addPlugin(const juce::String& pluginPath)
 {
+    // Prevent adding plugins while async chain replacement is in progress
+    if (asyncLoading_.load()) {
+        juce::Logger::writeToLog("[VST] Blocked addPlugin during async chain load: " + pluginPath);
+        return -1;
+    }
+
     // Find the plugin description from known plugins or load directly
     juce::PluginDescription desc;
     bool found = false;
@@ -259,14 +325,19 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
 
     int resultIdx;
+    juce::String auditOrder;
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
         rebuildGraph();
         resultIdx = static_cast<int>(chain_.size()) - 1;
+        if (Log::isAuditMode())
+            auditOrder = buildChainOrderStr(chain_);
     }
 
     juce::Logger::writeToLog("[VST] Loaded: \"" + desc.name + "\" (" + desc.pluginFormatName + ") at index " + juce::String(resultIdx) + " - " + juce::String(desc.numInputChannels) + "in/" + juce::String(desc.numOutputChannels) + "out");
+    if (auditOrder.isNotEmpty())
+        Log::audit("VST", auditOrder);
     if (onChainChanged) onChainChanged();
 
     return resultIdx;
@@ -279,6 +350,7 @@ bool VSTChain::removePlugin(int index)
     closePluginEditor(index);
 
     juce::String logMsg;
+    juce::String auditOrder;
     int newCount = 0;
     {
         const juce::ScopedLock sl(chainLock_);
@@ -299,9 +371,13 @@ bool VSTChain::removePlugin(int index)
         rebuildGraph();
         newCount = static_cast<int>(chain_.size());
         logMsg = "[VST] Removed: \"" + removedName + "\" at index " + juce::String(index) + " (" + juce::String(oldCount) + " -> " + juce::String(newCount) + " plugins)";
+        if (Log::isAuditMode())
+            auditOrder = buildChainOrderStr(chain_);
     }
 
     juce::Logger::writeToLog(logMsg);
+    if (auditOrder.isNotEmpty())
+        Log::audit("VST", auditOrder);
     // Notify outside of lock to avoid deadlock if listener acquires locks
     if (onChainChanged) onChainChanged();
     return true;
@@ -310,6 +386,7 @@ bool VSTChain::removePlugin(int index)
 bool VSTChain::movePlugin(int fromIndex, int toIndex)
 {
     juce::String logMsg;
+    juce::String auditOrder;
     {
         const juce::ScopedLock sl(chainLock_);
 
@@ -334,9 +411,13 @@ bool VSTChain::movePlugin(int fromIndex, int toIndex)
 
         rebuildGraph();
         logMsg = "[VST] Moved: \"" + movedName + "\" from index " + juce::String(fromIndex) + " to " + juce::String(toIndex);
+        if (Log::isAuditMode())
+            auditOrder = buildChainOrderStr(chain_);
     }
 
     juce::Logger::writeToLog(logMsg);
+    if (auditOrder.isNotEmpty())
+        Log::audit("VST", auditOrder);
     if (onChainChanged) onChainChanged();
     return true;
 }
@@ -487,6 +568,8 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
     window->setVisible(true);
     window->setAlwaysOnTop(true);
     juce::Logger::writeToLog("[VST] Editor opened: \"" + pluginName + "\" [" + juce::String(index) + "]");
+    if (Log::isAuditMode())
+        Log::audit("VST", "Editor params [" + juce::String(index) + "] \"" + pluginName + "\": " + dumpPluginParams(pluginInstance));
     auto aliveFlag = alive_;
     window->onClosed = [this, aliveFlag] {
         if (!aliveFlag->load()) return;
@@ -507,36 +590,50 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 
 void VSTChain::closePluginEditor(int index)
 {
-    const juce::ScopedLock sl(chainLock_);
-    if (index >= 0 && static_cast<size_t>(index) < editorWindows_.size()) {
-        editorWindows_[static_cast<size_t>(index)].reset();
+    juce::String auditMsg;
+    {
+        const juce::ScopedLock sl(chainLock_);
+        if (index >= 0 && static_cast<size_t>(index) < editorWindows_.size()) {
+            if (editorWindows_[static_cast<size_t>(index)]) {
+                if (Log::isAuditMode() && index < static_cast<int>(chain_.size()))
+                    auditMsg = "Editor closed [" + juce::String(index) + "] \"" + chain_[static_cast<size_t>(index)].name + "\"";
+                editorWindows_[static_cast<size_t>(index)].reset();
+            }
+        }
     }
+    if (auditMsg.isNotEmpty())
+        Log::audit("VST", auditMsg);
 }
 
 void VSTChain::rebuildGraph()
 {
+    using UK = juce::AudioProcessorGraph::UpdateKind;
+
     // Suspend graph processing while rebuilding connections
     // This prevents the RT thread from calling processBlock on a half-built graph
     graph_->suspendProcessing(true);
 
-    // Remove all existing connections only (preserve nodes)
+    // Guard: I/O nodes must exist (created in prepareToPlay)
+    if (inputNodeId_.uid == 0 || outputNodeId_.uid == 0) {
+        graph_->suspendProcessing(false);
+        return;
+    }
+
+    // Remove all existing connections (async — defer render sequence rebuild)
     for (auto conn : graph_->getConnections()) {
-        graph_->removeConnection(conn);
+        graph_->removeConnection(conn, UK::async);
     }
 
     if (chain_.empty()) {
-        // Direct connection: input -> output
-        for (int ch = 0; ch < 2; ++ch) {
-            graph_->addConnection({
-                {inputNodeId_, ch},
-                {outputNodeId_, ch}
-            });
-        }
+        // Direct connection: input -> output (last connection triggers rebuild)
+        graph_->addConnection({{inputNodeId_, 0}, {outputNodeId_, 0}}, UK::async);
+        graph_->addConnection({{inputNodeId_, 1}, {outputNodeId_, 1}}, UK::sync);
         graph_->suspendProcessing(false);
         return;
     }
 
     // Build serial chain: Input -> Plugin[0] -> ... -> Plugin[N-1] -> Output
+    // All connections use async except the very last one (triggers single rebuild)
     auto prevNodeId = inputNodeId_;
     for (size_t i = 0; i < chain_.size(); ++i) {
         auto& slot = chain_[i];
@@ -544,18 +641,14 @@ void VSTChain::rebuildGraph()
             graph_->addConnection({
                 {prevNodeId, ch},
                 {slot.nodeId, ch}
-            });
+            }, UK::async);
         }
         prevNodeId = slot.nodeId;
     }
 
-    // Last plugin -> Output
-    for (int ch = 0; ch < 2; ++ch) {
-        graph_->addConnection({
-            {prevNodeId, ch},
-            {outputNodeId_, ch}
-        });
-    }
+    // Last plugin -> Output (final connection triggers the single rebuild)
+    graph_->addConnection({{prevNodeId, 0}, {outputNodeId_, 0}}, UK::async);
+    graph_->addConnection({{prevNodeId, 1}, {outputNodeId_, 1}}, UK::sync);
 
     // Resume processing now that the graph is fully wired
     graph_->suspendProcessing(false);
@@ -564,26 +657,31 @@ void VSTChain::rebuildGraph()
 std::unique_ptr<juce::AudioPluginInstance> VSTChain::loadPlugin(
     const juce::PluginDescription& desc, juce::String& error)
 {
-    return formatManager_.createPluginInstance(
-        desc, currentSampleRate_, currentBlockSize_, error);
+    try {
+        return formatManager_.createPluginInstance(
+            desc, currentSampleRate_, currentBlockSize_, error);
+    }
+    catch (const std::exception& e) {
+        error = "Plugin threw exception: " + juce::String(e.what());
+        return nullptr;
+    }
+    catch (...) {
+        error = "Plugin crashed during initialization (unknown exception)";
+        return nullptr;
+    }
 }
 
 void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
-                                  std::function<void()> onComplete)
+                                  std::function<void()> onComplete,
+                                  std::function<void()> preWork)
 {
     // Wait for any previous async load to finish
     if (loadThread_ && loadThread_->joinable())
         loadThread_->join();
 
-    // Clear current chain immediately (audio goes silent)
-    {
-        const juce::ScopedLock sl(chainLock_);
-        editorWindows_.clear();
-        for (auto& slot : chain_)
-            graph_->removeNode(slot.nodeId);
-        chain_.clear();
-        rebuildGraph();
-    }
+    // Keep-Old-Until-Ready: old chain stays in graph and continues
+    // processing audio while new plugins are loaded on background thread.
+    // Swap happens atomically on the message thread when loading completes.
 
     asyncLoading_.store(true);
     juce::Logger::writeToLog("[VST] Async chain load started: " + juce::String(requests.size()) + " plugins");
@@ -608,15 +706,23 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
     loadThread_ = std::make_unique<std::thread>(
         [this, requests = std::move(requests), onComplete = std::move(onComplete),
-         sr, bs, result, aliveFlag, generation]()
+         preWork = std::move(preWork), sr, bs, result, aliveFlag, generation]()
     {
+    #if JUCE_WINDOWS
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    #endif
+
+        // Run pre-work (e.g. join preload thread) on background thread
+        // to avoid blocking the message thread
+        if (preWork) preWork();
+
         for (auto& req : requests) {
             juce::String error;
             auto inst = formatManager_.createPluginInstance(req.desc, sr, bs, error);
             if (inst)
                 result->entries.push_back({std::move(inst), std::move(req)});
             else {
-                juce::Logger::writeToLog("[VST] Async load failed: " + req.name + " - " + error);
+                juce::Logger::writeToLog("ERR [VST] Async load failed: " + req.name + " (path=" + req.path + "): " + error);
                 result->failures.push_back({req.name, error});
             }
         }
@@ -630,12 +736,24 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             if (asyncGeneration_.load() != generation) return;
 
             juce::String logMsg;
+            juce::String auditChainOrder;
+            juce::StringArray auditParams;
             {
                 const juce::ScopedLock sl(chainLock_);
 
                 graph_->suspendProcessing(true);
+
+                // Remove OLD chain nodes (async to defer rebuild until the end)
+                editorWindows_.clear();
+                for (auto& slot : chain_)
+                    graph_->removeNode(slot.nodeId,
+                        juce::AudioProcessorGraph::UpdateKind::async);
+                chain_.clear();
+
+                // Add NEW nodes (async — single rebuild at end)
                 for (auto& entry : result->entries) {
-                    auto node = graph_->addNode(std::move(entry.instance));
+                    auto node = graph_->addNode(std::move(entry.instance), {},
+                        juce::AudioProcessorGraph::UpdateKind::async);
                     if (!node) continue;
 
                     PluginSlot slot;
@@ -656,11 +774,21 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
                             static_cast<int>(entry.request.stateData.getSize()));
                 }
 
-                rebuildGraph();
+                rebuildGraph();  // single rebuild with connections + suspendProcessing(false)
                 logMsg = "[VST] Async chain load complete: " + juce::String(chain_.size()) + " plugins loaded";
+                if (Log::isAuditMode()) {
+                    auditChainOrder = buildChainOrderStr(chain_);
+                    for (size_t i = 0; i < chain_.size(); ++i)
+                        auditParams.add("[" + juce::String(i) + "] " + chain_[i].name + ": " + dumpPluginParams(chain_[i].instance));
+                }
             }
 
             juce::Logger::writeToLog(logMsg);
+            if (auditChainOrder.isNotEmpty()) {
+                Log::audit("VST", auditChainOrder);
+                for (auto& p : auditParams)
+                    Log::audit("VST", "  " + p);
+            }
             asyncLoading_.store(false);
 
             // Report any load failures (outside lock)
@@ -672,7 +800,88 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             if (onChainChanged) onChainChanged();
             if (onComplete) onComplete();
         });
+
+    #if JUCE_WINDOWS
+        CoUninitialize();
+    #endif
     });
+}
+
+void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
+                                          std::function<void()> onComplete)
+{
+    auto startMs = juce::Time::getMillisecondCounter();
+
+    // Wait for any previous async load to finish
+    if (loadThread_ && loadThread_->joinable())
+        loadThread_->join();
+
+    // Invalidate any stale callAsync from previous replaceChainAsync
+    asyncGeneration_.fetch_add(1);
+
+    juce::String logMsg;
+    juce::String auditChainOrder;
+    juce::StringArray auditParams;
+    {
+        const juce::ScopedLock sl(chainLock_);
+
+        graph_->suspendProcessing(true);
+
+        // Remove OLD chain nodes (async to defer rebuild until the end)
+        editorWindows_.clear();
+        for (auto& slot : chain_)
+            graph_->removeNode(slot.nodeId,
+                juce::AudioProcessorGraph::UpdateKind::async);
+        chain_.clear();
+
+        // Add pre-loaded nodes (async — single rebuild at end)
+        for (auto& entry : preloaded) {
+            auto node = graph_->addNode(std::move(entry.instance), {},
+                juce::AudioProcessorGraph::UpdateKind::async);
+            if (!node) {
+                juce::Logger::writeToLog("ERR [VST] Failed to add cached node to graph: " + entry.request.name);
+                continue;
+            }
+
+            PluginSlot slot;
+            slot.name = entry.request.name;
+            slot.path = entry.request.path;
+            slot.desc = entry.request.desc;
+            slot.nodeId = node->nodeID;
+            slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
+            slot.bypassed = entry.request.bypassed;
+            chain_.push_back(slot);
+
+            if (slot.bypassed)
+                node->setBypassed(true);
+
+            if (entry.request.hasState && slot.instance)
+                slot.instance->setStateInformation(
+                    entry.request.stateData.getData(),
+                    static_cast<int>(entry.request.stateData.getSize()));
+        }
+
+        rebuildGraph();  // single rebuild with connections + suspendProcessing(false)
+        auto elapsed = juce::Time::getMillisecondCounter() - startMs;
+        logMsg = "INF [VST] Cached chain swap: " + juce::String(chain_.size())
+            + " plugins (" + juce::String(elapsed) + "ms)";
+        if (Log::isAuditMode()) {
+            auditChainOrder = buildChainOrderStr(chain_);
+            for (size_t i = 0; i < chain_.size(); ++i)
+                auditParams.add("[" + juce::String(i) + "] " + chain_[i].name + ": " + dumpPluginParams(chain_[i].instance));
+        }
+    }
+
+    juce::Logger::writeToLog(logMsg);
+    if (auditChainOrder.isNotEmpty()) {
+        Log::audit("VST", auditChainOrder);
+        for (auto& p : auditParams)
+            Log::audit("VST", "  " + p);
+    }
+    asyncLoading_.store(false);
+
+    if (onChainChanged) onChainChanged();
+    if (onComplete) onComplete();
 }
 
 } // namespace directpipe

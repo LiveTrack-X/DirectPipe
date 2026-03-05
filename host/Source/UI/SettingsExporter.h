@@ -29,20 +29,33 @@
 namespace directpipe {
 
 /**
- * @brief Bundles all application settings into a single exportable JSON file (.dpbackup).
+ * @brief Bundles application settings into a single exportable JSON file (.dpbackup).
  *
- * Includes: audio settings, VST chain, control mappings, and all 5 quick preset slots.
+ * Includes: audio device settings, output/monitor settings, and control mappings.
+ * Does NOT include VST chain or preset slots (those are managed via slots A-E).
  */
 class SettingsExporter {
 public:
+    /** Export settings only (audio, output, controls). No VST chain or slots. */
     static juce::String exportAll(PresetManager& presetManager,
                                    ControlMappingStore& controlStore);
 
+    /** Import settings only. VST chain and slots are left untouched. */
     static bool importAll(const juce::String& json,
                           PresetManager& presetManager,
                           ControlMappingStore& controlStore);
 
+    /** Export everything: settings + VST chain + all preset slots. */
+    static juce::String exportFullBackup(PresetManager& presetManager,
+                                          ControlMappingStore& controlStore);
+
+    /** Import everything: settings + VST chain + all preset slots. */
+    static bool importFullBackup(const juce::String& json,
+                                  PresetManager& presetManager,
+                                  ControlMappingStore& controlStore);
+
     static constexpr const char* kFileExtension = ".dpbackup";
+    static constexpr const char* kFullBackupExtension = ".dpfullbackup";
 };
 
 } // namespace directpipe

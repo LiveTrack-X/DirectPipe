@@ -238,7 +238,9 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
     "monitor_enabled": true,
     "recording": false,
     "recording_seconds": 0.0,
-    "ipc_enabled": false
+    "ipc_enabled": false,
+    "device_lost": false,
+    "monitor_lost": false
   }
 }
 ```
@@ -268,6 +270,8 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
 | `recording` | boolean | Audio recording active / 오디오 녹음 중 |
 | `recording_seconds` | number | Recording elapsed time in seconds / 녹음 경과 시간 (초) |
 | `ipc_enabled` | boolean | IPC output (Receiver VST) enabled / IPC 출력 (리시버 VST) 활성화 |
+| `device_lost` | boolean | Audio device disconnected / 오디오 장치 연결 끊김 |
+| `monitor_lost` | boolean | Monitor device disconnected / 모니터 장치 연결 끊김 |
 
 ---
 

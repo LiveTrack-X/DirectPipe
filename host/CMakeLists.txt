@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "3.9.6"
+    VERSION "3.9.7"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -20,6 +20,8 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/AudioEngine.cpp
     Source/Audio/VSTChain.h
     Source/Audio/VSTChain.cpp
+    Source/Audio/PluginPreloadCache.h
+    Source/Audio/PluginPreloadCache.cpp
     Source/Audio/OutputRouter.h
     Source/Audio/OutputRouter.cpp
     Source/Audio/LatencyMonitor.h
@@ -68,6 +70,8 @@ target_sources(DirectPipe PRIVATE
     Source/Control/ControlMapping.cpp
     Source/Control/ControlManager.h
     Source/Control/ControlManager.cpp
+    Source/Control/Log.h
+    Source/Control/Log.cpp
     Source/IPC/SharedMemWriter.h
     Source/IPC/SharedMemWriter.cpp
 )

@@ -175,8 +175,35 @@ PluginChainEditor::~PluginChainEditor()
     vstChain_.onChainChanged = nullptr;
 }
 
-void PluginChainEditor::paint(juce::Graphics& /*g*/)
+void PluginChainEditor::paint(juce::Graphics& g)
 {
+    if (loading_) {
+        g.setColour(juce::Colour(0xCC1A1A2E));
+        g.fillRect(pluginList_.getBounds());
+        g.setColour(juce::Colour(0xFF7B6FFF));
+        g.setFont(16.0f);
+        g.drawText("Loading...", pluginList_.getBounds(), juce::Justification::centred);
+    }
+}
+
+void PluginChainEditor::showLoadingState()
+{
+    loading_ = true;
+    pluginList_.setEnabled(false);
+    addButton_.setEnabled(false);
+    scanButton_.setEnabled(false);
+    removeButton_.setEnabled(false);
+    repaint();
+}
+
+void PluginChainEditor::hideLoadingState()
+{
+    loading_ = false;
+    pluginList_.setEnabled(true);
+    addButton_.setEnabled(true);
+    scanButton_.setEnabled(true);
+    removeButton_.setEnabled(true);
+    refreshList();
 }
 
 void PluginChainEditor::resized()

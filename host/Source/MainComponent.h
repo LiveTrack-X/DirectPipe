@@ -53,6 +53,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent& event) override;
 
     // ActionListener
     void onAction(const ActionEvent& event) override;
@@ -63,6 +64,12 @@ public:
 
     /** @brief Get the state broadcaster (for tray tooltip etc.). */
     StateBroadcaster& getBroadcaster() { return broadcaster_; }
+
+    /** @brief Get the audio engine (for session logging). */
+    AudioEngine& getAudioEngine() { return audioEngine_; }
+
+    /** @brief Get the preset manager (for session logging). */
+    PresetManager* getPresetManager() { return presetManager_.get(); }
 
 private:
     void timerCallback() override;
@@ -127,6 +134,17 @@ private:
     bool cachedMonitorMuted_ = false;
     bool cachedVstEnabled_ = false;
 
+    // Cached status bar values (avoid string reconstruction every 30Hz tick)
+    double cachedMainLatency_ = -1.0;
+    double cachedMonitorLatency_ = -1.0;
+    bool cachedMonEnabled_ = false;
+    double cachedCpuPercent_ = -1.0;
+    int cachedXruns_ = -1;
+    int cachedSampleRate_ = 0;
+    int cachedBufferSize_ = 0;
+    int cachedChannelMode_ = 0;
+    bool cachedNotifActive_ = false;
+
     // Status bar labels
     juce::Label latencyLabel_;
     juce::Label cpuLabel_;
@@ -142,6 +160,8 @@ private:
     bool settingsDirty_ = false;
     int dirtyCooldown_ = 0;   // ticks remaining before save (30Hz)
     std::atomic<bool> loadingSlot_ { false };
+    std::atomic<bool> partialLoad_ { false };  // prevents auto-save after partial plugin load
+    int pendingSlot_ = -1;  // queued slot request during loadingSlot_
 
     // Panic mute: remember pre-mute state for restore on unmute
     bool preMuteMonitorEnabled_ = false;

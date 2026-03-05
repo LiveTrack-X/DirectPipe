@@ -22,10 +22,17 @@
  */
 
 #include "HttpApiServer.h"
+#include "Log.h"
 #include <algorithm>
 #include <mutex>
 
 namespace directpipe {
+
+// Locale-safe float-to-string (always uses '.' decimal separator)
+static std::string floatToString(float value)
+{
+    return juce::String(value).toStdString();
+}
 
 HttpApiServer::HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster)
     : dispatcher_(dispatcher), broadcaster_(broadcaster)
@@ -53,7 +60,7 @@ bool HttpApiServer::start(int port)
             }
         }
         if (!serverSocket_->isConnected()) {
-            juce::Logger::writeToLog("[HTTP] Failed to start on any port");
+            Log::error("HTTP", "Failed to start on any port (tried " + juce::String(port) + "-" + juce::String(port + 5) + ")");
             return false;
         }
     }
@@ -61,7 +68,7 @@ bool HttpApiServer::start(int port)
     running_.store(true, std::memory_order_release);
     serverThread_ = std::thread([this] { serverThread(); });
 
-    juce::Logger::writeToLog("[HTTP] Server started on port " + juce::String(port_));
+    Log::info("HTTP", "Server started on port " + juce::String(port_));
     return true;
 }
 
@@ -87,7 +94,7 @@ void HttpApiServer::stop()
         handlerThreads_.clear();
     }
 
-    juce::Logger::writeToLog("[HTTP] Server stopped");
+    Log::info("HTTP", "Server stopped");
 }
 
 void HttpApiServer::serverThread()
@@ -151,7 +158,8 @@ void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
     }
 
     auto [statusCode, responseBody] = processRequest(method, path);
-    juce::Logger::writeToLog("[HTTP] " + juce::String(method) + " " + juce::String(path) + " -> " + juce::String(statusCode));
+    Log::info("HTTP", juce::String(method) + " " + juce::String(path) + " -> " + juce::String(statusCode));
+    Log::audit("HTTP", "Response: " + juce::String(responseBody).substring(0, 200));
     std::string response = makeResponse(statusCode, responseBody);
 
     client->write(response.c_str(), static_cast<int>(response.size()));
@@ -209,6 +217,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
         int index = std::atoi(segments[2].c_str());
+        if (index < 0)
+            return {400, R"({"error": "Invalid index"})"};
         dispatcher_.pluginBypass(index);
         return {200, R"({"ok": true, "action": "plugin_bypass", "index": )" +
                std::to_string(index) + "}"};
@@ -228,15 +238,18 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     // GET /api/volume/:target/:value
     if (action == "volume" && segments.size() >= 4) {
+        const auto& target = segments[2];
+        if (target != "monitor" && target != "input")
+            return {400, "{\"error\": \"Unknown volume target, use monitor or input\"}"};
         float value = static_cast<float>(std::atof(segments[3].c_str()));
         // Input gain range is 0.0-2.0 (multiplier), others are 0.0-1.0
-        float maxValue = (segments[2] == "input") ? 2.0f : 1.0f;
+        float maxValue = (target == "input") ? 2.0f : 1.0f;
         if (value < 0.0f || value > maxValue)
             return {400, R"({"error": "value out of range"})"};
-        dispatcher_.setVolume(segments[2], value);
+        dispatcher_.setVolume(target, value);
         return {200, R"({"ok": true, "action": "set_volume", "target": ")" +
-               segments[2] + R"(", "value": )" +
-               std::to_string(value) + "}"};
+               target + R"(", "value": )" +
+               floatToString(value) + "}"};
     }
 
     // GET /api/preset/:index
@@ -244,6 +257,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
         int index = std::atoi(segments[2].c_str());
+        if (index < 0 || index > 4)
+            return {400, "{\"error\": \"Preset index out of range 0-4\"}"};
         dispatcher_.loadPreset(index);
         return {200, R"({"ok": true, "action": "load_preset", "index": )" +
                std::to_string(index) + "}"};
@@ -254,7 +269,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         float delta = static_cast<float>(std::atof(segments[2].c_str()));
         dispatcher_.inputGainAdjust(delta);
         return {200, R"({"ok": true, "action": "input_gain", "delta": )" +
-               std::to_string(delta) + "}"};
+               floatToString(delta) + "}"};
     }
 
     // GET /api/slot/:index
@@ -262,6 +277,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
         int index = std::atoi(segments[2].c_str());
+        if (index < 0 || index > 4)
+            return {400, "{\"error\": \"Slot index out of range 0-4\"}"};
         ActionEvent event;
         event.action = Action::SwitchPresetSlot;
         event.intParam = index;
