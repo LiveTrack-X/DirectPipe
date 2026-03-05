@@ -17,6 +17,10 @@
   </a>
 </p>
 
+<p align="center">
+  <em>A modern lightweight alternative to LightHost for microphone processing.</em>
+</p>
+
 **스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** Windows용 실시간 마이크 프로세서.
 
 USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 즉시 전환할 수 있다.
