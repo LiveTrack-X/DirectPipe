@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <em>A modern lightweight alternative to LightHost for microphone processing.</em>
+  <em>DirectPipe is a modern lightweight VST host for applying studio-quality effects to your microphone.</em>
 </p>
 
 **스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** Windows용 실시간 마이크 프로세서.
