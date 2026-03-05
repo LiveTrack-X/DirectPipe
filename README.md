@@ -548,7 +548,8 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 **Quick Preset Slots (A–E):**
 - 현재 플러그인 체인과 설정을 **A–E** 슬롯에 저장할 수 있습니다
 - 슬롯 버튼 **(A/B/C/D/E)** 클릭 → 비어있으면 현재 상태 저장, 차있으면 해당 슬롯 로드
-- 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩**
+- 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩** (프리로딩 캐시로 ~10-50ms 즉시 전환)
+- 슬롯 **우클릭** → **복제** (다른 슬롯으로 체인 복사) 또는 **삭제** (슬롯 데이터 제거)
 - **Save/Load** 버튼으로 .dppreset 파일에 프리셋 저장/불러오기 가능
 
 예: 게임 중엔 **A** (노이즈 제거만), 노래방에선 **B** (리버브 + 컴프레서)
@@ -558,7 +559,8 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 **Quick Preset Slots (A–E):**
 - Save your current plugin chain and settings to slots **A through E**
 - Click a slot button **(A/B/C/D/E)** → saves current state if empty, loads slot if occupied
-- If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading**
+- If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading** (preloading cache enables ~10-50ms instant switching)
+- **Right-click** slot → **Copy** (duplicate chain to another slot) or **Delete** (clear slot data)
 - Use **Save/Load** buttons to save/load presets as .dppreset files
 
 Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (reverb + compressor)

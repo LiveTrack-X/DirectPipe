@@ -196,6 +196,8 @@ Out-of-process scanner — crashes won't affect DirectPipe. Blacklists problemat
 - **다른 플러그인** → 백그라운드 **비동기 로딩** (Keep-Old-Until-Ready: 로딩 중 이전 체인이 오디오 처리를 유지하여 **끊김 없이** 전환) — Async loading with Keep-Old-Until-Ready: old chain keeps processing audio during loading for **seamless** transition
 - **활성 슬롯**: 보라색 / **사용 중**: 밝은색 / **빈 슬롯**: 어두운색
 - **Save Preset / Load Preset** → `.dppreset` 파일로 내보내기/불러오기
+- **슬롯 우클릭 → 복제** — "Copy A → B/C/D/E" 메뉴로 슬롯 간 플러그인 체인 복제 (활성 슬롯은 라이브 상태 캡처 후 복제) — Right-click slot → "Copy" submenu to duplicate chain to another slot (active slot captures live state before copy)
+- **슬롯 우클릭 → 삭제** — "Delete" 메뉴로 슬롯 데이터 삭제. 활성 슬롯 삭제 시 로드된 체인도 자동 클리어 — Right-click slot → "Delete" to clear slot data. Deleting the active slot also clears the loaded chain
 
 슬롯은 **체인 데이터만** 저장합니다 (플러그인, 순서, Bypass, 파라미터). 오디오/출력 설정은 영향 없음.
 
