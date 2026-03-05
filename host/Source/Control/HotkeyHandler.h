@@ -98,6 +98,16 @@ public:
     void unregisterHotkey(int id);
 
     /**
+     * @brief Update a hotkey's key combination in-place (preserves list position).
+     */
+    bool updateHotkey(int id, uint32_t newModifiers, uint32_t newVirtualKey, const std::string& newDisplayName);
+
+    /**
+     * @brief Move a binding from one index to another (for drag-and-drop reorder).
+     */
+    void moveBinding(int fromIndex, int toIndex);
+
+    /**
      * @brief Unregister all hotkeys.
      */
     void unregisterAll();

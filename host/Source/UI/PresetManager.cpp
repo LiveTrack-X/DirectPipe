@@ -113,13 +113,11 @@ juce::String PresetManager::exportToJSON()
     root->setProperty("inputGain", static_cast<double>(engine_.getInputGain()));
 
     // Device type (ASIO / Windows Audio)
-    root->setProperty("deviceType", engine_.getCurrentDeviceType());
+    root->setProperty("deviceType", engine_.getDesiredDeviceType());
 
-    // Input/output device names
-    juce::AudioDeviceManager::AudioDeviceSetup setup;
-    engine_.getDeviceManager().getAudioDeviceSetup(setup);
-    root->setProperty("inputDevice", setup.inputDeviceName);
-    root->setProperty("outputDevice", setup.outputDeviceName);
+    // Input/output device names (use desired values to survive fallback state)
+    root->setProperty("inputDevice", engine_.getDesiredInputDevice());
+    root->setProperty("outputDevice", engine_.getDesiredOutputDevice());
     root->setProperty("outputNone", engine_.isOutputNone());
 
     // VST Chain
@@ -210,15 +208,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
         engine_.setInputGain(static_cast<float>((double)root->getProperty("inputGain")));
     }
 
-    // Restore devices
+    // Restore devices (use engine methods for intentionalChange_ guard + desiredDevice tracking)
     if (root->hasProperty("inputDevice")) {
         juce::String inputDev = root->getProperty("inputDevice").toString();
-        if (inputDev.isNotEmpty()) {
-            juce::AudioDeviceManager::AudioDeviceSetup setup;
-            engine_.getDeviceManager().getAudioDeviceSetup(setup);
-            setup.inputDeviceName = inputDev;
-            engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
-        }
+        if (inputDev.isNotEmpty())
+            engine_.setInputDevice(inputDev);
     }
     // Restore output "None" mode first (before output device)
     bool outputNone = false;
@@ -321,6 +315,18 @@ std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
         }
     }
     return targets;
+}
+
+std::vector<PresetManager::TargetPlugin> PresetManager::parseSlotFile(int slotIndex)
+{
+    auto file = getSlotFile(slotIndex);
+    if (!file.existsAsFile()) return {};
+    auto json = file.loadFileAsString();
+    auto parsed = juce::JSON::parse(json);
+    if (!parsed.isObject()) return {};
+    auto* root = parsed.getDynamicObject();
+    if (!root || !root->hasProperty("plugins")) return {};
+    return parseTargetPlugins(root->getProperty("plugins").getArray());
 }
 
 bool PresetManager::isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain)
@@ -534,7 +540,9 @@ bool PresetManager::saveSlot(int slotIndex)
     bool ok = file.replaceWithText(json);
     if (ok) {
         activeSlot_ = slotIndex;
-        preloadCache_.invalidateSlot(slotIndex);
+        // Don't invalidate preload cache on save — cached plugin instances are still valid.
+        // The state data in cache may be slightly stale (parameter changes since last preload),
+        // but loadSlotAsync re-reads state from file when using cached instances.
         slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
         juce::Logger::writeToLog("[PRESET] Saved slot " + juce::String::charToString(slotLabel(slotIndex)));
     }
@@ -660,6 +668,9 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
             // Request preload stop (non-blocking) — thread will finish current plugin then exit
             preloadCache_.requestCancel();
 
+            // Re-read fresh state from file (parameter changes since preload are picked up)
+            auto freshTargets = parseSlotFile(slotIndex);
+
             std::vector<VSTChain::PreloadedPlugin> preloaded;
             for (auto& ce : cached->entries) {
                 VSTChain::PreloadedPlugin pp;
@@ -668,8 +679,22 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
                 pp.request.name = ce.name;
                 pp.request.path = ce.path;
                 pp.request.bypassed = ce.bypassed;
-                pp.request.stateData = std::move(ce.stateData);
-                pp.request.hasState = ce.hasState;
+
+                // Use fresh state from file if available (matches by name)
+                bool foundFresh = false;
+                for (auto& ft : freshTargets) {
+                    if (ft.name == ce.name && ft.path == ce.path) {
+                        pp.request.stateData = std::move(ft.stateData);
+                        pp.request.hasState = ft.hasState;
+                        pp.request.bypassed = ft.bypassed;
+                        foundFresh = true;
+                        break;
+                    }
+                }
+                if (!foundFresh) {
+                    pp.request.stateData = std::move(ce.stateData);
+                    pp.request.hasState = ce.hasState;
+                }
                 preloaded.push_back(std::move(pp));
             }
 
@@ -770,9 +795,20 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
     if (fromSlot == toSlot) return false;
 
     auto srcFile = getSlotFile(fromSlot);
-    if (!srcFile.existsAsFile()) return false;
-
     auto dstFile = getSlotFile(toSlot);
+
+    // Empty source → clear destination
+    if (!srcFile.existsAsFile()) {
+        if (dstFile.existsAsFile())
+            dstFile.deleteFile();
+        dstFile.withFileExtension("dppreset.backup").deleteFile();
+        preloadCache_.invalidateSlot(toSlot);
+        slotOccupiedCache_[static_cast<size_t>(toSlot)] = false;
+        juce::Logger::writeToLog("[PRESET] Copied empty slot "
+            + juce::String::charToString(slotLabel(fromSlot)) + " -> " + juce::String::charToString(slotLabel(toSlot)) + " (cleared)");
+        return true;
+    }
+
     bool ok = srcFile.copyFileTo(dstFile);
     if (ok) {
         // Remove stale backup of destination (it no longer matches the copied data)

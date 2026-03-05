@@ -137,6 +137,38 @@ void HotkeyHandler::unregisterHotkey(int id)
         bindings_.end());
 }
 
+bool HotkeyHandler::updateHotkey(int id, uint32_t newModifiers, uint32_t newVirtualKey, const std::string& newDisplayName)
+{
+    auto it = std::find_if(bindings_.begin(), bindings_.end(),
+                           [id](const HotkeyBinding& b) { return b.id == id; });
+    if (it == bindings_.end()) return false;
+
+    // Unregister old key
+    if (messageWindow_)
+        UnregisterHotKey(messageWindow_, id);
+
+    // Register new key with same ID
+    UINT winMods = 0;
+    if (newModifiers & HK_ALT)   winMods |= MOD_ALT;
+    if (newModifiers & HK_CTRL)  winMods |= MOD_CONTROL;
+    if (newModifiers & HK_SHIFT) winMods |= MOD_SHIFT;
+    if (newModifiers & HK_WIN)   winMods |= MOD_WIN;
+    winMods |= MOD_NOREPEAT;
+
+    BOOL result = RegisterHotKey(messageWindow_, id, winMods, newVirtualKey);
+    if (!result) {
+        juce::Logger::writeToLog("[HOTKEY] Failed to re-register: " + juce::String(newDisplayName.c_str()));
+        bindings_.erase(it);
+        return false;
+    }
+
+    it->modifiers = newModifiers;
+    it->virtualKey = newVirtualKey;
+    it->displayName = newDisplayName;
+    it->registered = true;
+    return true;
+}
+
 void HotkeyHandler::unregisterAll()
 {
     for (auto& binding : bindings_) {
@@ -150,6 +182,39 @@ void HotkeyHandler::unregisterAll()
 void HotkeyHandler::timerCallback()
 {
     if (!messageWindow_) return;
+
+    // Recording mode: poll keyboard for key combo capture
+    if (recording_ && recordCallback_) {
+        // Check modifier state
+        uint32_t mods = 0;
+        if (GetAsyncKeyState(VK_CONTROL) & 0x8000) mods |= HK_CTRL;
+        if (GetAsyncKeyState(VK_MENU)    & 0x8000) mods |= HK_ALT;
+        if (GetAsyncKeyState(VK_SHIFT)   & 0x8000) mods |= HK_SHIFT;
+        if ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) mods |= HK_WIN;
+
+        // Scan for a non-modifier key press
+        for (uint32_t vk = 0x08; vk <= 0xFE; ++vk) {
+            // Skip modifier keys themselves
+            if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL) continue;
+            if (vk == VK_MENU    || vk == VK_LMENU    || vk == VK_RMENU)    continue;
+            if (vk == VK_SHIFT   || vk == VK_LSHIFT   || vk == VK_RSHIFT)   continue;
+            if (vk == VK_LWIN    || vk == VK_RWIN)    continue;
+
+            // Detect key-down (high bit = currently pressed)
+            if (GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) {
+                // Require at least one modifier (prevent plain key capture like just 'A')
+                if (mods == 0) continue;
+
+                auto name = keyToString(mods, vk);
+                auto cb = std::move(recordCallback_);
+                recording_ = false;
+                recordCallback_ = nullptr;
+                cb(mods, vk, name);
+                return;
+            }
+        }
+        return;  // Still recording, skip WM_HOTKEY processing
+    }
 
     MSG msg;
     while (PeekMessage(&msg, messageWindow_, 0, 0, PM_REMOVE)) {
@@ -186,6 +251,17 @@ void HotkeyHandler::unregisterHotkey(int id)
         std::remove_if(bindings_.begin(), bindings_.end(),
                        [id](const HotkeyBinding& b) { return b.id == id; }),
         bindings_.end());
+}
+
+bool HotkeyHandler::updateHotkey(int id, uint32_t newModifiers, uint32_t newVirtualKey, const std::string& newDisplayName)
+{
+    auto it = std::find_if(bindings_.begin(), bindings_.end(),
+                           [id](const HotkeyBinding& b) { return b.id == id; });
+    if (it == bindings_.end()) return false;
+    it->modifiers = newModifiers;
+    it->virtualKey = newVirtualKey;
+    it->displayName = newDisplayName;
+    return true;
 }
 
 void HotkeyHandler::unregisterAll() { bindings_.clear(); }
@@ -228,6 +304,17 @@ std::vector<HotkeyMapping> HotkeyHandler::exportMappings() const
         mappings.push_back(m);
     }
     return mappings;
+}
+
+void HotkeyHandler::moveBinding(int fromIndex, int toIndex)
+{
+    int size = static_cast<int>(bindings_.size());
+    if (fromIndex < 0 || fromIndex >= size || toIndex < 0 || toIndex >= size) return;
+    if (fromIndex == toIndex) return;
+
+    auto binding = std::move(bindings_[static_cast<size_t>(fromIndex)]);
+    bindings_.erase(bindings_.begin() + fromIndex);
+    bindings_.insert(bindings_.begin() + toIndex, std::move(binding));
 }
 
 void HotkeyHandler::startRecording(

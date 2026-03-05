@@ -297,6 +297,8 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/recording/toggle` | Toggle audio recording on/off / 오디오 녹음 토글 |
 | `GET /api/ipc/toggle` | Toggle IPC output (Receiver VST) on/off / IPC 출력 (리시버 VST) 토글 |
 | `GET /api/plugin/:pluginIndex/param/:paramIndex/:value` | Set plugin parameter (0.0-1.0) / 플러그인 파라미터 설정 |
+| `GET /api/midi/cc/:channel/:number/:value` | Inject MIDI CC for testing (ch 1-16, cc 0-127, val 0-127) / MIDI CC 테스트 주입 |
+| `GET /api/midi/note/:channel/:number/:velocity` | Inject MIDI Note for testing (ch 1-16, note 0-127, vel 0-127) / MIDI Note 테스트 주입 |
 
 **Success response:** `{ "ok": true, "action": "..." }`
 
@@ -339,6 +341,12 @@ curl http://127.0.0.1:8766/api/ipc/toggle
 
 # Set plugin 0, parameter 3 to 0.75 / 플러그인 0 파라미터 3 설정
 curl http://127.0.0.1:8766/api/plugin/0/param/3/0.75
+
+# Inject MIDI CC for testing (Ch1, CC#7, Value=127) / MIDI CC 테스트 주입
+curl http://127.0.0.1:8766/api/midi/cc/1/7/127
+
+# Inject MIDI Note for testing (Ch1, Note 60, Vel=127) / MIDI Note 테스트 주입
+curl http://127.0.0.1:8766/api/midi/note/1/60/127
 ```
 
 ### Python (WebSocket)

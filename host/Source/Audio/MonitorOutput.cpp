@@ -160,7 +160,11 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
 
-    monitorLost_.store(false, std::memory_order_relaxed);
+    // Detect JUCE auto-fallback: device changed without our initialize() call.
+    // Keep monitorLost_ true so checkReconnection() keeps trying the desired device.
+    bool isFallback = device->getName() != deviceName_;
+    if (!isFallback)
+        monitorLost_.store(false, std::memory_order_relaxed);
 
     double deviceSR = device->getCurrentSampleRate();
     int deviceBS = device->getCurrentBufferSizeSamples();
@@ -175,6 +179,19 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         // and skips ring buffer access (prevents data race on reset)
         status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_release);
         ringBuffer_.reset();
+        return;
+    }
+
+    if (isFallback) {
+        // Don't use the fallback device — just shut down and wait for reconnection.
+        status_.store(VirtualCableStatus::Error, std::memory_order_release);
+        Log::warn("MONITOR", "Fallback to " + device->getName()
+                   + " rejected (desired: " + deviceName_ + ") — shutting down, waiting for reconnection");
+        juce::MessageManager::callAsync([this] {
+            if (!deviceManager_) return;
+            deviceManager_->removeAudioCallback(this);
+            deviceManager_->closeAudioDevice();
+        });
         return;
     }
 
@@ -212,6 +229,14 @@ void MonitorOutput::audioDeviceError(const juce::String& errorMessage)
 }
 
 // ─── Device enumeration ───────────────────────────────────────────────────────
+
+juce::String MonitorOutput::getActualDeviceName() const
+{
+    if (deviceManager_)
+        if (auto* device = deviceManager_->getCurrentAudioDevice())
+            return device->getName();
+    return {};
+}
 
 void MonitorOutput::scanDevices()
 {

@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.9.7** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.9.8** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -362,7 +362,9 @@ DirectPipe는 최소화 상태에서도 다양한 방법으로 제어할 수 있
 
 ### 키보드 단축키 / Keyboard Shortcuts
 
-모든 단축키는 **Controls > Hotkeys** 탭에서 변경할 수 있습니다. / All shortcuts customizable in Controls > Hotkeys tab.
+모든 단축키는 **Controls > Hotkeys** 탭에서 변경할 수 있습니다. **드래그앤드롭**으로 순서 변경, **[Set]** 버튼으로 단축키 재설정, **[Cancel]** 버튼으로 녹음 취소가 가능합니다.
+
+All shortcuts customizable in Controls > Hotkeys tab. **Drag-and-drop** to reorder, **[Set]** to re-assign key combo, **[Cancel]** to abort recording.
 
 | 단축키 / Shortcut | 동작 / Action |
 |---|---|
@@ -378,12 +380,13 @@ DirectPipe는 최소화 상태에서도 다양한 방법으로 제어할 수 있
 ### MIDI 제어 / MIDI Control
 
 1. **Controls > MIDI** 탭에서 MIDI 장치 선택
-2. 매핑할 동작 옆의 **[Learn]** 클릭
+2. 매핑할 동작 옆의 **[Learn]** 클릭 (진행 중 **[Cancel]**로 취소 가능)
 3. MIDI 컨트롤러의 노브/버튼/슬라이더 조작
 4. 매핑 자동 저장
 
 **매핑 타입**: Toggle, Momentary, Continuous, NoteOnOff
 **핫플러그**: MIDI 장치 연결 후 **[Rescan]** 클릭
+**HTTP 테스트**: MIDI 하드웨어 없이 `tools/midi-test.py`로 HTTP API 통해 테스트 가능
 
 #### MIDI 플러그인 파라미터 매핑 / Plugin Parameter Mapping
 

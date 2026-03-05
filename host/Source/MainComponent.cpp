@@ -80,7 +80,17 @@ MainComponent::MainComponent()
     audioSettings_ = std::make_unique<AudioSettings>(audioEngine_);
     audioSettings_->onSettingsChanged = [this] {
         markSettingsDirty();
-        presetManager_->invalidatePreloadCache();  // SR/BS may have changed
+        // Only invalidate preload cache if SR/BS actually changed (device-only changes keep cache valid)
+        auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice();
+        if (device) {
+            double sr = device->getCurrentSampleRate();
+            int bs = device->getCurrentBufferSizeSamples();
+            if (sr != lastCachedSR_ || bs != lastCachedBS_) {
+                lastCachedSR_ = sr;
+                lastCachedBS_ = bs;
+                presetManager_->invalidatePreloadCache();
+            }
+        }
     };
 
     // ── Plugin Chain Editor ──

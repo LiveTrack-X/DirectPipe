@@ -32,7 +32,7 @@ ControlManager::ControlManager(ActionDispatcher& dispatcher, StateBroadcaster& b
       midiHandler_(dispatcher)
 {
     webSocketServer_ = std::make_unique<WebSocketServer>(dispatcher_, broadcaster_);
-    httpApiServer_ = std::make_unique<HttpApiServer>(dispatcher_, broadcaster_);
+    httpApiServer_ = std::make_unique<HttpApiServer>(dispatcher_, broadcaster_, &midiHandler_);
 }
 
 ControlManager::~ControlManager()

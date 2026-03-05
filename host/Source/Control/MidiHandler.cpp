@@ -302,4 +302,9 @@ void MidiHandler::rescanDevices()
     initialize();
 }
 
+void MidiHandler::injectTestMessage(const juce::MidiMessage& message)
+{
+    handleIncomingMidiMessage(nullptr, message);
+}
+
 } // namespace directpipe

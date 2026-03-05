@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.9.7-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.9.8-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -90,7 +90,7 @@ External Control:
 
 - **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
 - WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
-- **장치 자동 재연결** — USB 장치 분리 시 알림, 재연결 시 3초 이내 자동 복구 (SR/BS/채널 설정 보존). 모니터 장치도 독립적으로 재연결 — Auto-reconnection on USB disconnect/reconnect within 3 seconds (preserves SR/BS/channel settings). Monitor device reconnects independently
+- **장치 자동 재연결** — USB 장치 분리 시 알림, 재연결 시 3초 이내 자동 복구 (SR/BS/채널 설정 보존). 모니터 장치도 독립적으로 재연결. JUCE 자동 폴백 방지 (원하는 장치만 수락) — Auto-reconnection on USB disconnect/reconnect within 3 seconds (preserves SR/BS/channel settings). Monitor device reconnects independently. JUCE auto-fallback protection (only accepts desired device)
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor (Output 탭, 별도 WASAPI) + IPC (Receiver VST) — Three output paths: main, monitor headphones, IPC to OBS
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
@@ -98,7 +98,7 @@ External Control:
 
 ### 외부 제어 / External Control
 
-- **키보드 단축키** (모두 Controls > Hotkeys 탭에서 변경 가능) — All customizable in Controls > Hotkeys tab
+- **키보드 단축키** (모두 Controls > Hotkeys 탭에서 변경 가능, 드래그앤드롭 순서 변경) — All customizable in Controls > Hotkeys tab, drag-and-drop reorder
 
   | 단축키 / Shortcut | 동작 / Action |
   |---|---|
@@ -111,7 +111,7 @@ External Control:
   | Ctrl+Shift+I | IPC 출력 토글 / IPC toggle |
   | Ctrl+Shift+F1–F5 | 프리셋 슬롯 A-E / Preset slot A-E |
 
-- **MIDI CC** — Learn 모드로 CC/노트 매핑. 플러그인 파라미터 직접 매핑도 지원 — CC/note mapping with Learn mode. Direct plugin parameter mapping supported
+- **MIDI CC** — Learn 모드로 CC/노트 매핑 (Cancel 버튼으로 취소 가능). 플러그인 파라미터 직접 매핑도 지원 — CC/note mapping with Learn mode (Cancel button to abort). Direct plugin parameter mapping supported
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 GET 커맨드 — One-shot GET commands from curl or browser
 - **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)

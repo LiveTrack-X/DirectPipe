@@ -77,6 +77,12 @@ public:
     // Device selection
     bool setInputDevice(const juce::String& deviceName);
     bool setOutputDevice(const juce::String& deviceName);
+
+    /** @brief Get the desired device type (survives fallback, unlike getCurrentDeviceType). */
+    juce::String getDesiredDeviceType() const { return desiredDeviceType_.isEmpty() ? getCurrentDeviceType() : desiredDeviceType_; }
+    /** @brief Get the desired input/output device names (survive fallback). */
+    juce::String getDesiredInputDevice() const { return desiredInputDevice_; }
+    juce::String getDesiredOutputDevice() const { return desiredOutputDevice_; }
     // Dynamic capabilities (depends on current device type and device)
     juce::Array<double> getAvailableSampleRates() const;
     juce::Array<int> getAvailableBufferSizes() const;
@@ -216,9 +222,14 @@ private:
     // Device reconnection tracking (all accessed from message thread only)
     juce::String desiredInputDevice_;
     juce::String desiredOutputDevice_;
+    juce::String desiredDeviceType_;  // Tracks intended driver type across fallbacks
+    double desiredSampleRate_ = 48000.0;
+    int desiredBufferSize_ = 480;
     std::atomic<bool> deviceLost_{false};
     bool attemptingReconnection_ = false;  // Re-entrancy guard (message thread only)
+    std::atomic<bool> intentionalChange_{false};  // Guards audioDeviceStopped from setting deviceLost_ during intentional changes (written on message thread, read on device thread)
     int reconnectCooldown_ = 0;  // Ticks before next reconnect attempt (30Hz timer)
+    bool monitorWasLost_ = false;  // Edge detection for monitor disconnect notification (message thread only)
 
     juce::AudioBuffer<float> workBuffer_;
     uint32_t rmsDecimationCounter_ = 0;  // RMS computed every 4th callback (RT thread only, no atomic needed)

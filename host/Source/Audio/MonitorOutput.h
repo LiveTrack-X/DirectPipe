@@ -71,6 +71,8 @@ public:
     // --- Status queries ---
     VirtualCableStatus getStatus() const { return status_.load(std::memory_order_relaxed); }
     juce::String getDeviceName() const { return deviceName_; }
+    /** @brief Returns the actual device currently in use (may differ from desired on fallback). Message thread only. */
+    juce::String getActualDeviceName() const;
     bool isActive() const { return status_.load(std::memory_order_relaxed) == VirtualCableStatus::Active; }
     int getDroppedFrames() const { return droppedFrames_.load(std::memory_order_relaxed); }
     int getActualBufferSize() const { return actualBufferSize_.load(std::memory_order_relaxed); }

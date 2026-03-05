@@ -34,8 +34,9 @@ static std::string floatToString(float value)
     return juce::String(value).toStdString();
 }
 
-HttpApiServer::HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster)
-    : dispatcher_(dispatcher), broadcaster_(broadcaster)
+HttpApiServer::HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
+                             MidiHandler* midiHandler)
+    : dispatcher_(dispatcher), broadcaster_(broadcaster), midiHandler_(midiHandler)
 {
 }
 
@@ -334,6 +335,39 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         event.action = Action::RecordingToggle;
         dispatcher_.dispatch(event);
         return {200, R"({"ok": true, "action": "recording_toggle"})"};
+    }
+
+    // GET /api/midi/cc/:channel/:number/:value — inject test CC message
+    // GET /api/midi/note/:channel/:number/:velocity — inject test Note message
+    if (action == "midi" && segments.size() >= 5 && midiHandler_) {
+        const auto& msgType = segments[2];
+        if (segments[3].find_first_not_of("0123456789") != std::string::npos ||
+            segments[4].find_first_not_of("0123456789") != std::string::npos)
+            return {400, R"({"error": "Invalid number"})"};
+        int ch = std::atoi(segments[3].c_str());
+        int num = std::atoi(segments[4].c_str());
+        if (ch < 1 || ch > 16 || num < 0 || num > 127)
+            return {400, R"({"error": "channel 1-16, number 0-127"})"};
+
+        if (msgType == "cc" && segments.size() >= 6) {
+            int val = std::atoi(segments[5].c_str());
+            if (val < 0 || val > 127)
+                return {400, R"({"error": "value 0-127"})"};
+            auto msg = juce::MidiMessage::controllerEvent(ch, num, val);
+            midiHandler_->injectTestMessage(msg);
+            return {200, R"({"ok": true, "action": "midi_cc", "cc": )" + std::to_string(num) +
+                   ", \"ch\": " + std::to_string(ch) + ", \"value\": " + std::to_string(val) + "}"};
+        }
+        if (msgType == "note") {
+            int vel = (segments.size() >= 6) ? std::atoi(segments[5].c_str()) : 127;
+            if (vel < 0 || vel > 127)
+                return {400, R"({"error": "velocity 0-127"})"};
+            auto msg = juce::MidiMessage::noteOn(ch, num, static_cast<juce::uint8>(vel));
+            midiHandler_->injectTestMessage(msg);
+            return {200, R"({"ok": true, "action": "midi_note", "note": )" + std::to_string(num) +
+                   ", \"ch\": " + std::to_string(ch) + ", \"velocity\": " + std::to_string(vel) + "}"};
+        }
+        return {400, R"({"error": "Use /api/midi/cc/:ch/:num/:val or /api/midi/note/:ch/:num/:vel"})"};
     }
 
     return {404, R"({"error": "Unknown endpoint"})"};

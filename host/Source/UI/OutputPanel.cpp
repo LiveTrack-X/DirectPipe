@@ -306,8 +306,16 @@ void OutputPanel::timerCallback()
     auto& monOut = engine_.getMonitorOutput();
     auto status = monOut.getStatus();
     if (status == VirtualCableStatus::Active) {
-        monitorStatusLabel_.setText("Active: " + monOut.getDeviceName(), juce::dontSendNotification);
-        monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF4CAF50));
+        auto actualName = monOut.getActualDeviceName();
+        auto desiredName = monOut.getDeviceName();
+        if (actualName.isNotEmpty() && actualName != desiredName) {
+            // JUCE auto-fallback: desired device lost, using fallback
+            monitorStatusLabel_.setText("Fallback: " + actualName, juce::dontSendNotification);
+            monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFCC8844));  // orange
+        } else {
+            monitorStatusLabel_.setText("Active: " + desiredName, juce::dontSendNotification);
+            monitorStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF4CAF50));
+        }
     } else if (status == VirtualCableStatus::SampleRateMismatch) {
         double expected = engine_.getMonitorOutput().getActualSampleRate();
         monitorStatusLabel_.setText(

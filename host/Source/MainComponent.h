@@ -162,6 +162,8 @@ private:
     std::atomic<bool> loadingSlot_ { false };
     std::atomic<bool> partialLoad_ { false };  // prevents auto-save after partial plugin load
     int pendingSlot_ = -1;  // queued slot request during loadingSlot_
+    double lastCachedSR_ = 0.0;  // track SR/BS for smart cache invalidation
+    int lastCachedBS_ = 0;
 
     // Panic mute: remember pre-mute state for restore on unmute
     bool preMuteMonitorEnabled_ = false;

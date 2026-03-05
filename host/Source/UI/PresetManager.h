@@ -176,6 +176,7 @@ private:
     };
 
     static std::vector<TargetPlugin> parseTargetPlugins(const juce::Array<juce::var>* pluginsArray);
+    static std::vector<TargetPlugin> parseSlotFile(int slotIndex);
     static bool isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain);
     static void applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
     static void applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);

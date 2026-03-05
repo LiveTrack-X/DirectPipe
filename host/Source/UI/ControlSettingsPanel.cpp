@@ -71,6 +71,152 @@ static juce::String actionToDisplayName(const ActionEvent& event)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  HotkeyTab::BindingRow — per-row drag source + drop target
+// ═════════════════════════════════════════════════════════════════════════════
+
+HotkeyTab::BindingRow::BindingRow(HotkeyTab& owner, int rowIndex)
+    : owner_(owner), rowIndex_(rowIndex)
+{
+    // Action label — mouse clicks pass through to row (for drag initiation)
+    actionLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    actionLabel_.setFont(juce::Font(12.0f));
+    actionLabel_.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(actionLabel_);
+
+    // Shortcut label (prominent badge style) — mouse clicks pass through
+    shortcutLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFAA99FF));
+    shortcutLabel_.setColour(juce::Label::backgroundColourId, juce::Colour(0xFF3D3870));
+    shortcutLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
+    shortcutLabel_.setJustificationType(juce::Justification::centred);
+    shortcutLabel_.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(shortcutLabel_);
+
+    // [Set] button
+    setButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(kSurfaceColour));
+    setButton_.setColour(juce::TextButton::textColourOnId, juce::Colour(kTextColour));
+    setButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(kTextColour));
+    setButton_.onClick = [this] { owner_.onSetClicked(rowIndex_); };
+    addAndMakeVisible(setButton_);
+
+    // [X] remove button
+    removeButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(kSurfaceColour));
+    removeButton_.setColour(juce::TextButton::textColourOnId, juce::Colour(0xFFE05050));
+    removeButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xFFE05050));
+    removeButton_.onClick = [this] { owner_.onRemoveClicked(rowIndex_); };
+    addAndMakeVisible(removeButton_);
+}
+
+void HotkeyTab::BindingRow::update(int newRowIndex, const juce::String& actionName,
+                                    const juce::String& shortcutName, bool alt)
+{
+    rowIndex_ = newRowIndex;
+    altBg_ = alt;
+    actionLabel_.setText(actionName, juce::dontSendNotification);
+    shortcutLabel_.setText(shortcutName, juce::dontSendNotification);
+    setButton_.onClick = [this] { owner_.onSetClicked(rowIndex_); };
+    removeButton_.onClick = [this] { owner_.onRemoveClicked(rowIndex_); };
+}
+
+void HotkeyTab::BindingRow::resized()
+{
+    auto bounds = getLocalBounds();
+    constexpr int gap = 4;
+    constexpr int btnW = 44;
+    constexpr int removeBtnW = 26;
+
+    int usable = bounds.getWidth() - btnW - removeBtnW - gap * 3;
+    int actionW = usable / 2;
+    int shortcutW = usable - actionW;
+
+    int x = 0;
+    actionLabel_.setBounds(x, 0, actionW, bounds.getHeight());
+    x += actionW + gap;
+    shortcutLabel_.setBounds(x, 0, shortcutW, bounds.getHeight());
+    x += shortcutW + gap;
+    setButton_.setBounds(x, 0, btnW, bounds.getHeight());
+    x += btnW + gap;
+    removeButton_.setBounds(x, 0, removeBtnW, bounds.getHeight());
+}
+
+void HotkeyTab::BindingRow::paint(juce::Graphics& g)
+{
+    // Alternating row background
+    if (altBg_)
+        g.fillAll(juce::Colour(kRowAltColour));
+
+    // Drag-over highlight (like PluginChainEditor)
+    if (dragOver_) {
+        g.setColour(juce::Colour(0xFF5050FF));
+        g.drawRect(getLocalBounds(), 2);
+    }
+}
+
+void HotkeyTab::BindingRow::mouseDrag(const juce::MouseEvent& e)
+{
+    if (e.getDistanceFromDragStart() < 5) return;
+
+    if (auto* ddc = juce::DragAndDropContainer::findParentDragContainerFor(this)) {
+        if (!ddc->isDragAndDropActive()) {
+            // Create a snapshot of this row as drag image
+            auto b = getLocalBounds();
+            juce::Image dragImage(juce::Image::ARGB, b.getWidth(), b.getHeight(), true);
+            juce::Graphics g(dragImage);
+
+            g.setColour(juce::Colour(0xDD2A2A40));
+            g.fillRoundedRectangle(b.toFloat(), 4.0f);
+            g.setColour(juce::Colour(0xFF6C63FF));
+            g.drawRoundedRectangle(b.toFloat().reduced(0.5f), 4.0f, 1.0f);
+
+            // Action text
+            g.setColour(juce::Colour(0xFFB0B0C0));
+            g.setFont(juce::Font(12.0f));
+            g.drawText(actionLabel_.getText(), 8, 0, b.getWidth() / 2 - 12,
+                       b.getHeight(), juce::Justification::centredLeft);
+
+            // Shortcut badge
+            auto shortcutText = shortcutLabel_.getText();
+            g.setFont(juce::Font(13.0f, juce::Font::bold));
+            int badgeX = b.getWidth() / 2;
+            int badgeW = b.getWidth() / 2 - 80;
+            g.setColour(juce::Colour(0xFF3D3870));
+            g.fillRoundedRectangle(static_cast<float>(badgeX), 4.0f,
+                                   static_cast<float>(badgeW),
+                                   static_cast<float>(b.getHeight() - 8), 3.0f);
+            g.setColour(juce::Colour(0xFFAA99FF));
+            g.drawText(shortcutText, badgeX, 0, badgeW, b.getHeight(),
+                       juce::Justification::centred);
+
+            ddc->startDragging(juce::var(rowIndex_), this, dragImage, true);
+        }
+    }
+}
+
+void HotkeyTab::BindingRow::itemDragEnter(const SourceDetails&)
+{
+    dragOver_ = true;
+    repaint();
+}
+
+void HotkeyTab::BindingRow::itemDragExit(const SourceDetails&)
+{
+    dragOver_ = false;
+    repaint();
+}
+
+void HotkeyTab::BindingRow::itemDropped(const SourceDetails& details)
+{
+    dragOver_ = false;
+    repaint();
+
+    int fromIndex = static_cast<int>(details.description);
+    if (fromIndex != rowIndex_) {
+        owner_.manager_.getHotkeyHandler().moveBinding(fromIndex, rowIndex_);
+        owner_.manager_.saveConfig();
+        owner_.refreshBindings();
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  HotkeyTab implementation
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -91,6 +237,13 @@ HotkeyTab::HotkeyTab(ControlManager& manager)
     statusLabel_.setColour(juce::Label::textColourId, juce::Colour(kWarningColour));
     addAndMakeVisible(statusLabel_);
 
+    cancelButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
+    cancelButton_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    cancelButton_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    cancelButton_.onClick = [this] { onCancelClicked(); };
+    cancelButton_.setVisible(false);
+    addAndMakeVisible(cancelButton_);
+
     viewport_.setViewedComponent(&rowContainer_, false);
     viewport_.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport_);
@@ -105,8 +258,8 @@ HotkeyTab::~HotkeyTab()
 {
     stopTimer();
 
-    // Cancel any in-progress recording
-    if (recordingIndex_ >= 0) {
+    // Cancel any in-progress recording (>= 0 = editing existing, -2 = adding new)
+    if (recordingIndex_ != -1) {
         manager_.getHotkeyHandler().stopRecording();
     }
 }
@@ -129,99 +282,50 @@ void HotkeyTab::resized()
     addButton_.setBounds(bounds.getRight() - 120, y, 120, rowH);
     y += rowH + gap;
 
-    // Status line
-    statusLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 20);
+    // Status line + cancel button
+    {
+        constexpr int cancelW = 60;
+        if (cancelButton_.isVisible()) {
+            statusLabel_.setBounds(bounds.getX(), y, bounds.getWidth() - cancelW - gap, 20);
+            cancelButton_.setBounds(bounds.getRight() - cancelW, y, cancelW, 20);
+        } else {
+            statusLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 20);
+        }
+    }
     y += 20 + gap;
 
     // Viewport fills the rest
     viewport_.setBounds(bounds.getX(), y, bounds.getWidth(), bounds.getBottom() - y);
 
-    // Lay out rows inside the row container
+    // Lay out rows inside the row container (each row is a full-width component)
     constexpr int innerRowH = 30;
     constexpr int innerGap  = 2;
     int totalH = static_cast<int>(rows_.size()) * (innerRowH + innerGap);
-    rowContainer_.setSize(viewport_.getWidth() - viewport_.getScrollBarThickness(), totalH);
+    int containerW = viewport_.getWidth() - viewport_.getScrollBarThickness();
+    rowContainer_.setSize(containerW, totalH);
 
     int ry = 0;
-    int containerW = rowContainer_.getWidth();
-    constexpr int actionW = 160;
-    constexpr int btnW    = 50;
-    constexpr int removeBtnW = 28;
-
     for (auto* row : rows_) {
-        int shortcutW = containerW - actionW - btnW - removeBtnW - gap * 3;
-
-        row->actionLabel.setBounds(0, ry, actionW, innerRowH);
-        row->shortcutLabel.setBounds(actionW + gap, ry, shortcutW, innerRowH);
-        row->setButton.setBounds(actionW + gap + shortcutW + gap, ry, btnW, innerRowH);
-        row->removeButton.setBounds(containerW - removeBtnW, ry, removeBtnW, innerRowH);
-
+        row->setBounds(0, ry, containerW, innerRowH);
         ry += innerRowH + innerGap;
     }
 }
 
 void HotkeyTab::refreshBindings()
 {
-    // Remove old rows from the container
-    for (auto* row : rows_) {
-        rowContainer_.removeChildComponent(&row->actionLabel);
-        rowContainer_.removeChildComponent(&row->shortcutLabel);
-        rowContainer_.removeChildComponent(&row->setButton);
-        rowContainer_.removeChildComponent(&row->removeButton);
-    }
     rows_.clear();
 
     auto& handler = manager_.getHotkeyHandler();
     const auto& bindings = handler.getBindings();
 
     for (int i = 0; i < static_cast<int>(bindings.size()); ++i) {
-        auto* row = new BindingRow();
         const auto& binding = bindings[static_cast<size_t>(i)];
-
-        // Action label
-        row->actionLabel.setText(actionToDisplayName(binding.action),
-                                 juce::dontSendNotification);
-        row->actionLabel.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-        row->actionLabel.setFont(juce::Font(12.0f));
-
-        // Shortcut label
-        row->shortcutLabel.setText(juce::String(binding.displayName),
-                                   juce::dontSendNotification);
-        row->shortcutLabel.setColour(juce::Label::textColourId, juce::Colour(kAccentColour));
-        row->shortcutLabel.setFont(juce::Font(12.0f, juce::Font::bold));
-        row->shortcutLabel.setJustificationType(juce::Justification::centredLeft);
-
-        // Alternating row background via opaque colour
-        if (i % 2 == 1) {
-            row->actionLabel.setColour(juce::Label::backgroundColourId,
-                                       juce::Colour(kRowAltColour));
-            row->shortcutLabel.setColour(juce::Label::backgroundColourId,
-                                         juce::Colour(kRowAltColour));
-        }
-
-        // [Set] button
-        row->setButton.setColour(juce::TextButton::buttonColourId,
-                                 juce::Colour(kSurfaceColour));
-        row->setButton.setColour(juce::TextButton::textColourOnId,
-                                 juce::Colour(kTextColour));
-        row->setButton.setColour(juce::TextButton::textColourOffId,
-                                 juce::Colour(kTextColour));
-        row->setButton.onClick = [this, i] { onSetClicked(i); };
-
-        // [X] remove button
-        row->removeButton.setColour(juce::TextButton::buttonColourId,
-                                    juce::Colour(kSurfaceColour));
-        row->removeButton.setColour(juce::TextButton::textColourOnId,
-                                    juce::Colour(0xFFE05050));
-        row->removeButton.setColour(juce::TextButton::textColourOffId,
-                                    juce::Colour(0xFFE05050));
-        row->removeButton.onClick = [this, i] { onRemoveClicked(i); };
-
-        rowContainer_.addAndMakeVisible(row->actionLabel);
-        rowContainer_.addAndMakeVisible(row->shortcutLabel);
-        rowContainer_.addAndMakeVisible(row->setButton);
-        rowContainer_.addAndMakeVisible(row->removeButton);
-
+        auto* row = new BindingRow(*this, i);
+        row->update(i,
+                    actionToDisplayName(binding.action),
+                    juce::String(binding.displayName),
+                    (i % 2 == 1));
+        rowContainer_.addAndMakeVisible(row);
         rows_.add(row);
     }
 
@@ -235,6 +339,7 @@ void HotkeyTab::timerCallback()
     if (recordingIndex_ != -1 && !manager_.getHotkeyHandler().isRecording()) {
         recordingIndex_ = -1;
         statusLabel_.setText("", juce::dontSendNotification);
+        cancelButton_.setVisible(false);
         refreshBindings();
     }
 }
@@ -248,13 +353,8 @@ void HotkeyTab::onSetClicked(int bindingIndex)
 
     recordingIndex_ = bindingIndex;
     statusLabel_.setText("Press a key combination...", juce::dontSendNotification);
-
-    // Highlight the active row
-    if (bindingIndex >= 0 && bindingIndex < rows_.size()) {
-        rows_[bindingIndex]->shortcutLabel.setText("...", juce::dontSendNotification);
-        rows_[bindingIndex]->shortcutLabel.setColour(juce::Label::textColourId,
-                                                      juce::Colour(kWarningColour));
-    }
+    cancelButton_.setVisible(true);
+    resized();
 
     auto& handler = manager_.getHotkeyHandler();
     const auto& bindings = handler.getBindings();
@@ -262,18 +362,13 @@ void HotkeyTab::onSetClicked(int bindingIndex)
     if (bindingIndex < 0 || bindingIndex >= static_cast<int>(bindings.size()))
         return;
 
-    // Capture the action from the binding we want to re-map
-    ActionEvent targetAction = bindings[static_cast<size_t>(bindingIndex)].action;
+    int targetId = bindings[static_cast<size_t>(bindingIndex)].id;
 
     handler.startRecording(
-        [this, bindingIndex, targetAction](uint32_t mods, uint32_t vk, const std::string& name) {
-            // Remove old binding and register new one
+        [this, targetId](uint32_t mods, uint32_t vk, const std::string& name) {
+            // Update binding in-place (preserves list position)
             auto& h = manager_.getHotkeyHandler();
-            const auto& currentBindings = h.getBindings();
-            if (bindingIndex < static_cast<int>(currentBindings.size())) {
-                h.unregisterHotkey(currentBindings[static_cast<size_t>(bindingIndex)].id);
-            }
-            h.registerHotkey(mods, vk, targetAction, name);
+            h.updateHotkey(targetId, mods, vk, name);
             manager_.saveConfig();
 
             // UI refresh will happen in timerCallback when isRecording() returns false
@@ -288,7 +383,7 @@ void HotkeyTab::onRemoveClicked(int bindingIndex)
     if (bindingIndex >= 0 && bindingIndex < static_cast<int>(bindings.size())) {
         handler.unregisterHotkey(bindings[static_cast<size_t>(bindingIndex)].id);
         manager_.saveConfig();
-        // Defer refresh to avoid deleting the button component from within its own callback
+        // Defer refresh to avoid deleting the row component from within its own callback
         auto safeThis = juce::Component::SafePointer<HotkeyTab>(this);
         juce::MessageManager::callAsync([safeThis] { if (safeThis) safeThis->refreshBindings(); });
     }
@@ -383,6 +478,8 @@ void HotkeyTab::onAddClicked()
             statusLabel_.setText("Press a key combination for: " +
                                  juce::String(action.stringParam),
                                  juce::dontSendNotification);
+            cancelButton_.setVisible(true);
+            resized();
             recordingIndex_ = -2;  // special value for "new binding"
 
             auto safeHotkey = juce::Component::SafePointer<HotkeyTab>(this);
@@ -394,6 +491,17 @@ void HotkeyTab::onAddClicked()
                     // UI refresh happens in timerCallback
                 });
         });
+}
+
+void HotkeyTab::onCancelClicked()
+{
+    if (recordingIndex_ != -1) {
+        manager_.getHotkeyHandler().stopRecording();
+        recordingIndex_ = -1;
+        statusLabel_.setText("", juce::dontSendNotification);
+        cancelButton_.setVisible(false);
+        resized();
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -440,6 +548,13 @@ MidiTab::MidiTab(ControlManager& manager, VSTChain* vstChain)
     statusLabel_.setColour(juce::Label::textColourId, juce::Colour(kWarningColour));
     addAndMakeVisible(statusLabel_);
 
+    cancelButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
+    cancelButton_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    cancelButton_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    cancelButton_.onClick = [this] { onCancelClicked(); };
+    cancelButton_.setVisible(false);
+    addAndMakeVisible(cancelButton_);
+
     // Scrollable viewport
     viewport_.setViewedComponent(&rowContainer_, false);
     viewport_.setScrollBarsShown(true, false);
@@ -455,7 +570,8 @@ MidiTab::~MidiTab()
 {
     stopTimer();
 
-    if (learningIndex_ >= 0) {
+    // Cancel any in-progress learn (>= 0 = re-learning existing, -2 = adding new)
+    if (learningIndex_ != -1) {
         manager_.getMidiHandler().stopLearn();
     }
 }
@@ -498,8 +614,16 @@ void MidiTab::resized()
     }
     y += rowH + gap;
 
-    // Status label
-    statusLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 20);
+    // Status label + cancel button
+    {
+        constexpr int cancelW = 60;
+        if (cancelButton_.isVisible()) {
+            statusLabel_.setBounds(bounds.getX(), y, bounds.getWidth() - cancelW - gap, 20);
+            cancelButton_.setBounds(bounds.getRight() - cancelW, y, cancelW, 20);
+        } else {
+            statusLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 20);
+        }
+    }
     y += 20 + gap;
 
     // Viewport fills the rest
@@ -621,6 +745,7 @@ void MidiTab::timerCallback()
     if (learningIndex_ != -1 && !manager_.getMidiHandler().isLearning()) {
         learningIndex_ = -1;
         statusLabel_.setText("", juce::dontSendNotification);
+        cancelButton_.setVisible(false);
         refreshMappings();
     }
 }
@@ -647,6 +772,8 @@ void MidiTab::onLearnClicked(int mappingIndex)
 
     learningIndex_ = mappingIndex;
     statusLabel_.setText("Move a MIDI control...", juce::dontSendNotification);
+    cancelButton_.setVisible(true);
+    resized();
 
     // Highlight the active row
     if (mappingIndex >= 0 && mappingIndex < rows_.size()) {
@@ -723,6 +850,17 @@ juce::String MidiTab::midiBindingToString(const MidiBinding& binding)
     return result;
 }
 
+void MidiTab::onCancelClicked()
+{
+    if (learningIndex_ != -1) {
+        manager_.getMidiHandler().stopLearn();
+        learningIndex_ = -1;
+        statusLabel_.setText("", juce::dontSendNotification);
+        cancelButton_.setVisible(false);
+        refreshMappings();
+    }
+}
+
 void MidiTab::onAddMappingClicked()
 {
     // Build an action menu similar to HotkeyTab
@@ -792,6 +930,8 @@ void MidiTab::onAddMappingClicked()
             // Enter MIDI Learn mode
             statusLabel_.setText("Move a MIDI control for: " + juce::String(action.stringParam),
                                  juce::dontSendNotification);
+            cancelButton_.setVisible(true);
+            resized();
             learningIndex_ = -2;
 
             auto safeMidi = juce::Component::SafePointer<MidiTab>(this);
@@ -880,6 +1020,8 @@ void MidiTab::onAddParamClicked()
                     // Step 3: MIDI Learn
                     statusLabel_.setText("Move a MIDI CC for: " + pluginName + " > " + paramName,
                                          juce::dontSendNotification);
+                    cancelButton_.setVisible(true);
+                    resized();
                     learningIndex_ = -2;
 
                     auto safeParam = juce::Component::SafePointer<MidiTab>(this);

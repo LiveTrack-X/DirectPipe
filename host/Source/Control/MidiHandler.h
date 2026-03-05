@@ -154,6 +154,12 @@ public:
      */
     void rescanDevices();
 
+    /**
+     * @brief Inject a simulated MIDI message (for testing without hardware).
+     * Processes it through the same Learn/CC/Note pipeline as real input.
+     */
+    void injectTestMessage(const juce::MidiMessage& message);
+
 private:
     // juce::MidiInputCallback
     void handleIncomingMidiMessage(juce::MidiInput* source,

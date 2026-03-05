@@ -28,6 +28,7 @@
 #include <JuceHeader.h>
 #include "ActionDispatcher.h"
 #include "StateBroadcaster.h"
+#include "MidiHandler.h"
 
 #include <atomic>
 #include <chrono>
@@ -52,7 +53,8 @@ namespace directpipe {
  */
 class HttpApiServer {
 public:
-    HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster);
+    HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
+                  MidiHandler* midiHandler = nullptr);
     ~HttpApiServer();
 
     /**
@@ -85,6 +87,7 @@ private:
 
     ActionDispatcher& dispatcher_;
     StateBroadcaster& broadcaster_;
+    MidiHandler* midiHandler_ = nullptr;
 
     std::unique_ptr<juce::StreamingSocket> serverSocket_;
     std::thread serverThread_;

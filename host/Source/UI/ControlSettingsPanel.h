@@ -44,7 +44,8 @@ namespace directpipe {
  * the next keypress as the new shortcut.
  */
 class HotkeyTab : public juce::Component,
-                   public juce::Timer {
+                   public juce::Timer,
+                   public juce::DragAndDropContainer {
 public:
     /**
      * @brief Construct the Hotkey tab.
@@ -88,20 +89,48 @@ private:
     juce::Viewport viewport_;
     juce::Component rowContainer_;
 
-    /// One UI row per hotkey binding
-    struct BindingRow {
-        juce::Label actionLabel;
-        juce::Label shortcutLabel;
-        juce::TextButton setButton{"Set"};
-        juce::TextButton removeButton{"X"};
+    /// Per-row component — each row is both drag source and drop target
+    class BindingRow : public juce::Component,
+                       public juce::DragAndDropTarget {
+    public:
+        BindingRow(HotkeyTab& owner, int rowIndex);
+        void resized() override;
+        void paint(juce::Graphics& g) override;
+        void update(int newRowIndex, const juce::String& actionName,
+                    const juce::String& shortcutName, bool alt);
+
+        void mouseDrag(const juce::MouseEvent& e) override;
+
+        bool isInterestedInDragSource(const SourceDetails&) override { return true; }
+        void itemDragEnter(const SourceDetails&) override;
+        void itemDragExit(const SourceDetails&) override;
+        void itemDropped(const SourceDetails& details) override;
+
+        int getRowIndex() const { return rowIndex_; }
+
+    private:
+        HotkeyTab& owner_;
+        int rowIndex_;
+        bool dragOver_ = false;
+        bool altBg_ = false;
+
+        juce::Label actionLabel_;
+        juce::Label shortcutLabel_;
+        juce::TextButton setButton_{"Set"};
+        juce::TextButton removeButton_{"X"};
     };
+
     juce::OwnedArray<BindingRow> rows_;
 
-    // Status label (shows "Press a key..." during recording)
+    // Status label + cancel button (shown during recording)
     juce::Label statusLabel_{"", ""};
+    juce::TextButton cancelButton_{"Cancel"};
 
     // Index of the binding currently being recorded (-1 = none)
     int recordingIndex_ = -1;
+
+    /** @brief Cancel in-progress recording. */
+    void onCancelClicked();
 
     // Theme colours (dark)
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;
@@ -199,14 +228,18 @@ private:
     };
     juce::OwnedArray<MappingRow> rows_;
 
-    // Status label
+    // Status label + cancel button (shown during learn mode)
     juce::Label statusLabel_{"", ""};
+    juce::TextButton cancelButton_{"Cancel"};
 
     // Index of the mapping currently in learn mode (-1 = none, -2 = new binding)
     int learningIndex_ = -1;
 
     // VSTChain pointer for plugin parameter mapping
     VSTChain* vstChain_ = nullptr;
+
+    /** @brief Cancel in-progress MIDI Learn. */
+    void onCancelClicked();
 
     /** @brief Handle [Add Mapping] button click. */
     void onAddMappingClicked();
