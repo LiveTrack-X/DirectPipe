@@ -1369,6 +1369,19 @@ void MainComponent::loadSettings()
         }
 
         loadingSlot_ = false;
+
+        // Restore panic mute lockout (monitor/IPC disabled while muted)
+        if (audioEngine_.isMuted()) {
+            auto& router = audioEngine_.getOutputRouter();
+            preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
+            preMuteOutputMuted_ = audioEngine_.isOutputMuted();
+            preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
+            audioEngine_.setOutputMuted(false);
+            router.setEnabled(OutputRouter::Output::Monitor, false);
+            audioEngine_.setMonitorEnabled(false);
+            if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
+        }
+
         refreshUI();
         updateSlotButtonStates();
 

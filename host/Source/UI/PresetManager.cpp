@@ -111,6 +111,7 @@ juce::String PresetManager::exportToJSON()
     root->setProperty("sampleRate", engine_.getDesiredSampleRate());
     root->setProperty("bufferSize", engine_.getDesiredBufferSize());
     root->setProperty("inputGain", static_cast<double>(engine_.getInputGain()));
+    root->setProperty("muted", engine_.isMuted());
 
     // Device type (ASIO / Windows Audio)
     root->setProperty("deviceType", engine_.getDesiredDeviceType());
@@ -206,6 +207,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
     }
     if (root->hasProperty("inputGain")) {
         engine_.setInputGain(static_cast<float>((double)root->getProperty("inputGain")));
+    }
+    if (root->hasProperty("muted")) {
+        engine_.setMuted(static_cast<bool>(root->getProperty("muted")));
     }
 
     // Restore devices (use engine methods for intentionalChange_ guard + desiredDevice tracking)
