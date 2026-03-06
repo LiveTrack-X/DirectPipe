@@ -18,7 +18,7 @@
 
 /**
  * @file MonitorOutput.cpp
- * @brief Virtual cable output implementation via second WASAPI device.
+ * @brief Monitor (headphone) output implementation via separate WASAPI device.
  */
 
 #include "MonitorOutput.h"
@@ -126,7 +126,7 @@ int MonitorOutput::writeAudio(const float* const* channelData,
     return written;
 }
 
-// ─── Virtual cable WASAPI callback (consumer) ─────────────────────────────────
+// ─── Monitor device WASAPI callback (consumer) ────────────────────────────────
 
 void MonitorOutput::audioDeviceIOCallbackWithContext(
     const float* const* /*inputChannelData*/,

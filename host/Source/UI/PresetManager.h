@@ -147,8 +147,38 @@ public:
      */
     static char slotLabel(int slotIndex) { return 'A' + static_cast<char>(slotIndex); }
 
+    /**
+     * @brief Get user-defined slot name (empty if not set).
+     */
+    juce::String getSlotName(int slotIndex) const;
+
+    /**
+     * @brief Set user-defined slot name for a slot.
+     */
+    void setSlotName(int slotIndex, const juce::String& name);
+
+    /**
+     * @brief Get display label for slot button (e.g. "A" or "A|게임").
+     */
+    juce::String getSlotDisplayName(int slotIndex) const;
+
+    /**
+     * @brief Load all slot names from slot files (called at startup).
+     */
+    void loadSlotNames();
+
     /** @brief Get the file path for a quick slot. */
     static juce::File getSlotFile(int slotIndex);
+
+    /**
+     * @brief Export a single slot to a user-chosen file.
+     */
+    void exportSlot(int slotIndex);
+
+    /**
+     * @brief Import a slot from a user-chosen file.
+     */
+    void importSlot(int slotIndex, std::function<void(bool)> onComplete = nullptr);
 
     /**
      * @brief Start background pre-loading of other slots' plugins.
@@ -187,6 +217,9 @@ private:
     // Cached slot occupancy (avoids filesystem queries in hot paths like NextPreset)
     std::array<bool, kNumSlots> slotOccupiedCache_{};
     void refreshSlotOccupancyCache();
+
+    // Slot names (user-defined, persisted in slot files)
+    std::array<juce::String, kNumSlots> slotNames_{};
     bool querySlotOccupied(int slotIndex) const;  ///< Filesystem query (no cache)
 
     // Lifetime guard for callAsync lambdas (replaceChainAsync completion)

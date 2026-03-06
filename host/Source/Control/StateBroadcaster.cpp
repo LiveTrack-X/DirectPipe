@@ -172,6 +172,12 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("device_lost", state.deviceLost);
     data->setProperty("monitor_lost", state.monitorLost);
 
+    // Slot names
+    juce::Array<juce::var> slotNamesArr;
+    for (const auto& name : state.slotNames)
+        slotNamesArr.add(juce::String(name));
+    data->setProperty("slot_names", slotNamesArr);
+
     root->setProperty("data", juce::var(data));
 
     return juce::JSON::toString(juce::var(root.get()), true).toStdString();

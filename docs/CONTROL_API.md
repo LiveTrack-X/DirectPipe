@@ -228,6 +228,7 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
     "muted": false,
     "input_muted": false,
     "active_slot": 0,
+    "slot_names": ["게임", "토크", "", "", ""],
     "preset": "Streaming Vocal",
     "latency_ms": 5.2,
     "level_db": -18.3,
@@ -258,6 +259,7 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
 | `output_muted` | boolean | Main output muted / 메인 출력 뮤트 |
 | `input_muted` | boolean | Input muted / 입력 뮤트 |
 | `active_slot` | number | Active preset slot (0-4 = A-E) / 활성 슬롯 |
+| `slot_names` | array | Slot names (5 strings, empty = unnamed) / 슬롯 이름 (5개, 빈 문자열 = 이름 없음) |
 | `preset` | string | Current preset name / 현재 프리셋 이름 |
 | `latency_ms` | number | Latency in ms / 레이턴시 (ms) |
 | `monitor_latency_ms` | number | Monitor output latency in ms / 모니터 출력 레이턴시 (ms) |

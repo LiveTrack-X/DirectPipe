@@ -12,7 +12,7 @@
 ### Optional / 선택
 
 - **ASIO SDK** — For ASIO driver support. Place in `thirdparty/asiosdk/`. / ASIO 드라이버 지원용.
-- **VST2 SDK** — Place VST2 interface headers in `thirdparty/VST2_SDK/pluginterfaces/vst2.x/` (`aeffect.h`, `aeffectx.h`). Not included in the repository due to Steinberg licensing. / Steinberg 라이선스로 인해 저장소에 미포함. 직접 배치 필요.
+- **VST2 SDK** — Place VST2 interface headers in `thirdparty/VST2_SDK/pluginterfaces/vst2.x/` (`aeffect.h`, `aeffectx.h`). **Not included in this repository** — Steinberg prohibits redistribution of VST2 headers. You must obtain them separately if you have a valid VST2 license agreement. Without VST2 SDK, the build succeeds with VST3-only support. / Steinberg이 VST2 헤더 재배포를 금지하므로 저장소에 미포함. 유효한 VST2 라이선스 계약이 있는 경우 직접 배치. VST2 SDK 없이도 빌드 가능 (VST3만 지원).
 
 ### Auto-fetched Dependencies / 자동 다운로드 의존성
 

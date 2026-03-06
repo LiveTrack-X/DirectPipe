@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.9.8** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.9.9** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -196,16 +196,21 @@ Out-of-process scanner — crashes won't affect DirectPipe. Blacklists problemat
 - **다른 플러그인** → 백그라운드 **비동기 로딩** (Keep-Old-Until-Ready: 로딩 중 이전 체인이 오디오 처리를 유지하여 **끊김 없이** 전환) — Async loading with Keep-Old-Until-Ready: old chain keeps processing audio during loading for **seamless** transition
 - **활성 슬롯**: 보라색 / **사용 중**: 밝은색 / **빈 슬롯**: 어두운색
 - **Save Preset / Load Preset** → `.dppreset` 파일로 내보내기/불러오기
-- **슬롯 우클릭 → 복제** — "Copy A → B/C/D/E" 메뉴로 슬롯 간 플러그인 체인 복제 (활성 슬롯은 라이브 상태 캡처 후 복제) — Right-click slot → "Copy" submenu to duplicate chain to another slot (active slot captures live state before copy)
-- **슬롯 우클릭 → 삭제** — "Delete" 메뉴로 슬롯 데이터 삭제. 활성 슬롯 삭제 시 로드된 체인도 자동 클리어 — Right-click slot → "Delete" to clear slot data. Deleting the active slot also clears the loaded chain
+- **슬롯 우클릭 → 이름 변경** — "Rename" 메뉴로 슬롯에 이름 부여 (예: "게임", "토크"). 버튼에 `A|게임` 형식으로 표시. 최대 8자, 초과 시 ".." 생략. Clear로 이름 제거 — Right-click slot → "Rename" to set a custom name (e.g., "Game", "Talk"). Displayed as `A|Game` on the button. Max 8 chars, truncated with "..". Clear to remove name
+- **슬롯 우클릭 → 복제** — "Copy A → B/C/D/E" 메뉴로 슬롯 간 플러그인 체인 복제 (활성 슬롯은 라이브 상태 캡처 후 복제, 이름도 함께 복사) — Right-click slot → "Copy" submenu to duplicate chain to another slot (active slot captures live state before copy, name is also copied)
+- **슬롯 우클릭 → 삭제** — "Delete" 메뉴로 슬롯 데이터 삭제. 활성 슬롯 삭제 시 로드된 체인도 자동 클리어. 이름도 초기화 — Right-click slot → "Delete" to clear slot data and name. Deleting the active slot also clears the loaded chain
+- **슬롯 우클릭 → 내보내기** — "Export" 메뉴로 개별 슬롯을 `.dppreset` 파일로 저장. 다른 사람에게 프리셋 전달 가능 — Right-click slot → "Export" to save individual slot as `.dppreset` file. Share presets with others
+- **슬롯 우클릭 → 가져오기** — "Import" 메뉴로 `.dppreset` 파일을 선택한 슬롯에 로드. 빈 슬롯에서도 사용 가능 — Right-click slot → "Import" to load a `.dppreset` file into the selected slot. Works on empty slots too
 
-슬롯은 **체인 데이터만** 저장합니다 (플러그인, 순서, Bypass, 파라미터). 오디오/출력 설정은 영향 없음.
+슬롯은 **체인 데이터 + 이름**을 저장합니다 (플러그인, 순서, Bypass, 파라미터, 슬롯 이름). 오디오/출력 설정은 영향 없음.
 
-**활용 예시:**
-- **A**: 게임 (노이즈 제거만)
-- **B**: 노래방 (리버브 + 컴프레서)
-- **C**: 회의 (노이즈 제거 + EQ)
-- **D**: 방송 (풀 체인: 게이트 + 디에서 + EQ + 컴프)
+Slots store **chain data + name** (plugins, order, bypass, parameters, slot name). Audio/output settings are not affected.
+
+**활용 예시 / Example setup:**
+- **A|게임**: 노이즈 제거만 — Noise removal only
+- **B|노래방**: 리버브 + 컴프레서 — Reverb + compressor
+- **C|회의**: 노이즈 제거 + EQ — Noise removal + EQ
+- **D|방송**: 풀 체인 (게이트 + 디에서 + EQ + 컴프) — Full chain (gate + de-esser + EQ + comp)
 
 ---
 

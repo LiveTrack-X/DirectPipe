@@ -45,6 +45,7 @@ CLAUDE.md
 
 # Development plans
 DirectPipe-Development-Plan*.md
+docs/PRODUCT_SPEC.md
 
 # Test files (local only)
 test_api.js

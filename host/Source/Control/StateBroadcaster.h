@@ -35,6 +35,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <array>
 
 namespace directpipe {
 
@@ -68,6 +69,7 @@ struct AppState {
     bool ipcEnabled = false;
     bool deviceLost = false;
     bool monitorLost = false;
+    std::array<std::string, 5> slotNames{};
 };
 
 /// Listener for state changes

@@ -268,6 +268,7 @@ MainComponent::MainComponent()
                     }
                     safeThis->controlManager_->reloadConfig();
                     safeThis->presetManager_->refreshSlotOccupancy();
+                    safeThis->presetManager_->loadSlotNames();
                     safeThis->presetManager_->invalidatePreloadCache();
                     safeThis->loadingSlot_ = false;
                     safeThis->markSettingsDirty();
@@ -355,7 +356,7 @@ MainComponent::MainComponent()
 
     // ── Quick Preset Slot Buttons (A..E) ──
     for (int i = 0; i < kNumPresetSlots; ++i) {
-        auto label = juce::String::charToString(PresetManager::slotLabel(i));
+        auto label = presetManager_->getSlotDisplayName(i);
         slotButtons_[static_cast<size_t>(i)] = std::make_unique<juce::TextButton>(label);
         auto* btn = slotButtons_[static_cast<size_t>(i)].get();
         btn->setClickingTogglesState(false);
@@ -757,7 +758,7 @@ void MainComponent::handleAction(const ActionEvent& event)
 
 void MainComponent::mouseDown(const juce::MouseEvent& event)
 {
-    // Right-click on slot buttons → "Copy to..." context menu
+    // Right-click on slot buttons → context menu
     if (!event.mods.isPopupMenu()) return;
     if (loadingSlot_) return;  // Prevent context menu during async slot load
 
@@ -769,33 +770,98 @@ void MainComponent::mouseDown(const juce::MouseEvent& event)
             break;
         }
     }
-    if (sourceSlot < 0 || !presetManager_->isSlotOccupied(sourceSlot)) return;
+    if (sourceSlot < 0) return;
 
+    bool occupied = presetManager_->isSlotOccupied(sourceSlot);
     auto slotChar = juce::String::charToString(PresetManager::slotLabel(sourceSlot));
 
-    juce::PopupMenu copyMenu;
-    for (int i = 0; i < kNumPresetSlots; ++i) {
-        if (i == sourceSlot) continue;
-        copyMenu.addItem(i + 1, "-> " + juce::String::charToString(PresetManager::slotLabel(i)));
+    juce::PopupMenu menu;
+
+    // Rename (always available for occupied slots)
+    if (occupied)
+        menu.addItem(200, "Rename " + slotChar + "...");
+
+    // Copy submenu (occupied only)
+    if (occupied) {
+        juce::PopupMenu copyMenu;
+        for (int i = 0; i < kNumPresetSlots; ++i) {
+            if (i == sourceSlot) continue;
+            copyMenu.addItem(i + 1, "-> " + juce::String::charToString(PresetManager::slotLabel(i)));
+        }
+        menu.addSubMenu("Copy " + slotChar, copyMenu);
     }
 
-    juce::PopupMenu menu;
-    menu.addSubMenu("Copy " + slotChar, copyMenu);
-    menu.addSeparator();
-    menu.addItem(100, "Delete " + slotChar);
+    // Export/Import
+    if (occupied)
+        menu.addItem(300, "Export " + slotChar + "...");
+    menu.addItem(301, "Import to " + slotChar + "...");
+
+    // Delete (occupied only)
+    if (occupied) {
+        menu.addSeparator();
+        menu.addItem(100, "Delete " + slotChar);
+    }
 
     auto safeThis = juce::Component::SafePointer<MainComponent>(this);
     menu.showMenuAsync(juce::PopupMenu::Options(),
         [safeThis, sourceSlot, slotChar](int result) {
             if (!safeThis || result == 0) return;
 
+            if (result == 200) {
+                // Rename
+                auto currentName = safeThis->presetManager_->getSlotName(sourceSlot);
+                auto* aw = new juce::AlertWindow("Rename Slot " + slotChar,
+                    "Enter a name for slot " + slotChar + ":",
+                    juce::MessageBoxIconType::NoIcon);
+                aw->addTextEditor("name", currentName, "Name:");
+                aw->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
+                aw->addButton("Clear", 2);
+                aw->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+
+                auto safeThis2 = safeThis;
+                aw->enterModalState(true, juce::ModalCallbackFunction::create(
+                    [safeThis2, sourceSlot, aw](int btnResult) {
+                        if (!safeThis2) { delete aw; return; }
+                        if (btnResult == 1) {
+                            auto newName = aw->getTextEditorContents("name");
+                            safeThis2->presetManager_->setSlotName(sourceSlot, newName);
+                        } else if (btnResult == 2) {
+                            safeThis2->presetManager_->setSlotName(sourceSlot, "");
+                        }
+                        delete aw;
+                        if (btnResult > 0) {
+                            safeThis2->updateSlotButtonStates();
+                            safeThis2->markSettingsDirty();
+                        }
+                    }), true);
+                return;
+            }
+
+            if (result == 300) {
+                // Export
+                safeThis->presetManager_->exportSlot(sourceSlot);
+                return;
+            }
+
+            if (result == 301) {
+                // Import
+                auto safeThis2 = safeThis;
+                safeThis->presetManager_->importSlot(sourceSlot, [safeThis2](bool ok) {
+                    if (!safeThis2) return;
+                    if (ok) {
+                        safeThis2->updateSlotButtonStates();
+                        safeThis2->refreshUI();
+                        safeThis2->markSettingsDirty();
+                    }
+                });
+                return;
+            }
+
             if (result == 100) {
-                // Was this the active slot?
+                // Delete
                 bool wasActive = (safeThis->presetManager_->getActiveSlot() == sourceSlot);
                 if (safeThis->presetManager_->deleteSlot(sourceSlot)) {
-                    // If we deleted the active slot, clear the loaded chain
                     if (wasActive) {
-                        // Suppress onChainModified auto-save during chain clear
                         safeThis->loadingSlot_ = true;
                         auto& chain = safeThis->audioEngine_.getVSTChain();
                         while (chain.getPluginCount() > 0)
@@ -812,9 +878,8 @@ void MainComponent::mouseDown(const juce::MouseEvent& event)
                 return;
             }
 
+            // Copy (result 1-4 = target slot index)
             int targetSlot = result - 1;
-
-            // Save current active slot first (captures live plugin state)
             int active = safeThis->presetManager_->getActiveSlot();
             if (active == sourceSlot && !safeThis->partialLoad_.load())
                 safeThis->presetManager_->saveSlot(sourceSlot);
@@ -905,6 +970,7 @@ void MainComponent::updateSlotButtonStates()
         auto* btn = slotButtons_[static_cast<size_t>(i)].get();
         bool isActive = (i == active);
 
+        btn->setButtonText(presetManager_->getSlotDisplayName(i));
         btn->setToggleState(isActive, juce::dontSendNotification);
 
         // Set ALL 4 colour IDs to prevent stale colours
@@ -1228,6 +1294,12 @@ void MainComponent::timerCallback()
             }
         }
         if (s.plugins.empty()) s.masterBypassed = false;
+
+        // Slot names
+        if (presetManager_) {
+            for (int si = 0; si < kNumPresetSlots; ++si)
+                s.slotNames[static_cast<size_t>(si)] = presetManager_->getSlotName(si).toStdString();
+        }
     });
 
     // Update recording state in OutputPanel (Monitor tab)

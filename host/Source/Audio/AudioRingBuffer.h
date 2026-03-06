@@ -21,7 +21,7 @@
  * @brief SPSC lock-free ring buffer for inter-thread audio transfer.
  *
  * Producer (main audio callback) writes non-interleaved float frames.
- * Consumer (virtual cable callback) reads them.
+ * Consumer (monitor device callback) reads them.
  * Used to bridge two independent WASAPI callback threads.
  */
 #pragma once

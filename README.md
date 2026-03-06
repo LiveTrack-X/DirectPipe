@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.9.8-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.9.9-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -37,10 +37,61 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 | | 사용 예 / Use Case |
 |---|---|
-| **스트리머 / Streamers** | OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. Receiver VST로 가상 케이블 없이 OBS 직접 연결 |
-| **팟캐스터 / Podcasters** | 노이즈 제거 + EQ + 컴프레서 체인을 한 번 설정하면 매번 자동 적용. 녹음 기능 내장 |
-| **게이머 / Gamers** | 단축키(Ctrl+Shift)로 게임 중 뮤트/프리셋 전환. 시스템 트레이 상주, 리소스 최소 사용 |
-| **보이스챗 / Voice Chat** | VB-Cable로 Discord/Zoom에 처리된 음성 전달. 상대방에게 깨끗한 마이크 음질 제공 |
+| **스트리머 / Streamers** | OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. Receiver VST로 가상 케이블 없이 OBS 직접 연결 — Control effects live with Stream Deck while streaming to OBS. Direct OBS connection via Receiver VST, no virtual cable needed |
+| **팟캐스터 / Podcasters** | 노이즈 제거 + EQ + 컴프레서 체인을 한 번 설정하면 매번 자동 적용. 녹음 기능 내장 — Set up your noise removal + EQ + compressor chain once, auto-applied every time. Built-in recording |
+| **게이머 / Gamers** | 단축키(Ctrl+Shift)로 게임 중 뮤트/프리셋 전환. 시스템 트레이 상주, 리소스 최소 사용 — Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. Runs in system tray, minimal resource usage |
+| **보이스챗 / Voice Chat** | [VB-Cable](https://vb-audio.com/Cable/) *(별도 설치 필요)* 로 Discord/Zoom에 처리된 음성 전달. 상대방에게 깨끗한 마이크 음질 제공 — Route processed audio to Discord/Zoom via [VB-Cable](https://vb-audio.com/Cable/) *(separate install required)*. Deliver clean mic quality to others |
+
+---
+
+### Why DirectPipe?
+
+> DAW 없이, 설치 없이, 마이크에 VST를 거는 가장 가벼운 방법
+> — The lightest way to apply VST effects to your mic, without a DAW or installer.
+
+- **단일 exe, 설치 불필요** — Single portable exe, no installer, no system changes
+- **5종 외부 제어** — 핫키 · MIDI · Stream Deck · HTTP · WebSocket을 한 프로그램에서 — All 5 control methods in one app
+- **프리셋 즉시 전환** — A-E 슬롯, 이름 지정, 10-50ms 교체 — Named preset slots (A-E) with instant switching
+- **Receiver VST** — 가상 케이블 없이 OBS 직접 연결 — Direct OBS connection without virtual cables
+- **오픈소스** — GPL v3, 누구나 기여 가능 — Open source, community-driven
+
+<details>
+<summary><b>비교표 / Comparison with Alternatives</b></summary>
+
+| | DirectPipe | Wave Link 3 | VoiceMeeter | LightHost | DAW (Reaper 등) |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **VST2 + VST3 호스팅** | ✅ | ✅ | ❌ | ✅ (VST2) | ✅ |
+| **외부 제어 (핫키/MIDI/SD/HTTP/WS)** | ✅ 5종 | 일부 | ❌ | ❌ | 일부 |
+| **포터블 (설치 불필요)** | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **시스템 부하** | 최소 | 중간 | 중간 | 최소 | 높음 |
+| **멀티채널 믹서** | ❌ | ✅ | ✅ | ❌ | ✅ |
+| **가격** | 무료 (GPL) | 무료 | 무료/유료 | 무료 | 유료 |
+| **업데이트** | 활발 | 활발 | 간헐적 | 중단 (2016) | 활발 |
+| **프리셋 즉시 전환** | ✅ (A-E, 10ms) | ❌ | ❌ | ❌ | 가능 |
+| **OBS 직접 연결 (IPC)** | ✅ Receiver VST | ❌ | ❌ | ❌ | ❌ |
+
+DirectPipe는 멀티채널 믹서가 아닙니다. **마이크 1개에 VST를 걸고 외부에서 제어**하는 데 특화된 경량 호스트입니다.
+
+DirectPipe is not a multi-channel mixer. It's a **lightweight host specialized for applying VST effects to a single mic with external control**.
+
+</details>
+
+### For Setup Helpers / 세팅 도우미를 위한 기능
+
+> 다른 사람의 마이크 세팅을 대신 해주는 분들을 위한 워크플로우
+> — Workflow for people who set up microphones for others
+
+1. **포터블 exe** — USB에 DirectPipe를 넣고 상대방 PC에서 바로 실행 (`portable.flag` 파일 추가 시 설정도 USB에 저장)
+2. **프리셋 내보내기** — 최적화된 VST 체인을 `.dppreset` 파일로 내보내서 전달
+3. **프리셋 가져오기** — 상대방이 슬롯 우클릭 → Import로 즉시 적용
+4. **Full Backup** — Settings > Maintenance에서 설정 + 모든 슬롯을 `.dpfullbackup` 하나로 백업/복원
+
+```
+세팅 도우미 PC                          스트리머 PC
+DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
+→ 우클릭 "Export A" → game.dppreset    → 우클릭 "Import to A" → game.dppreset
+→ 파일 전달 (메신저, USB 등)            → 즉시 적용!
+```
 
 ---
 
@@ -88,7 +139,7 @@ External Control:
 - **드래그 앤 드롭** 플러그인 체인 편집 — Drag & drop to reorder plugins, toggle bypass, open native plugin GUIs
 - **Out-of-process 스캐너** — 별도 프로세스에서 안전 스캔. 크래시 시 자동 재시도 (10회), 블랙리스트 자동 등록 — Scans in a separate process; auto-retry up to 10 times, blacklists crashed plugins
 - **플러그인 검색/정렬** — 스캐너에서 이름/벤더/포맷으로 실시간 검색 및 컬럼 정렬 — Real-time search and column sort by name, vendor, or format
-- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 같은 체인이면 즉시 전환, 다른 체인이면 비동기 로딩 (Keep-Old-Until-Ready: 로딩 중에도 이전 체인이 오디오 처리를 유지하여 끊김 없이 전환). Save/Load 버튼으로 .dppreset 파일 저장/불러오기 — 5 chain-only presets with instant or async switching (Keep-Old-Until-Ready: old chain keeps processing audio during loading for seamless transition). Save/Load buttons for .dppreset files
+- **Quick Preset Slots (A-E)** — 5개 체인 전용 프리셋. 이름 지정 가능 (A|게임, B|토크 등). 같은 체인이면 즉시 전환, 다른 체인이면 비동기 로딩 (Keep-Old-Until-Ready: 로딩 중에도 이전 체인이 오디오 처리를 유지하여 끊김 없이 전환). 슬롯 내보내기/가져오기, 우클릭으로 복사/삭제/이름변경 — 5 chain-only presets with custom naming (A|Game, B|Talk). Instant or async switching (Keep-Old-Until-Ready). Right-click to rename, copy, export/import, or delete slots
 
 ### 오디오 / Audio
 
@@ -252,7 +303,9 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 - [Build Guide](docs/BUILDING.md) — 빌드 가이드 / Build instructions and options
 - [User Guide](docs/USER_GUIDE.md) — 사용법 / Setup and usage
 - [Control API](docs/CONTROL_API.md) — WebSocket / HTTP API 레퍼런스 / API reference
+- [API Examples](docs/API_EXAMPLES.md) — 자동화 예제 (Python, AutoHotkey, OBS 연동, curl, PowerShell) / Automation examples
 - [Stream Deck Guide](docs/STREAMDECK_GUIDE.md) — Stream Deck 플러그인 / Stream Deck integration
+- [Logging Rules](docs/LOGRULE.md) — 로깅 형식 및 규칙 / Log format, categories, and audit mode
 
 ## FAQ
 
@@ -553,10 +606,10 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 - 현재 플러그인 체인과 설정을 **A–E** 슬롯에 저장할 수 있습니다
 - 슬롯 버튼 **(A/B/C/D/E)** 클릭 → 비어있으면 현재 상태 저장, 차있으면 해당 슬롯 로드
 - 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩** (프리로딩 캐시로 ~10-50ms 즉시 전환)
-- 슬롯 **우클릭** → **복제** (다른 슬롯으로 체인 복사) 또는 **삭제** (슬롯 데이터 제거)
+- 슬롯 **우클릭** → **이름 변경** (예: `A|게임`), **복제**, **삭제**, **내보내기/가져오기** (`.dppreset`)
 - **Save/Load** 버튼으로 .dppreset 파일에 프리셋 저장/불러오기 가능
 
-예: 게임 중엔 **A** (노이즈 제거만), 노래방에선 **B** (리버브 + 컴프레서)
+예: 게임 중엔 **A|게임** (노이즈 제거만), 노래방에선 **B|노래** (리버브 + 컴프레서)
 
 ---
 
@@ -564,10 +617,10 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 - Save your current plugin chain and settings to slots **A through E**
 - Click a slot button **(A/B/C/D/E)** → saves current state if empty, loads slot if occupied
 - If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading** (preloading cache enables ~10-50ms instant switching)
-- **Right-click** slot → **Copy** (duplicate chain to another slot) or **Delete** (clear slot data)
+- **Right-click** slot → **Rename** (e.g., `A|Game`), **Copy**, **Delete**, **Export/Import** (`.dppreset`)
 - Use **Save/Load** buttons to save/load presets as .dppreset files
 
-Example: Slot **A** for gaming (noise removal only), Slot **B** for karaoke (reverb + compressor)
+Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for karaoke (reverb + compressor)
 </details>
 
 <details>

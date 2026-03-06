@@ -18,10 +18,10 @@
 
 /**
  * @file AudioEngine.h
- * @brief Core audio engine — WASAPI input → VST chain → output routing
+ * @brief Core audio engine — WASAPI/ASIO input → VST chain → output routing
  *
  * Manages the audio device, VST plugin processing chain, and output
- * distribution to virtual cable and local monitor.
+ * distribution to main output, monitor (headphones), IPC, and recorder.
  */
 #pragma once
 

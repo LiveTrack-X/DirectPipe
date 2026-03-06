@@ -18,12 +18,11 @@
 
 /**
  * @file MonitorOutput.h
- * @brief Virtual cable output via second WASAPI device.
+ * @brief Monitor (headphone) output via separate WASAPI device.
  *
- * Routes processed audio to a virtual audio cable (e.g., VB-Audio Hi-Fi Cable)
- * so that Discord, Zoom, OBS, and other apps can capture the processed audio.
- * Uses a lock-free ring buffer to bridge the main audio callback and the
- * virtual cable's independent WASAPI callback thread.
+ * Routes processed audio to a second WASAPI output device (e.g., headphones)
+ * for real-time monitoring. Uses a lock-free ring buffer to bridge the main
+ * audio callback and the monitor device's independent WASAPI callback thread.
  */
 #pragma once
 
@@ -36,13 +35,13 @@ namespace directpipe {
 
 enum class VirtualCableStatus {
     NotConfigured,  ///< No device selected
-    Active,         ///< Audio flowing to virtual cable
+    Active,         ///< Audio flowing to monitor device
     Error,          ///< Device open failed
     SampleRateMismatch  ///< Device opened but SR doesn't match main device
 };
 
 /**
- * @brief WASAPI output to a virtual audio cable device.
+ * @brief Monitor output via separate WASAPI device (e.g., headphones).
  *
  * Owns a separate AudioDeviceManager with its own callback thread.
  * The main audio callback writes to a lock-free ring buffer (producer),
@@ -87,7 +86,7 @@ public:
     static juce::String getSetupGuideMessage();
 
 private:
-    // juce::AudioIODeviceCallback — virtual cable's WASAPI callback
+    // juce::AudioIODeviceCallback — monitor device's WASAPI callback
     void audioDeviceIOCallbackWithContext(
         const float* const* inputChannelData, int numInputChannels,
         float* const* outputChannelData, int numOutputChannels,

@@ -31,6 +31,7 @@ PresetManager::PresetManager(AudioEngine& engine)
     : engine_(engine)
 {
     refreshSlotOccupancyCache();
+    loadSlotNames();
 }
 
 bool PresetManager::savePreset(const juce::File& file)
@@ -533,6 +534,16 @@ bool PresetManager::saveSlot(int slotIndex)
     auto json = exportChainToJSON();
     if (json.isEmpty()) return false;
 
+    // Inject slot name into JSON
+    auto slotName = slotNames_[static_cast<size_t>(slotIndex)];
+    if (slotName.isNotEmpty()) {
+        auto parsed = juce::JSON::parse(json);
+        if (auto* obj = parsed.getDynamicObject()) {
+            obj->setProperty("name", slotName);
+            json = juce::JSON::toString(juce::var(obj), true);
+        }
+    }
+
     // Keep backup in case shutdown interrupts the write
     if (file.existsAsFile())
         file.copyFileTo(file.withFileExtension("dppreset.backup"));
@@ -576,7 +587,17 @@ bool PresetManager::loadSlot(int slotIndex)
             if (ok) backup.copyFileTo(file);
         }
     }
-    if (ok) activeSlot_ = slotIndex;
+    if (ok) {
+        activeSlot_ = slotIndex;
+        // Read slot name from file
+        auto parsed = juce::JSON::parse(json);
+        if (auto* root = parsed.getDynamicObject()) {
+            if (root->hasProperty("name"))
+                slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
+            else
+                slotNames_[static_cast<size_t>(slotIndex)] = juce::String();
+        }
+    }
     return ok;
 }
 
@@ -625,6 +646,12 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         if (onComplete) onComplete(false);
         return;
     }
+
+    // Update slot name from file (sync loadSlot does this too)
+    if (root->hasProperty("name"))
+        slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
+    else
+        slotNames_[static_cast<size_t>(slotIndex)] = juce::String();
 
     auto* pluginsArray = root->getProperty("plugins").getArray();
     if (!pluginsArray) {
@@ -804,6 +831,7 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
         dstFile.withFileExtension("dppreset.backup").deleteFile();
         preloadCache_.invalidateSlot(toSlot);
         slotOccupiedCache_[static_cast<size_t>(toSlot)] = false;
+        slotNames_[static_cast<size_t>(toSlot)] = {};
         juce::Logger::writeToLog("[PRESET] Copied empty slot "
             + juce::String::charToString(slotLabel(fromSlot)) + " -> " + juce::String::charToString(slotLabel(toSlot)) + " (cleared)");
         return true;
@@ -815,6 +843,7 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
         dstFile.withFileExtension("dppreset.backup").deleteFile();
         preloadCache_.invalidateSlot(toSlot);
         slotOccupiedCache_[static_cast<size_t>(toSlot)] = true;
+        slotNames_[static_cast<size_t>(toSlot)] = slotNames_[static_cast<size_t>(fromSlot)];
         juce::Logger::writeToLog("[PRESET] Copied slot "
             + juce::String::charToString(slotLabel(fromSlot)) + " -> " + juce::String::charToString(slotLabel(toSlot)));
     }
@@ -837,6 +866,7 @@ bool PresetManager::deleteSlot(int slotIndex)
             activeSlot_ = -1;
         preloadCache_.invalidateSlot(slotIndex);
         slotOccupiedCache_[static_cast<size_t>(slotIndex)] = false;
+        slotNames_[static_cast<size_t>(slotIndex)] = {};
         juce::Logger::writeToLog("[PRESET] Deleted slot " + juce::String::charToString(slotLabel(slotIndex)));
     }
     return ok;
@@ -890,6 +920,164 @@ void PresetManager::triggerPreload(std::function<void()> onComplete)
 void PresetManager::invalidatePreloadCache()
 {
     preloadCache_.invalidateAll();
+}
+
+// ─── Slot Names ─────────────────────────────────────────────────────────────
+
+juce::String PresetManager::getSlotName(int slotIndex) const
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return {};
+    return slotNames_[static_cast<size_t>(slotIndex)];
+}
+
+void PresetManager::setSlotName(int slotIndex, const juce::String& name)
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return;
+    slotNames_[static_cast<size_t>(slotIndex)] = name.trim();
+
+    // Persist name to slot file (re-save if file exists)
+    auto file = getSlotFile(slotIndex);
+    if (file.existsAsFile()) {
+        auto json = file.loadFileAsString();
+        auto parsed = juce::JSON::parse(json);
+        if (auto* obj = parsed.getDynamicObject()) {
+            if (name.trim().isEmpty())
+                obj->removeProperty("name");
+            else
+                obj->setProperty("name", name.trim());
+            file.replaceWithText(juce::JSON::toString(juce::var(obj), true));
+        }
+    }
+    juce::Logger::writeToLog("[PRESET] Renamed slot " + juce::String::charToString(slotLabel(slotIndex))
+        + " -> \"" + name.trim() + "\"");
+}
+
+juce::String PresetManager::getSlotDisplayName(int slotIndex) const
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return {};
+    auto label = juce::String::charToString(slotLabel(slotIndex));
+    auto name = slotNames_[static_cast<size_t>(slotIndex)];
+    if (name.isEmpty()) return label;
+    // Truncate to ~8 chars for button fit
+    if (name.length() > 8)
+        name = name.substring(0, 8) + "..";
+    return label + "|" + name;
+}
+
+void PresetManager::loadSlotNames()
+{
+    for (int i = 0; i < kNumSlots; ++i) {
+        auto file = getSlotFile(i);
+        if (!file.existsAsFile()) continue;
+        auto json = file.loadFileAsString();
+        auto parsed = juce::JSON::parse(json);
+        if (auto* root = parsed.getDynamicObject()) {
+            if (root->hasProperty("name"))
+                slotNames_[static_cast<size_t>(i)] = root->getProperty("name").toString();
+        }
+    }
+}
+
+// ─── Slot Export/Import ─────────────────────────────────────────────────────
+
+void PresetManager::exportSlot(int slotIndex)
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return;
+
+    // If this is the active slot, save current state first
+    if (activeSlot_ == slotIndex)
+        saveSlot(slotIndex);
+
+    auto srcFile = getSlotFile(slotIndex);
+    if (!srcFile.existsAsFile()) return;
+
+    auto defaultName = "slot_" + juce::String::charToString(slotLabel(slotIndex));
+    auto name = getSlotName(slotIndex);
+    if (name.isNotEmpty())
+        defaultName = name;
+
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Export Slot " + juce::String::charToString(slotLabel(slotIndex)),
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory).getChildFile(defaultName + ".dppreset"),
+        "*.dppreset");
+
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode
+                         | juce::FileBrowserComponent::canSelectFiles,
+                         [srcFile, slotIndex, chooser](const juce::FileChooser& fc) {
+        auto dest = fc.getResult();
+        if (dest == juce::File()) return;
+        if (!dest.hasFileExtension(".dppreset"))
+            dest = dest.withFileExtension(".dppreset");
+        srcFile.copyFileTo(dest);
+        juce::Logger::writeToLog("[PRESET] Exported slot "
+            + juce::String::charToString(PresetManager::slotLabel(slotIndex))
+            + " to " + dest.getFileName());
+    });
+}
+
+void PresetManager::importSlot(int slotIndex, std::function<void(bool)> onComplete)
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots) {
+        if (onComplete) onComplete(false);
+        return;
+    }
+
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Import to Slot " + juce::String::charToString(slotLabel(slotIndex)),
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+        "*.dppreset");
+
+    auto aliveFlag = alive_;
+    chooser->launchAsync(juce::FileBrowserComponent::openMode
+                         | juce::FileBrowserComponent::canSelectFiles,
+                         [this, slotIndex, aliveFlag, onComplete, chooser](const juce::FileChooser& fc) {
+        if (!aliveFlag->load()) return;
+        auto srcFile = fc.getResult();
+        if (srcFile == juce::File() || !srcFile.existsAsFile()) {
+            if (onComplete) onComplete(false);
+            return;
+        }
+
+        // Validate: must be a valid chain preset
+        auto json = srcFile.loadFileAsString();
+        auto parsed = juce::JSON::parse(json);
+        if (!parsed.isObject()) {
+            if (onComplete) onComplete(false);
+            return;
+        }
+        auto* root = parsed.getDynamicObject();
+        if (!root || !root->hasProperty("plugins")) {
+            if (onComplete) onComplete(false);
+            return;
+        }
+
+        // Copy file to slot location
+        auto dstFile = getSlotFile(slotIndex);
+        if (!srcFile.copyFileTo(dstFile)) {
+            if (onComplete) onComplete(false);
+            return;
+        }
+        dstFile.withFileExtension("dppreset.backup").deleteFile();
+        preloadCache_.invalidateSlot(slotIndex);
+        slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
+
+        // Read name from imported file
+        if (root->hasProperty("name"))
+            slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
+        else
+            slotNames_[static_cast<size_t>(slotIndex)] = {};
+
+        juce::Logger::writeToLog("[PRESET] Imported slot "
+            + juce::String::charToString(slotLabel(slotIndex))
+            + " from " + srcFile.getFileName());
+
+        // If this is the active slot, reload it
+        if (activeSlot_ == slotIndex) {
+            loadSlotAsync(slotIndex, onComplete);
+        } else {
+            if (onComplete) onComplete(true);
+        }
+    });
 }
 
 } // namespace directpipe
