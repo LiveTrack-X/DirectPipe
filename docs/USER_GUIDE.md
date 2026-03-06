@@ -502,9 +502,45 @@ Settings → Personalization → Taskbar → Other system tray icons → DirectP
 
 ### 포터블 모드 / Portable Mode
 
-`DirectPipe.exe` 옆에 `portable.flag` 파일을 만들면 설정이 `%AppData%` 대신 `./config/`에 저장됩니다. USB 메모리 등에서 휴대 사용 가능.
+`DirectPipe.exe` 옆에 빈 `portable.flag` 파일을 만들면 포터블 모드가 활성화됩니다. 설정이 `%AppData%/DirectPipe/` 대신 exe 옆 `./config/` 폴더에 저장되어 USB 메모리 등에서 휴대 사용이 가능합니다.
 
-Place a `portable.flag` file next to `DirectPipe.exe` to store config in `./config/` instead of `%AppData%`.
+Place an empty `portable.flag` file next to `DirectPipe.exe` to activate portable mode. Config is stored in `./config/` next to the exe instead of `%AppData%/DirectPipe/`, making it suitable for USB drives.
+
+**설정 방법 / Setup:**
+
+1. `DirectPipe.exe`가 있는 폴더에 빈 파일을 만듭니다 (내용 없어도 됨) / Create an empty file next to `DirectPipe.exe` (contents don't matter):
+   ```
+   echo. > portable.flag
+   ```
+   또는 탐색기에서 우클릭 → 새 텍스트 파일 → 이름을 `portable.flag`로 변경 / Or right-click in Explorer → New Text File → rename to `portable.flag`
+
+2. DirectPipe를 실행하면 자동으로 `./config/` 폴더가 생성됩니다 / Launch DirectPipe and the `./config/` folder is created automatically
+
+3. 상태 바 좌측 하단에 보라색 **"Portable Mode"** 표시가 나타나면 정상 / A purple **"Portable Mode"** indicator appears in the bottom status bar
+
+**폴더 구조 / Folder Structure:**
+```
+DirectPipe/
+├── DirectPipe.exe
+├── portable.flag              ← 이 파일이 포터블 모드를 활성화 / activates portable mode
+└── config/                    ← 자동 생성 / auto-created
+    ├── settings.dppreset      ← 오디오/출력 설정 / audio & output settings
+    ├── directpipe-controls.json  ← 핫키/MIDI/서버 설정 / hotkey, MIDI, server config
+    └── Slots/                 ← 프리셋 슬롯 A-E / preset slots A-E
+        ├── slot_0.dppreset
+        ├── slot_1.dppreset
+        └── ...
+```
+
+**포터블 모드에 포함되지 않는 항목 / Not included in portable mode:**
+
+| 항목 / Item | 경로 / Path | 비고 / Note |
+|---|---|---|
+| 플러그인 캐시 | `%AppData%/DirectPipe/plugin-cache.xml` | PC마다 설치된 VST가 다르므로 공유 불필요 / Different VSTs per PC |
+| 스캐너 로그 | `%AppData%/DirectPipe/scanner-log.txt` | 스캔 진단용 / Scanner diagnostics |
+| 녹음 파일 | `Documents/DirectPipe Recordings/` | 별도 관리 / Managed separately |
+
+> **참고 / Note:** 포터블 모드를 해제하려면 `portable.flag` 파일을 삭제하면 됩니다. 기존 `./config/` 폴더는 그대로 남지만, 앱은 `%AppData%/DirectPipe/`의 설정을 사용합니다. / To disable portable mode, simply delete the `portable.flag` file. The `./config/` folder remains but the app will use `%AppData%/DirectPipe/` settings instead.
 
 ---
 
