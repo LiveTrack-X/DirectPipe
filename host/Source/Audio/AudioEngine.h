@@ -77,6 +77,7 @@ public:
     // Device selection
     bool setInputDevice(const juce::String& deviceName);
     bool setOutputDevice(const juce::String& deviceName);
+    bool setAsioDevice(const juce::String& deviceName);
 
     /** @brief Get the desired device type (survives fallback, unlike getCurrentDeviceType). */
     juce::String getDesiredDeviceType() const { return desiredDeviceType_.isEmpty() ? getCurrentDeviceType() : desiredDeviceType_; }

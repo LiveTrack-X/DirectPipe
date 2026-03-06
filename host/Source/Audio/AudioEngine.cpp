@@ -157,6 +157,13 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName)
     deviceManager_.getAudioDeviceSetup(setup);
     setup.inputDeviceName = deviceName;
 
+    // Ensure input channels are active (JUCE may clear them after output device change)
+    if (setup.inputChannels.isZero()) {
+        setup.useDefaultInputChannels = false;
+        int numCh = channelMode_.load(std::memory_order_relaxed) == 1 ? 1 : 2;
+        setup.inputChannels.setRange(0, numCh, true);
+    }
+
     intentionalChange_ = true;
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     intentionalChange_ = false;
@@ -177,6 +184,18 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
     deviceManager_.getAudioDeviceSetup(setup);
     setup.outputDeviceName = deviceName;
 
+    // Preserve input channel routing when changing output device
+    if (setup.inputChannels.isZero() && setup.inputDeviceName.isNotEmpty()) {
+        setup.useDefaultInputChannels = false;
+        int numCh = channelMode_.load(std::memory_order_relaxed) == 1 ? 1 : 2;
+        setup.inputChannels.setRange(0, numCh, true);
+    }
+    // Ensure output channels are active
+    if (setup.outputChannels.isZero()) {
+        setup.useDefaultOutputChannels = false;
+        setup.outputChannels.setRange(0, 2, true);
+    }
+
     intentionalChange_ = true;
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
     intentionalChange_ = false;
@@ -186,6 +205,31 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
     }
     Log::info("AUDIO", "Output device set: " + deviceName);
     Log::audit("AUDIO", "Output device change: '" + setup.outputDeviceName + "' SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
+    return true;
+}
+
+bool AudioEngine::setAsioDevice(const juce::String& deviceName)
+{
+    desiredInputDevice_ = deviceName;
+    desiredOutputDevice_ = deviceName;
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+    setup.inputDeviceName = deviceName;
+    setup.outputDeviceName = deviceName;
+    setup.useDefaultInputChannels = false;
+    setup.useDefaultOutputChannels = false;
+    setup.inputChannels.setRange(0, 2, true);
+    setup.outputChannels.setRange(0, 2, true);
+
+    intentionalChange_ = true;
+    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
+    intentionalChange_ = false;
+    if (result.isNotEmpty()) {
+        Log::error("AUDIO", "Failed to set ASIO device '" + deviceName + "': " + result);
+        return false;
+    }
+    Log::info("AUDIO", "ASIO device set: " + deviceName);
     return true;
 }
 

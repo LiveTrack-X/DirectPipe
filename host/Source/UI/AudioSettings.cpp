@@ -345,22 +345,7 @@ void AudioSettings::onInputDeviceChanged()
     if (selectedText.isEmpty()) return;
 
     if (isAsioMode()) {
-        // ASIO: set both input and output to the same device
-        juce::AudioDeviceManager::AudioDeviceSetup setup;
-        engine_.getDeviceManager().getAudioDeviceSetup(setup);
-        setup.inputDeviceName = selectedText;
-        setup.outputDeviceName = selectedText;
-        setup.useDefaultInputChannels = false;
-        setup.useDefaultOutputChannels = false;
-        setup.inputChannels.setRange(0, 2, true);
-        setup.outputChannels.setRange(0, 2, true);
-
-        auto result = engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
-        if (result.isNotEmpty()) {
-            juce::Logger::writeToLog("ASIO input device change failed: " + result);
-            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                "Device Error", result);
-        }
+        engine_.setAsioDevice(selectedText);
 
         // Sync output combo to match (ASIO single device)
         auto outputs = engine_.getAvailableOutputDevices();
@@ -398,22 +383,7 @@ void AudioSettings::onOutputDeviceChanged()
     }
 
     if (isAsioMode()) {
-        // ASIO: set both input and output to the same device
-        juce::AudioDeviceManager::AudioDeviceSetup setup;
-        engine_.getDeviceManager().getAudioDeviceSetup(setup);
-        setup.inputDeviceName = selectedText;
-        setup.outputDeviceName = selectedText;
-        setup.useDefaultInputChannels = false;
-        setup.useDefaultOutputChannels = false;
-        setup.inputChannels.setRange(0, 2, true);
-        setup.outputChannels.setRange(0, 2, true);
-
-        auto result = engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
-        if (result.isNotEmpty()) {
-            juce::Logger::writeToLog("ASIO output device change failed: " + result);
-            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                "Device Error", result);
-        }
+        engine_.setAsioDevice(selectedText);
 
         // Sync input combo to match (ASIO single device)
         auto inputs = engine_.getAvailableInputDevices();
@@ -423,16 +393,7 @@ void AudioSettings::onOutputDeviceChanged()
 
         rebuildChannelLists();
     } else {
-        // Preserve input device when switching output
-        juce::AudioDeviceManager::AudioDeviceSetup setup;
-        engine_.getDeviceManager().getAudioDeviceSetup(setup);
-        setup.outputDeviceName = selectedText;
-        auto result = engine_.getDeviceManager().setAudioDeviceSetup(setup, true);
-        if (result.isNotEmpty()) {
-            juce::Logger::writeToLog("Output device change failed: " + result);
-            juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                "Device Error", result);
-        }
+        engine_.setOutputDevice(selectedText);
     }
 
     rebuildSampleRateList();
