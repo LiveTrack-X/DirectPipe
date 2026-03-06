@@ -30,6 +30,7 @@ MonitorOutput::MonitorOutput() = default;
 
 MonitorOutput::~MonitorOutput()
 {
+    alive_->store(false);
     shutdown();
 }
 
@@ -187,7 +188,9 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         status_.store(VirtualCableStatus::Error, std::memory_order_release);
         Log::warn("MONITOR", "Fallback to " + device->getName()
                    + " rejected (desired: " + deviceName_ + ") — shutting down, waiting for reconnection");
-        juce::MessageManager::callAsync([this] {
+        auto aliveFlag = alive_;
+        juce::MessageManager::callAsync([this, aliveFlag] {
+            if (!aliveFlag->load()) return;
             if (!deviceManager_) return;
             deviceManager_->removeAudioCallback(this);
             deviceManager_->closeAudioDevice();

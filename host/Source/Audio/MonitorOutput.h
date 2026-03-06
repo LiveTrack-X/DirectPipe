@@ -97,6 +97,7 @@ private:
     void audioDeviceError(const juce::String& errorMessage) override;
 
     AudioRingBuffer ringBuffer_;
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
     std::unique_ptr<juce::AudioDeviceManager> deviceManager_;
 
     juce::String deviceName_;

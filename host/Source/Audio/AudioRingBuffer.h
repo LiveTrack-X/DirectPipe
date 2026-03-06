@@ -169,10 +169,12 @@ public:
 
     void reset()
     {
-        writePos_.store(0, std::memory_order_relaxed);
-        readPos_.store(0, std::memory_order_relaxed);
+        // Zero data BEFORE resetting positions (release ordering ensures
+        // producer/consumer threads see cleared data when they observe pos=0).
         for (auto& ch : data_)
             std::fill(ch.begin(), ch.end(), 0.0f);
+        writePos_.store(0, std::memory_order_release);
+        readPos_.store(0, std::memory_order_release);
     }
 
 private:

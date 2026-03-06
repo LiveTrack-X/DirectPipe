@@ -191,14 +191,32 @@ bool PresetManager::importFromJSON(const juce::String& json)
         activeSlot_ = juce::jlimit(-1, kNumSlots - 1, slot);
     }
 
-    // Restore device type first (affects which devices are available)
-    if (root->hasProperty("deviceType")) {
-        juce::String deviceType = root->getProperty("deviceType").toString();
-        if (deviceType.isNotEmpty())
-            engine_.setAudioDeviceType(deviceType);
+    // Pre-set SR/BS before device type switch so the new driver opens with
+    // the correct values from the start (avoids e.g. ASIO 256->128 bounce).
+    {
+        double sr = root->hasProperty("sampleRate") ? (double)root->getProperty("sampleRate") : 0;
+        int bs = root->hasProperty("bufferSize") ? (int)root->getProperty("bufferSize") : 0;
+        if (sr > 0 || bs > 0)
+            engine_.presetAudioParams(sr, bs);
     }
 
-    // Audio settings
+    // Restore device type first (affects which devices are available).
+    // For ASIO, provide saved device name to avoid opening the wrong device.
+    if (root->hasProperty("deviceType")) {
+        juce::String deviceType = root->getProperty("deviceType").toString();
+        if (deviceType.isNotEmpty()) {
+            juce::String preferredDev;
+            if (deviceType.containsIgnoreCase("ASIO")) {
+                if (root->hasProperty("inputDevice"))
+                    preferredDev = root->getProperty("inputDevice").toString();
+                else if (root->hasProperty("outputDevice"))
+                    preferredDev = root->getProperty("outputDevice").toString();
+            }
+            engine_.setAudioDeviceType(deviceType, preferredDev);
+        }
+    }
+
+    // Audio settings (skip restart if device already has correct values)
     if (root->hasProperty("sampleRate")) {
         engine_.setSampleRate(root->getProperty("sampleRate"));
     }

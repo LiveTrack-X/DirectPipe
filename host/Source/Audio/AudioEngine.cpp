@@ -47,13 +47,17 @@ bool AudioEngine::initialize()
         return false;
     }
 
-    // Configure for WASAPI Shared mode (non-exclusive, preserves other apps' mic access)
+    // Sync member atomics from the device that initialiseWithDefaultDevices started.
+    // Avoid calling setAudioDeviceSetup here — it would restart the device (e.g. ASIO
+    // resets buffer size to its default on restart). importFromJSON will apply the
+    // correct SR/BS/channel routing via setBufferSize/setInputDevice/etc.
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+        currentSampleRate_ = device->getCurrentSampleRate();
+        currentBufferSize_ = device->getCurrentBufferSizeSamples();
+
+        // Resolve empty device names (edge case: some systems leave them blank)
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         deviceManager_.getAudioDeviceSetup(setup);
-
-        // Resolve actual device names so that settings persist correctly.
-        // initialiseWithDefaultDevices() may leave these empty on some systems.
         if (setup.inputDeviceName.isEmpty() || setup.outputDeviceName.isEmpty()) {
             if (auto* type = deviceManager_.getCurrentDeviceTypeObject()) {
                 if (setup.inputDeviceName.isEmpty()) {
@@ -67,20 +71,21 @@ bool AudioEngine::initialize()
                         setup.outputDeviceName = outputs[type->getDefaultDeviceIndex(false)];
                 }
             }
-        }
-
-        setup.bufferSize = currentBufferSize_;
-        setup.sampleRate = currentSampleRate_;
-        setup.useDefaultInputChannels = false;
-        setup.useDefaultOutputChannels = false;
-        setup.inputChannels.setRange(0, 2, true);
-        setup.outputChannels.setRange(0, 2, true);
-
-        auto setupResult = deviceManager_.setAudioDeviceSetup(setup, true);
-        if (setupResult.isNotEmpty()) {
-            Log::error("AUDIO", "Device setup failed (SR=" + juce::String(static_cast<int>(setup.sampleRate))
-                + " BS=" + juce::String(setup.bufferSize) + " in='" + setup.inputDeviceName
-                + "' out='" + setup.outputDeviceName + "'): " + setupResult);
+            setup.useDefaultInputChannels = false;
+            setup.useDefaultOutputChannels = false;
+            setup.inputChannels.setRange(0, 2, true);
+            setup.outputChannels.setRange(0, 2, true);
+            auto setupResult = deviceManager_.setAudioDeviceSetup(setup, true);
+            if (setupResult.isNotEmpty()) {
+                Log::error("AUDIO", "Device setup failed (SR=" + juce::String(static_cast<int>(setup.sampleRate))
+                    + " BS=" + juce::String(setup.bufferSize) + " in='" + setup.inputDeviceName
+                    + "' out='" + setup.outputDeviceName + "'): " + setupResult);
+            }
+            // Re-fetch device pointer (setAudioDeviceSetup may have replaced it)
+            if (auto* freshDev = deviceManager_.getCurrentAudioDevice()) {
+                currentSampleRate_ = freshDev->getCurrentSampleRate();
+                currentBufferSize_ = freshDev->getCurrentBufferSizeSamples();
+            }
         }
     }
 
@@ -155,6 +160,11 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName)
 
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
+
+    // Skip restart if device is already set (avoids ASIO re-init that resets BS)
+    if (setup.inputDeviceName == deviceName && !setup.inputChannels.isZero())
+        return true;
+
     setup.inputDeviceName = deviceName;
 
     // Ensure input channels are active (JUCE may clear them after output device change)
@@ -182,6 +192,11 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
 
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
+
+    // Skip restart if device is already set (avoids ASIO re-init that resets BS)
+    if (setup.outputDeviceName == deviceName && !setup.outputChannels.isZero())
+        return true;
+
     setup.outputDeviceName = deviceName;
 
     // Preserve input channel routing when changing output device
@@ -243,8 +258,40 @@ bool AudioEngine::setMonitorBufferSize(int bufferSize)
     return monitorOutput_.setBufferSize(bufferSize);
 }
 
+void AudioEngine::presetAudioParams(double sampleRate, int bufferSize)
+{
+    bool anySet = false;
+    if (sampleRate > 0) {
+        currentSampleRate_ = sampleRate;
+        desiredSampleRate_ = sampleRate;
+        anySet = true;
+    }
+    if (bufferSize > 0) {
+        currentBufferSize_ = bufferSize;
+        desiredBufferSize_ = bufferSize;
+        anySet = true;
+    }
+    if (anySet)
+        desiredSRBSSet_ = true;
+}
+
 void AudioEngine::setBufferSize(int bufferSize)
 {
+    // Skip restart if device already has the requested buffer size
+    {
+        juce::AudioDeviceManager::AudioDeviceSetup cur;
+        deviceManager_.getAudioDeviceSetup(cur);
+        int actualBS = 0;
+        if (auto* dev = deviceManager_.getCurrentAudioDevice())
+            actualBS = dev->getCurrentBufferSizeSamples();
+        if (cur.bufferSize == bufferSize && actualBS == bufferSize) {
+            currentBufferSize_ = bufferSize;
+            desiredBufferSize_ = bufferSize;
+            desiredSRBSSet_ = true;
+            return;
+        }
+    }
+
     currentBufferSize_ = bufferSize;
 
     juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -279,6 +326,9 @@ void AudioEngine::setBufferSize(int bufferSize)
                 intentionalChange_ = true;
                 deviceManager_.setAudioDeviceSetup(setup, true);
                 intentionalChange_ = false;
+                // Re-fetch device pointer (setAudioDeviceSetup may replace it)
+                device = deviceManager_.getCurrentAudioDevice();
+                if (!device) return;
                 actual = device->getCurrentBufferSizeSamples();
             }
         }
@@ -309,6 +359,21 @@ void AudioEngine::setChannelMode(int channels)
 
 void AudioEngine::setSampleRate(double sampleRate)
 {
+    // Skip restart if device already has the requested sample rate
+    {
+        juce::AudioDeviceManager::AudioDeviceSetup cur;
+        deviceManager_.getAudioDeviceSetup(cur);
+        double actualSR = 0;
+        if (auto* dev = deviceManager_.getCurrentAudioDevice())
+            actualSR = dev->getCurrentSampleRate();
+        if (cur.sampleRate == sampleRate && actualSR == sampleRate) {
+            currentSampleRate_ = sampleRate;
+            desiredSampleRate_ = sampleRate;
+            desiredSRBSSet_ = true;
+            return;
+        }
+    }
+
     currentSampleRate_ = sampleRate;
 
     juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -362,10 +427,20 @@ juce::StringArray AudioEngine::getWasapiOutputDevices()
 
 // ─── Device type management ─────────────────────────────────────────────────
 
-bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
+bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice)
 {
     auto currentType = getCurrentDeviceType();
-    if (currentType == typeName) return true;
+    if (currentType == typeName) {
+        desiredDeviceType_ = typeName;
+        // Already on ASIO but possibly wrong device — switch to preferred
+        if (typeName.containsIgnoreCase("ASIO") && preferredAsioDevice.isNotEmpty()) {
+            juce::AudioDeviceManager::AudioDeviceSetup cur;
+            deviceManager_.getAudioDeviceSetup(cur);
+            if (cur.inputDeviceName != preferredAsioDevice)
+                setAsioDevice(preferredAsioDevice);
+        }
+        return true;
+    }
 
     // Remove callback before switching
     deviceManager_.removeAudioCallback(this);
@@ -373,15 +448,22 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
 
     deviceManager_.setCurrentAudioDeviceType(typeName, true);
 
-    // For ASIO, pick the first available device explicitly
+    // For ASIO, pick the preferred device (or first available)
     if (typeName.containsIgnoreCase("ASIO")) {
         if (auto* type = deviceManager_.getCurrentDeviceTypeObject()) {
             type->scanForDevices();
             auto devices = type->getDeviceNames(false);
             if (devices.size() > 0) {
+                // Use preferred device if available, then last-used ASIO, then first
+                juce::String deviceToUse = devices[0];
+                if (preferredAsioDevice.isNotEmpty() && devices.contains(preferredAsioDevice))
+                    deviceToUse = preferredAsioDevice;
+                else if (lastAsioDevice_.isNotEmpty() && devices.contains(lastAsioDevice_))
+                    deviceToUse = lastAsioDevice_;
+
                 juce::AudioDeviceManager::AudioDeviceSetup setup;
-                setup.inputDeviceName = devices[0];
-                setup.outputDeviceName = devices[0];
+                setup.inputDeviceName = deviceToUse;
+                setup.outputDeviceName = deviceToUse;
                 setup.sampleRate = currentSampleRate_;
                 setup.bufferSize = currentBufferSize_;
                 setup.useDefaultInputChannels = false;
@@ -391,13 +473,13 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName)
 
                 auto result = deviceManager_.setAudioDeviceSetup(setup, true);
                 if (result.isNotEmpty()) {
-                    Log::warn("AUDIO", "ASIO setup failed (device='" + devices[0] + "' SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + "): " + result);
+                    Log::warn("AUDIO", "ASIO setup failed (device='" + deviceToUse + "' SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + "): " + result);
                     // Try with device defaults
                     setup.sampleRate = 0;  // let device choose
                     setup.bufferSize = 0;
                     result = deviceManager_.setAudioDeviceSetup(setup, true);
                     if (result.isNotEmpty()) {
-                        Log::error("AUDIO", "ASIO fallback failed (device='" + devices[0] + "'): " + result);
+                        Log::error("AUDIO", "ASIO fallback failed (device='" + deviceToUse + "'): " + result);
                         intentionalChange_ = false;
                         deviceManager_.setCurrentAudioDeviceType(currentType, true);
                         deviceManager_.initialiseWithDefaultDevices(2, 2);
@@ -761,6 +843,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
 
+    // Remember last used ASIO device for future type switches
+    if (device->getTypeName().containsIgnoreCase("ASIO"))
+        lastAsioDevice_ = device->getName();
+
     // Detect JUCE auto-fallback by comparing actual vs desired device names.
     // Two modes:
     //   - deviceLost_ already true (after audioDeviceError): keep it true, don't overwrite desired
@@ -1047,11 +1133,17 @@ void AudioEngine::attemptReconnection()
 
 void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)
 {
+    // MPSC-safe: device thread (audioDeviceError) and message thread can both call.
+    // Use CAS loop to avoid two producers writing to the same slot.
     uint32_t w = notifWriteIdx_.load(std::memory_order_relaxed);
-    uint32_t r = notifReadIdx_.load(std::memory_order_acquire);
-    if (w - r >= static_cast<uint32_t>(kNotifQueueSize)) return;  // Queue full, drop (RT-safe)
+    for (;;) {
+        uint32_t r = notifReadIdx_.load(std::memory_order_acquire);
+        if (w - r >= static_cast<uint32_t>(kNotifQueueSize)) return;  // Queue full, drop
+        if (notifWriteIdx_.compare_exchange_weak(w, w + 1, std::memory_order_acq_rel))
+            break;
+        // CAS failed — another producer advanced w, retry with updated w
+    }
     notifQueue_[w % static_cast<uint32_t>(kNotifQueueSize)] = {msg, level};
-    notifWriteIdx_.store(w + 1, std::memory_order_release);
 }
 
 bool AudioEngine::popNotification(PendingNotification& out)

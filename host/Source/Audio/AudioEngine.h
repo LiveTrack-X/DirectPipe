@@ -70,7 +70,7 @@ public:
     LatencyMonitor& getLatencyMonitor() { return latencyMonitor_; }
     AudioRecorder& getRecorder() { return recorder_; }
     // Device type (ASIO / Windows Audio)
-    bool setAudioDeviceType(const juce::String& typeName);
+    bool setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice = {});
     juce::String getCurrentDeviceType() const;
     juce::StringArray getAvailableDeviceTypes();
 
@@ -93,6 +93,9 @@ public:
 
     void setBufferSize(int bufferSize);
     void setSampleRate(double sampleRate);
+
+    /** @brief Pre-set SR/BS before device type switch (avoids intermediate restarts). */
+    void presetAudioParams(double sampleRate, int bufferSize);
 
     /** @brief Show the ASIO control panel (only works when ASIO device is active). */
     bool showAsioControlPanel();
@@ -227,6 +230,7 @@ private:
     juce::String desiredInputDevice_;
     juce::String desiredOutputDevice_;
     juce::String desiredDeviceType_;  // Tracks intended driver type across fallbacks
+    juce::String lastAsioDevice_;     // Remembers last used ASIO device for type switches
     bool desiredSRBSSet_ = false;  // true after user/settings explicitly set SR/BS
     double desiredSampleRate_ = 48000.0;
     int desiredBufferSize_ = 480;
