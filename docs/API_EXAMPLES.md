@@ -60,10 +60,10 @@ curl http://127.0.0.1:8766/api/bypass/2/toggle   # 3번째 플러그인
 curl http://127.0.0.1:8766/api/bypass/master
 
 # ─── 뮤트 ───
-# 패닉 뮤트 (전체 출력 즉시 뮤트/언뮤트)
+# 패닉 뮤트 (전체 출력 즉시 뮤트/언뮤트, 해제 시 이전 ON/OFF 상태 자동 복원)
 curl http://127.0.0.1:8766/api/mute/panic
 
-# 출력 뮤트 토글
+# 메인 출력 뮤트 토글 (Discord/VB-Cable)
 curl http://127.0.0.1:8766/api/mute/toggle
 
 # 입력 뮤트 토글
@@ -1005,6 +1005,51 @@ pause
   OBS "Ending" 장면 → DirectPipe 패닉 뮤트
 
 → [예제 5: OBS 장면 연동](#5-python--obs-장면-연동-자동-전환) 참조
+```
+
+> **Receiver VST 참고**: Receiver VST는 입력 버스가 없는 출력 전용 플러그인으로, OBS 오디오 소스의 마이크 입력은 무시하고 DirectPipe에서 IPC로 전송된 오디오만 출력합니다.
+>
+> **Receiver VST note**: Receiver VST is an output-only plugin (no input bus) — it ignores OBS source audio, only outputs what DirectPipe sends via IPC.
+
+### 시나리오 1.5: 출력별 개별 뮤트 (Discord + OBS 독립 제어)
+
+VB-Cable(Discord) + Receiver VST(OBS) 동시 사용 시, API로 각 출력을 독립적으로 뮤트/언뮤트할 수 있습니다.
+
+When using VB-Cable (Discord) + Receiver VST (OBS) together, you can independently mute/unmute each output via API.
+
+```bash
+# OBS만 뮤트 (Discord 유지) — IPC 출력만 끔
+curl http://127.0.0.1:8766/api/ipc/toggle
+
+# Discord만 뮤트 (OBS 유지) — 메인 출력만 끔
+curl http://127.0.0.1:8766/api/mute/toggle
+
+# 모니터(헤드폰)만 끔
+curl http://127.0.0.1:8766/api/monitor/toggle
+
+# 전체 긴급 차단 (Panic Mute)
+curl http://127.0.0.1:8766/api/mute/panic
+
+# 현재 상태 확인 (어떤 출력이 켜져 있는지)
+curl -s http://127.0.0.1:8766/api/status | jq '{output_muted: .data.output_muted, ipc_enabled: .data.ipc_enabled, monitor_enabled: .data.monitor_enabled, panic: .data.muted}'
+```
+
+```python
+# Python으로 상태 확인 후 조건부 뮤트
+import requests
+
+BASE = "http://127.0.0.1:8766/api"
+data = requests.get(f"{BASE}/status").json()["data"]
+
+# OBS 마이크가 켜져 있으면 끄기
+if data["ipc_enabled"]:
+    requests.get(f"{BASE}/ipc/toggle")
+    print("OBS mic muted (Discord still active)")
+
+# Discord 마이크가 켜져 있으면 끄기
+if not data["output_muted"]:
+    requests.get(f"{BASE}/mute/toggle")
+    print("Discord mic muted (OBS still active)")
 ```
 
 ### 시나리오 2: 스트림 데크 없이 외부 제어

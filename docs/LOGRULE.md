@@ -32,7 +32,7 @@ Portable mode: `./config/directpipe.log`
 ### Example / 예시
 
 ```
-[11:23:45.123] INF [APP] DirectPipe v3.9.7 started
+[11:23:45.123] INF [APP] DirectPipe v3.9.10 started
 [11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200
 [11:23:45.200] INF [AUDIO] Driver: Windows Audio | Input: Microphone (USB) | Output: Speakers | SR: 48000 | BS: 256
 [11:23:45.210] INF [VST] Chain: ReaComp, ReaEQ, ReaXcomp (3 plugins)
@@ -123,6 +123,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 | `[REC]` | AudioRecorder | Recording start/stop, file path |
 | `[WS]` | WebSocketServer | WebSocket server, client connect/disconnect |
 | `[HTTP]` | HttpApiServer | HTTP server, request handling |
+| `[ACTION]` | ActionDispatcher | Action dispatch, enum-to-string conversion |
 | `[HOTKEY]` | HotkeyHandler | Hotkey registration, trigger |
 | `[MIDI]` | MidiHandler | MIDI device, learn, CC/Note trigger |
 | `[CONTROL]` | ControlManager | Control subsystem init/shutdown |
@@ -220,7 +221,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 앱 시작 직후 아래 정보를 순서대로 기록:
 
 ```
-INF [APP] DirectPipe v3.9.7 started
+INF [APP] DirectPipe v3.9.10 started
 INF [APP] OS: Windows 11 Pro 10.0.26200
 INF [APP] Process priority: HIGH_PRIORITY_CLASS
 INF [APP] Timer resolution: 1ms
@@ -325,7 +326,7 @@ Log::setAuditMode(false);  // disable (default)
 }  // → "INF [VST] Cached chain swap: 3 plugins (15ms)"
 
 // Session header (call once at startup)
-Log::sessionStart("3.9.7");
+Log::sessionStart("3.9.10");
 Log::audioConfig(driverType, inputDevice, outputDevice, sr, bs);
 ```
 
@@ -358,7 +359,7 @@ Log::error("AUDIO", "Failed to init device '" + name + "': " + result);
 7. **세션 종료 기록 필수** — 없으면 크래시로 판단
 8. **파일 즉시 flush** — 크래시 직전 로그까지 보존
 9. **이전 세션 보관** — `.prev` 파일로 1세션분 보관
-10. **Rate limiting** — 고빈도 작업(SetVolume, MIDI CC, InputGainAdjust, SetPluginParameter)은 로깅 제외
+10. **Rate limiting** — 고빈도 작업(SetVolume, InputGainAdjust, SetPluginParameter)과 Continuous MIDI 바인딩은 로깅 제외
 11. **Lock ordering** — `writeMutex_` 안에서 다른 mutex 획득 금지. `chainLock_` 안에서 `writeToLog` 호출 금지
 12. **Audit는 진단 전용** — 기본 OFF, 문제 재현 시에만 ON
 13. **Audit 값 캡처 규칙** — lock 안에서 문자열 캡처, lock 해제 후 `Log::audit()` 호출

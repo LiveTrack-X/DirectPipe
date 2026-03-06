@@ -173,11 +173,58 @@ No settings required. / 설정 불필요.
 
 **UUID:** `com.directpipe.directpipe.ipc-toggle`
 
-- **Press** -- Toggle IPC output (Receiver VST) on/off / IPC 출력(리시버 VST) 켜기/끄기 토글
+- **Press** — Toggle IPC output (Receiver VST) on/off / IPC 출력(리시버 VST) 켜기/끄기 토글
 
 **Display:** State 0 = "IPC ON" (enabled), State 1 = "IPC OFF" (disabled) / 상태 표시
 
 No settings required. / 설정 불필요.
+
+> **Receiver VST 동작 원리**: Receiver VST는 입력 버스가 없는 출력 전용 플러그인입니다. OBS 오디오 소스의 마이크 입력이나 앞단 필터는 무시되고, DirectPipe에서 IPC로 전송된 오디오만 출력됩니다. IPC Toggle은 이 전송을 켜고 끄는 역할을 합니다 — OBS 방송 마이크의 독립적인 뮤트 버튼으로 활용할 수 있습니다.
+>
+> **Receiver VST behavior**: The Receiver VST is an output-only plugin with no input bus. OBS source audio and preceding filters are ignored — only audio sent from DirectPipe via IPC is output. IPC Toggle controls this feed, effectively acting as an independent mute button for your OBS stream mic.
+
+---
+
+## 활용 예시 / Usage Scenarios
+
+Stream Deck에 DirectPipe 액션을 배치하면 방송 중 **물리 버튼으로 마이크를 완전 제어**할 수 있습니다.
+
+With DirectPipe actions on your Stream Deck, you get **full physical button control of your microphone** during streams.
+
+### 권장 레이아웃 / Recommended Layout
+
+VB-Cable(Discord) + Receiver VST(OBS) + Monitor(헤드폰)를 동시 사용하는 듀얼 앱 설정:
+
+Dual-app setup with VB-Cable (Discord) + Receiver VST (OBS) + Monitor (headphones):
+
+```
+┌───────────────────────────────────────┐
+│ [🔴 PANIC]  [🎙 IPC]   [🔇 MUTE]    │
+│  Panic Mute  IPC Toggle  Volume(mute) │
+│              (OBS 마이크)  (Discord)    │
+│                                       │
+│ [A|게임]  [B|토크]  [C|노래]          │
+│  Preset A   Preset B   Preset C       │
+│                                       │
+│ [🎧 MON]  [⏺ REC]   [🔄 다이얼]     │
+│ Monitor    Recording   Volume(dial)   │
+│ Toggle     Toggle      (SD+)          │
+└───────────────────────────────────────┘
+```
+
+### 시나리오: 방송 중 개별 뮤트 / Independent Mute During Stream
+
+| 상황 | 누르는 버튼 | 결과 |
+|------|-----------|------|
+| OBS만 뮤트 (Discord 유지) | **IPC Toggle** | OBS 마이크 OFF, Discord 통화 유지 |
+| Discord만 뮤트 (OBS 유지) | **Volume (Mute, target: output)** | Discord 마이크 OFF, OBS 방송 유지 |
+| 전체 긴급 차단 | **Panic Mute** | 모든 출력 즉시 뮤트 + 컨트롤 잠금 |
+| 긴급 차단 해제 | **Panic Mute** (다시) | 이전 ON/OFF 상태 자동 복원 |
+| 상황 전환 | **Preset A/B/C** | VST 체인 즉시 전환 (모든 출력에 적용) |
+
+> **Tip**: Volume Control의 target을 `output`으로 설정하면 Discord(VB-Cable) 마이크의 뮤트 버튼이 됩니다. `monitor`로 설정하면 헤드폰 모니터의 뮤트 버튼이 됩니다. 이렇게 하면 IPC Toggle(OBS), Volume-mute-output(Discord), Monitor Toggle(헤드폰)으로 **3개 출력을 각각 독립 제어**할 수 있습니다.
+>
+> **Tip**: Set Volume Control target to `output` for a Discord (VB-Cable) mute button. Set to `monitor` for headphone mute. Combined with IPC Toggle (OBS), you get **3 independent mute buttons** — one per output path.
 
 ---
 

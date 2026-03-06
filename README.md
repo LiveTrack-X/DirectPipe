@@ -55,27 +55,6 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 - **Receiver VST** — 가상 케이블 없이 OBS 직접 연결 — Direct OBS connection without virtual cables
 - **오픈소스** — GPL v3, 누구나 기여 가능 — Open source, community-driven
 
-<details>
-<summary><b>비교표 / Comparison with Alternatives</b></summary>
-
-| | DirectPipe | Wave Link 3 | VoiceMeeter | LightHost | DAW (Reaper 등) |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **VST2 + VST3 호스팅** | ✅ | ✅ | ❌ | ✅ (VST2) | ✅ |
-| **외부 제어 (핫키/MIDI/SD/HTTP/WS)** | ✅ 5종 | 일부 | ❌ | ❌ | 일부 |
-| **포터블 (설치 불필요)** | ✅ | ❌ | ❌ | ✅ | ❌ |
-| **시스템 부하** | 최소 | 중간 | 중간 | 최소 | 높음 |
-| **멀티채널 믹서** | ❌ | ✅ | ✅ | ❌ | ✅ |
-| **가격** | 무료 (GPL) | 무료 | 무료/유료 | 무료 | 유료 |
-| **업데이트** | 활발 | 활발 | 간헐적 | 중단 (2016) | 활발 |
-| **프리셋 즉시 전환** | ✅ (A-E, 10ms) | ❌ | ❌ | ❌ | 가능 |
-| **OBS 직접 연결 (IPC)** | ✅ Receiver VST | ❌ | ❌ | ❌ | ❌ |
-
-DirectPipe는 멀티채널 믹서가 아닙니다. **마이크 1개에 VST를 걸고 외부에서 제어**하는 데 특화된 경량 호스트입니다.
-
-DirectPipe is not a multi-channel mixer. It's a **lightweight host specialized for applying VST effects to a single mic with external control**.
-
-</details>
-
 ### For Setup Helpers / 세팅 도우미를 위한 기능
 
 > 다른 사람의 마이크 세팅을 대신 해주는 분들을 위한 워크플로우
@@ -173,16 +152,16 @@ External Control:
 
 ### IPC 출력 (Receiver VST) / IPC Output (Receiver VST)
 
-- **Receiver VST2 플러그인** — OBS 등 VST2 지원 앱에서 공유 메모리(IPC)로 직접 수신. **가상 케이블 불필요** — Receive audio via shared memory IPC. **No virtual cable needed**
+- **Receiver VST2 플러그인** — OBS 등 VST2 지원 앱에서 공유 메모리(IPC)로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력 — Receive audio via shared memory IPC. **No virtual cable needed**. Output-only plugin (no input bus) — ignores upstream audio in OBS filter chain, only outputs audio sent from DirectPipe
 - **IPC 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
 - **버퍼 크기 설정** — Receiver VST GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver VST GUI. Actual latency (ms) depends on sample rate
 
   | 프리셋 / Preset | 샘플 / Samples | @48kHz | @44.1kHz | 용도 / Best for |
   |---|---|---|---|---|
   | Ultra Low | 256 | ~5ms | ~6ms | 최소 지연 / Minimum latency |
-  | Low (기본) | 512 | ~11ms | ~12ms | 일반 사용 / General use (default) |
+  | Low (기본) | 512 | ~10ms | ~12ms | 일반 사용 / General use (default) |
   | Medium | 1024 | ~21ms | ~23ms | 안정적 / Stable |
-  | High | 2048 | ~43ms | ~46ms | CPU 여유 적을 때 / Low CPU headroom |
+  | High | 2048 | ~42ms | ~46ms | CPU 여유 적을 때 / Low CPU headroom |
   | Safe | 4096 | ~85ms | ~93ms | 최대 안정성 / Maximum stability |
 - **샘플레이트 불일치 경고** — DirectPipe 송신 SR과 OBS(호스트) SR이 다르면 Receiver GUI에 경고 표시. SR이 다르면 피치/속도 변동 발생 — SR mismatch warning shown in Receiver GUI when source and host sample rates differ
 
@@ -253,6 +232,27 @@ OBS [DirectPipe Receiver VST 필터] → 방송/녹화
 ```
 
 > **Tip**: 가상 케이블과 Receiver VST를 **동시에** 사용할 수도 있습니다. Discord는 VB-Cable로, OBS는 Receiver VST로 각각 보내면 됩니다. — You can use both methods simultaneously: VB-Cable for Discord, Receiver VST for OBS.
+
+> **중요**: Receiver VST는 **입력 버스가 없는 출력 전용 플러그인**입니다. OBS 오디오 소스(마이크 캡처 등)의 오디오나 앞단 필터의 오디오는 완전히 무시되고, DirectPipe에서 IPC로 전송된 처리 완료 오디오만 출력됩니다.
+>
+> **Important**: Receiver VST is an **output-only plugin with no input bus**. Audio from the OBS source (mic capture, etc.) or preceding filters is completely ignored — only the processed audio sent from DirectPipe via IPC is output.
+
+### 출력별 개별 제어 활용 / Independent Output Control
+
+VB-Cable(Discord) + Receiver VST(OBS)를 동시 사용하면 **OUT/VST 버튼으로 각 앱의 마이크를 개별 제어**할 수 있습니다. — Using both together lets you **independently control each app's mic feed with OUT/VST buttons**.
+
+```
+USB Mic → DirectPipe (VST Chain)
+    ├─ OUT → VB-Cable → Discord   ← OUT 버튼으로 개별 뮤트
+    ├─ VST → IPC → OBS Receiver   ← VST 버튼으로 개별 뮤트
+    └─ MON → Headphones            ← MON 버튼으로 개별 뮤트
+```
+
+- **VST OFF / OUT ON** → OBS 방송 마이크만 뮤트, Discord 통화 유지 — Mute OBS mic only, keep Discord
+- **OUT OFF / VST ON** → Discord만 뮤트, OBS 방송 마이크 유지 — Mute Discord only, keep OBS
+- **Ctrl+Shift+M (Panic Mute)** → 전체 즉시 뮤트, 해제 시 이전 상태 복원 — Kill all outputs instantly, auto-restore on unmute
+
+자세한 활용 예시는 [User Guide — 활용 가이드](docs/USER_GUIDE.md#활용-가이드--usage-guide) 참조.
 
 ---
 

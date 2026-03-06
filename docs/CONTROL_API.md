@@ -197,6 +197,10 @@ Start or stop recording processed audio to a WAV file. Recording files are saved
 
 Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is written to shared memory for the Receiver VST plugin (e.g., in OBS). / IPC 출력(리시버 VST) 켜기/끄기 토글. 활성화 시 처리된 오디오가 공유 메모리로 기록되어 리시버 VST 플러그인(예: OBS)에서 사용 가능.
 
+> **Note**: Receiver VST는 입력 버스가 없는 출력 전용 플러그인으로, OBS 오디오 소스의 마이크 입력은 무시하고 DirectPipe에서 IPC로 전송된 오디오만 출력합니다. `ipc_toggle`은 사실상 **OBS 방송 마이크의 독립 뮤트 스위치** 역할을 합니다 — `toggle_mute`(메인 출력/Discord)와 독립적으로 동작합니다.
+>
+> **Note**: Receiver VST is an output-only plugin (no input bus) — it ignores OBS source audio and only outputs what DirectPipe sends via IPC. `ipc_toggle` effectively acts as an **independent mute switch for the OBS stream mic** — it works independently from `toggle_mute` (main output/Discord).
+
 ---
 
 #### `set_plugin_parameter` — Set Plugin Parameter / 플러그인 파라미터 설정
@@ -226,6 +230,7 @@ Toggles the IPC output (Receiver VST) on/off. When enabled, processed audio is w
     "volumes": { "input": 1.0, "monitor": 0.6 },
     "master_bypassed": false,
     "muted": false,
+    "output_muted": false,
     "input_muted": false,
     "active_slot": 0,
     "slot_names": ["게임", "토크", "", "", ""],
@@ -287,10 +292,10 @@ Base URL: `http://127.0.0.1:8766`
 |----------|-------------|
 | `GET /api/status` | Full state (same as WebSocket state object) / 전체 상태 |
 | `GET /api/bypass/:index/toggle` | Toggle plugin bypass (0-based index) / 플러그인 Bypass 토글 |
-| `GET /api/bypass/master/toggle` | Toggle master bypass / 마스터 Bypass 토글 |
+| `GET /api/bypass/master` | Toggle master bypass / 마스터 Bypass 토글 |
 | `GET /api/mute/toggle` | Toggle mute (all outputs) / 뮤트 토글 (전체) |
 | `GET /api/mute/panic` | Panic mute / 패닉 뮤트 |
-| `GET /api/volume/:target/:value` | Set volume (target: `input`, `monitor`; value: 0.0-1.0, validated) / 볼륨 설정 (범위 검증) |
+| `GET /api/volume/:target/:value` | Set volume (target: `input` [0.0-2.0], `monitor` [0.0-1.0]; validated) / 볼륨 설정 (범위 검증) |
 | `GET /api/monitor/toggle` | Toggle monitor output on/off / 모니터 출력 토글 |
 | `GET /api/preset/:index` | Load preset / 프리셋 로드 |
 | `GET /api/slot/:index` | Switch preset slot (0-4 = A-E) / 슬롯 전환 |
