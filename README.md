@@ -60,7 +60,7 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 > 다른 사람의 마이크 세팅을 대신 해주는 분들을 위한 워크플로우
 > — Workflow for people who set up microphones for others
 
-1. **포터블 exe** — USB에 DirectPipe를 넣고 상대방 PC에서 바로 실행 (`portable.flag` 파일 추가 시 설정도 USB에 저장)
+1. **포터블 exe** — USB에 DirectPipe를 넣고 상대방 PC에서 바로 실행 ([`portable.flag`로 설정도 USB에 저장](docs/USER_GUIDE.md#포터블-모드--portable-mode))
 2. **프리셋 내보내기** — 최적화된 VST 체인을 `.dppreset` 파일로 내보내서 전달
 3. **프리셋 가져오기** — 상대방이 슬롯 우클릭 → Import로 즉시 적용
 4. **Full Backup** — Settings > Maintenance에서 설정 + 모든 슬롯을 `.dpfullbackup` 하나로 백업/복원
