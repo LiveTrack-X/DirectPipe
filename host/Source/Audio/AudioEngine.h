@@ -83,6 +83,9 @@ public:
     /** @brief Get the desired input/output device names (survive fallback). */
     juce::String getDesiredInputDevice() const { return desiredInputDevice_; }
     juce::String getDesiredOutputDevice() const { return desiredOutputDevice_; }
+    /** @brief Get the desired SR/BS (survives driver fallback). */
+    double getDesiredSampleRate() const { return desiredSampleRate_; }
+    int getDesiredBufferSize() const { return desiredBufferSize_; }
     // Dynamic capabilities (depends on current device type and device)
     juce::Array<double> getAvailableSampleRates() const;
     juce::Array<int> getAvailableBufferSizes() const;
@@ -223,6 +226,7 @@ private:
     juce::String desiredInputDevice_;
     juce::String desiredOutputDevice_;
     juce::String desiredDeviceType_;  // Tracks intended driver type across fallbacks
+    bool desiredSRBSSet_ = false;  // true after user/settings explicitly set SR/BS
     double desiredSampleRate_ = 48000.0;
     int desiredBufferSize_ = 480;
     std::atomic<bool> deviceLost_{false};

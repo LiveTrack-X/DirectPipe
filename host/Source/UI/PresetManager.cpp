@@ -107,10 +107,9 @@ juce::String PresetManager::exportToJSON()
     root->setProperty("version", 4);
     root->setProperty("activeSlot", activeSlot_);
 
-    // Audio settings
-    auto& monitor = engine_.getLatencyMonitor();
-    root->setProperty("sampleRate", monitor.getSampleRate());
-    root->setProperty("bufferSize", monitor.getBufferSize());
+    // Audio settings (use desired values to survive driver fallback)
+    root->setProperty("sampleRate", engine_.getDesiredSampleRate());
+    root->setProperty("bufferSize", engine_.getDesiredBufferSize());
     root->setProperty("inputGain", static_cast<double>(engine_.getInputGain()));
 
     // Device type (ASIO / Windows Audio)

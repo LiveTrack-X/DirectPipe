@@ -239,18 +239,23 @@ void AudioEngine::setBufferSize(int bufferSize)
             }
         }
 
-        Log::info("AUDIO", "Buffer: requested " + juce::String(bufferSize) + " -> applied " + juce::String(actual));
-        Log::audit("AUDIO", "Available buffer sizes: " + [&]() {
-            juce::String s;
-            for (int sz : supported) s += (s.isEmpty() ? "" : ", ") + juce::String(sz);
-            return s;
-        }());
-        pushNotification("Buffer: " + juce::String(bufferSize) + " -> "
-            + juce::String(actual) + " smp", NotificationLevel::Info);
+        // Only notify if the final applied size differs from requested
+        // (ASIO may report stale value briefly after setAudioDeviceSetup)
+        if (actual != bufferSize) {
+            Log::info("AUDIO", "Buffer: requested " + juce::String(bufferSize) + " -> applied " + juce::String(actual));
+            Log::audit("AUDIO", "Available buffer sizes: " + [&]() {
+                juce::String s;
+                for (int sz : supported) s += (s.isEmpty() ? "" : ", ") + juce::String(sz);
+                return s;
+            }());
+            pushNotification("Buffer: " + juce::String(bufferSize) + " -> "
+                + juce::String(actual) + " smp", NotificationLevel::Info);
+        }
     }
 
     currentBufferSize_ = actual;
-    desiredBufferSize_ = actual;
+    desiredBufferSize_ = bufferSize;  // preserve user's request (not fallback)
+    desiredSRBSSet_ = true;
 }
 
 void AudioEngine::setChannelMode(int channels)
@@ -272,6 +277,7 @@ void AudioEngine::setSampleRate(double sampleRate)
         Log::error("AUDIO", "setSampleRate failed (requested=" + juce::String(sampleRate) + "): " + error);
     } else {
         desiredSampleRate_ = sampleRate;
+        desiredSRBSSet_ = true;
         Log::audit("AUDIO", "Sample rate set: " + juce::String(sampleRate));
     }
 }
@@ -773,8 +779,12 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 desiredInputDevice_ = setup.inputDeviceName;
             if (setup.outputDeviceName.isNotEmpty())
                 desiredOutputDevice_ = setup.outputDeviceName;
-            desiredSampleRate_ = setup.sampleRate;
-            desiredBufferSize_ = setup.bufferSize;
+            // Only set desired SR/BS from device if user/settings haven't
+            // explicitly set them (first launch with no saved settings).
+            if (!desiredSRBSSet_) {
+                desiredSampleRate_ = setup.sampleRate;
+                desiredBufferSize_ = setup.bufferSize;
+            }
         }
     }
 
