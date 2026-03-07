@@ -87,13 +87,17 @@ void HttpApiServer::stop()
     }
 
     // Join all tracked handler threads (closing server socket above
-    // will cause client reads to fail, unblocking the handlers)
+    // will cause client reads to fail, unblocking the handlers).
+    // Move threads out before joining to avoid deadlock (same pattern as WebSocketServer).
+    std::vector<std::thread> toJoin;
     {
         std::lock_guard<std::mutex> lock(handlersMutex_);
         for (auto& h : handlerThreads_)
-            if (h.thread.joinable()) h.thread.join();
+            toJoin.push_back(std::move(h.thread));
         handlerThreads_.clear();
     }
+    for (auto& t : toJoin)
+        if (t.joinable()) t.join();
 
     Log::info("HTTP", "Server stopped");
 }
@@ -105,18 +109,24 @@ void HttpApiServer::serverThread()
             auto* client = serverSocket_->waitForNextConnection();
             if (client) {
                 auto aliveFlag = alive_;
+                // Clean up finished handler threads — join outside mutex
+                std::vector<std::thread> toJoin;
+                {
+                    std::lock_guard<std::mutex> lock(handlersMutex_);
+                    handlerThreads_.erase(
+                        std::remove_if(handlerThreads_.begin(), handlerThreads_.end(),
+                            [&toJoin](HandlerThread& h) {
+                                if (h.done->load()) {
+                                    toJoin.push_back(std::move(h.thread));
+                                    return true;
+                                }
+                                return false;
+                            }),
+                        handlerThreads_.end());
+                }
+                for (auto& t : toJoin)
+                    if (t.joinable()) t.join();
                 std::lock_guard<std::mutex> lock(handlersMutex_);
-                // Clean up finished handler threads before adding new ones
-                handlerThreads_.erase(
-                    std::remove_if(handlerThreads_.begin(), handlerThreads_.end(),
-                        [](HandlerThread& h) {
-                            if (h.done->load()) {
-                                if (h.thread.joinable()) h.thread.join();
-                                return true;
-                            }
-                            return false;
-                        }),
-                    handlerThreads_.end());
                 auto doneFlag = std::make_shared<std::atomic<bool>>(false);
                 handlerThreads_.push_back({
                     std::thread([this, client, aliveFlag, doneFlag]() {

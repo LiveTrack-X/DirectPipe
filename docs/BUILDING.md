@@ -92,6 +92,19 @@ streamdeck pack . --output ../dist/ --force  # Package (official CLI required) /
 
 Requires `@elgato/cli` (`npm install -g @elgato/cli`). Custom ZIP packaging will NOT work for Maker Console — must use official CLI. / `@elgato/cli` 필요. 커스텀 ZIP은 Maker Console에서 거부됨 — 반드시 공식 CLI 사용.
 
+## Pre-Release Dashboard / 프리릴리즈 대시보드
+
+An interactive HTML test dashboard is available for manual and automated pre-release testing.
+
+릴리즈 전 수동/자동 테스트를 위한 대화형 HTML 대시보드가 제공됩니다.
+
+- **Location / 위치**: `tools/pre-release-dashboard.html`
+- **Usage / 사용법**: Open in a browser while DirectPipe is running. Auto tests use the HTTP API (`localhost:8766`), manual tests require user verification.
+  브라우저에서 열기 (DirectPipe 실행 중). 자동 테스트는 HTTP API 사용, 수동 테스트는 사용자 확인 필요.
+- **Sections / 섹션**: API, Volume, Mute, Presets, Plugins, Devices, Hotkeys, MIDI, Stream Deck, IPC, Settings, UI, Regression tests
+- **Features / 기능**: One-click auto test run, pass/fail tracking, export report, localStorage persistence
+  원클릭 자동 테스트, 통과/실패 추적, 리포트 내보내기, localStorage 저장
+
 ## Test Suite / 테스트
 
 Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE).

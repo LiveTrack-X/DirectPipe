@@ -38,8 +38,71 @@
 #include <timeapi.h>
 #pragma comment(lib, "winmm.lib")
 
+// ─── Named Mutex for multi-instance external control priority ────
+// Two mutexes coordinate which instance owns external controls:
+//   DirectPipe_NormalRunning   — held by normal (non-portable) instance
+//   DirectPipe_ExternalControl — held by whichever instance owns hotkeys/MIDI/WS/HTTP
+static HANDLE g_normalRunningMutex = nullptr;
+static HANDLE g_externalControlMutex = nullptr;
+
+// Returns: 1 = enable controls, 0 = audio only, -1 = must quit (blocked)
+static int acquireExternalControlPriority()
+{
+    bool isPortable = directpipe::ControlMappingStore::isPortableMode();
+
+    if (!isPortable) {
+        // Normal mode: check if a portable instance already owns external controls
+        HANDLE probe = OpenMutexW(SYNCHRONIZE, FALSE, L"DirectPipe_ExternalControl");
+        if (probe) {
+            CloseHandle(probe);
+            return -1;  // Portable has control → must quit
+        }
+
+        // Claim both: signal that normal mode is running + own external controls
+        g_normalRunningMutex = CreateMutexW(nullptr, TRUE, L"DirectPipe_NormalRunning");
+        if (!g_normalRunningMutex) return -1;  // CreateMutex failed
+        g_externalControlMutex = CreateMutexW(nullptr, TRUE, L"DirectPipe_ExternalControl");
+        if (!g_externalControlMutex || GetLastError() == ERROR_ALREADY_EXISTS) {
+            // Portable grabbed control between our OpenMutex check and CreateMutex
+            if (g_externalControlMutex) { CloseHandle(g_externalControlMutex); g_externalControlMutex = nullptr; }
+            CloseHandle(g_normalRunningMutex); g_normalRunningMutex = nullptr;
+            return -1;
+        }
+        return 1;  // Full control
+    }
+
+    // Portable mode: check if normal mode is running
+    HANDLE probe = OpenMutexW(SYNCHRONIZE, FALSE, L"DirectPipe_NormalRunning");
+    if (probe) {
+        CloseHandle(probe);
+        return 0;  // Normal mode is running → audio only
+    }
+
+    // Try to claim external controls (first portable wins)
+    g_externalControlMutex = CreateMutexW(nullptr, TRUE, L"DirectPipe_ExternalControl");
+    if (g_externalControlMutex && GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(g_externalControlMutex);
+        g_externalControlMutex = nullptr;
+        return 0;  // Another portable already has control → audio only
+    }
+
+    return (g_externalControlMutex != nullptr) ? 1 : 0;
+}
+
+static void releaseExternalControlPriority()
+{
+    if (g_externalControlMutex) { CloseHandle(g_externalControlMutex); g_externalControlMutex = nullptr; }
+    if (g_normalRunningMutex)   { CloseHandle(g_normalRunningMutex);   g_normalRunningMutex = nullptr; }
+}
+
 static const wchar_t* kRunKeyPath = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
 static const wchar_t* kRunValueName = L"DirectPipe";
+static const wchar_t* kRunValueNamePortable = L"DirectPipe (Portable)";
+
+static const wchar_t* getRunValueName()
+{
+    return directpipe::ControlMappingStore::isPortableMode() ? kRunValueNamePortable : kRunValueName;
+}
 
 bool isStartupEnabled()
 {
@@ -49,7 +112,7 @@ bool isStartupEnabled()
 
     DWORD type = 0;
     DWORD size = 0;
-    bool exists = (RegQueryValueExW(hKey, kRunValueName, nullptr, &type, nullptr, &size) == ERROR_SUCCESS);
+    bool exists = (RegQueryValueExW(hKey, getRunValueName(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS);
     RegCloseKey(hKey);
     return exists;
 }
@@ -64,11 +127,11 @@ void setStartupEnabled(bool enable)
         auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
                            .getFullPathName();
         auto wPath = exePath.toWideCharPointer();
-        RegSetValueExW(hKey, kRunValueName, 0, REG_SZ,
+        RegSetValueExW(hKey, getRunValueName(), 0, REG_SZ,
                        reinterpret_cast<const BYTE*>(wPath),
                        static_cast<DWORD>((wcslen(wPath) + 1) * sizeof(wchar_t)));
     } else {
-        RegDeleteValueW(hKey, kRunValueName);
+        RegDeleteValueW(hKey, getRunValueName());
     }
     RegCloseKey(hKey);
 }
@@ -86,8 +149,7 @@ static int runScannerMode(const juce::StringArray& args)
     // args: --scan <searchPaths(;-separated)> <outputXmlFile> <pedalFile> [<blacklistFile>]
     // The blacklistFile is optional and contains accumulated crashed plugin paths.
 
-    auto logDir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-        .getChildFile("DirectPipe");
+    auto logDir = directpipe::ControlMappingStore::getConfigDirectory();
     logDir.createDirectory();
     auto logFile = logDir.getChildFile("scanner-log.txt");
 
@@ -209,7 +271,10 @@ public:
         // Allow scanner child processes to run alongside the main instance
         auto args = juce::StringArray::fromTokens(
             juce::JUCEApplication::getCommandLineParameters(), true);
-        return args.contains("--scan");
+        if (args.contains("--scan")) return true;
+
+        // Portable mode: allow multiple instances (each portable copy is independent)
+        return directpipe::ControlMappingStore::isPortableMode();
     }
 
     void initialise(const juce::String& commandLine) override
@@ -240,13 +305,46 @@ public:
                               &throttling, sizeof(throttling));
     #endif
 
+        // Portable mode: per-folder single instance lock
+        // (JUCE's built-in lock is bypassed since moreThanOneInstanceAllowed returns true)
+        if (directpipe::ControlMappingStore::isPortableMode()) {
+            auto configDir = directpipe::ControlMappingStore::getConfigDirectory();
+            auto lockName = "DirectPipe_Portable_"
+                + juce::String::toHexString(configDir.getFullPathName().hashCode());
+            portableLock_ = std::make_unique<juce::InterProcessLock>(lockName);
+            if (!portableLock_->enter(0)) {
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::WarningIcon,
+                    "DirectPipe (Portable)",
+                    "Another portable instance is already running from this folder.");
+                quit();
+                return;
+            }
+        }
+
+        // Multi-instance external control priority
+        int controlResult = acquireExternalControlPriority();
+        if (controlResult < 0) {
+            // A portable instance already owns external controls — block normal mode
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "DirectPipe",
+                "A portable DirectPipe instance is currently using external controls.\n"
+                "Please close it first, then try again.",
+                "OK",
+                nullptr,
+                juce::ModalCallbackFunction::create([this](int) { quit(); }));
+            return;
+        }
+        enableExternalControls_ = (controlResult == 1);
+
         // Log session header (OS, CPU, process info)
         directpipe::Log::sessionStart(getApplicationVersion());
 
-        mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *this);
+        mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *this, enableExternalControls_);
 
         // Log audio/plugin configuration after MainComponent fully initialized
-        auto safeWindow = mainWindow_.get();
+        auto safeWindow = juce::Component::SafePointer<MainWindow>(mainWindow_.get());
         juce::MessageManager::callAsync([safeWindow]() {
             if (!safeWindow) return;
             auto* mc = dynamic_cast<directpipe::MainComponent*>(safeWindow->getContentComponent());
@@ -282,6 +380,7 @@ public:
         trayIcon_.reset();
         mainWindow_.reset();
     #if JUCE_WINDOWS
+        releaseExternalControlPriority();
         timeEndPeriod(1);
     #endif
     }
@@ -324,6 +423,7 @@ public:
 
 private:
     bool scannerMode_ = false;
+    bool enableExternalControls_ = true;
     juce::int64 sessionStartMs_ = 0;
 
     // ─── System Tray Icon ─────────────────────────────────────────
@@ -340,7 +440,13 @@ private:
             auto largeIcon = juce::ImageFileFormat::loadFrom(
                 BinaryData::icon_32_png, BinaryData::icon_32_pngSize);
             setIconImage(smallIcon, largeIcon);
-            setIconTooltip("DirectPipe - Running");
+            {
+                juce::String initTooltip = "DirectPipe";
+                if (directpipe::ControlMappingStore::isPortableMode())
+                    initTooltip += app_.enableExternalControls_ ? " (Portable)" : " (Portable/Audio Only)";
+                initTooltip += " - Running";
+                setIconTooltip(initTooltip);
+            }
 
             if (broadcaster_)
                 broadcaster_->addListener(this);
@@ -387,8 +493,10 @@ private:
                 stateDirty_.store(false, std::memory_order_relaxed);
             }
 
-            // "DirectPipe [Slot A] | CPU 2.3% | 5.2ms | MUTED"
             juce::String tooltip = "DirectPipe";
+            if (directpipe::ControlMappingStore::isPortableMode()) {
+                tooltip += app_.enableExternalControls_ ? " (Portable)" : " (Portable/Audio Only)";
+            }
 
             char slotChar = 'A' + static_cast<char>(juce::jlimit(0, 4, snapshot.activeSlot));
             tooltip += " [Slot " + juce::String::charToString(slotChar) + "]";
@@ -445,7 +553,8 @@ private:
     // ─── Main Window ──────────────────────────────────────────────
     class MainWindow : public juce::DocumentWindow {
     public:
-        MainWindow(const juce::String& name, DirectPipeApplication& app)
+        MainWindow(const juce::String& name, DirectPipeApplication& app,
+                   bool enableExternalControls = true)
             : DocumentWindow(name,
                              juce::Desktop::getInstance().getDefaultLookAndFeel()
                                  .findColour(ResizableWindow::backgroundColourId),
@@ -453,7 +562,7 @@ private:
               app_(app)
         {
             setUsingNativeTitleBar(true);
-            setContentOwned(new directpipe::MainComponent(), true);
+            setContentOwned(new directpipe::MainComponent(enableExternalControls), true);
 
             setResizable(true, true);
             setResizeLimits(600, 800, 1400, 1200);
@@ -477,6 +586,7 @@ private:
 
     std::unique_ptr<MainWindow> mainWindow_;
     std::unique_ptr<DirectPipeTrayIcon> trayIcon_;
+    std::unique_ptr<juce::InterProcessLock> portableLock_;
 };
 
 START_JUCE_APPLICATION(DirectPipeApplication)

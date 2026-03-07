@@ -22,6 +22,7 @@
  */
 
 #include "PluginScanner.h"
+#include "../Control/ControlMapping.h"
 
 namespace directpipe {
 
@@ -479,8 +480,7 @@ void PluginScannerComponent::tableSortOrderChanged(juce::TableHeaderComponent* h
 
 juce::File PluginScannerComponent::getCacheFile() const
 {
-    auto dir = juce::File::getSpecialLocation(
-        juce::File::userApplicationDataDirectory).getChildFile("DirectPipe");
+    auto dir = ControlMappingStore::getConfigDirectory();
     dir.createDirectory();
     return dir.getChildFile("plugin-cache.xml");
 }

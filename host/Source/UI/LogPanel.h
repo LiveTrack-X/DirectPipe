@@ -92,6 +92,7 @@ private:
     // Application section
     juce::Label appHeaderLabel_{"", "Application"};
     juce::ToggleButton startupToggle_{"Start with Windows"};
+    juce::TextButton quitBtn_{"Quit"};
 
     // Settings Export/Import section
     juce::Label settingsHeaderLabel_{"", "Settings"};

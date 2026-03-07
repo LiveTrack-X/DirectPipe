@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.9.12** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 3.10.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -209,7 +209,7 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 - OUTPUT 레벨 미터
 
 **하단 상태 바 / Status Bar:**
-- 레이턴시 (ms), CPU 사용률 (%) + XRun 카운터 (60초간), 오디오 포맷, 포터블 모드 표시
+- 레이턴시 (ms), CPU 사용률 (%) + XRun 카운터 (60초간), 오디오 포맷, 포터블 모드 표시 (Audio Only 시 주황색)
 - XRun 발생 시 빨간색으로 강조 / XRun count highlighted in red when > 0
 - 오류/경고/정보 알림 (자동 페이드)
 - 버전 정보 + 업데이트 알림
@@ -508,15 +508,17 @@ Place an empty `portable.flag` file next to `DirectPipe.exe` to activate portabl
 
 **설정 방법 / Setup:**
 
-1. `DirectPipe.exe`가 있는 폴더에 빈 파일을 만듭니다 (내용 없어도 됨) / Create an empty file next to `DirectPipe.exe` (contents don't matter):
+1. [`portable.flag` 다운로드](../tools/portable.flag)하여 `DirectPipe.exe`가 있는 폴더에 넣습니다 / [Download `portable.flag`](../tools/portable.flag) and place it next to `DirectPipe.exe`
+
+   또는 직접 빈 파일을 만들어도 됩니다 (내용 없어도 됨) / Or create an empty file manually (contents don't matter):
    ```
    echo. > portable.flag
    ```
-   또는 탐색기에서 우클릭 → 새 텍스트 파일 → 이름을 `portable.flag`로 변경 / Or right-click in Explorer → New Text File → rename to `portable.flag`
+   탐색기에서 우클릭 → 새 텍스트 파일 → 이름을 `portable.flag`로 변경 / Or right-click in Explorer → New Text File → rename to `portable.flag`
 
 2. DirectPipe를 실행하면 자동으로 `./config/` 폴더가 생성됩니다 / Launch DirectPipe and the `./config/` folder is created automatically
 
-3. 상태 바 좌측 하단에 보라색 **"Portable Mode"** 표시가 나타나면 정상 / A purple **"Portable Mode"** indicator appears in the bottom status bar
+3. 상태 바 좌측 하단에 보라색 **"Portable"** 표시가 나타나면 정상 / A purple **"Portable"** indicator appears in the bottom status bar
 
 **폴더 구조 / Folder Structure:**
 ```
@@ -526,6 +528,8 @@ DirectPipe/
 └── config/                    ← 자동 생성 / auto-created
     ├── settings.dppreset      ← 오디오/출력 설정 / audio & output settings
     ├── directpipe-controls.json  ← 핫키/MIDI/서버 설정 / hotkey, MIDI, server config
+    ├── plugin-cache.xml       ← 플러그인 스캔 캐시 / plugin scan cache
+    ├── scanner-log.txt        ← 스캐너 로그 / scanner log
     └── Slots/                 ← 프리셋 슬롯 A-E / preset slots A-E
         ├── slot_0.dppreset
         ├── slot_1.dppreset
@@ -536,11 +540,30 @@ DirectPipe/
 
 | 항목 / Item | 경로 / Path | 비고 / Note |
 |---|---|---|
-| 플러그인 캐시 | `%AppData%/DirectPipe/plugin-cache.xml` | PC마다 설치된 VST가 다르므로 공유 불필요 / Different VSTs per PC |
-| 스캐너 로그 | `%AppData%/DirectPipe/scanner-log.txt` | 스캔 진단용 / Scanner diagnostics |
 | 녹음 파일 | `Documents/DirectPipe Recordings/` | 별도 관리 / Managed separately |
 
 > **참고 / Note:** 포터블 모드를 해제하려면 `portable.flag` 파일을 삭제하면 됩니다. 기존 `./config/` 폴더는 그대로 남지만, 앱은 `%AppData%/DirectPipe/`의 설정을 사용합니다. / To disable portable mode, simply delete the `portable.flag` file. The `./config/` folder remains but the app will use `%AppData%/DirectPipe/` settings instead.
+
+#### 다중 인스턴스 / Multi-Instance
+
+포터블 모드에서는 여러 DirectPipe를 동시에 실행할 수 있습니다. 단축키·MIDI·WebSocket·HTTP 등 외부 제어는 하나의 인스턴스만 사용하며, 나머지는 오디오만 처리합니다.
+
+In portable mode, multiple DirectPipe instances can run simultaneously. External controls (hotkeys, MIDI, WebSocket, HTTP) are owned by one instance only — others run in audio-only mode.
+
+| 시나리오 / Scenario | 결과 / Result |
+|---|---|
+| 일반 모드 실행 중 → 포터블 시작 / Normal running → Portable starts | 포터블 = Audio Only (외부 제어 비활성) / Portable = Audio Only |
+| 포터블이 제어 중 → 일반 모드 시작 / Portable controlling → Normal starts | 일반 모드 차단 (다이얼로그 → 종료) / Normal blocked (dialog → quit) |
+| 포터블 2개+ / 2+ Portables | 첫 번째만 외부 제어, 나머지 Audio Only / First gets controls, rest Audio Only |
+
+**UI 표시 / UI Indicators:**
+
+- **타이틀 바 / Title bar**: Audio Only 모드일 때 "DirectPipe (Audio Only)" 표시 / Shows "DirectPipe (Audio Only)" in audio-only mode
+- **상태 바 / Status bar**: 포터블 모드 표시 — 보라색 "Portable" (제어 활성) 또는 주황색 "Portable" (Audio Only) / Purple "Portable" (controls active) or orange "Portable" (Audio Only)
+- **트레이 툴팁 / Tray tooltip**: "DirectPipe (Portable)" 또는 "DirectPipe (Portable/Audio Only)" 표시 / Shows mode in tooltip
+- **Settings 탭 / Settings tab**: **Quit** 버튼으로 개별 인스턴스 종료 가능 / **Quit** button to close individual instance
+
+> **참고 / Note:** 같은 폴더에서 두 번 실행하면 기존처럼 중복 실행이 차단됩니다. 다중 인스턴스는 서로 다른 폴더의 포터블 복사본에서만 가능합니다. / Running twice from the same folder is still blocked. Multi-instance only works with portable copies in different folders.
 
 ---
 

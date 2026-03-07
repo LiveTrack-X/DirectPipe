@@ -158,8 +158,8 @@ void LevelMeter::tick()
     clipping_ = target >= 0.99f;
 
     // Only repaint if display state actually changed
-    if (std::abs(displayLevel_ - prevDisplay) > 0.001f ||
-        std::abs(peakLevel_ - prevPeak) > 0.005f ||
+    if (std::abs(displayLevel_ - prevDisplay) > 0.0004f ||
+        std::abs(peakLevel_ - prevPeak) > 0.002f ||
         clipping_ != prevClip)
     {
         repaint();

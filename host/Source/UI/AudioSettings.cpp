@@ -342,7 +342,7 @@ void AudioSettings::onDriverTypeChanged()
 void AudioSettings::onInputDeviceChanged()
 {
     auto selectedText = inputCombo_.getText();
-    if (selectedText.isEmpty()) return;
+    if (selectedText.isEmpty() || selectedText.contains("(Disconnected)")) return;
 
     if (isAsioMode()) {
         engine_.setAsioDevice(selectedText);
@@ -368,7 +368,7 @@ void AudioSettings::onInputDeviceChanged()
 void AudioSettings::onOutputDeviceChanged()
 {
     auto selectedText = outputCombo_.getText();
-    if (selectedText.isEmpty()) return;
+    if (selectedText.isEmpty() || selectedText.contains("(Disconnected)")) return;
 
     // "None" = mute main output (keep device open for input)
     if (selectedText == "None") {
@@ -380,6 +380,12 @@ void AudioSettings::onOutputDeviceChanged()
     // Switching away from None — unmute
     if (engine_.isOutputNone()) {
         engine_.setOutputNone(false);
+    }
+
+    // User manually selected a device — clear device-loss auto-mute
+    if (engine_.isOutputAutoMuted()) {
+        engine_.clearOutputAutoMute();
+        engine_.setOutputMuted(false);
     }
 
     if (isAsioMode()) {
@@ -498,21 +504,45 @@ void AudioSettings::rebuildDeviceLists()
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     engine_.getDeviceManager().getAudioDeviceSetup(setup);
 
-    // Input selection
-    juce::String inputName = setup.inputDeviceName;
-    if (inputName.isEmpty()) {
-        if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice())
-            inputName = device->getName();
+    // Input selection — show "(Disconnected)" when input device is lost
+    if (engine_.isInputDeviceLost() && !isAsioMode()) {
+        auto desired = engine_.getDesiredInputDevice();
+        if (desired.isNotEmpty() && !inputs.contains(desired)) {
+            int dcId = inputs.size() + 1;
+            inputCombo_.addItem(desired + " (Disconnected)", dcId);
+            inputCombo_.setSelectedId(dcId, juce::dontSendNotification);
+        } else {
+            // Desired device is back in list but flag not yet cleared
+            int inIdx = inputs.indexOf(desired);
+            if (inIdx >= 0)
+                inputCombo_.setSelectedId(inIdx + 1, juce::dontSendNotification);
+        }
+    } else {
+        juce::String inputName = setup.inputDeviceName;
+        if (inputName.isEmpty()) {
+            if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice())
+                inputName = device->getName();
+        }
+        int inIdx = inputs.indexOf(inputName);
+        if (inIdx >= 0)
+            inputCombo_.setSelectedId(inIdx + 1, juce::dontSendNotification);
+        else if (inputs.size() > 0)
+            inputCombo_.setSelectedId(1, juce::dontSendNotification);
     }
-    int inIdx = inputs.indexOf(inputName);
-    if (inIdx >= 0)
-        inputCombo_.setSelectedId(inIdx + 1, juce::dontSendNotification);
-    else if (inputs.size() > 0)
-        inputCombo_.setSelectedId(1, juce::dontSendNotification);
 
     // Output selection
     if (engine_.isOutputNone() && !isAsioMode()) {
-        outputCombo_.setSelectedId(1, juce::dontSendNotification); // "None"
+        outputCombo_.setSelectedId(1, juce::dontSendNotification); // "None" (intentional)
+    } else if (engine_.isOutputAutoMuted() && !isAsioMode()) {
+        // Device lost — show desired device name with "(Disconnected)"
+        auto desired = engine_.getDesiredOutputDevice();
+        if (desired.isNotEmpty() && !outputs.contains(desired)) {
+            int dcId = outputs.size() + outputIdOffset;
+            outputCombo_.addItem(desired + " (Disconnected)", dcId);
+            outputCombo_.setSelectedId(dcId, juce::dontSendNotification);
+        } else {
+            outputCombo_.setSelectedId(1, juce::dontSendNotification); // "None" fallback
+        }
     } else {
         juce::String outputName = setup.outputDeviceName;
         if (outputName.isEmpty()) {

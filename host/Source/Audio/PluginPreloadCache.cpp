@@ -314,25 +314,28 @@ void PluginPreloadCache::cancelAndWait()
         constexpr auto kTimeout = std::chrono::seconds(3);
         bool joined = false;
 
-        // Can't poll std::thread directly — use a helper thread to join
-        std::atomic<bool> joinDone{false};
-        std::thread joiner([&thread, &joinDone] {
-            if (thread && thread->joinable())
-                thread->join();
-            joinDone.store(true);
+        // Can't poll std::thread directly — use a helper thread to join.
+        // Heap-allocate shared state so detached joiner doesn't access destroyed locals.
+        auto joinDone = std::make_shared<std::atomic<bool>>(false);
+        auto heapThread = std::make_shared<std::unique_ptr<std::thread>>(std::move(thread));
+        std::thread joiner([heapThread, joinDone] {
+            if (*heapThread && (*heapThread)->joinable())
+                (*heapThread)->join();
+            joinDone->store(true);
         });
 
-        while (!joinDone.load()) {
+        while (!joinDone->load()) {
             if (std::chrono::steady_clock::now() - start > kTimeout) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        if (joinDone.load()) {
+        if (joinDone->load()) {
             joiner.join();
             joined = true;
         } else {
             // Timeout — detach to avoid deadlock. The preload thread will
             // exit on its own once it checks the generation counter.
+            // heapThread and joinDone are shared_ptr, safe for detached thread.
             joiner.detach();
             juce::Logger::writeToLog("[VST] Preload thread detached (timeout during shutdown)");
         }

@@ -37,7 +37,7 @@ namespace {
 
 namespace directpipe {
 
-MainComponent::MainComponent()
+MainComponent::MainComponent(bool enableExternalControls)
 {
     juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
     setLookAndFeel(&lookAndFeel_);
@@ -71,9 +71,13 @@ MainComponent::MainComponent()
         });
     };
 
+    // In audio-only mode, also block IPC (shared memory name would conflict)
+    if (!enableExternalControls)
+        audioEngine_.setIpcAllowed(false);
+
     // Initialize external control system
     controlManager_ = std::make_unique<ControlManager>(dispatcher_, broadcaster_);
-    controlManager_->initialize();
+    controlManager_->initialize(enableExternalControls);
     dispatcher_.addListener(this);
 
     // ── Audio Settings ──
@@ -82,7 +86,7 @@ MainComponent::MainComponent()
         markSettingsDirty();
         // Only invalidate preload cache if SR/BS actually changed (device-only changes keep cache valid)
         auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice();
-        if (device) {
+        if (device && presetManager_) {
             double sr = device->getCurrentSampleRate();
             int bs = device->getCurrentBufferSizeSamples();
             if (sr != lastCachedSR_ || bs != lastCachedBS_) {
@@ -389,6 +393,7 @@ MainComponent::MainComponent()
         if (audioEngine_.isOutputNone()) return;  // Can't unmute when output is "None"
         bool outputMuted = !audioEngine_.isOutputMuted();
         audioEngine_.setOutputMuted(outputMuted);
+        audioEngine_.clearOutputAutoMute();  // User manually toggled — take over from auto-mute
         markSettingsDirty();
     };
     monitorMuteBtn_.onClick = [this] {
@@ -467,8 +472,20 @@ MainComponent::MainComponent()
 
     // Show portable mode indicator
     if (ControlMappingStore::isPortableMode()) {
-        portableLabel_.setText("Portable Mode", juce::dontSendNotification);
-        portableLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF6C63FF));
+        portableLabel_.setText("Portable", juce::dontSendNotification);
+        portableLabel_.setColour(juce::Label::textColourId,
+            enableExternalControls ? juce::Colour(0xFF6C63FF) : juce::Colour(0xFFFF9800));
+
+        // Audio-only mode: append to window title for persistent visibility
+        if (!enableExternalControls) {
+            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+            juce::MessageManager::callAsync([safeThis] {
+                if (!safeThis) return;
+                if (auto* w = safeThis->getTopLevelComponent())
+                    if (auto* dw = dynamic_cast<juce::DocumentWindow*>(w))
+                        dw->setName(dw->getName() + " (Audio Only)");
+            });
+        }
     }
 
     // Credit + version hyperlink (click opens GitHub)
@@ -492,9 +509,7 @@ MainComponent::MainComponent()
 
     // First launch: auto-select slot A
     if (presetManager_->getActiveSlot() < 0) {
-        loadingSlot_ = true;
-        presetManager_->saveSlot(0);
-        loadingSlot_ = false;
+        presetManager_->setActiveSlot(0);
     }
     updateSlotButtonStates();
 
@@ -523,6 +538,17 @@ MainComponent::MainComponent()
 
     // Check for new release on GitHub (background thread)
     checkForUpdate();
+
+    // Notify if running in audio-only mode (external controls disabled)
+    if (!controlManager_->isExternalControlsActive()) {
+        auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+        juce::MessageManager::callAsync([safeThis] {
+            if (safeThis)
+                safeThis->showNotification(
+                    "Audio only mode (another DirectPipe controls hotkeys/MIDI/API)",
+                    NotificationLevel::Info);
+        });
+    }
 }
 
 MainComponent::~MainComponent()
@@ -591,6 +617,7 @@ void MainComponent::handleAction(const ActionEvent& event)
                 // Output mute = silence main output only, monitor keeps working
                 bool outputMuted = !audioEngine_.isOutputMuted();
                 audioEngine_.setOutputMuted(outputMuted);
+                audioEngine_.clearOutputAutoMute();  // User manually toggled
             } else {
                 // Input / global mute (same as panic)
                 bool muted = !audioEngine_.isMuted();
@@ -848,11 +875,9 @@ void MainComponent::mouseDown(const juce::MouseEvent& event)
                 auto safeThis2 = safeThis;
                 safeThis->presetManager_->importSlot(sourceSlot, [safeThis2](bool ok) {
                     if (!safeThis2) return;
-                    if (ok) {
-                        safeThis2->updateSlotButtonStates();
-                        safeThis2->refreshUI();
-                        safeThis2->markSettingsDirty();
-                    }
+                    safeThis2->updateSlotButtonStates();
+                    safeThis2->refreshUI();
+                    if (ok) safeThis2->markSettingsDirty();
                 });
                 return;
             }
@@ -867,6 +892,8 @@ void MainComponent::mouseDown(const juce::MouseEvent& event)
                         while (chain.getPluginCount() > 0)
                             chain.removePlugin(0);
                         safeThis->loadingSlot_ = false;
+                        // Keep deleted slot selected (now empty)
+                        safeThis->presetManager_->setActiveSlot(sourceSlot);
                         if (safeThis->pluginChainEditor_)
                             safeThis->pluginChainEditor_->refreshList();
                     }
@@ -890,6 +917,22 @@ void MainComponent::mouseDown(const juce::MouseEvent& event)
                     "Copied slot " + slotChar
                     + " to " + juce::String::charToString(PresetManager::slotLabel(targetSlot)),
                     NotificationLevel::Info);
+
+                // If copied TO the active slot, reload chain to reflect new content
+                if (safeThis->presetManager_->getActiveSlot() == targetSlot) {
+                    safeThis->loadingSlot_ = true;
+                    safeThis->pluginChainEditor_->showLoadingState();
+                    safeThis->presetManager_->loadSlotAsync(targetSlot,
+                        [safeThis](bool ok) {
+                            if (!safeThis) return;
+                            safeThis->loadingSlot_ = false;
+                            safeThis->partialLoad_ = !ok;
+                            safeThis->pluginChainEditor_->hideLoadingState();
+                            safeThis->refreshUI();
+                            safeThis->updateSlotButtonStates();
+                            if (ok) safeThis->markSettingsDirty();
+                        });
+                }
             }
         });
 }

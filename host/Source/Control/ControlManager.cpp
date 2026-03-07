@@ -40,33 +40,37 @@ ControlManager::~ControlManager()
     shutdown();
 }
 
-void ControlManager::initialize()
+void ControlManager::initialize(bool enableExternalControls)
 {
     if (initialized_) return;
 
     // Load configuration
     currentConfig_ = configStore_.load();
 
-    // Initialize hotkey handler
-    hotkeyHandler_.initialize();
-    hotkeyHandler_.loadFromMappings(currentConfig_.hotkeys);
+    if (enableExternalControls) {
+        // Initialize hotkey handler
+        hotkeyHandler_.initialize();
+        hotkeyHandler_.loadFromMappings(currentConfig_.hotkeys);
 
-    // Initialize MIDI handler
-    midiHandler_.initialize();
-    midiHandler_.loadFromMappings(currentConfig_.midiMappings);
+        // Initialize MIDI handler
+        midiHandler_.initialize();
+        midiHandler_.loadFromMappings(currentConfig_.midiMappings);
 
-    // Start WebSocket server
-    if (currentConfig_.server.websocketEnabled) {
-        webSocketServer_->start(currentConfig_.server.websocketPort);
-    }
+        // Start WebSocket server
+        if (currentConfig_.server.websocketEnabled) {
+            webSocketServer_->start(currentConfig_.server.websocketPort);
+        }
 
-    // Start HTTP API server
-    if (currentConfig_.server.httpEnabled) {
-        httpApiServer_->start(currentConfig_.server.httpPort);
+        // Start HTTP API server
+        if (currentConfig_.server.httpEnabled) {
+            httpApiServer_->start(currentConfig_.server.httpPort);
+        }
     }
 
     initialized_ = true;
-    juce::Logger::writeToLog("[CONTROL] Initialized");
+    externalControlsActive_ = enableExternalControls;
+    juce::Logger::writeToLog("[CONTROL] Initialized"
+        + juce::String(enableExternalControls ? "" : " (audio-only mode — external controls disabled)"));
 }
 
 void ControlManager::shutdown()
@@ -84,10 +88,11 @@ void ControlManager::shutdown()
 
 void ControlManager::reloadConfig()
 {
+    bool wasActive = externalControlsActive_;
     shutdown();
     currentConfig_ = configStore_.load();
     initialized_ = false;
-    initialize();
+    initialize(wasActive);
 }
 
 void ControlManager::saveConfig()
@@ -107,11 +112,12 @@ void ControlManager::saveConfig()
 
 void ControlManager::applyConfig(const ControlConfig& config)
 {
+    bool wasActive = externalControlsActive_;
     shutdown();
     currentConfig_ = config;
     configStore_.save(config);
     initialized_ = false;
-    initialize();
+    initialize(wasActive);
 }
 
 } // namespace directpipe

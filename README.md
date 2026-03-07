@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.9.12-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.10.0-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -37,7 +37,7 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 | | 사용 예 / Use Case |
 |---|---|
-| **스트리머 / Streamers** | OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. Receiver VST로 가상 케이블 없이 OBS 직접 연결 — Control effects live with Stream Deck while streaming to OBS. Direct OBS connection via Receiver VST, no virtual cable needed |
+| **스트리머 / Streamers** | OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. Receiver VST2로 가상 케이블 없이 OBS 직접 연결 — Control effects live with Stream Deck while streaming to OBS. Direct OBS connection via Receiver VST2, no virtual cable needed |
 | **팟캐스터 / Podcasters** | 노이즈 제거 + EQ + 컴프레서 체인을 한 번 설정하면 매번 자동 적용. 녹음 기능 내장 — Set up your noise removal + EQ + compressor chain once, auto-applied every time. Built-in recording |
 | **게이머 / Gamers** | 단축키(Ctrl+Shift)로 게임 중 뮤트/프리셋 전환. 시스템 트레이 상주, 리소스 최소 사용 — Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. Runs in system tray, minimal resource usage |
 | **보이스챗 / Voice Chat** | [VB-Cable](https://vb-audio.com/Cable/) *(별도 설치 필요)* 로 Discord/Zoom에 처리된 음성 전달. 상대방에게 깨끗한 마이크 음질 제공 — Route processed audio to Discord/Zoom via [VB-Cable](https://vb-audio.com/Cable/) *(separate install required)*. Deliver clean mic quality to others |
@@ -52,7 +52,7 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 - **단일 exe, 설치 불필요** — Single portable exe, no installer, no system changes
 - **5종 외부 제어** — 핫키 · MIDI · Stream Deck · HTTP · WebSocket을 한 프로그램에서 — All 5 control methods in one app
 - **프리셋 즉시 전환** — A-E 슬롯, 이름 지정, 10-50ms 교체 — Named preset slots (A-E) with instant switching
-- **Receiver VST** — 가상 케이블 없이 OBS 직접 연결 — Direct OBS connection without virtual cables
+- **VST 출력 (Receiver VST2)** — 가상 케이블 없이 OBS 직접 연결 — Direct OBS connection without virtual cables
 - **오픈소스** — GPL v3, 누구나 기여 가능 — Open source, community-driven
 
 ### For Setup Helpers / 세팅 도우미를 위한 기능
@@ -83,7 +83,7 @@ DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
 </td>
 <td>
   <b>🎛 Stream Deck Plugin — <a href="https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3">Elgato Marketplace에서 무료 설치</a></b><br>
-  Bypass · Volume (SD+ 다이얼) · Preset · Monitor · Panic Mute · Recording · IPC Toggle — 7가지 액션으로 Stream Deck에서 DirectPipe를 완전 제어<br>
+  Bypass · Volume (SD+ 다이얼) · Preset · Monitor · Panic Mute · Recording · VST Output — 7가지 액션으로 Stream Deck에서 DirectPipe를 완전 제어<br>
   <sub>Free on Elgato Marketplace — 7 actions to fully control DirectPipe from your Stream Deck</sub>
 </td>
 </tr>
@@ -98,16 +98,16 @@ Mic ─→ WASAPI Shared / ASIO ─→ Input Gain ─→ VST2/VST3 Plugin Chain 
                                                                       │
                  ┌────────────────────────────────────────────────────┼────────────────────┐
                  │                                                    │                    │
-           Main Output                                         Monitor Output         IPC Output
-     (Audio tab Output device)                             (Output tab, separate    (SharedMemWriter)
-     예: VB-Cable → Discord/Zoom                             WASAPI → Headphones)    → Shared Memory
-                 │                                                                       │
-           AudioRecorder                                                     OBS / DAW [Receiver VST2]
+           Main Output                                         Monitor Output        VST Output
+     (Audio tab Output device)                             (Output tab, separate   (Receiver VST2)
+     예: VB-Cable → Discord/Zoom                             WASAPI → Headphones)   → Shared Memory
+                 │                                                                      │
+           AudioRecorder                                                    OBS / DAW [Receiver VST2]
            → WAV File (Output tab)
 
 External Control:
   Hotkeys / MIDI CC / Stream Deck / HTTP (:8766) / WebSocket (:8765)
-    → ActionDispatcher → Bypass, Volume, Preset, Mute, Recording, IPC Toggle ...
+    → ActionDispatcher → Bypass, Volume, Preset, Mute, Recording, VST Output ...
 ```
 
 ## 주요 기능 / Features
@@ -125,7 +125,7 @@ External Control:
 - **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
 - WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
 - **장치 자동 재연결** — USB 장치 분리 시 알림, 재연결 시 3초 이내 자동 복구 (SR/BS/채널 설정 보존). 모니터 장치도 독립적으로 재연결. JUCE 자동 폴백 방지 (원하는 장치만 수락) — Auto-reconnection on USB disconnect/reconnect within 3 seconds (preserves SR/BS/channel settings). Monitor device reconnects independently. JUCE auto-fallback protection (only accepts desired device)
-- **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor (Output 탭, 별도 WASAPI) + IPC (Receiver VST) — Three output paths: main, monitor headphones, IPC to OBS
+- **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 WASAPI 헤드폰) + VST Output (Receiver VST2 → OBS) — Three output paths: main, monitor headphones, VST output to OBS
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
@@ -142,18 +142,18 @@ External Control:
   | Ctrl+Shift+N | 입력 뮤트 토글 / Input mute |
   | Ctrl+Shift+O | 출력 뮤트 토글 / Output mute |
   | Ctrl+Shift+H | 모니터 토글 / Monitor toggle |
-  | Ctrl+Shift+I | IPC 출력 토글 / IPC toggle |
+  | Ctrl+Shift+I | VST 출력 토글 / VST output toggle |
   | Ctrl+Shift+F1–F5 | 프리셋 슬롯 A-E / Preset slot A-E |
 
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 (Cancel 버튼으로 취소 가능). 플러그인 파라미터 직접 매핑도 지원 — CC/note mapping with Learn mode (Cancel button to abort). Direct plugin parameter mapping supported
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 GET 커맨드 — One-shot GET commands from curl or browser
-- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
+- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, VST Output — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
 
-### IPC 출력 (Receiver VST) / IPC Output (Receiver VST)
+### VST 출력 (Receiver VST2) / VST Output (Receiver VST2)
 
-- **Receiver VST2 플러그인** — OBS 등 VST2 지원 앱에서 공유 메모리(IPC)로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력 — Receive audio via shared memory IPC. **No virtual cable needed**. Output-only plugin (no input bus) — ignores upstream audio in OBS filter chain, only outputs audio sent from DirectPipe
-- **IPC 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
+- **Receiver VST2 플러그인** — OBS 등 VST2 지원 앱에서 공유 메모리로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력 — Receive audio via shared memory. **No virtual cable needed**. Output-only plugin (no input bus) — ignores upstream audio in OBS filter chain, only outputs audio sent from DirectPipe
+- **VST 출력 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
 - **버퍼 크기 설정** — Receiver VST GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver VST GUI. Actual latency (ms) depends on sample rate
 
   | 프리셋 / Preset | 샘플 / Samples | @48kHz | @44.1kHz | 용도 / Best for |
@@ -163,7 +163,7 @@ External Control:
   | Medium | 1024 | ~21ms | ~23ms | 안정적 / Stable |
   | High | 2048 | ~42ms | ~46ms | CPU 여유 적을 때 / Low CPU headroom |
   | Safe | 4096 | ~85ms | ~93ms | 최대 안정성 / Maximum stability |
-- **샘플레이트 불일치 경고** — DirectPipe 송신 SR과 OBS(호스트) SR이 다르면 Receiver GUI에 경고 표시. SR이 다르면 피치/속도 변동 발생 — SR mismatch warning shown in Receiver GUI when source and host sample rates differ
+- **샘플레이트 불일치 경고** — DirectPipe 송신 샘플레이트와 OBS(호스트) 샘플레이트가 다르면 Receiver GUI에 경고 표시. 샘플레이트가 다르면 피치/속도 변동 발생 — Sample rate mismatch warning shown in Receiver GUI when source and host sample rates differ
 
 ### 녹음 / Recording
 
@@ -177,7 +177,7 @@ External Control:
 - **2컬럼 레이아웃** — 좌: 입력 미터 + 게인 + VST 체인 + 프리셋 슬롯 + 뮤트 버튼(OUT/MON/VST) + PANIC MUTE, 우: 설정 탭 패널 + 출력 미터 — Left: input meter + chain + controls, Right: tabbed settings + output meter
 - **4개 탭** — Tab layout:
   - **Audio**: 드라이버(WASAPI/ASIO), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드. **Audio 탭의 샘플레이트가 VST 체인·모니터 출력·IPC 전체에 적용됨** — Driver, devices, SR, buffer, channel mode. **Audio tab SR applies to VST chain, monitor output, and IPC**
-  - **Output**: 모니터 출력(장치/볼륨/상태), IPC 토글, 녹음(REC/Play/폴더) — Monitor output, IPC toggle, recording
+  - **Output**: 모니터 출력(장치/볼륨/상태), VST 출력 토글, 녹음(REC/Play/폴더) — Monitor output, VST output toggle, recording
   - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
   - **Settings**: Start with Windows, 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore, Clear Cache/Presets, Factory Reset) — Startup, settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore, Clear Cache/Presets, Factory Reset)
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
@@ -186,7 +186,7 @@ External Control:
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 자동 교체 → 재시작 — In-app auto-updater with one-click update from GitHub releases
 - **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Malgun Gothic Bold로 가독성 확보 — Korean/Chinese/Japanese device names rendered correctly with CJK font support
 - **다크 테마** — Custom JUCE LookAndFeel
-- **포터블 모드** — exe 옆에 `portable.flag` 파일 배치 시 설정을 `./config/`에 저장 — Place `portable.flag` next to exe to store config in `./config/`
+- **포터블 모드** — exe 옆에 [`portable.flag`](tools/portable.flag) 파일 배치 시 설정을 `./config/`에 저장. 다중 인스턴스 지원: 일반 모드와 포터블을 동시에 실행하면 포터블은 "Audio Only" 모드로 동작 (외부 제어 충돌 방지). 트레이/타이틀 바에 모드 표시 ([상세 설명](docs/USER_GUIDE.md#포터블-모드--portable-mode)) — Place [`portable.flag`](tools/portable.flag) next to exe to store config in `./config/`. Multi-instance support: running portable alongside normal mode puts portable in "Audio Only" mode (prevents external control conflicts). Mode shown in tray/title bar ([details](docs/USER_GUIDE.md#포터블-모드--portable-mode))
 
 ## 사용 예시: 가상 케이블로 Discord/OBS에 보이스 이펙트 적용 / Usage: Voice Effects with Virtual Cable
 
@@ -212,7 +212,7 @@ USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...) → VB-Cabl
 
 > **Tip**: [VoiceMeeter](https://vb-audio.com/Voicemeeter/) 등 다른 가상 오디오 장치도 동일하게 사용 가능. Output 장치만 바꾸면 된다. — Any virtual audio device works; just change the Output device.
 
-### OBS에서 Receiver VST2로 사용하기 (가상 케이블 불필요) / Using Receiver VST2 with OBS (No Virtual Cable)
+### OBS에서 VST 출력으로 직접 연결 (가상 케이블 불필요) / Direct OBS Connection via VST Output (No Virtual Cable)
 
 OBS에서는 Receiver VST2 플러그인을 사용하면 가상 케이블 없이 더 간단하게 설정할 수 있습니다.
 
@@ -222,12 +222,12 @@ If you use OBS, the Receiver VST2 plugin offers a simpler setup without any virt
    - `C:\Program Files\VSTPlugins\` (권장 / Recommended)
    - `C:\Program Files\Common Files\VST2\`
    - `C:\Program Files\Steinberg\VstPlugins\`
-2. DirectPipe에서 **VST** 버튼 클릭 (IPC 출력 켜기) — Enable IPC output in DirectPipe
-3. OBS → 오디오 소스 → 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택 — Add VST filter in OBS
+2. DirectPipe에서 **VST** 버튼 클릭 (VST 출력 켜기) — Enable VST output in DirectPipe
+3. OBS → 오디오 소스 (ex.기존 마이크)→ 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택 — Add VST filter in OBS
 
 ```
 USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...)
-      ↓ IPC (공유 메모리, 가상 케이블 불필요)
+      ↓ VST 출력 (공유 메모리, 가상 케이블 불필요)
 OBS [DirectPipe Receiver VST 필터] → 방송/녹화
 ```
 
@@ -239,13 +239,13 @@ OBS [DirectPipe Receiver VST 필터] → 방송/녹화
 
 ### 출력별 개별 제어 활용 / Independent Output Control
 
-VB-Cable(Discord) + Receiver VST(OBS)를 동시 사용하면 **OUT/VST 버튼으로 각 앱의 마이크를 개별 제어**할 수 있습니다. — Using both together lets you **independently control each app's mic feed with OUT/VST buttons**.
+VB-Cable(Discord) + Receiver VST2(OBS)를 동시 사용하면 **OUT/VST 버튼으로 각 앱의 마이크를 개별 제어**할 수 있습니다. — Using both together lets you **independently control each app's mic feed with OUT/VST buttons**.
 
 ```
-USB Mic → DirectPipe (VST Chain)
-    ├─ OUT → VB-Cable → Discord   ← OUT 버튼으로 개별 뮤트
-    ├─ VST → IPC → OBS Receiver   ← VST 버튼으로 개별 뮤트
-    └─ MON → Headphones            ← MON 버튼으로 개별 뮤트
+USB Mic → DirectPipe (Plugin Chain)
+    ├─ OUT → VB-Cable → Discord      ← OUT 버튼으로 개별 뮤트
+    ├─ VST → Receiver VST2 → OBS     ← VST 버튼으로 개별 뮤트
+    └─ MON → Headphones              ← MON 버튼으로 개별 뮤트
 ```
 
 - **VST OFF / OUT ON** → OBS 방송 마이크만 뮤트, Discord 통화 유지 — Mute OBS mic only, keep Discord

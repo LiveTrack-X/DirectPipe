@@ -35,6 +35,7 @@
 
 #include <atomic>
 #include <functional>
+#include <map>
 #include <memory>
 
 #include "../UI/NotificationBar.h"
@@ -44,6 +45,15 @@ namespace directpipe {
 struct PendingNotification {
     juce::String message;
     NotificationLevel level = NotificationLevel::Error;
+};
+
+/** @brief Snapshot of audio settings for a specific driver type (for restore on type switch). */
+struct DriverTypeSnapshot {
+    juce::String inputDevice;
+    juce::String outputDevice;
+    double sampleRate = 0;
+    int bufferSize = 0;
+    bool outputNone = false;  // "None" output selection state
 };
 
 /**
@@ -145,6 +155,9 @@ public:
     void setIpcEnabled(bool enabled);
     bool isIpcEnabled() const { return ipcEnabled_.load(std::memory_order_relaxed); }
 
+    /** @brief Block IPC from being enabled (audio-only multi-instance mode). */
+    void setIpcAllowed(bool allowed) { ipcAllowed_ = allowed; }
+
     float getInputLevel() const { return inputLevel_.load(std::memory_order_relaxed); }
     float getOutputLevel() const { return outputLevel_.load(std::memory_order_relaxed); }
 
@@ -165,6 +178,13 @@ public:
     void checkReconnection();
     /** @brief True if the audio device was lost (error/disconnect). */
     bool isDeviceLost() const { return deviceLost_.load(std::memory_order_relaxed); }
+
+    /** @brief True if the input device was lost (audio callback zeroes input). */
+    bool isInputDeviceLost() const { return inputDeviceLost_.load(std::memory_order_relaxed); }
+    /** @brief True if output was auto-muted due to device loss. */
+    bool isOutputAutoMuted() const { return outputAutoMuted_.load(std::memory_order_relaxed); }
+    /** @brief Clear auto-mute tracking (call when user manually controls output mute). */
+    void clearOutputAutoMute() { outputAutoMuted_.store(false, std::memory_order_relaxed); }
 
     std::function<void(float)> onInputLevelChanged;
     std::function<void(float)> onOutputLevelChanged;
@@ -201,6 +221,7 @@ private:
     SharedMemWriter sharedMemWriter_;
     std::atomic<bool> ipcEnabled_{false};
     std::atomic<bool> ipcWasEnabled_{false};  // Remembers IPC state across device stop/start
+    bool ipcAllowed_ = true;  // false in audio-only multi-instance mode
 
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
     std::atomic<bool> running_{false};
@@ -231,14 +252,21 @@ private:
     juce::String desiredOutputDevice_;
     juce::String desiredDeviceType_;  // Tracks intended driver type across fallbacks
     juce::String lastAsioDevice_;     // Remembers last used ASIO device for type switches
+    std::map<juce::String, DriverTypeSnapshot> driverSnapshots_;  // Per-driver-type settings for restore on switch
     bool desiredSRBSSet_ = false;  // true after user/settings explicitly set SR/BS
     double desiredSampleRate_ = 48000.0;
     int desiredBufferSize_ = 480;
     std::atomic<bool> deviceLost_{false};
+    std::atomic<bool> inputDeviceLost_{false};   // Input specifically lost → zero input in audio callback
+    std::atomic<bool> outputAutoMuted_{false};   // Output auto-muted due to device loss
     bool attemptingReconnection_ = false;  // Re-entrancy guard (message thread only)
     std::atomic<bool> intentionalChange_{false};  // Guards audioDeviceStopped from setting deviceLost_ during intentional changes (written on message thread, read on device thread)
     int reconnectCooldown_ = 0;  // Ticks before next reconnect attempt (30Hz timer)
+    int reconnectMissCount_ = 0;  // Consecutive failed reconnect attempts (message thread only)
+    static constexpr int kMaxReconnectMisses = 5;  // ~15s at 3s intervals
     bool monitorWasLost_ = false;  // Edge detection for monitor disconnect notification (message thread only)
+    bool inputWasLost_ = false;    // Edge detection for input device loss notification (message thread only)
+    bool outputWasAutoMuted_ = false;  // Edge detection for output auto-mute notification (message thread only)
 
     juce::AudioBuffer<float> workBuffer_;
     uint32_t rmsDecimationCounter_ = 0;  // RMS computed every 4th callback (RT thread only, no atomic needed)
@@ -246,6 +274,7 @@ private:
     // Lock-free notification queue (device thread -> message thread)
     static constexpr int kNotifQueueSize = 8;
     PendingNotification notifQueue_[kNotifQueueSize];
+    std::atomic<bool> notifReady_[kNotifQueueSize]{};  // per-slot ready flag
     std::atomic<uint32_t> notifWriteIdx_{0};
     std::atomic<uint32_t> notifReadIdx_{0};
 

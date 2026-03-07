@@ -48,7 +48,7 @@ class MainComponent : public juce::Component,
                       public juce::Timer,
                       public ActionListener {
 public:
-    MainComponent();
+    explicit MainComponent(bool enableExternalControls = true);
     ~MainComponent() override;
 
     void paint(juce::Graphics& g) override;

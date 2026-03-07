@@ -164,8 +164,8 @@ juce::String PresetManager::exportToJSON()
     // IPC output
     root->setProperty("ipcEnabled", engine_.isIpcEnabled());
 
-    // Output mute state
-    root->setProperty("outputMuted", engine_.isOutputMuted());
+    // Output mute state (don't persist auto-mute from device loss)
+    root->setProperty("outputMuted", engine_.isOutputAutoMuted() ? false : engine_.isOutputMuted());
 
     // Audit mode
     root->setProperty("auditMode", Log::isAuditMode());
@@ -1019,16 +1019,16 @@ void PresetManager::exportSlot(int slotIndex)
 
     auto chooser = std::make_shared<juce::FileChooser>(
         "Export Slot " + juce::String::charToString(slotLabel(slotIndex)),
-        juce::File::getSpecialLocation(juce::File::userDesktopDirectory).getChildFile(defaultName + ".dppreset"),
-        "*.dppreset");
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory).getChildFile(defaultName + ".dpchain"),
+        "*.dpchain");
 
     chooser->launchAsync(juce::FileBrowserComponent::saveMode
                          | juce::FileBrowserComponent::canSelectFiles,
                          [srcFile, slotIndex, chooser](const juce::FileChooser& fc) {
         auto dest = fc.getResult();
         if (dest == juce::File()) return;
-        if (!dest.hasFileExtension(".dppreset"))
-            dest = dest.withFileExtension(".dppreset");
+        if (!dest.hasFileExtension(".dpchain"))
+            dest = dest.withFileExtension(".dpchain");
         srcFile.copyFileTo(dest);
         juce::Logger::writeToLog("[PRESET] Exported slot "
             + juce::String::charToString(PresetManager::slotLabel(slotIndex))
@@ -1046,7 +1046,7 @@ void PresetManager::importSlot(int slotIndex, std::function<void(bool)> onComple
     auto chooser = std::make_shared<juce::FileChooser>(
         "Import to Slot " + juce::String::charToString(slotLabel(slotIndex)),
         juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
-        "*.dppreset");
+        "*.dpchain;*.dppreset");
 
     auto aliveFlag = alive_;
     chooser->launchAsync(juce::FileBrowserComponent::openMode
@@ -1092,9 +1092,11 @@ void PresetManager::importSlot(int slotIndex, std::function<void(bool)> onComple
             + juce::String::charToString(slotLabel(slotIndex))
             + " from " + srcFile.getFileName());
 
-        // If this is the active slot, reload it
+        // If this is the active slot, reload it synchronously
+        // (async path has UI refresh issues; sync is fine for user-initiated import)
         if (activeSlot_ == slotIndex) {
-            loadSlotAsync(slotIndex, onComplete);
+            bool loaded = loadSlot(slotIndex);
+            if (onComplete) onComplete(loaded);
         } else {
             if (onComplete) onComplete(true);
         }

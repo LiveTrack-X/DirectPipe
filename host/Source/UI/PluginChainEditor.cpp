@@ -49,18 +49,31 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
     };
 
     removeButton_.onClick = [this] {
-        auto pluginName = nameLabel_.getText();
+        // IMPORTANT: Use slot->name ("Clear"), NOT nameLabel_.getText() ("1. Clear").
+        // nameLabel_ includes row number prefix — mismatch causes silent delete failure.
+        juce::String pluginName;
+        if (auto* slot = owner_.vstChain_.getPluginSlot(rowIndex_))
+            pluginName = slot->name;
+        else
+            return;
         auto safeOwner = juce::Component::SafePointer<PluginChainEditor>(&owner_);
-        int idx = rowIndex_;
         auto options = juce::MessageBoxOptions()
             .withIconType(juce::MessageBoxIconType::QuestionIcon)
             .withTitle("Remove Plugin")
             .withMessage("Remove \"" + pluginName + "\" from the chain?")
             .withButton("Remove")
             .withButton("Cancel");
-        juce::AlertWindow::showAsync(options, [safeOwner, idx](int result) {
-            if (result == 1 && safeOwner)
-                safeOwner->vstChain_.removePlugin(idx);
+        juce::AlertWindow::showAsync(options, [safeOwner, pluginName](int result) {
+            if (result != 1 || !safeOwner) return;
+            // Re-find plugin by name (chain may have changed while dialog was open)
+            for (int i = 0; i < safeOwner->vstChain_.getPluginCount(); ++i) {
+                if (auto* s = safeOwner->vstChain_.getPluginSlot(i)) {
+                    if (s->name == pluginName) {
+                        safeOwner->vstChain_.removePlugin(i);
+                        return;
+                    }
+                }
+            }
         });
     };
 
@@ -368,9 +381,17 @@ void PluginChainEditor::removeSelectedPlugin()
             .withMessage("Remove \"" + pluginName + "\" from the chain?")
             .withButton("Remove")
             .withButton("Cancel");
-        juce::AlertWindow::showAsync(options, [safeThis, selected](int result) {
-            if (result == 1 && safeThis)
-                safeThis->vstChain_.removePlugin(selected);
+        juce::AlertWindow::showAsync(options, [safeThis, pluginName](int result) {
+            if (result != 1 || !safeThis) return;
+            // Re-find plugin by name (chain may have changed while dialog was open)
+            for (int i = 0; i < safeThis->vstChain_.getPluginCount(); ++i) {
+                if (auto* s = safeThis->vstChain_.getPluginSlot(i)) {
+                    if (s->name == pluginName) {
+                        safeThis->vstChain_.removePlugin(i);
+                        return;
+                    }
+                }
+            }
         });
     }
 }

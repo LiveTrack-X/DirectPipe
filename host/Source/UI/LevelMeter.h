@@ -75,8 +75,8 @@ private:
     bool clipping_ = false;
 
     // Smoothing
-    static constexpr float kAttack = 0.3f;   // Fast attack
-    static constexpr float kRelease = 0.05f;  // Slow release
+    static constexpr float kAttack = 0.3f;    // Fast attack
+    static constexpr float kRelease = 0.12f;  // Smooth release (~230ms half-life at 30Hz)
     static constexpr int kPeakHoldFrames = 30; // ~1 second at 30Hz
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LevelMeter)

@@ -125,8 +125,10 @@ void AudioEngine::shutdown()
     alive_->store(false);
     running_ = false;
     deviceManager_.removeChangeListener(this);
+    intentionalChange_ = true;
     deviceManager_.removeAudioCallback(this);
     deviceManager_.closeAudioDevice();
+    intentionalChange_ = false;
     sharedMemWriter_.shutdown();
     ipcEnabled_.store(false, std::memory_order_relaxed);
     monitorOutput_.shutdown();
@@ -136,6 +138,9 @@ void AudioEngine::shutdown()
 
 void AudioEngine::setIpcEnabled(bool enabled)
 {
+    if (enabled && !ipcAllowed_)
+        return;  // Blocked in audio-only multi-instance mode
+
     if (enabled == ipcEnabled_.load(std::memory_order_relaxed))
         return;
 
@@ -181,6 +186,11 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName)
         Log::error("AUDIO", "Failed to set input device '" + deviceName + "': " + result);
         return false;
     }
+    // Clear device-loss state — user intentionally picked a new input device
+    inputDeviceLost_.store(false, std::memory_order_relaxed);
+    deviceLost_.store(false, std::memory_order_relaxed);
+    reconnectCooldown_ = 0;
+    reconnectMissCount_ = 0;
     Log::info("AUDIO", "Input device set: " + deviceName);
     Log::audit("AUDIO", "Input device change: '" + setup.inputDeviceName + "' SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
     return true;
@@ -218,6 +228,15 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName)
         Log::error("AUDIO", "Failed to set output device '" + deviceName + "': " + result);
         return false;
     }
+    // Clear device-loss state — user intentionally picked a new output device
+    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+        outputAutoMuted_.store(false, std::memory_order_relaxed);
+        outputMuted_.store(false, std::memory_order_relaxed);
+    }
+    deviceLost_.store(false, std::memory_order_relaxed);
+    inputDeviceLost_.store(false, std::memory_order_relaxed);
+    reconnectCooldown_ = 0;
+    reconnectMissCount_ = 0;
     Log::info("AUDIO", "Output device set: " + deviceName);
     Log::audit("AUDIO", "Output device change: '" + setup.outputDeviceName + "' SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
     return true;
@@ -243,6 +262,11 @@ bool AudioEngine::setAsioDevice(const juce::String& deviceName)
     if (result.isNotEmpty()) {
         Log::error("AUDIO", "Failed to set ASIO device '" + deviceName + "': " + result);
         return false;
+    }
+    inputDeviceLost_.store(false, std::memory_order_relaxed);
+    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+        outputAutoMuted_.store(false, std::memory_order_relaxed);
+        outputMuted_.store(false, std::memory_order_relaxed);
     }
     Log::info("AUDIO", "ASIO device set: " + deviceName);
     return true;
@@ -442,11 +466,31 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
         return true;
     }
 
-    // Remove callback before switching
-    deviceManager_.removeAudioCallback(this);
+    // Save current driver's settings as snapshot for future restore
+    if (currentType.isNotEmpty()) {
+        DriverTypeSnapshot snap;
+        snap.inputDevice = desiredInputDevice_;
+        snap.outputDevice = desiredOutputDevice_;
+        snap.sampleRate = currentSampleRate_;
+        snap.bufferSize = currentBufferSize_;
+        snap.outputNone = outputNone_.load(std::memory_order_relaxed);
+        driverSnapshots_[currentType] = snap;
+        Log::info("AUDIO", "Saved " + currentType + " snapshot: in='" + snap.inputDevice
+            + "' out='" + snap.outputDevice + "' SR=" + juce::String(snap.sampleRate)
+            + " BS=" + juce::String(snap.bufferSize)
+            + (snap.outputNone ? " outputNone" : ""));
+    }
+
+    // Set intentional flag BEFORE removing callback, because removeAudioCallback
+    // synchronously calls audioDeviceStopped() which checks intentionalChange_.
     intentionalChange_ = true;
+    deviceManager_.removeAudioCallback(this);
 
     deviceManager_.setCurrentAudioDeviceType(typeName, true);
+
+    // Check for saved snapshot of the target driver type
+    auto snapIt = driverSnapshots_.find(typeName);
+    bool hasSnapshot = snapIt != driverSnapshots_.end();
 
     // For ASIO, pick the preferred device (or first available)
     if (typeName.containsIgnoreCase("ASIO")) {
@@ -461,11 +505,20 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
                 else if (lastAsioDevice_.isNotEmpty() && devices.contains(lastAsioDevice_))
                     deviceToUse = lastAsioDevice_;
 
+                // Use snapshot SR/BS if available (known to work on this ASIO device),
+                // otherwise fall back to current values from the old driver.
+                double sr = currentSampleRate_;
+                int bs = currentBufferSize_;
+                if (hasSnapshot) {
+                    if (snapIt->second.sampleRate > 0) sr = snapIt->second.sampleRate;
+                    if (snapIt->second.bufferSize > 0) bs = snapIt->second.bufferSize;
+                }
+
                 juce::AudioDeviceManager::AudioDeviceSetup setup;
                 setup.inputDeviceName = deviceToUse;
                 setup.outputDeviceName = deviceToUse;
-                setup.sampleRate = currentSampleRate_;
-                setup.bufferSize = currentBufferSize_;
+                setup.sampleRate = sr;
+                setup.bufferSize = bs;
                 setup.useDefaultInputChannels = false;
                 setup.useDefaultOutputChannels = false;
                 setup.inputChannels.setRange(0, 2, true);
@@ -473,7 +526,7 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
 
                 auto result = deviceManager_.setAudioDeviceSetup(setup, true);
                 if (result.isNotEmpty()) {
-                    Log::warn("AUDIO", "ASIO setup failed (device='" + deviceToUse + "' SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + "): " + result);
+                    Log::warn("AUDIO", "ASIO setup failed (device='" + deviceToUse + "' SR=" + juce::String(sr) + " BS=" + juce::String(bs) + "): " + result);
                     // Try with device defaults
                     setup.sampleRate = 0;  // let device choose
                     setup.bufferSize = 0;
@@ -491,7 +544,7 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
             }
         }
     } else {
-        // Non-ASIO: use default initialization
+        // Non-ASIO: initialize with defaults first, then try to restore snapshot
         auto result = deviceManager_.initialiseWithDefaultDevices(2, 2);
         if (result.isNotEmpty()) {
             Log::error("AUDIO", "Failed to switch to " + typeName + ": " + result);
@@ -503,18 +556,35 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
             return false;
         }
 
-        // Resolve device names and apply settings
-        if (auto* device = deviceManager_.getCurrentAudioDevice()) {
-            juce::AudioDeviceManager::AudioDeviceSetup setup;
-            deviceManager_.getAudioDeviceSetup(setup);
+        // Resolve device names and apply settings (restore from snapshot if available)
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        deviceManager_.getAudioDeviceSetup(setup);
+
+        if (hasSnapshot) {
+            auto& snap = snapIt->second;
+            // Check if saved devices still exist in this driver type
+            if (auto* typeObj = deviceManager_.getCurrentDeviceTypeObject()) {
+                typeObj->scanForDevices();
+                if (typeObj->getDeviceNames(true).contains(snap.inputDevice))
+                    setup.inputDeviceName = snap.inputDevice;
+                if (typeObj->getDeviceNames(false).contains(snap.outputDevice))
+                    setup.outputDeviceName = snap.outputDevice;
+            }
+            if (snap.sampleRate > 0) setup.sampleRate = snap.sampleRate;
+            if (snap.bufferSize > 0) setup.bufferSize = snap.bufferSize;
+            Log::info("AUDIO", "Restoring " + typeName + " snapshot: in='" + setup.inputDeviceName
+                + "' out='" + setup.outputDeviceName + "' SR=" + juce::String(setup.sampleRate)
+                + " BS=" + juce::String(setup.bufferSize));
+        } else {
             setup.bufferSize = currentBufferSize_;
             setup.sampleRate = currentSampleRate_;
-            setup.useDefaultInputChannels = false;
-            setup.useDefaultOutputChannels = false;
-            setup.inputChannels.setRange(0, 2, true);
-            setup.outputChannels.setRange(0, 2, true);
-            deviceManager_.setAudioDeviceSetup(setup, true);
         }
+
+        setup.useDefaultInputChannels = false;
+        setup.useDefaultOutputChannels = false;
+        setup.inputChannels.setRange(0, 2, true);
+        setup.outputChannels.setRange(0, 2, true);
+        deviceManager_.setAudioDeviceSetup(setup, true);
     }
     intentionalChange_ = false;
 
@@ -524,9 +594,41 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
         currentBufferSize_ = device->getCurrentBufferSizeSamples();
     }
 
-    deviceManager_.addAudioCallback(this);
-
+    // Clear reconnection state after intentional type switch.
+    // Without this, audioDeviceAboutToStart would see stale desired names
+    // (e.g. ASIO "TOPPING") vs actual WASAPI names → "fallback detected" → infinite loop.
+    deviceLost_.store(false, std::memory_order_relaxed);
+    inputDeviceLost_.store(false, std::memory_order_relaxed);
+    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+        outputAutoMuted_.store(false, std::memory_order_relaxed);
+        outputMuted_.store(false, std::memory_order_relaxed);
+    }
+    // Clear "None" output state — new driver type has its own output device.
+    // Without this, OUT mute button stays locked after WASAPI "None" → ASIO switch.
+    if (outputNone_.load(std::memory_order_relaxed)) {
+        outputNone_.store(false, std::memory_order_relaxed);
+        outputMuted_.store(false, std::memory_order_relaxed);
+    }
+    // Restore "None" from snapshot if target driver had it saved
+    if (hasSnapshot && snapIt->second.outputNone) {
+        outputNone_.store(true, std::memory_order_relaxed);
+        outputMuted_.store(true, std::memory_order_relaxed);
+    }
+    reconnectCooldown_ = 0;
+    reconnectMissCount_ = 0;
     desiredDeviceType_ = typeName;
+
+    // Update desired device names to new driver's actual devices
+    {
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        deviceManager_.getAudioDeviceSetup(setup);
+        if (setup.inputDeviceName.isNotEmpty())
+            desiredInputDevice_ = setup.inputDeviceName;
+        if (setup.outputDeviceName.isNotEmpty())
+            desiredOutputDevice_ = setup.outputDeviceName;
+    }
+
+    deviceManager_.addAudioCallback(this);
     Log::info("AUDIO", "Switched to " + typeName + " (SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + ")");
     if (Log::isAuditMode()) {
         if (auto* dev = deviceManager_.getCurrentAudioDevice()) {
@@ -768,23 +870,27 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     for (int ch = 0; ch < workChannels; ++ch)
         juce::FloatVectorOperations::clear(buffer.getWritePointer(ch), numSamples);
 
-    if (chMode == 1) {
-        // Mono mode: sum all input channels to channel 0 (full gain, no attenuation)
-        if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
-            buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
-            for (int ch = 1; ch < numInputChannels; ++ch) {
-                if (inputChannelData[ch] != nullptr)
-                    buffer.addFrom(0, 0, inputChannelData[ch], numSamples);
+    // Input device lost → use silence instead of fallback device input.
+    // Work buffer already cleared above, so just skip the copy.
+    if (!inputDeviceLost_.load(std::memory_order_relaxed)) {
+        if (chMode == 1) {
+            // Mono mode: sum all input channels to channel 0 (full gain, no attenuation)
+            if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
+                buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
+                for (int ch = 1; ch < numInputChannels; ++ch) {
+                    if (inputChannelData[ch] != nullptr)
+                        buffer.addFrom(0, 0, inputChannelData[ch], numSamples);
+                }
             }
-        }
-        // Duplicate mono to channel 1 so both L/R outputs carry the same signal
-        if (buffer.getNumChannels() > 1)
-            buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
-    } else {
-        // Stereo mode: copy channels as-is
-        for (int ch = 0; ch < numInputChannels && ch < workChannels; ++ch) {
-            if (inputChannelData[ch] != nullptr) {
-                buffer.copyFrom(ch, 0, inputChannelData[ch], numSamples);
+            // Duplicate mono to channel 1 so both L/R outputs carry the same signal
+            if (buffer.getNumChannels() > 1)
+                buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+        } else {
+            // Stereo mode: copy channels as-is
+            for (int ch = 0; ch < numInputChannels && ch < workChannels; ++ch) {
+                if (inputChannelData[ch] != nullptr) {
+                    buffer.copyFrom(ch, 0, inputChannelData[ch], numSamples);
+                }
             }
         }
     }
@@ -873,6 +979,15 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                        + "' (desired: in='" + desiredInputDevice_
                        + "' out='" + desiredOutputDevice_ + "')");
 
+            // Per-direction loss tracking:
+            // Input lost → silence input in audio callback (don't use fallback mic)
+            inputDeviceLost_.store(inputMismatch, std::memory_order_relaxed);
+            // Output lost → auto-mute output (VST chain + monitor unaffected)
+            if (outputMismatch && !outputAutoMuted_.load(std::memory_order_relaxed)) {
+                outputMuted_.store(true, std::memory_order_relaxed);
+                outputAutoMuted_.store(true, std::memory_order_relaxed);
+            }
+
             // Restore any device that JUCE changed but is still available.
             // e.g. output unplugged → JUCE fallback changes both → restore input + BS/SR.
             juce::MessageManager::callAsync([this, alive = alive_,
@@ -905,6 +1020,15 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             });
         } else {
             deviceLost_.store(false, std::memory_order_relaxed);
+            inputDeviceLost_.store(false, std::memory_order_relaxed);
+            reconnectMissCount_ = 0;
+            // Auto-unmute output if it was auto-muted due to device loss
+            if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+                outputAutoMuted_.store(false, std::memory_order_relaxed);
+                // Keep outputMuted_ true if user intentionally selected "None"
+                if (!outputNone_.load(std::memory_order_relaxed))
+                    outputMuted_.store(false, std::memory_order_relaxed);
+            }
             if (setup.inputDeviceName.isNotEmpty())
                 desiredInputDevice_ = setup.inputDeviceName;
             if (setup.outputDeviceName.isNotEmpty())
@@ -1056,6 +1180,26 @@ void AudioEngine::checkReconnection()
         }
     }
 
+    // Input device loss notification (edge detection)
+    {
+        bool isInputLost = inputDeviceLost_.load(std::memory_order_relaxed);
+        if (!inputWasLost_ && isInputLost)
+            pushNotification("Input device lost", NotificationLevel::Warning);
+        else if (inputWasLost_ && !isInputLost && !deviceLost_.load(std::memory_order_relaxed))
+            pushNotification("Input device restored", NotificationLevel::Info);
+        inputWasLost_ = isInputLost;
+    }
+
+    // Output auto-mute notification (edge detection)
+    {
+        bool isAutoMuted = outputAutoMuted_.load(std::memory_order_relaxed);
+        if (!outputWasAutoMuted_ && isAutoMuted)
+            pushNotification("Output device lost - muted", NotificationLevel::Warning);
+        else if (outputWasAutoMuted_ && !isAutoMuted)
+            pushNotification("Output device restored", NotificationLevel::Info);
+        outputWasAutoMuted_ = isAutoMuted;
+    }
+
     // Monitor device reconnection (independent check)
     bool wasMonitorLost = monitorWasLost_;
     bool isMonitorLost = monitorOutput_.isDeviceLost();
@@ -1097,12 +1241,38 @@ void AudioEngine::attemptReconnection()
     bool outputOk = desiredOutputDevice_.isEmpty() || outputs.contains(desiredOutputDevice_);
 
     if (!inputOk || !outputOk) {
-        Log::info("AUDIO", "Reconnection: waiting for devices"
-            + juce::String(!inputOk ? " (input: " + desiredInputDevice_ + ")" : "")
-            + juce::String(!outputOk ? " (output: " + desiredOutputDevice_ + ")" : ""));
+        ++reconnectMissCount_;
+        if (reconnectMissCount_ >= kMaxReconnectMisses) {
+            // Output genuinely lost (physically unplugged) — keep waiting, don't accept fallback
+            if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+                reconnectMissCount_ = 0;
+                Log::audit("AUDIO", "Reconnection: output device lost, continuing to wait for '"
+                    + desiredOutputDevice_ + "'");
+            } else {
+                // Stale cross-driver names — accept current driver's devices to break the loop
+                Log::warn("AUDIO", "Reconnection: desired devices not found after "
+                    + juce::String(kMaxReconnectMisses) + " attempts, accepting current devices");
+                juce::AudioDeviceManager::AudioDeviceSetup curSetup;
+                deviceManager_.getAudioDeviceSetup(curSetup);
+                if (curSetup.inputDeviceName.isNotEmpty())
+                    desiredInputDevice_ = curSetup.inputDeviceName;
+                if (curSetup.outputDeviceName.isNotEmpty())
+                    desiredOutputDevice_ = curSetup.outputDeviceName;
+                deviceLost_.store(false, std::memory_order_relaxed);
+                inputDeviceLost_.store(false, std::memory_order_relaxed);
+                reconnectMissCount_ = 0;
+                pushNotification("Device not found, using current device", NotificationLevel::Warning);
+                if (onDeviceReconnected) onDeviceReconnected();
+            }
+        } else {
+            Log::info("AUDIO", "Reconnection: waiting for devices"
+                + juce::String(!inputOk ? " (input: " + desiredInputDevice_ + ")" : "")
+                + juce::String(!outputOk ? " (output: " + desiredOutputDevice_ + ")" : ""));
+        }
         attemptingReconnection_ = false;
         return;
     }
+    reconnectMissCount_ = 0;
 
     // Re-apply previous setup with desired device names, SR, and BS.
     // Preserve channel routing (important for ASIO channel pairs).
@@ -1115,10 +1285,22 @@ void AudioEngine::attemptReconnection()
     setup.sampleRate = desiredSampleRate_;
     setup.bufferSize = desiredBufferSize_;
 
+    intentionalChange_ = true;
     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
+    intentionalChange_ = false;
     if (result.isEmpty()) {
-        // deviceLost_ cleared in audioDeviceAboutToStart
+        // Explicitly clear — audioDeviceAboutToStart may keep it true
+        // due to ASIO device name mismatch (single device vs desired I/O names)
+        deviceLost_.store(false, std::memory_order_relaxed);
+        inputDeviceLost_.store(false, std::memory_order_relaxed);
+        if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+            outputAutoMuted_.store(false, std::memory_order_relaxed);
+            // Keep outputMuted_ true if user intentionally selected "None"
+            if (!outputNone_.load(std::memory_order_relaxed))
+                outputMuted_.store(false, std::memory_order_relaxed);
+        }
         reconnectCooldown_ = 0;
+        reconnectMissCount_ = 0;
         Log::info("AUDIO", "Device reconnected: " + setup.inputDeviceName + " / " + setup.outputDeviceName);
         Log::audit("AUDIO", "Reconnection success: SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
         pushNotification("Device reconnected", NotificationLevel::Info);
@@ -1134,7 +1316,7 @@ void AudioEngine::attemptReconnection()
 void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)
 {
     // MPSC-safe: device thread (audioDeviceError) and message thread can both call.
-    // Use CAS loop to avoid two producers writing to the same slot.
+    // Use CAS loop to reserve a slot, write data, then publish via per-slot ready flag.
     uint32_t w = notifWriteIdx_.load(std::memory_order_relaxed);
     for (;;) {
         uint32_t r = notifReadIdx_.load(std::memory_order_acquire);
@@ -1143,7 +1325,9 @@ void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel le
             break;
         // CAS failed — another producer advanced w, retry with updated w
     }
-    notifQueue_[w % static_cast<uint32_t>(kNotifQueueSize)] = {msg, level};
+    auto slot = w % static_cast<uint32_t>(kNotifQueueSize);
+    notifQueue_[slot] = {msg, level};
+    notifReady_[slot].store(true, std::memory_order_release);  // publish after data write
 }
 
 bool AudioEngine::popNotification(PendingNotification& out)
@@ -1151,7 +1335,10 @@ bool AudioEngine::popNotification(PendingNotification& out)
     uint32_t r = notifReadIdx_.load(std::memory_order_relaxed);
     uint32_t w = notifWriteIdx_.load(std::memory_order_acquire);
     if (r == w) return false;
-    out = notifQueue_[r % static_cast<uint32_t>(kNotifQueueSize)];
+    auto slot = r % static_cast<uint32_t>(kNotifQueueSize);
+    if (!notifReady_[slot].load(std::memory_order_acquire)) return false;  // data not yet written
+    out = notifQueue_[slot];
+    notifReady_[slot].store(false, std::memory_order_relaxed);
     notifReadIdx_.store(r + 1, std::memory_order_release);
     return true;
 }

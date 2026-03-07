@@ -141,6 +141,13 @@ LogPanel::LogPanel()
 #endif
     addAndMakeVisible(startupToggle_);
 
+    quitBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kRedColour));
+    quitBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    quitBtn_.onClick = [] {
+        juce::JUCEApplication::getInstance()->systemRequestedQuit();
+    };
+    addAndMakeVisible(quitBtn_);
+
     // ── Settings Export/Import section ──
     settingsHeaderLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
     settingsHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
@@ -237,7 +244,9 @@ void LogPanel::resized()
     appHeaderLabel_.setBounds(x, y, w, headerH);
     y += headerH + gap;
 
-    startupToggle_.setBounds(x, y, w, rowH);
+    int quitW = 60;
+    startupToggle_.setBounds(x, y, w - quitW - gap, rowH);
+    quitBtn_.setBounds(x + w - quitW, y, quitW, rowH);
     y += rowH + gap;
 
     // ── Settings Export/Import section ──

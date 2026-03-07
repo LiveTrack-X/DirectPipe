@@ -56,12 +56,16 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.activeSlot);
     h = h * 31u + static_cast<uint32_t>(s.recording);
     h = h * 31u + static_cast<uint32_t>(s.recordingSeconds * 2.0);  // 0.5s precision
+    h = h * 31u + static_cast<uint32_t>(s.inputMuted);
     h = h * 31u + static_cast<uint32_t>(s.ipcEnabled);
     h = h * 31u + static_cast<uint32_t>(s.deviceLost);
     h = h * 31u + static_cast<uint32_t>(s.monitorLost);
+    h = h * 31u + static_cast<uint32_t>(s.sampleRate);
+    h = h * 31u + static_cast<uint32_t>(s.bufferSize);
+    h = h * 31u + static_cast<uint32_t>(s.channelMode);
     h = h * 31u + static_cast<uint32_t>(s.plugins.size());
     for (const auto& p : s.plugins)
-        h = h * 31u + static_cast<uint32_t>(p.bypassed);
+        h = h * 31u + (static_cast<uint32_t>(p.bypassed) | (static_cast<uint32_t>(p.loaded) << 1));
     for (const auto& n : s.slotNames)
         h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(n) & 0xFFFFu);
     return h;

@@ -54,8 +54,9 @@ public:
     /**
      * @brief Initialize all control handlers.
      * Loads configuration from disk and starts all enabled handlers.
+     * @param enableExternalControls  If false, skip hotkey/MIDI/WS/HTTP (audio-only mode).
      */
-    void initialize();
+    void initialize(bool enableExternalControls = true);
 
     /**
      * @brief Shut down all control handlers.
@@ -94,6 +95,12 @@ public:
      */
     ControlMappingStore& getConfigStore() { return configStore_; }
 
+    /**
+     * @brief Whether external controls (hotkey/MIDI/WS/HTTP) are active.
+     * False in audio-only mode (another instance owns external controls).
+     */
+    bool isExternalControlsActive() const { return externalControlsActive_; }
+
 private:
     ActionDispatcher& dispatcher_;
     StateBroadcaster& broadcaster_;
@@ -107,6 +114,7 @@ private:
     ControlConfig currentConfig_;
 
     bool initialized_ = false;
+    bool externalControlsActive_ = true;
 };
 
 } // namespace directpipe
