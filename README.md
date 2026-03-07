@@ -299,6 +299,7 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 
 ## 문서 / Documentation
 
+- [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
 - [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety
 - [Build Guide](docs/BUILDING.md) — 빌드 가이드 / Build instructions and options
 - [User Guide](docs/USER_GUIDE.md) — 사용법 / Setup and usage
