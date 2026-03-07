@@ -17,6 +17,11 @@
   </a>
 </p>
 
+## 다운로드 / Download
+
+- **Stable (안정 빌드)**: [v3.10.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.0) — 전체 테스트 통과 / Fully tested
+- **Latest (최신 빌드)**: [최신 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 최신 버그 수정 포함 / Includes latest fixes
+
 <p align="center">
   <em>DirectPipe is a modern lightweight VST host for applying studio-quality effects to your microphone.</em>
 </p>
