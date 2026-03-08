@@ -330,9 +330,10 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 ## 문서 / Documentation
 
 - **[Quick Start](docs/QUICKSTART.md) — USB 마이크 5분 설정 가이드 / 5-minute USB mic setup guide**
+- [Platform Guide](docs/PLATFORM_GUIDE.md) — 플랫폼별 가이드 (Windows/macOS/Linux) / Platform-specific setup, features, and limitations
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
 - [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety
-- [Build Guide](docs/BUILDING.md) — 빌드 가이드 / Build instructions and options
+- [Build Guide](docs/BUILDING.md) — 빌드 가이드 (멀티 플랫폼) / Build instructions for all platforms
 - [User Guide](docs/USER_GUIDE.md) — 사용법 / Setup and usage
 - [Control API](docs/CONTROL_API.md) — WebSocket / HTTP API 레퍼런스 / API reference
 - [API Examples](docs/API_EXAMPLES.md) — 자동화 예제 (Python, AutoHotkey, OBS 연동, curl, PowerShell) / Automation examples
