@@ -347,10 +347,18 @@ void PluginChainEditor::addPluginFromDescription(const juce::PluginDescription& 
 
 void PluginChainEditor::addPluginFromFile()
 {
+    juce::String pluginFilter;
+#if JUCE_WINDOWS
+    pluginFilter = "*.vst3;*.dll";
+#elif JUCE_MAC
+    pluginFilter = "*.vst3;*.vst;*.component";
+#else
+    pluginFilter = "*.vst3;*.so";
+#endif
     auto chooser = std::make_shared<juce::FileChooser>(
         "Select VST Plugin",
         juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory),
-        "*.vst3;*.dll");
+        pluginFilter);
 
     auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
     chooser->launchAsync(juce::FileBrowserComponent::openMode |

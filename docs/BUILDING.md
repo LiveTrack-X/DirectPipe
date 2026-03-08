@@ -27,13 +27,17 @@
 # Ubuntu/Debian
 sudo apt-get install libasound2-dev libjack-jackd2-dev \
   libfreetype-dev libx11-dev libxrandr-dev libxinerama-dev \
-  libxcursor-dev libgl-dev libwebkit2gtk-4.1-dev libcurl4-openssl-dev
+  libxcursor-dev libgl-dev
 
 # Fedora
 sudo dnf install alsa-lib-devel jack-audio-connection-kit-devel \
   freetype-devel libX11-devel libXrandr-devel libXinerama-devel \
-  libXcursor-devel mesa-libGL-devel webkit2gtk4.1-devel libcurl-devel
+  libXcursor-devel mesa-libGL-devel
 ```
+
+> **Note**: `libwebkit2gtk` and `libcurl` are NOT required — DirectPipe sets `JUCE_WEB_BROWSER=0` and `JUCE_USE_CURL=0`.
+>
+> **참고**: `libwebkit2gtk`와 `libcurl`은 필요하지 않습니다 — DirectPipe는 `JUCE_WEB_BROWSER=0`과 `JUCE_USE_CURL=0`을 설정합니다.
 
 ### Optional / 선택
 
@@ -167,6 +171,8 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 - **Usage / 사용법**: Open in a browser while DirectPipe is running. Auto tests use the HTTP API (`localhost:8766`), manual tests require user verification.
   브라우저에서 열기 (DirectPipe 실행 중). 자동 테스트는 HTTP API 사용, 수동 테스트는 사용자 확인 필요.
 - **Sections / 섹션**: API, Volume, Mute, Presets, Plugins, Devices, Hotkeys, MIDI, Stream Deck, IPC, Settings, UI, Regression tests
+- **Platform selector / 플랫폼 선택**: Tests are tagged per OS (Windows/macOS/Linux). Select your platform at the top to show only relevant tests. Platform stored in localStorage and included in exported reports.
+  테스트는 OS별 태그 지정. 상단에서 플랫폼 선택하면 관련 테스트만 표시. 플랫폼은 localStorage에 저장되며 내보내기 리포트에 포함.
 - **Features / 기능**: One-click auto test run, pass/fail tracking, export report, localStorage persistence
   원클릭 자동 테스트, 통과/실패 추적, 리포트 내보내기, localStorage 저장
 
@@ -183,14 +189,16 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 | RingBufferTest | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
 | SharedMemoryTest | Shared memory create/map, named events / 공유 메모리 생성/매핑 |
 | LatencyTest | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
-| ActionDispatcherTest | Action dispatch, listener management, thread safety / 액션 디스패치, 스레드 안전 |
 | IPCIntegrationTest | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
+| ReceiverSimulationTest | Receiver VST processBlock simulation (de-interleave, underrun, clock drift, producer death) / Receiver VST processBlock 시뮬레이션 |
+| CrossProcessIPC | Cross-process shared memory + ring buffer validation via child process / 자식 프로세스를 통한 크로스 프로세스 IPC 검증 |
 
 ### directpipe-host-tests (Host)
 
 | Test Group | Description |
 |------------|-------------|
 | WebSocketProtocolTest | JSON protocol parsing, state serialization / JSON 프로토콜 파싱, 상태 직렬화 |
+| ActionDispatcherTest | Action dispatch, listener management, thread safety / 액션 디스패치, 스레드 안전 |
 
 ```bash
 # Run all tests / 전체 테스트 실행

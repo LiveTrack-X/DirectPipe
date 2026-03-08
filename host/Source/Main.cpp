@@ -24,6 +24,9 @@
 #include <JuceHeader.h>
 #include <atomic>
 #include <mutex>
+#if ! JUCE_WINDOWS
+#include <csignal>
+#endif
 #include "BinaryData.h"
 #include "MainComponent.h"
 #include "Control/StateBroadcaster.h"
@@ -192,6 +195,19 @@ public:
             return;
         }
 
+        // POSIX signal handling
+#if ! JUCE_WINDOWS
+        ::signal(SIGPIPE, SIG_IGN);  // Writing to a closed socket must not crash
+
+        // SIGTERM: clean shutdown (save settings, unmap SHM, close servers).
+        // JUCE only handles SIGINT on Linux — SIGTERM from systemd/kill goes unhandled,
+        // causing abrupt termination without cleanup.
+        ::signal(SIGTERM, [](int) {
+            if (auto* app = juce::JUCEApplicationBase::getInstance())
+                app->systemRequestedQuit();
+        });
+#endif
+
         // Elevate process priority and timer resolution for real-time audio
         directpipe::Platform::setHighPriority();
 
@@ -295,10 +311,6 @@ public:
 
     void hideWindowToTray()
     {
-        if (mainWindow_) {
-            mainWindow_->setVisible(false);
-        }
-
         if (!trayIcon_) {
             directpipe::StateBroadcaster* bc = nullptr;
             if (mainWindow_) {
@@ -307,6 +319,17 @@ public:
                 if (mc) bc = &mc->getBroadcaster();
             }
             trayIcon_ = std::make_unique<DirectPipeTrayIcon>(*this, bc);
+        }
+
+        if (mainWindow_) {
+#if JUCE_LINUX
+            // GNOME 42+ removed legacy XEmbed system tray support.
+            // Minimize to taskbar instead of hiding — ensures the window
+            // is always recoverable even without a tray icon (AppIndicator).
+            mainWindow_->setMinimised(true);
+#else
+            mainWindow_->setVisible(false);
+#endif
         }
     }
 
@@ -410,9 +433,15 @@ private:
             juce::PopupMenu menu;
             menu.addItem(1, "Show Window");
             menu.addSeparator();
-            if (directpipe::Platform::isAutoStartSupported())
-                menu.addItem(3, "Start with Windows",
+            if (directpipe::Platform::isAutoStartSupported()) {
+#if JUCE_MAC
+                const char* autoStartLabel = "Open at Login";
+#else
+                const char* autoStartLabel = "Start with System";
+#endif
+                menu.addItem(3, autoStartLabel,
                              true, directpipe::Platform::isAutoStartEnabled());
+            }
             menu.addSeparator();
             menu.addItem(2, "Quit DirectPipe");
 

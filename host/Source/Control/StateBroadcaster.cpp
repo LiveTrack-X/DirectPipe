@@ -67,7 +67,7 @@ static uint32_t quickStateHash(const AppState& s)
     for (const auto& p : s.plugins)
         h = h * 31u + (static_cast<uint32_t>(p.bypassed) | (static_cast<uint32_t>(p.loaded) << 1));
     for (const auto& n : s.slotNames)
-        h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(n) & 0xFFFFu);
+        h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(n));
     return h;
 }
 

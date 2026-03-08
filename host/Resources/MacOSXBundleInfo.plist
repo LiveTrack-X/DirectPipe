@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Minimum macOS version (matches CMAKE_OSX_DEPLOYMENT_TARGET) -->
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+
+    <!-- Allow high-resolution displays (Retina) -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Suppress "App downloaded from the Internet" warning on first launch -->
+    <key>LSUIElement</key>
+    <false/>
+
+    <!-- Accessibility usage description for global hotkeys (CGEventTap) -->
+    <key>NSAccessibilityUsageDescription</key>
+    <string>DirectPipe uses accessibility features for system-wide keyboard shortcuts.</string>
+
+    <!-- Network server description (WebSocket/HTTP) -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>DirectPipe runs a local WebSocket and HTTP server for Stream Deck and external controller integration.</string>
+</dict>
+</plist>

@@ -34,6 +34,14 @@ static std::string floatToString(float value)
     return juce::String(value).toStdString();
 }
 
+/// Safe integer parsing — returns -1 on overflow or non-numeric input.
+/// Prevents undefined behavior from std::atoi on huge digit strings.
+static int safeAtoi(const std::string& s)
+{
+    if (s.empty() || s.size() > 9) return -1;  // max 999,999,999
+    return std::atoi(s.c_str());
+}
+
 HttpApiServer::HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
                              MidiHandler* midiHandler)
     : dispatcher_(dispatcher), broadcaster_(broadcaster), midiHandler_(midiHandler)
@@ -227,7 +235,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         }
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
-        int index = std::atoi(segments[2].c_str());
+        int index = safeAtoi(segments[2]);
         if (index < 0)
             return {400, R"({"error": "Invalid index"})"};
         dispatcher_.pluginBypass(index);
@@ -252,7 +260,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         const auto& target = segments[2];
         if (target != "monitor" && target != "input")
             return {400, "{\"error\": \"Unknown volume target, use monitor or input\"}"};
-        float value = static_cast<float>(std::atof(segments[3].c_str()));
+        float value = juce::String(segments[3]).getFloatValue();
         // Input gain range is 0.0-2.0 (multiplier), others are 0.0-1.0
         float maxValue = (target == "input") ? 2.0f : 1.0f;
         if (value < 0.0f || value > maxValue)
@@ -267,7 +275,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     if (action == "preset" && segments.size() >= 3) {
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
-        int index = std::atoi(segments[2].c_str());
+        int index = safeAtoi(segments[2]);
         if (index < 0 || index > 4)
             return {400, "{\"error\": \"Preset index out of range 0-4\"}"};
         dispatcher_.loadPreset(index);
@@ -277,7 +285,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     // GET /api/gain/:delta
     if (action == "gain" && segments.size() >= 3) {
-        float delta = static_cast<float>(std::atof(segments[2].c_str()));
+        float delta = juce::String(segments[2]).getFloatValue();
         dispatcher_.inputGainAdjust(delta);
         return {200, R"({"ok": true, "action": "input_gain", "delta": )" +
                floatToString(delta) + "}"};
@@ -287,7 +295,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     if (action == "slot" && segments.size() >= 3) {
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
-        int index = std::atoi(segments[2].c_str());
+        int index = safeAtoi(segments[2]);
         if (index < 0 || index > 4)
             return {400, "{\"error\": \"Slot index out of range 0-4\"}"};
         ActionEvent event;
@@ -317,9 +325,12 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (segments[2].find_first_not_of("0123456789") != std::string::npos ||
             segments[4].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
-        int pluginIndex = std::atoi(segments[2].c_str());
-        int paramIndex = std::atoi(segments[4].c_str());
-        float value = static_cast<float>(std::atof(segments[5].c_str()));
+        int pluginIndex = safeAtoi(segments[2]);
+        int paramIndex = safeAtoi(segments[4]);
+        if (pluginIndex < 0 || paramIndex < 0)
+            return {400, R"({"error": "Invalid index"})"};
+
+        float value = juce::String(segments[5]).getFloatValue();
         if (value < 0.0f || value > 1.0f)
             return {400, R"({"error": "value must be 0.0-1.0"})"};
         ActionEvent event;
@@ -354,13 +365,13 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (segments[3].find_first_not_of("0123456789") != std::string::npos ||
             segments[4].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid number"})"};
-        int ch = std::atoi(segments[3].c_str());
-        int num = std::atoi(segments[4].c_str());
+        int ch = safeAtoi(segments[3]);
+        int num = safeAtoi(segments[4]);
         if (ch < 1 || ch > 16 || num < 0 || num > 127)
             return {400, R"({"error": "channel 1-16, number 0-127"})"};
 
         if (msgType == "cc" && segments.size() >= 6) {
-            int val = std::atoi(segments[5].c_str());
+            int val = safeAtoi(segments[5]);
             if (val < 0 || val > 127)
                 return {400, R"({"error": "value 0-127"})"};
             auto msg = juce::MidiMessage::controllerEvent(ch, num, val);
@@ -369,7 +380,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                    ", \"ch\": " + std::to_string(ch) + ", \"value\": " + std::to_string(val) + "}"};
         }
         if (msgType == "note") {
-            int vel = (segments.size() >= 6) ? std::atoi(segments[5].c_str()) : 127;
+            int vel = (segments.size() >= 6) ? safeAtoi(segments[5]) : 127;
             if (vel < 0 || vel > 127)
                 return {400, R"({"error": "velocity 0-127"})"};
             auto msg = juce::MidiMessage::noteOn(ch, num, static_cast<juce::uint8>(vel));

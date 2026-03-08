@@ -125,6 +125,15 @@ public:
      */
     bool isValid() const { return header_ != nullptr && data_ != nullptr; }
 
+    /**
+     * @brief Detach from the shared memory region.
+     *
+     * Resets internal pointers to nullptr so isValid() returns false.
+     * Call this before closing the underlying shared memory to prevent
+     * dangling pointer dereferences.
+     */
+    void detach() { header_ = nullptr; data_ = nullptr; mask_ = 0; }
+
 private:
     DirectPipeHeader* header_ = nullptr;
     float* data_ = nullptr;

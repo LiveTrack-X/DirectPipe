@@ -13,9 +13,14 @@ target_include_directories(directpipe-core
 
 target_compile_features(directpipe-core PUBLIC cxx_std_17)
 
-# Windows-specific linking
+# Platform-specific linking
 if(WIN32)
     target_link_libraries(directpipe-core PUBLIC kernel32)
+elseif(APPLE)
+    target_link_libraries(directpipe-core PUBLIC pthread)
+else()
+    # Linux: -lrt for shm_open, -lpthread for threading
+    target_link_libraries(directpipe-core PUBLIC rt pthread)
 endif()
 
 # Compiler warnings

@@ -194,9 +194,10 @@ bool WebSocketServer::sendFrame(juce::StreamingSocket* client, const std::string
     }
 
     frame.insert(frame.end(), payload.begin(), payload.end());
-    int result = client->write(reinterpret_cast<const char*>(frame.data()), static_cast<int>(frame.size()));
-    if (result == -1) {
-        return false;
+    int expected = static_cast<int>(frame.size());
+    int result = client->write(reinterpret_cast<const char*>(frame.data()), expected);
+    if (result != expected) {
+        return false;  // Partial write or error — frame is corrupted on the wire
     }
     return true;
 }

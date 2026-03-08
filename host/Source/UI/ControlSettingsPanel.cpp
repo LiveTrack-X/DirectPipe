@@ -23,9 +23,6 @@
 
 #include "ControlSettingsPanel.h"
 
-#if JUCE_WINDOWS
-#endif
-
 namespace directpipe {
 
 static juce::String actionToDisplayName(const ActionEvent& event)

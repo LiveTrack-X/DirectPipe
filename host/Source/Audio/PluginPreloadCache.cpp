@@ -22,6 +22,7 @@
  */
 
 #include "PluginPreloadCache.h"
+#include "PluginLoadHelper.h"
 
 #if JUCE_WINDOWS
  #include <objbase.h>   // CoInitializeEx / CoUninitialize (VST3 COM requirement)
@@ -119,6 +120,8 @@ void PluginPreloadCache::preloadAllSlots(
     {
     #if JUCE_WINDOWS
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        // RAII guard ensures CoUninitialize runs even if plugin loading throws
+        struct ComScope { ~ComScope() { CoUninitialize(); } } comGuard;
     #endif
 
         // Join old preload thread (on background thread, never blocking message thread)
@@ -208,7 +211,7 @@ void PluginPreloadCache::preloadAllSlots(
 
                 juce::String error;
                 try {
-                    entry.instance = formatMgr.createPluginInstance(entry.desc, sr, static_cast<int>(bs), error);
+                    entry.instance = createPluginOnCorrectThread(formatMgr, entry.desc, sr, static_cast<int>(bs), error, nullptr, &cancelPreload_);
                 } catch (const std::exception& e) {
                     juce::Logger::writeToLog("[VST] Preload crashed: " + entry.name + " - " + juce::String(e.what()));
                     continue;
@@ -265,10 +268,6 @@ void PluginPreloadCache::preloadAllSlots(
 
         if (onComplete)
             juce::MessageManager::callAsync(std::move(onComplete));
-
-    #if JUCE_WINDOWS
-        CoUninitialize();
-    #endif
     });
     } // threadMutex_
 }

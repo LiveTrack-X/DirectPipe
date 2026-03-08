@@ -36,10 +36,11 @@ namespace directpipe {
 SharedMemory::~SharedMemory() { close(); }
 
 SharedMemory::SharedMemory(SharedMemory&& other) noexcept
-    : data_(other.data_), size_(other.size_), mapping_(other.mapping_)
+    : data_(other.data_), size_(other.size_), isCreator_(other.isCreator_), mapping_(other.mapping_)
 {
     other.data_ = nullptr;
     other.size_ = 0;
+    other.isCreator_ = false;
     other.mapping_ = nullptr;
 }
 
@@ -49,9 +50,11 @@ SharedMemory& SharedMemory::operator=(SharedMemory&& other) noexcept
         close();
         data_ = other.data_;
         size_ = other.size_;
+        isCreator_ = other.isCreator_;
         mapping_ = other.mapping_;
         other.data_ = nullptr;
         other.size_ = 0;
+        other.isCreator_ = false;
         other.mapping_ = nullptr;
     }
     return *this;
@@ -191,10 +194,12 @@ namespace directpipe {
 SharedMemory::~SharedMemory() { close(); }
 
 SharedMemory::SharedMemory(SharedMemory&& other) noexcept
-    : data_(other.data_), size_(other.size_), fd_(other.fd_), name_(::std::move(other.name_))
+    : data_(other.data_), size_(other.size_), isCreator_(other.isCreator_),
+      fd_(other.fd_), name_(::std::move(other.name_))
 {
     other.data_ = nullptr;
     other.size_ = 0;
+    other.isCreator_ = false;
     other.fd_ = -1;
 }
 
@@ -204,10 +209,12 @@ SharedMemory& SharedMemory::operator=(SharedMemory&& other) noexcept
         close();
         data_ = other.data_;
         size_ = other.size_;
+        isCreator_ = other.isCreator_;
         fd_ = other.fd_;
         name_ = ::std::move(other.name_);
         other.data_ = nullptr;
         other.size_ = 0;
+        other.isCreator_ = false;
         other.fd_ = -1;
     }
     return *this;
@@ -257,6 +264,7 @@ bool SharedMemory::create(const ::std::string& name, size_t size)
     }
 
     size_ = size;
+    isCreator_ = true;
     return true;
 }
 
@@ -277,6 +285,7 @@ bool SharedMemory::open(const ::std::string& name, size_t size)
     }
 
     size_ = size;
+    isCreator_ = false;  // Consumer doesn't own the shared memory
     return true;
 }
 
@@ -290,11 +299,15 @@ void SharedMemory::close()
         ::close(fd_);
         fd_ = -1;
     }
-    if (!name_.empty()) {
+    // Only the creator (producer) unlinks the shared memory name.
+    // Consumer must not unlink — it would break producer's ability to keep serving
+    // and prevent other consumers from reconnecting.
+    if (isCreator_ && !name_.empty()) {
         shm_unlink(name_.c_str());
-        name_.clear();
     }
+    name_.clear();
     size_ = 0;
+    isCreator_ = false;
 }
 
 // ─── NamedEvent ─────────────────────────────────────────────────
@@ -314,9 +327,10 @@ namespace directpipe {
 NamedEvent::~NamedEvent() { close(); }
 
 NamedEvent::NamedEvent(NamedEvent&& other) noexcept
-    : sem_(other.sem_), name_(::std::move(other.name_))
+    : sem_(other.sem_), name_(::std::move(other.name_)), isCreator_(other.isCreator_)
 {
     other.sem_ = nullptr;
+    other.isCreator_ = false;
 }
 
 NamedEvent& NamedEvent::operator=(NamedEvent&& other) noexcept
@@ -325,7 +339,9 @@ NamedEvent& NamedEvent::operator=(NamedEvent&& other) noexcept
         close();
         sem_ = other.sem_;
         name_ = ::std::move(other.name_);
+        isCreator_ = other.isCreator_;
         other.sem_ = nullptr;
+        other.isCreator_ = false;
     }
     return *this;
 }
@@ -338,6 +354,7 @@ bool NamedEvent::create(const ::std::string& name)
     auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
     if (s == SEM_FAILED) return false;
     sem_ = static_cast<void*>(s);
+    isCreator_ = true;
     return true;
 }
 
@@ -348,6 +365,7 @@ bool NamedEvent::open(const ::std::string& name)
     auto* s = sem_open(name_.c_str(), 0);
     if (s == SEM_FAILED) return false;
     sem_ = static_cast<void*>(s);
+    isCreator_ = false;  // Consumer doesn't own the semaphore
     return true;
 }
 
@@ -375,92 +393,113 @@ void NamedEvent::close()
         sem_close(static_cast<sem_t*>(sem_));
         sem_ = nullptr;
     }
-    if (!name_.empty()) {
+    // Only the creator (producer) unlinks the semaphore name.
+    // Consumer must not unlink — it would prevent producer from signaling
+    // and block other consumers from reconnecting via open().
+    if (isCreator_ && !name_.empty()) {
         sem_unlink(name_.c_str());
-        name_.clear();
     }
+    name_.clear();
+    isCreator_ = false;
 }
 
 bool NamedEvent::isOpen() const { return sem_ != nullptr; }
 
 #else
-// ═══ Linux: eventfd ════════════════════════════════════════════
+// ═══ Linux: POSIX named semaphore (sem_open/sem_post/sem_timedwait) ═══
 
 } // close namespace directpipe for system includes
 
-#include <sys/eventfd.h>
+#include <semaphore.h>
+#include <time.h>
 
 namespace directpipe {
 
 NamedEvent::~NamedEvent() { close(); }
 
-NamedEvent::NamedEvent(NamedEvent&& other) noexcept : fd_(other.fd_)
+NamedEvent::NamedEvent(NamedEvent&& other) noexcept
+    : sem_(other.sem_), name_(::std::move(other.name_)), isCreator_(other.isCreator_)
 {
-    other.fd_ = -1;
+    other.sem_ = nullptr;
+    other.isCreator_ = false;
 }
 
 NamedEvent& NamedEvent::operator=(NamedEvent&& other) noexcept
 {
     if (this != &other) {
         close();
-        fd_ = other.fd_;
-        other.fd_ = -1;
+        sem_ = other.sem_;
+        name_ = ::std::move(other.name_);
+        isCreator_ = other.isCreator_;
+        other.sem_ = nullptr;
+        other.isCreator_ = false;
     }
     return *this;
 }
 
-bool NamedEvent::create(const ::std::string& /*name*/)
+bool NamedEvent::create(const ::std::string& name)
 {
     close();
-    fd_ = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE);
-    return fd_ >= 0;
+    name_ = toPosixName(name);
+    sem_unlink(name_.c_str());  // Clean up stale
+    auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    if (s == SEM_FAILED) return false;
+    sem_ = static_cast<void*>(s);
+    isCreator_ = true;
+    return true;
 }
 
-bool NamedEvent::open(const ::std::string& /*name*/)
+bool NamedEvent::open(const ::std::string& name)
 {
-    // eventfd is process-local. For cross-process, a POSIX named semaphore
-    // would be needed. This works for in-process testing only.
-    return fd_ >= 0;
+    close();
+    name_ = toPosixName(name);
+    auto* s = sem_open(name_.c_str(), 0);
+    if (s == SEM_FAILED) return false;
+    sem_ = static_cast<void*>(s);
+    isCreator_ = false;  // Consumer doesn't own the semaphore
+    return true;
 }
 
 void NamedEvent::signal()
 {
-    if (fd_ >= 0) {
-        uint64_t val = 1;
-        [[maybe_unused]] auto ret = ::write(fd_, &val, sizeof(val));
-    }
+    if (sem_) sem_post(static_cast<sem_t*>(sem_));
 }
 
 bool NamedEvent::wait(uint32_t timeout_ms)
 {
-    if (fd_ < 0) return false;
+    if (!sem_) return false;
+    auto* s = static_cast<sem_t*>(sem_);
 
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(fd_, &fds);
-
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-
-    int ret = select(fd_ + 1, &fds, nullptr, nullptr, &tv);
-    if (ret > 0) {
-        uint64_t val;
-        [[maybe_unused]] auto r = ::read(fd_, &val, sizeof(val));
-        return true;
+    // Linux supports sem_timedwait (unlike macOS)
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_ms / 1000;
+    ts.tv_nsec += static_cast<long>(timeout_ms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1000000000L;
     }
-    return false;
+
+    return sem_timedwait(s, &ts) == 0;
 }
 
 void NamedEvent::close()
 {
-    if (fd_ >= 0) {
-        ::close(fd_);
-        fd_ = -1;
+    if (sem_) {
+        sem_close(static_cast<sem_t*>(sem_));
+        sem_ = nullptr;
     }
+    // Only the creator (producer) unlinks the semaphore name.
+    // Consumer must not unlink — it would prevent producer from signaling
+    // and block other consumers from reconnecting via open().
+    if (isCreator_ && !name_.empty()) {
+        sem_unlink(name_.c_str());
+    }
+    name_.clear();
+    isCreator_ = false;
 }
 
-bool NamedEvent::isOpen() const { return fd_ >= 0; }
+bool NamedEvent::isOpen() const { return sem_ != nullptr; }
 
 #endif // __APPLE__ vs Linux
 

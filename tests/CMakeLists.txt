@@ -8,6 +8,8 @@ add_executable(directpipe-tests
     test_shared_memory.cpp
     test_latency.cpp
     test_ipc_integration.cpp
+    test_receiver_simulation.cpp
+    test_cross_process_ipc.cpp
 )
 
 target_link_libraries(directpipe-tests PRIVATE
@@ -21,6 +23,15 @@ if(WIN32)
 endif()
 
 gtest_discover_tests(directpipe-tests)
+
+# ─── Cross-process IPC test child process ─────────────────────
+add_executable(ipc-test-child ipc_test_child.cpp)
+
+target_link_libraries(ipc-test-child PRIVATE directpipe-core)
+
+if(WIN32)
+    target_link_libraries(ipc-test-child PRIVATE kernel32)
+endif()
 
 # ─── Host Tests (requires JUCE) ────────────────────────────────
 if(DIRECTPIPE_BUILD_HOST)

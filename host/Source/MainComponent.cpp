@@ -219,6 +219,17 @@ MainComponent::MainComponent(bool enableExternalControls)
                 auto file = fc.getResult();
                 if (file.existsAsFile()) {
                     auto json = file.loadFileAsString();
+                    if (!SettingsExporter::isPlatformCompatible(json)) {
+                        auto backupPlatform = SettingsExporter::getBackupPlatform(json);
+                        juce::AlertWindow::showMessageBoxAsync(
+                            juce::MessageBoxIconType::WarningIcon,
+                            "Platform Mismatch",
+                            "This backup was created on " + backupPlatform + ".\n"
+                            "Backup/restore is only supported between the same OS.");
+                        juce::Logger::writeToLog("[APP] Platform mismatch: backup=" + backupPlatform
+                            + " current=" + SettingsExporter::getCurrentPlatform());
+                        return;
+                    }
                     safeThis->loadingSlot_ = true;
                     if (!SettingsExporter::importAll(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore())) {
                         safeThis->loadingSlot_ = false;
@@ -266,6 +277,17 @@ MainComponent::MainComponent(bool enableExternalControls)
                 auto file = fc.getResult();
                 if (file.existsAsFile()) {
                     auto json = file.loadFileAsString();
+                    if (!SettingsExporter::isPlatformCompatible(json)) {
+                        auto backupPlatform = SettingsExporter::getBackupPlatform(json);
+                        juce::AlertWindow::showMessageBoxAsync(
+                            juce::MessageBoxIconType::WarningIcon,
+                            "Platform Mismatch",
+                            "This backup was created on " + backupPlatform + ".\n"
+                            "Backup/restore is only supported between the same OS.");
+                        juce::Logger::writeToLog("[APP] Platform mismatch: backup=" + backupPlatform
+                            + " current=" + SettingsExporter::getCurrentPlatform());
+                        return;
+                    }
                     safeThis->loadingSlot_ = true;
                     if (!SettingsExporter::importFullBackup(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore())) {
                         safeThis->loadingSlot_ = false;

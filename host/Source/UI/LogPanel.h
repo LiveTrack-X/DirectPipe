@@ -91,7 +91,13 @@ public:
 private:
     // Application section
     juce::Label appHeaderLabel_{"", "Application"};
+#if JUCE_MAC
+    juce::ToggleButton startupToggle_{"Start at Login"};
+#elif JUCE_LINUX
+    juce::ToggleButton startupToggle_{"Start on Login"};
+#else
     juce::ToggleButton startupToggle_{"Start with Windows"};
+#endif
     juce::TextButton quitBtn_{"Quit"};
 
     // Settings Export/Import section

@@ -257,6 +257,100 @@ TEST_F(RingBufferTest, ConcurrentProducerConsumer) {
     EXPECT_EQ(totalRead.load(), kTotalFrames);
 }
 
+// ─── detach() tests ─────────────────────────────────────────────
+
+TEST_F(RingBufferTest, DetachMakesInvalid) {
+    RingBuffer rb;
+    rb.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+    EXPECT_TRUE(rb.isValid());
+
+    rb.detach();
+    EXPECT_FALSE(rb.isValid());
+    EXPECT_EQ(rb.getCapacity(), 0u);
+    EXPECT_EQ(rb.getChannels(), 0u);
+    EXPECT_EQ(rb.getSampleRate(), 0u);
+}
+
+TEST_F(RingBufferTest, WriteAfterDetachReturnsZero) {
+    RingBuffer rb;
+    rb.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+    rb.detach();
+
+    std::vector<float> data(128 * kChannels, 1.0f);
+    EXPECT_EQ(rb.write(data.data(), 128), 0u);
+}
+
+TEST_F(RingBufferTest, ReadAfterDetachReturnsZero) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    std::vector<float> data(128 * kChannels, 1.0f);
+    producer.write(data.data(), 128);
+
+    RingBuffer consumer;
+    consumer.attachAsConsumer(alignedMem_);
+    consumer.detach();
+
+    std::vector<float> readData(128 * kChannels);
+    EXPECT_EQ(consumer.read(readData.data(), 128), 0u);
+}
+
+TEST_F(RingBufferTest, AvailableAfterDetachReturnsZero) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    std::vector<float> data(128 * kChannels, 1.0f);
+    producer.write(data.data(), 128);
+
+    RingBuffer consumer;
+    consumer.attachAsConsumer(alignedMem_);
+    EXPECT_EQ(consumer.availableRead(), 128u);
+
+    consumer.detach();
+    EXPECT_EQ(consumer.availableRead(), 0u);
+    EXPECT_EQ(consumer.availableWrite(), 0u);
+}
+
+TEST_F(RingBufferTest, DetachThenReattach) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    // Write data
+    std::vector<float> data(128 * kChannels, 0.5f);
+    producer.write(data.data(), 128);
+
+    RingBuffer consumer;
+    consumer.attachAsConsumer(alignedMem_);
+    consumer.detach();
+    EXPECT_FALSE(consumer.isValid());
+
+    // Re-attach — data still in shared memory
+    EXPECT_TRUE(consumer.attachAsConsumer(alignedMem_));
+    EXPECT_TRUE(consumer.isValid());
+    EXPECT_EQ(consumer.availableRead(), 128u);
+
+    // Read and verify data integrity
+    std::vector<float> readData(128 * kChannels, 0.0f);
+    EXPECT_EQ(consumer.read(readData.data(), 128), 128u);
+    for (size_t i = 0; i < readData.size(); ++i) {
+        EXPECT_FLOAT_EQ(readData[i], 0.5f);
+    }
+}
+
+TEST_F(RingBufferTest, ResetAfterDetachIsNoOp) {
+    RingBuffer rb;
+    rb.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    std::vector<float> data(128 * kChannels, 1.0f);
+    rb.write(data.data(), 128);
+
+    rb.detach();
+    rb.reset();  // Should not crash (guarded by isValid check)
+    EXPECT_FALSE(rb.isValid());
+}
+
+// ─── End of detach() tests ──────────────────────────────────────
+
 TEST_F(RingBufferTest, AvailableReadWriteConsistency) {
     RingBuffer producer;
     producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);

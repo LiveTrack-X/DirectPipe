@@ -89,6 +89,7 @@ void HotkeyHandler::shutdown()
         messageWindow_ = nullptr;
     }
 
+    UnregisterClassA("DirectPipeHotkeyWnd", GetModuleHandle(nullptr));
     s_hotkeyInstance = nullptr;
     initialized_ = false;
 }
@@ -230,6 +231,7 @@ void HotkeyHandler::timerCallback()
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <ApplicationServices/ApplicationServices.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 // ─── CGKeyCode → Windows-style VK code mapping ──────────────────
 
@@ -345,12 +347,24 @@ void HotkeyHandler::initialize()
 {
     if (initialized_) return;
 
-    // Check accessibility permission (required for CGEventTap)
-    if (!AXIsProcessTrusted()) {
-        juce::Logger::writeToLog(
-            "[HOTKEY] Accessibility permission not granted — "
-            "global hotkeys disabled. Grant access in "
-            "System Settings > Privacy & Security > Accessibility");
+    // Check accessibility permission (required for CGEventTap).
+    // AXIsProcessTrustedWithOptions with kAXTrustedCheckOptionPrompt=true
+    // automatically shows the system "allow accessibility" dialog on first run.
+    {
+        const void* keys[]   = { kAXTrustedCheckOptionPrompt };
+        const void* values[] = { kCFBooleanTrue };
+        CFDictionaryRef opts = CFDictionaryCreate(
+            kCFAllocatorDefault, keys, values, 1,
+            &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        bool trusted = AXIsProcessTrustedWithOptions(opts);
+        CFRelease(opts);
+
+        if (!trusted) {
+            juce::Logger::writeToLog(
+                "[HOTKEY] Accessibility permission not granted — "
+                "global hotkeys disabled until permission is granted in "
+                "System Settings > Privacy & Security > Accessibility");
+        }
     }
 
     // Create a global event tap for key-down events
@@ -572,10 +586,19 @@ void HotkeyHandler::stopRecording()
 std::string HotkeyHandler::keyToString(uint32_t modifiers, uint32_t virtualKey)
 {
     std::string result;
+#if JUCE_MAC
+    // macOS convention: ⌃ Control, ⌥ Option, ⇧ Shift, ⌘ Command
+    // HK_WIN maps to Command key (kCGEventFlagMaskCommand)
+    if (modifiers & HK_CTRL)  result += "\xe2\x8c\x83";  // ⌃
+    if (modifiers & HK_ALT)   result += "\xe2\x8c\xa5";  // ⌥
+    if (modifiers & HK_SHIFT) result += "\xe2\x87\xa7";  // ⇧
+    if (modifiers & HK_WIN)   result += "\xe2\x8c\x98";  // ⌘
+#else
     if (modifiers & HK_CTRL)  result += "Ctrl+";
     if (modifiers & HK_ALT)   result += "Alt+";
     if (modifiers & HK_SHIFT) result += "Shift+";
     if (modifiers & HK_WIN)   result += "Win+";
+#endif
 
     // Common VK codes
     if (virtualKey >= '0' && virtualKey <= '9') {

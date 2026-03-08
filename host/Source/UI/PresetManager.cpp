@@ -202,17 +202,23 @@ bool PresetManager::importFromJSON(const juce::String& json)
 
     // Restore device type first (affects which devices are available).
     // For ASIO, provide saved device name to avoid opening the wrong device.
+    // Skip if the saved device type doesn't exist on this platform (cross-platform safety).
     if (root->hasProperty("deviceType")) {
         juce::String deviceType = root->getProperty("deviceType").toString();
         if (deviceType.isNotEmpty()) {
-            juce::String preferredDev;
-            if (deviceType.containsIgnoreCase("ASIO")) {
-                if (root->hasProperty("inputDevice"))
-                    preferredDev = root->getProperty("inputDevice").toString();
-                else if (root->hasProperty("outputDevice"))
-                    preferredDev = root->getProperty("outputDevice").toString();
+            auto availableTypes = engine_.getAvailableDeviceTypes();
+            if (availableTypes.contains(deviceType)) {
+                juce::String preferredDev;
+                if (deviceType.containsIgnoreCase("ASIO")) {
+                    if (root->hasProperty("inputDevice"))
+                        preferredDev = root->getProperty("inputDevice").toString();
+                    else if (root->hasProperty("outputDevice"))
+                        preferredDev = root->getProperty("outputDevice").toString();
+                }
+                engine_.setAudioDeviceType(deviceType, preferredDev);
+            } else {
+                juce::Logger::writeToLog("[PRESET] Skipping unavailable device type: " + deviceType);
             }
-            engine_.setAudioDeviceType(deviceType, preferredDev);
         }
     }
 

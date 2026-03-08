@@ -201,6 +201,7 @@ void PluginScannerComponent::addDefaultDirectories()
 {
     scanDirectories_.clear();
 
+#if JUCE_WINDOWS
     scanDirectories_.add("C:\\Program Files\\Common Files\\VST3");
     scanDirectories_.add("C:\\Program Files (x86)\\Common Files\\VST3");
     scanDirectories_.add("C:\\Program Files\\Common Files\\VST");
@@ -209,6 +210,28 @@ void PluginScannerComponent::addDefaultDirectories()
     scanDirectories_.add("C:\\Program Files\\Steinberg\\VST3");
     scanDirectories_.add("C:\\Program Files\\Steinberg\\VSTPlugins");
     scanDirectories_.add("C:\\Program Files (x86)\\Steinberg\\VSTPlugins");
+#elif JUCE_MAC
+    scanDirectories_.add("/Library/Audio/Plug-Ins/VST3");
+    scanDirectories_.add(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+        .getChildFile("Library/Audio/Plug-Ins/VST3").getFullPathName());
+    scanDirectories_.add("/Library/Audio/Plug-Ins/VST");
+    scanDirectories_.add(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+        .getChildFile("Library/Audio/Plug-Ins/VST").getFullPathName());
+    scanDirectories_.add("/Library/Audio/Plug-Ins/Components");
+    scanDirectories_.add(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+        .getChildFile("Library/Audio/Plug-Ins/Components").getFullPathName());
+#elif JUCE_LINUX
+    scanDirectories_.add("/usr/lib/vst3");
+    scanDirectories_.add("/usr/local/lib/vst3");
+    scanDirectories_.add(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+        .getChildFile(".vst3").getFullPathName());
+    scanDirectories_.add("/usr/lib/vst");
+    scanDirectories_.add("/usr/local/lib/vst");
+    scanDirectories_.add(juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+        .getChildFile(".vst").getFullPathName());
+    scanDirectories_.add("/usr/lib/lxvst");
+    scanDirectories_.add("/usr/local/lib/lxvst");
+#endif
 
     directoryListBox_.updateContent();
 }
@@ -348,11 +371,21 @@ void PluginScannerComponent::run()
             break;
         }
 
-        bool finished = scanner.waitForProcessToFinish(300000);
+        // Poll with 1-second intervals so we can respond to thread exit signal
+        bool finished = false;
+        for (int elapsed = 0; elapsed < 300000 && !threadShouldExit(); elapsed += 1000) {
+            if (scanner.waitForProcessToFinish(1000)) {
+                finished = true;
+                break;
+            }
+        }
         auto exitCode = scanner.getExitCode();
 
         if (!finished)
             scanner.kill();
+
+        if (threadShouldExit())
+            break;
 
         // Read intermediate results (saved after each plugin)
         if (outputFile.existsAsFile()) {

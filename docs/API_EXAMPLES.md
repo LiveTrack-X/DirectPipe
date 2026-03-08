@@ -86,7 +86,7 @@ curl http://127.0.0.1:8766/api/gain/-6    # -6dB
 # 모니터 출력 (헤드폰) 토글
 curl http://127.0.0.1:8766/api/monitor/toggle
 
-# IPC 출력 (Receiver VST) 토글
+# IPC 출력 (DirectPipe Receiver) 토글
 curl http://127.0.0.1:8766/api/ipc/toggle
 
 # ─── 녹음 ───
@@ -1138,7 +1138,7 @@ AutoHotkey로 커스텀 핫키:
 | `monitor_enabled` | bool | 모니터 출력 활성 여부 |
 | `recording` | bool | 녹음 중 여부 |
 | `recording_seconds` | number | 녹음 경과 시간 (초) |
-| `ipc_enabled` | bool | IPC (Receiver VST) 활성 여부 |
+| `ipc_enabled` | bool | IPC (DirectPipe Receiver) 활성 여부 |
 | `device_lost` | bool | 메인 오디오 장치 분실 여부 |
 | `monitor_lost` | bool | 모니터 장치 분실 여부 |
 

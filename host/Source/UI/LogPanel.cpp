@@ -40,14 +40,21 @@ DirectPipeLogger::DirectPipeLogger()
 
     // Open log file for crash diagnosis
     logFile_ = ControlMappingStore::getConfigDirectory().getChildFile("directpipe.log");
-    auto path = logFile_.getFullPathName().toStdString();
 
     // Rotate: keep previous session log as .prev, start fresh
     auto prevFile = logFile_.getSiblingFile("directpipe.log.prev");
     if (logFile_.existsAsFile())
         logFile_.moveFileTo(prevFile);
 
-    logStream_.open(path, std::ios::out | std::ios::trunc);
+    // Use wide string on Windows for Unicode path safety (e.g. Korean usernames),
+    // UTF-8 std::string on POSIX (native encoding).
+#if JUCE_WINDOWS
+    logStream_.open(logFile_.getFullPathName().toWideCharPointer(),
+                    std::ios::out | std::ios::trunc);
+#else
+    logStream_.open(logFile_.getFullPathName().toStdString(),
+                    std::ios::out | std::ios::trunc);
+#endif
     if (logStream_.is_open()) {
         auto now = juce::Time::getCurrentTime();
         auto dateStr = now.toString(true, true, true, true);

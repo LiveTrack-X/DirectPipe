@@ -15,6 +15,7 @@
 
 #include <sys/resource.h>
 #include <unistd.h>
+#include <JuceHeader.h>
 
 namespace directpipe {
 namespace Platform {
@@ -23,7 +24,11 @@ void setHighPriority()
 {
     // Elevate process priority (lower nice value = higher priority)
     // -10 is a reasonable level that doesn't require root on most distros
-    setpriority(PRIO_PROCESS, 0, -10);
+    errno = 0;  // setpriority can legitimately return -1, so check errno
+    if (setpriority(PRIO_PROCESS, 0, -10) == -1 && errno != 0) {
+        juce::Logger::writeToLog("[APP] Failed to set high process priority (errno "
+            + juce::String(errno) + "). Audio latency may be affected.");
+    }
 }
 
 void restoreNormalPriority()

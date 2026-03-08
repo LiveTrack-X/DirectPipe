@@ -22,6 +22,7 @@
  */
 
 #include "VSTChain.h"
+#include "PluginLoadHelper.h"
 #include "../Control/Log.h"
 
 #if JUCE_WINDOWS
@@ -710,6 +711,8 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
     {
     #if JUCE_WINDOWS
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        // RAII guard ensures CoUninitialize runs even if plugin loading throws
+        struct ComScope { ~ComScope() { CoUninitialize(); } } comGuard;
     #endif
 
         // Run pre-work (e.g. join preload thread) on background thread
@@ -718,7 +721,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
         for (auto& req : requests) {
             juce::String error;
-            auto inst = formatManager_.createPluginInstance(req.desc, sr, bs, error);
+            auto inst = createPluginOnCorrectThread(formatManager_, req.desc, sr, bs, error, aliveFlag);
             if (inst)
                 result->entries.push_back({std::move(inst), std::move(req)});
             else {
@@ -800,10 +803,6 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
             if (onChainChanged) onChainChanged();
             if (onComplete) onComplete();
         });
-
-    #if JUCE_WINDOWS
-        CoUninitialize();
-    #endif
     });
 }
 

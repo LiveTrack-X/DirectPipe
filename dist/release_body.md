@@ -13,6 +13,12 @@
 - **Platform abstraction layer** — PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock interfaces with per-platform implementations
 - 플랫폼 추상화 레이어 — 오디오, 자동 시작, 프로세스 우선순위, 다중 인스턴스 인터페이스
 
+### Data Safety / 데이터 안전
+- **Cross-OS backup protection** — Backup files now include platform info; restoring on a different OS is blocked with a warning dialog
+- 크로스 OS 백업 보호 — 백업 파일에 플랫폼 정보 포함, 다른 OS에서 복원 시 경고 다이얼로그 표시 후 차단
+- **Platform-adaptive UI** — "Start with Windows" / "Start at Login" (macOS) / "Start on Login" (Linux)
+- 플랫폼 적응형 UI — 자동 시작 라벨이 OS별로 표시
+
 ### Receiver Plugin / 리시버 플러그인
 - **VST3 + AU formats** — Receiver now builds as VST2, VST3, and AU (macOS) across all platforms
 - VST3 + AU 포맷 — 리시버를 VST2, VST3, AU (macOS)로 빌드

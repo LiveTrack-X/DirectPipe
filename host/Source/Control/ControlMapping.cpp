@@ -27,24 +27,41 @@
 
 namespace directpipe {
 
+/// Get the application root directory.
+/// On macOS .app bundles, currentExecutableFile points to Contents/MacOS/binary,
+/// so we use currentApplicationFile which returns the .app bundle root.
+/// On Windows/Linux, both resolve to the same directory.
+static juce::File getAppRootDirectory()
+{
+#if JUCE_MAC
+    return juce::File::getSpecialLocation(
+        juce::File::currentApplicationFile).getParentDirectory();
+#else
+    return juce::File::getSpecialLocation(
+        juce::File::currentExecutableFile).getParentDirectory();
+#endif
+}
+
 bool ControlMappingStore::isPortableMode()
 {
-    auto exeDir = juce::File::getSpecialLocation(
-        juce::File::currentExecutableFile).getParentDirectory();
-    return exeDir.getChildFile("portable.flag").existsAsFile();
+    return getAppRootDirectory().getChildFile("portable.flag").existsAsFile();
 }
 
 juce::File ControlMappingStore::getConfigDirectory()
 {
-    if (isPortableMode()) {
-        auto exeDir = juce::File::getSpecialLocation(
-            juce::File::currentExecutableFile).getParentDirectory();
-        return exeDir.getChildFile("config");
-    }
+    if (isPortableMode())
+        return getAppRootDirectory().getChildFile("config");
 
     auto appData = juce::File::getSpecialLocation(
         juce::File::userApplicationDataDirectory);
+
+#if JUCE_MAC
+    // macOS convention: ~/Library/Application Support/DirectPipe
+    // (userApplicationDataDirectory returns ~/Library, not ~/Library/Application Support)
+    return appData.getChildFile("Application Support/DirectPipe");
+#else
     return appData.getChildFile("DirectPipe");
+#endif
 }
 
 juce::File ControlMappingStore::getDefaultConfigFile()

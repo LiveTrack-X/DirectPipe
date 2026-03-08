@@ -14,7 +14,7 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 | **Preset Switch** | Switch preset slot (A-E) or cycle presets. / 프리셋 슬롯 전환 또는 순환. |
 | **Monitor Toggle** | Toggle monitor output (headphones) on/off. / 모니터 출력(헤드폰) 켜기/끄기. |
 | **Recording Toggle** | Start/stop audio recording to WAV. Shows elapsed time. / 오디오 녹음 시작/중지. 경과 시간 표시. |
-| **IPC Toggle** | Toggle IPC output (Receiver VST) on/off. / IPC 출력(리시버 VST) 켜기/끄기. |
+| **IPC Toggle** | Toggle IPC output (DirectPipe Receiver) on/off. / IPC 출력(DirectPipe Receiver) 켜기/끄기. |
 
 ---
 
@@ -174,7 +174,7 @@ No settings required. / 설정 불필요.
 
 **UUID:** `com.directpipe.directpipe.ipc-toggle`
 
-- **Press** — Toggle IPC output (Receiver VST) on/off / IPC 출력(리시버 VST) 켜기/끄기 토글
+- **Press** — Toggle IPC output (DirectPipe Receiver) on/off / IPC 출력(DirectPipe Receiver) 켜기/끄기 토글
 
 **Display:** State 0 = "IPC ON" (enabled), State 1 = "IPC OFF" (disabled) / 상태 표시
 
@@ -194,9 +194,9 @@ With DirectPipe actions on your Stream Deck, you get **full physical button cont
 
 ### 권장 레이아웃 / Recommended Layout
 
-VB-Cable(Discord) + Receiver VST(OBS) + Monitor(헤드폰)를 동시 사용하는 듀얼 앱 설정 (macOS/Linux에서는 BlackHole, PipeWire 등 플랫폼 가상 오디오 장치 사용):
+VB-Cable(Discord) + DirectPipe Receiver(OBS) + Monitor(헤드폰)를 동시 사용하는 듀얼 앱 설정 (macOS/Linux에서는 BlackHole, PipeWire 등 플랫폼 가상 오디오 장치 사용):
 
-Dual-app setup with VB-Cable (Discord) + Receiver VST (OBS) + Monitor (headphones). On macOS/Linux, use platform virtual audio devices (BlackHole, PipeWire, etc.) instead of VB-Cable:
+Dual-app setup with VB-Cable (Discord) + DirectPipe Receiver (OBS) + Monitor (headphones). On macOS/Linux, use platform virtual audio devices (BlackHole, PipeWire, etc.) instead of VB-Cable:
 
 ```
 ┌───────────────────────────────────────┐

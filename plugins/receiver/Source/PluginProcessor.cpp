@@ -39,7 +39,10 @@ void DirectPipeReceiverProcessor::prepareToPlay(double /*sampleRate*/, int sampl
     interleavedBuffer_.resize(static_cast<size_t>(samplesPerBlock) * maxCh, 0.0f);
 
     // Pre-allocate fade-out buffer (planar: channels * blockSize)
-    lastOutputBuffer_.resize(static_cast<size_t>(samplesPerBlock) * maxCh, 0.0f);
+    // Ensure at least 64 * maxCh for the fade-out tail (saveLastOutput uses min(numSamples, 64))
+    size_t fadeMin = 64u * maxCh;
+    size_t blockAlloc = static_cast<size_t>(samplesPerBlock) * maxCh;
+    lastOutputBuffer_.resize((std::max)(blockAlloc, fadeMin), 0.0f);
     lastOutputSamples_ = 0;
     lastOutputChannels_ = 0;
     hadAudioLastBlock_ = false;
@@ -192,6 +195,10 @@ void DirectPipeReceiverProcessor::tryConnect()
     // Skip to fresh position — minimal latency on connect
     skipToFreshPosition();
 
+    // Cache values for GUI-thread-safe access (avoids ringBuffer_ dangling pointer race)
+    cachedSampleRate_.store(ringBuffer_.getSampleRate(), std::memory_order_relaxed);
+    cachedChannels_.store(ringBuffer_.getChannels(), std::memory_order_relaxed);
+
     blocksSinceConnect_ = 0;
     connected_.store(true, std::memory_order_release);
 }
@@ -296,21 +303,22 @@ uint32_t DirectPipeReceiverProcessor::getHighFillThreshold() const
 void DirectPipeReceiverProcessor::disconnect()
 {
     connected_.store(false, std::memory_order_release);
+    cachedSampleRate_.store(0, std::memory_order_relaxed);
+    cachedChannels_.store(0, std::memory_order_relaxed);
+    ringBuffer_.detach();  // Invalidate pointers before unmapping shared memory
     sharedMemory_.close();
 }
 
 uint32_t DirectPipeReceiverProcessor::getSourceSampleRate() const
 {
-    if (!connected_.load(std::memory_order_relaxed))
-        return 0;
-    return ringBuffer_.getSampleRate();
+    // Return cached value — safe to call from GUI thread without touching ringBuffer_
+    return cachedSampleRate_.load(std::memory_order_relaxed);
 }
 
 uint32_t DirectPipeReceiverProcessor::getSourceChannels() const
 {
-    if (!connected_.load(std::memory_order_relaxed))
-        return 0;
-    return ringBuffer_.getChannels();
+    // Return cached value — safe to call from GUI thread without touching ringBuffer_
+    return cachedChannels_.load(std::memory_order_relaxed);
 }
 
 void DirectPipeReceiverProcessor::getStateInformation(juce::MemoryBlock& destData)

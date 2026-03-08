@@ -1,5 +1,33 @@
 # DirectPipe Release Notes
 
+## v4.0.0
+
+### Cross-Platform Support
+
+- **Platform abstraction layer**: New `host/Source/Platform/` module with per-platform implementations (PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock). Replaces hardcoded Windows API calls with cross-platform interfaces.
+- **macOS support (Beta)**: CoreAudio driver, LaunchAgent auto-start, CGEventTap hotkeys (requires Accessibility permission), Gatekeeper instructions.
+- **Linux support (Experimental)**: ALSA/JACK drivers, XDG autostart, hotkey stub (use MIDI/HTTP/WebSocket instead).
+- **Cross-OS backup protection**: Backup files (`.dpbackup`, `.dpfullbackup`) now include a `platform` field. Restoring a backup from a different OS is blocked with a warning dialog.
+- **Platform-adaptive UI labels**: "Start with Windows" (Windows), "Start at Login" (macOS), "Start on Login" (Linux).
+- **Plugin scanner cross-platform paths**: Scans OS-specific VST directories (Windows: `Program Files\...`, macOS: `/Library/Audio/Plug-Ins/...`, Linux: `/usr/lib/vst3/...`).
+- **Plugin file browser**: Platform-specific file filters (`.dll` on Windows, `.vst3/.vst/.component` on macOS, `.vst3/.so` on Linux).
+- **Preset deviceType validation**: Skips unavailable device types when importing presets (e.g., WASAPI preset on macOS).
+- **CJK font per platform**: Windows (Malgun Gothic), macOS (Apple SD Gothic Neo), Linux (Noto Sans CJK).
+
+### Build System
+
+- **Core library**: Added POSIX library linking for macOS (`-lpthread`) and Linux (`-lrt -lpthread`).
+- **Receiver plugin**: Added `JUCE_PLUGINHOST_AU=1` for macOS AudioUnit builds.
+- **CMake**: Platform-conditional WASAPI/ASIO/CoreAudio/ALSA/JACK defines.
+
+### Docs
+
+- Platform Guide (new): OS-specific setup, features, and limitations.
+- Pre-release dashboard: Platform selector (Windows/macOS/Linux) for OS-specific test items.
+- All docs updated with cross-platform information.
+
+---
+
 ## v3.10.0
 
 ### Multi-Instance & Portable Mode
@@ -7,7 +35,7 @@
 - **Multi-instance external control priority**: Named Mutex system (`DirectPipe_NormalRunning`, `DirectPipe_ExternalControl`) prevents hotkey/MIDI/WebSocket/HTTP conflicts between instances. Normal mode blocks if portable has control. Portable runs audio-only if another instance already controls.
 - **Audio-only mode indicators**: Title bar "(Audio Only)", status bar orange "Portable", tray tooltip "(Portable/Audio Only)".
 - **IPC blocked in audio-only mode**: `setIpcEnabled(true)` silently ignored — prevents shared memory name collision between instances.
-- **Quit button**: Red "Quit" button in Settings tab (next to "Start with Windows") for closing individual instances.
+- **Quit button**: Red "Quit" button in Settings tab (next to auto-start toggle) for closing individual instances.
 
 ### Audio Engine
 

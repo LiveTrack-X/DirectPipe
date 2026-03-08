@@ -10,6 +10,11 @@ juce_add_gui_app(DirectPipe
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     PLUGIN_MANUFACTURER_CODE DPip
+    # macOS: microphone access permission (required by macOS 10.14+ for audio input)
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "DirectPipe needs microphone access for real-time audio processing through your VST plugin chain."
+    # macOS: merge additional Info.plist keys
+    PLIST_TO_MERGE "${CMAKE_CURRENT_SOURCE_DIR}/Resources/MacOSXBundleInfo.plist"
 )
 
 target_sources(DirectPipe PRIVATE
@@ -26,6 +31,7 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/OutputRouter.cpp
     Source/Audio/LatencyMonitor.h
     Source/Audio/LatencyMonitor.cpp
+    Source/Audio/PluginLoadHelper.h
     Source/Audio/AudioRingBuffer.h
     Source/Audio/MonitorOutput.h
     Source/Audio/MonitorOutput.cpp
@@ -181,3 +187,17 @@ target_link_libraries(DirectPipe PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+# ─── macOS ad-hoc code signing (free, no Apple Developer account) ───
+# Includes entitlements for: microphone access, VST plugin loading, network server.
+# Prevents repeated macOS firewall "allow incoming connections?" dialog.
+# Users still need right-click → Open on first launch (Gatekeeper).
+# For notarized distribution, replace "-" with "Developer ID Application: ..." identity.
+if(APPLE)
+    add_custom_command(TARGET DirectPipe POST_BUILD
+        COMMAND codesign --force --deep -s -
+            --entitlements "${CMAKE_CURRENT_SOURCE_DIR}/Resources/Entitlements.plist"
+            "$<TARGET_BUNDLE_DIR:DirectPipe>"
+        COMMENT "Ad-hoc signing DirectPipe.app with entitlements"
+    )
+endif()

@@ -25,11 +25,41 @@
 
 namespace directpipe {
 
+juce::String SettingsExporter::getCurrentPlatform()
+{
+#if JUCE_WINDOWS
+    return "windows";
+#elif JUCE_MAC
+    return "macos";
+#elif JUCE_LINUX
+    return "linux";
+#else
+    return "unknown";
+#endif
+}
+
+juce::String SettingsExporter::getBackupPlatform(const juce::String& json)
+{
+    auto parsed = juce::JSON::parse(json);
+    if (!parsed.isObject()) return {};
+    auto* root = parsed.getDynamicObject();
+    if (!root || !root->hasProperty("platform")) return {};
+    return root->getProperty("platform").toString();
+}
+
+bool SettingsExporter::isPlatformCompatible(const juce::String& json)
+{
+    auto backupPlatform = getBackupPlatform(json);
+    if (backupPlatform.isEmpty()) return true;  // legacy backup — no platform field
+    return backupPlatform == getCurrentPlatform();
+}
+
 juce::String SettingsExporter::exportAll(PresetManager& presetManager,
                                           ControlMappingStore& controlStore)
 {
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("version", 2);
+    root->setProperty("platform", getCurrentPlatform());
     root->setProperty("exportDate",
         juce::Time::getCurrentTime().toISO8601(true));
     root->setProperty("appVersion",
@@ -104,6 +134,7 @@ juce::String SettingsExporter::exportFullBackup(PresetManager& presetManager,
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("version", 2);
     root->setProperty("type", "full");
+    root->setProperty("platform", getCurrentPlatform());
     root->setProperty("exportDate",
         juce::Time::getCurrentTime().toISO8601(true));
     root->setProperty("appVersion",

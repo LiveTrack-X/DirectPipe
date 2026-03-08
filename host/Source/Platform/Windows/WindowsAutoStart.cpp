@@ -49,11 +49,15 @@ void setAutoStartEnabled(bool enable)
         auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
                            .getFullPathName();
         auto wPath = exePath.toWideCharPointer();
-        RegSetValueExW(hKey, getRunValueName(), 0, REG_SZ,
+        auto result = RegSetValueExW(hKey, getRunValueName(), 0, REG_SZ,
                        reinterpret_cast<const BYTE*>(wPath),
                        static_cast<DWORD>((wcslen(wPath) + 1) * sizeof(wchar_t)));
+        if (result != ERROR_SUCCESS)
+            juce::Logger::writeToLog("[APP] Failed to write auto-start registry (error " + juce::String((int)result) + ")");
     } else {
-        RegDeleteValueW(hKey, getRunValueName());
+        auto result = RegDeleteValueW(hKey, getRunValueName());
+        if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND)
+            juce::Logger::writeToLog("[APP] Failed to delete auto-start registry (error " + juce::String((int)result) + ")");
     }
     RegCloseKey(hKey);
 }

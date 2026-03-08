@@ -83,7 +83,7 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 
 1. Receiver 플러그인을 VST2 폴더에 복사 / Copy Receiver plugin to VST2 folder:
    - Windows: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\`
-   - macOS: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/`
+   - macOS: `DirectPipe Receiver.vst` → `~/Library/Audio/Plug-Ins/VST/`
    - Linux: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 / or `~/.vst/`
 2. DirectPipe 하단 **VST** 버튼 클릭 (초록색 = IPC ON) / Click **VST** button at bottom (green = ON)
 3. OBS → 오디오 소스 → 필터 → VST 2.x → **DirectPipe Receiver** 선택 / Select in OBS VST filter
@@ -96,9 +96,9 @@ OBS [DirectPipe Receiver] → 방송/녹화 / stream/record
 
 ### 둘 다 사용 (권장) / Both (Recommended)
 
-Discord는 VB-Cable로, OBS는 Receiver VST로 보내면 **각 앱의 마이크를 독립 제어** 가능.
+Discord는 VB-Cable로, OBS는 DirectPipe Receiver로 보내면 **각 앱의 마이크를 독립 제어** 가능.
 
-Send Discord via VB-Cable, OBS via Receiver VST — **independently control each app's mic**.
+Send Discord via VB-Cable, OBS via DirectPipe Receiver — **independently control each app's mic**.
 
 ---
 

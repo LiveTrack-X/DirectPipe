@@ -47,8 +47,8 @@ constexpr uint32_t DEFAULT_SAMPLE_RATE = 48000;
 /// Default number of audio channels
 constexpr uint32_t DEFAULT_CHANNELS = 2;
 
-/// Default WASAPI buffer size in samples
-constexpr uint32_t DEFAULT_WASAPI_BUFFER_SIZE = 128;
+/// Default audio buffer size in samples (WASAPI on Windows)
+constexpr uint32_t DEFAULT_AUDIO_BUFFER_SIZE = 128;
 
 // ─── Timing Constants ───────────────────────────────────────────
 /// Timeout in milliseconds for waiting on the data event

@@ -54,6 +54,16 @@ public:
                                   PresetManager& presetManager,
                                   ControlMappingStore& controlStore);
 
+    /** Returns the platform string for the current OS ("windows", "macos", "linux"). */
+    static juce::String getCurrentPlatform();
+
+    /** Returns the platform string stored in a backup JSON, or empty if not present. */
+    static juce::String getBackupPlatform(const juce::String& json);
+
+    /** Returns true if the backup was created on the same OS as the current one.
+     *  Also returns true if the backup has no platform field (legacy format). */
+    static bool isPlatformCompatible(const juce::String& json);
+
     static constexpr const char* kFileExtension = ".dpbackup";
     static constexpr const char* kFullBackupExtension = ".dpfullbackup";
 };

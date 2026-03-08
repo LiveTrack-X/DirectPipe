@@ -80,6 +80,11 @@ struct DirectPipeHeader {
 static_assert(alignof(DirectPipeHeader) >= 64,
               "DirectPipeHeader must be at least 64-byte aligned");
 
+// Ensure header size is consistent across compilers (3 x 64-byte cache lines = 192 bytes).
+// If this fails after a layout change, update the expected size and bump PROTOCOL_VERSION.
+static_assert(sizeof(DirectPipeHeader) == 192,
+              "DirectPipeHeader size changed — update PROTOCOL_VERSION if layout changed");
+
 /**
  * @brief Calculate the total shared memory size needed.
  * @param buffer_frames Number of frames in the ring buffer (power of 2).

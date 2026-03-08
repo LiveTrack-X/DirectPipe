@@ -93,6 +93,7 @@ public:
 private:
     void* data_ = nullptr;
     size_t size_ = 0;
+    bool isCreator_ = false;  // Only creator (producer) unlinks on close
 
 #ifdef _WIN32
     HANDLE mapping_ = nullptr;
@@ -165,10 +166,12 @@ private:
     // Note: macOS doesn't support sem_timedwait, so we poll with sem_trywait.
     void* sem_ = nullptr;  // sem_t* (void* to avoid including semaphore.h in header)
     std::string name_;
+    bool isCreator_ = false;  // Only creator (producer) unlinks on close
 #else
-    // Linux: eventfd for efficient in-process signaling
-    int fd_ = -1;
+    // Linux: POSIX named semaphore (sem_open/sem_post/sem_timedwait)
+    void* sem_ = nullptr;  // sem_t* (void* to avoid including semaphore.h in header)
     std::string name_;
+    bool isCreator_ = false;  // Only creator (producer) unlinks on close
 #endif
 };
 

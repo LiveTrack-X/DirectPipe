@@ -29,12 +29,29 @@ bool isAutoStartEnabled()
     return getDesktopFile().existsAsFile();
 }
 
+/// Escape a path for the Exec key in a .desktop file (XDG spec).
+/// Special characters (space, tab, $, `, \, ") must be escaped with backslash.
+static juce::String escapeDesktopExec(const juce::String& path)
+{
+    juce::String result;
+    for (int i = 0; i < path.length(); ++i) {
+        auto c = path[i];
+        if (c == ' ' || c == '\t' || c == '$' || c == '`' || c == '\\' || c == '"')
+            result += '\\';
+        result += c;
+    }
+    return result;
+}
+
 void setAutoStartEnabled(bool enable)
 {
     auto desktopFile = getDesktopFile();
 
     if (enable) {
-        desktopFile.getParentDirectory().createDirectory();
+        if (!desktopFile.getParentDirectory().createDirectory()) {
+            juce::Logger::writeToLog("[APP] Failed to create autostart directory");
+            return;
+        }
 
         auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
                            .getFullPathName();
@@ -43,13 +60,15 @@ void setAutoStartEnabled(bool enable)
         entry << "[Desktop Entry]\n"
               << "Type=Application\n"
               << "Name=DirectPipe\n"
-              << "Exec=" << exePath << "\n"
+              << "Exec=" << escapeDesktopExec(exePath) << "\n"
               << "Terminal=false\n"
               << "X-GNOME-Autostart-enabled=true\n";
 
-        desktopFile.replaceWithText(entry);
+        if (!desktopFile.replaceWithText(entry))
+            juce::Logger::writeToLog("[APP] Failed to write autostart desktop entry");
     } else {
-        desktopFile.deleteFile();
+        if (!desktopFile.deleteFile())
+            juce::Logger::writeToLog("[APP] Failed to delete autostart desktop entry");
     }
 }
 

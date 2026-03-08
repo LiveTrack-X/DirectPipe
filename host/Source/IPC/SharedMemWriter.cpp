@@ -94,9 +94,15 @@ void SharedMemWriter::shutdown()
         }
     }
 
+    // Invalidate ring buffer pointers before unmapping shared memory.
+    // Prevents dangling pointer dereference if audio thread is still in writeAudio()
+    // (race window in setIpcEnabled(false) — audio thread may see stale ipcEnabled_=true).
+    ringBuffer_.detach();
     dataEvent_.close();
     sharedMemory_.close();
-    interleaveBuffer_.clear();
+    // NOTE: Do NOT clear interleaveBuffer_ here. The audio thread might still be
+    // reading it during the setIpcEnabled(false) race window. The buffer is harmless
+    // to leave allocated and gets repopulated on next initialize().
 }
 
 void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples)

@@ -47,6 +47,8 @@ private:
     directpipe::RingBuffer ringBuffer_;
 
     std::atomic<bool> connected_{false};
+    std::atomic<uint32_t> cachedSampleRate_{0};  // GUI-safe cache (avoids ringBuffer_ race)
+    std::atomic<uint32_t> cachedChannels_{0};     // GUI-safe cache (avoids ringBuffer_ race)
     int reconnectCounter_ = 0;
     static constexpr int kReconnectInterval = 100;
 
