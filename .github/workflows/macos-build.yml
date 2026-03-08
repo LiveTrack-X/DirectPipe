@@ -35,6 +35,13 @@ jobs:
           path: build/host/DirectPipe_artefacts/Release/DirectPipe.app
           if-no-files-found: error
 
+      - name: Upload Receiver VST2 (for OBS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-macOS-VST2
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/
+          if-no-files-found: warn
+
       - name: Upload Receiver AU
         uses: actions/upload-artifact@v4
         with:
