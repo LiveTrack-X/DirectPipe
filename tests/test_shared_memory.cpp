@@ -183,15 +183,19 @@ TEST_F(SharedMemoryTest, FullIPCPipeline) {
 
     std::atomic<int> blocksReceived{0};
 
-    // Consumer thread
+    // Consumer thread — drain all available blocks per signal to handle
+    // Windows auto-reset event coalescing (multiple signals collapse into one)
     std::thread consumerThread([&]() {
         std::vector<float> readBuf(kFramesPerBlock * kChannels);
         while (blocksReceived.load(std::memory_order_relaxed) < kBlocks) {
             if (event.wait(500)) {
-                uint32_t read = consumer.read(readBuf.data(), kFramesPerBlock);
-                if (read > 0) {
-                    blocksReceived.fetch_add(1, std::memory_order_relaxed);
-                }
+                uint32_t read;
+                do {
+                    read = consumer.read(readBuf.data(), kFramesPerBlock);
+                    if (read > 0) {
+                        blocksReceived.fetch_add(1, std::memory_order_relaxed);
+                    }
+                } while (read > 0 && blocksReceived.load(std::memory_order_relaxed) < kBlocks);
             }
         }
     });

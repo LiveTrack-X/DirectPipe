@@ -1,4 +1,4 @@
-name: v4 Cross-Platform Build
+name: v4 macOS Build
 
 on:
   push:
@@ -27,19 +27,3 @@ jobs:
 
       - name: Run Tests
         run: cd build && ctest --output-on-failure
-
-  build-windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=ON -DDIRECTPIPE_BUILD_TESTS=ON
-
-      - name: Build All
-        run: cmake --build build --config Release
-
-      - name: Run Tests
-        run: cd build && ctest --output-on-failure -C Release
