@@ -1,0 +1,150 @@
+name: v4 Cross-Platform Build
+
+on:
+  push:
+    branches: [v4]
+  pull_request:
+    branches: [v4]
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDIRECTPIPE_BUILD_RECEIVER=ON \
+            -DDIRECTPIPE_BUILD_TESTS=ON \
+            -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -Wno-error=deprecated"
+
+      - name: Build All
+        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+
+      - name: Run Tests
+        run: cd build && ctest --output-on-failure
+
+      - name: Upload DirectPipe.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipe-macOS
+          path: build/host/DirectPipe_artefacts/Release/DirectPipe.app
+          if-no-files-found: error
+
+      - name: Upload Receiver VST2 (for OBS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-macOS-VST2
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/
+          if-no-files-found: warn
+
+      - name: Upload Receiver AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-macOS-AU
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/AU/
+          if-no-files-found: warn
+
+      - name: Upload Receiver VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-macOS-VST3
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/
+          if-no-files-found: warn
+
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=ON -DDIRECTPIPE_BUILD_TESTS=ON
+
+      - name: Build All
+        run: cmake --build build --config Release
+
+      - name: Run Tests
+        run: cd build && ctest --output-on-failure -C Release
+
+      - name: Upload DirectPipe.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipe-Windows
+          path: build/host/DirectPipe_artefacts/Release/DirectPipe.exe
+          if-no-files-found: error
+
+      - name: Upload Receiver VST2
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-Windows-VST2
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/
+          if-no-files-found: warn
+
+      - name: Upload Receiver VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-Windows-VST3
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/
+          if-no-files-found: warn
+
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libjack-jackd2-dev \
+            libfreetype-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libgl-dev \
+            libwebkit2gtk-4.1-dev \
+            libcurl4-openssl-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDIRECTPIPE_BUILD_RECEIVER=ON \
+            -DDIRECTPIPE_BUILD_TESTS=ON
+
+      - name: Build All
+        run: cmake --build build --config Release -j$(nproc)
+
+      - name: Run Tests
+        run: cd build && ctest --output-on-failure
+
+      - name: Upload DirectPipe
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipe-Linux
+          path: build/host/DirectPipe_artefacts/Release/DirectPipe
+          if-no-files-found: error
+
+      - name: Upload Receiver VST2
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-Linux-VST2
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/
+          if-no-files-found: warn
+
+      - name: Upload Receiver VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-Linux-VST3
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/
+          if-no-files-found: warn
