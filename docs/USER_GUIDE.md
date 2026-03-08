@@ -13,7 +13,7 @@ DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input
 > **Platform Support**: Windows (stable), macOS (beta), Linux (experimental)
 
 ```
-USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (VB-Cable → Discord/Zoom)
+USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)
                                                  ├→ Monitor Output (헤드폰)
                                                  ├→ IPC Output (OBS Receiver VST)
                                                  └→ WAV Recording
@@ -106,10 +106,10 @@ USB Mic   → DirectPipe (VST effects)
 OBS [DirectPipe Receiver VST 필터 / filter] → 방송/녹화 / stream/record
 ```
 
-> **Tip**: VB-Cable과 Receiver VST를 **동시에** 사용할 수 있습니다. Discord는 VB-Cable로, OBS는 Receiver VST로 각각 보내면 됩니다.
-> You can use VB-Cable and Receiver VST **simultaneously**. Send Discord via VB-Cable and OBS via Receiver VST.
+> **Tip**: 가상 케이블과 Receiver VST를 **동시에** 사용할 수 있습니다. Discord는 가상 케이블로, OBS는 Receiver VST로 각각 보내면 됩니다.
+> You can use a virtual cable and Receiver VST **simultaneously**. Send Discord via virtual cable and OBS via Receiver VST.
 
-### VB-Cable vs Receiver VST 선택 가이드 / Which to Use
+### 가상 케이블 vs Receiver VST 선택 가이드 / Virtual Cable vs Receiver VST: Which to Use
 
 | | 가상 케이블 / Virtual Cable | Receiver VST (IPC) |
 |---|---|---|
@@ -802,7 +802,7 @@ Record to WAV **while streaming on OBS and chatting on Discord**. Recording capt
 
 ```
 USB 마이크 → DirectPipe (VST 이펙트)
-    ├─ OUT → VB-Cable → Discord    ✅ 동시
+    ├─ OUT → 가상 케이블 → Discord  ✅ 동시
     ├─ VST → IPC → OBS Receiver    ✅ 동시
     ├─ MON → 헤드폰                ✅ 동시
     └─ REC → WAV 파일              ✅ 동시
@@ -1135,18 +1135,18 @@ Playing monitor output through speakers creates an **echo/feedback loop** as the
 
 | 출력 / Output | DirectPipe 종료 시 / When DirectPipe closes | 복구 방법 / Recovery |
 |---|---|---|
-| **Main OUT** (VB-Cable → Discord) | Discord 마이크 즉시 무음 (VB-Cable에 오디오 전송 중단) / Discord mic goes silent immediately (audio to VB-Cable stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
+| **Main OUT** (가상 케이블 → Discord) | Discord 마이크 즉시 무음 (가상 케이블에 오디오 전송 중단) / Discord mic goes silent immediately (audio to virtual cable stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
 | **VST** (IPC → OBS Receiver) | Receiver VST가 연결 해제 감지 → **부드러운 페이드아웃** (~20 샘플) → 무음 → "Disconnected" 표시 / Receiver detects disconnect → **smooth fadeout** (~20 samples) → silence → "Disconnected" | DirectPipe 재시작 + IPC 켜기 → 자동 재연결 / Restart DirectPipe + enable IPC → auto-reconnect |
-| **MON** (모니터 → 헤드폰 / Monitor → Headphones) | 즉시 무음 (WASAPI 장치 콜백 중단) / Immediate silence (WASAPI callback stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
+| **MON** (모니터 → 헤드폰 / Monitor → Headphones) | 즉시 무음 (오디오 콜백 중단) / Immediate silence (audio callback stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
 | **REC** (WAV 녹음 / WAV Recording) | 녹음 파일 자동 마무리 (FIFO 플러시 후 파일 닫기). 녹음 중이었다면 중단 시점까지 저장됨 / Recording file auto-finalized (FIFO flushed, file closed). Saved up to the point of closure | 재시작 후 수동 녹음 시작 / Manually start recording after restart |
 
 > **OBS Receiver 자동 재연결**: DirectPipe를 다시 시작하면 Receiver VST가 약 1초마다 공유 메모리 연결을 시도합니다. DirectPipe에서 IPC를 켜면(VST 버튼 초록) 자동으로 재연결됩니다 — OBS를 재시작할 필요 없음.
 >
 > **OBS Receiver auto-reconnect**: After restarting DirectPipe, the Receiver VST attempts shared memory connection every ~1 second. Once IPC is enabled (VST button green), it reconnects automatically — no need to restart OBS.
 
-> **Discord 자동 복구**: DirectPipe가 재시작되면 VB-Cable로의 오디오 출력이 자동으로 재개됩니다. Discord에서 별도 조작 없이 마이크가 다시 작동합니다.
+> **Discord 자동 복구**: DirectPipe가 재시작되면 가상 케이블로의 오디오 출력이 자동으로 재개됩니다. Discord에서 별도 조작 없이 마이크가 다시 작동합니다.
 >
-> **Discord auto-recovery**: When DirectPipe restarts, audio output to VB-Cable resumes automatically. Microphone works again in Discord without any action.
+> **Discord auto-recovery**: When DirectPipe restarts, audio output to the virtual cable resumes automatically. Microphone works again in Discord without any action.
 
 ---
 
