@@ -39,7 +39,15 @@ if(DIRECTPIPE_BUILD_HOST)
     FetchContent_MakeAvailable(JUCE)
 
     # VST2 SDK (interface headers for VST2 plugin hosting)
-    juce_set_vst2_sdk_path("${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/VST2_SDK")
+    set(VST2_SDK_PATH "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/VST2_SDK")
+    if(EXISTS "${VST2_SDK_PATH}/pluginterfaces/vst2.x/aeffect.h")
+        juce_set_vst2_sdk_path("${VST2_SDK_PATH}")
+        set(DIRECTPIPE_HAS_VST2 ON)
+        message(STATUS "VST2 SDK found at ${VST2_SDK_PATH}")
+    else()
+        set(DIRECTPIPE_HAS_VST2 OFF)
+        message(STATUS "VST2 SDK not found — VST2 hosting disabled")
+    endif()
 endif()
 
 # ─── Google Test (for testing) ───
