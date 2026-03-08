@@ -22,14 +22,11 @@ jobs:
             -DDIRECTPIPE_BUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -Wno-error=deprecated"
 
-      - name: Build Host
-        run: cmake --build build --config Release --target DirectPipe -j$(sysctl -n hw.ncpu)
+      - name: Build All
+        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
-      - name: Build Core Tests
-        run: cmake --build build --config Release --target directpipe-core-tests -j$(sysctl -n hw.ncpu)
-
-      - name: Run Core Tests
-        run: cd build && ctest -R "core" --output-on-failure
+      - name: Run Tests
+        run: cd build && ctest --output-on-failure
 
   build-windows:
     runs-on: windows-latest
@@ -41,11 +38,8 @@ jobs:
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=ON -DDIRECTPIPE_BUILD_TESTS=ON
 
-      - name: Build Host
-        run: cmake --build build --config Release --target DirectPipe
+      - name: Build All
+        run: cmake --build build --config Release
 
-      - name: Build Core Tests
-        run: cmake --build build --config Release --target directpipe-core-tests
-
-      - name: Run Core Tests
-        run: cd build && ctest -R "core" --output-on-failure -C Release
+      - name: Run Tests
+        run: cd build && ctest --output-on-failure -C Release

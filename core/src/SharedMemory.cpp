@@ -310,7 +310,7 @@ void SharedMemory::close()
 NamedEvent::~NamedEvent() { close(); }
 
 NamedEvent::NamedEvent(NamedEvent&& other) noexcept
-    : sem_(other.sem_), name_(std::move(other.name_))
+    : sem_(other.sem_), name_(::std::move(other.name_))
 {
     other.sem_ = nullptr;
 }
@@ -320,13 +320,13 @@ NamedEvent& NamedEvent::operator=(NamedEvent&& other) noexcept
     if (this != &other) {
         close();
         sem_ = other.sem_;
-        name_ = std::move(other.name_);
+        name_ = ::std::move(other.name_);
         other.sem_ = nullptr;
     }
     return *this;
 }
 
-bool NamedEvent::create(const std::string& name)
+bool NamedEvent::create(const ::std::string& name)
 {
     close();
     name_ = toPosixName(name);
@@ -337,7 +337,7 @@ bool NamedEvent::create(const std::string& name)
     return true;
 }
 
-bool NamedEvent::open(const std::string& name)
+bool NamedEvent::open(const ::std::string& name)
 {
     close();
     name_ = toPosixName(name);
@@ -356,9 +356,9 @@ bool NamedEvent::wait(uint32_t timeout_ms)
 {
     if (!sem_) return false;
     auto* s = static_cast<sem_t*>(sem_);
-    auto deadline = std::chrono::steady_clock::now()
-                  + std::chrono::milliseconds(timeout_ms);
-    while (std::chrono::steady_clock::now() < deadline) {
+    auto deadline = ::std::chrono::steady_clock::now()
+                  + ::std::chrono::milliseconds(timeout_ms);
+    while (::std::chrono::steady_clock::now() < deadline) {
         if (sem_trywait(s) == 0) return true;
         usleep(500);  // 0.5ms spin
     }
