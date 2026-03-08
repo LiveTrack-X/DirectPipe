@@ -63,7 +63,7 @@ curl http://127.0.0.1:8766/api/bypass/master
 # 패닉 뮤트 (전체 출력 즉시 뮤트/언뮤트, 해제 시 이전 ON/OFF 상태 자동 복원)
 curl http://127.0.0.1:8766/api/mute/panic
 
-# 메인 출력 뮤트 토글 (Discord/VB-Cable)
+# 메인 출력 뮤트 토글 (Discord/VB-Cable or other virtual audio device)
 curl http://127.0.0.1:8766/api/mute/toggle
 
 # 입력 뮤트 토글
@@ -965,6 +965,10 @@ connect();
 
 `.bat` 파일로 저장 후 더블클릭으로 실행. Windows에 별도 설치 없이 사용 가능.
 
+> **macOS/Linux**: Use `.sh` shell scripts instead of `.bat`. Replace `>nul` with `>/dev/null 2>&1`, `timeout /t N` with `sleep N`, and `@echo off` with `#!/bin/bash`.
+>
+> **macOS/Linux**: `.bat` 대신 `.sh` 셸 스크립트 사용. `>nul` → `>/dev/null 2>&1`, `timeout /t N` → `sleep N`, `@echo off` → `#!/bin/bash`로 대체.
+
 ```batch
 @echo off
 :: game-mode.bat — 게임 모드로 전환
@@ -1013,9 +1017,9 @@ pause
 
 ### 시나리오 1.5: 출력별 개별 뮤트 (Discord + OBS 독립 제어)
 
-VB-Cable(Discord) + Receiver VST(OBS) 동시 사용 시, API로 각 출력을 독립적으로 뮤트/언뮤트할 수 있습니다.
+VB-Cable(Discord) + Receiver VST(OBS) 동시 사용 시, API로 각 출력을 독립적으로 뮤트/언뮤트할 수 있습니다. (macOS/Linux에서는 VB-Cable 대신 BlackHole, PipeWire 등 해당 플랫폼의 가상 오디오 장치 사용.)
 
-When using VB-Cable (Discord) + Receiver VST (OBS) together, you can independently mute/unmute each output via API.
+When using VB-Cable (Discord) + Receiver VST (OBS) together, you can independently mute/unmute each output via API. (On macOS/Linux, use platform-equivalent virtual audio devices such as BlackHole or PipeWire instead of VB-Cable.)
 
 ```bash
 # OBS만 뮤트 (Discord 유지) — IPC 출력만 끔
@@ -1148,7 +1152,7 @@ AutoHotkey로 커스텀 핫키:
 1. DirectPipe가 실행 중인지 확인 (시스템 트레이 아이콘)
 2. 포트 확인: Controls > Stream Deck 탭에서 WebSocket/HTTP 포트 확인
 3. 방화벽: localhost 연결이므로 보통 문제 없음.
-   만약 차단된다면 Windows Defender에서 DirectPipe.exe 허용
+   만약 차단된다면 OS 보안 소프트웨어(Windows Defender, macOS Firewall 등)에서 DirectPipe 허용
 4. 테스트: curl http://127.0.0.1:8766/api/status
 ```
 

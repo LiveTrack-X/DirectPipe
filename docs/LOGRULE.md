@@ -6,12 +6,14 @@
 
 ## Log File Location / 로그 파일 위치
 
-| File | Description |
-|------|-------------|
-| `%LocalAppData%/DirectPipe/directpipe.log` | Current session log / 현재 세션 로그 |
-| `%LocalAppData%/DirectPipe/directpipe.log.prev` | Previous session log / 이전 세션 로그 |
+| Platform | File | Description |
+|----------|------|-------------|
+| Windows | `%LocalAppData%/DirectPipe/directpipe.log` | Current session log / 현재 세션 로그 |
+| Windows | `%LocalAppData%/DirectPipe/directpipe.log.prev` | Previous session log / 이전 세션 로그 |
+| macOS | `~/Library/Application Support/DirectPipe/directpipe.log` | Current session log |
+| Linux | `~/.local/share/DirectPipe/directpipe.log` | Current session log |
 
-Portable mode: `./config/directpipe.log`
+Portable mode (all platforms): `./config/directpipe.log`
 
 - 앱 시작 시 이전 로그를 `.prev`로 이동, 새 로그 시작
 - 매 로그 라인 즉시 flush — 크래시 시에도 마지막 로그까지 보존
@@ -33,8 +35,12 @@ Portable mode: `./config/directpipe.log`
 
 ```
 [11:23:45.123] INF [APP] DirectPipe v3.9.10 started
-[11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200
-[11:23:45.200] INF [AUDIO] Driver: Windows Audio | Input: Microphone (USB) | Output: Speakers | SR: 48000 | BS: 256
+[11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200          (Windows)
+                                 macOS 15.2 (Sequoia)            (macOS)
+                                 Ubuntu 24.04 LTS (6.8.0-45)     (Linux)
+[11:23:45.200] INF [AUDIO] Driver: Windows Audio | Input: Microphone (USB) | Output: Speakers | SR: 48000 | BS: 256       (Windows)
+                   Driver: CoreAudio | Input: MacBook Pro Microphone | Output: MacBook Pro Speakers | SR: 48000 | BS: 256  (macOS)
+                   Driver: ALSA | Input: USB Audio Device | Output: default | SR: 48000 | BS: 256                          (Linux)
 [11:23:45.210] INF [VST] Chain: ReaComp, ReaEQ, ReaXcomp (3 plugins)
 [11:23:45.220] INF [PRESET] Active slot: E
 [11:23:50.100] INF [PRESET] Slot A: cache hit (3 plugins)
@@ -222,10 +228,11 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 
 ```
 INF [APP] DirectPipe v3.9.10 started
-INF [APP] OS: Windows 11 Pro 10.0.26200
-INF [APP] Process priority: HIGH_PRIORITY_CLASS
-INF [APP] Timer resolution: 1ms
+INF [APP] OS: Windows 11 Pro 10.0.26200       (or macOS 15.2 Sequoia / Ubuntu 24.04 LTS)
+INF [APP] Process priority: HIGH_PRIORITY_CLASS  (Windows; macOS/Linux use equivalent scheduling)
+INF [APP] Timer resolution: 1ms                  (Windows; macOS/Linux use platform timers)
 INF [AUDIO] Driver: Windows Audio | Input: Microphone (USB) | Output: Speakers (Realtek) | SR: 48000 | BS: 256
+            (macOS: CoreAudio | Linux: ALSA)
 INF [MONITOR] Device: Headphones (Realtek) | SR: 48000 | BS: 256
 INF [VST] Chain: ReaComp, ReaEQ, ReaXcomp (3 plugins)
 INF [PRESET] Active slot: E | Preset: Streaming Vocal
@@ -372,8 +379,9 @@ Log::error("AUDIO", "Failed to init device '" + name + "': " + result);
 Audit ON 상태에서 디바이스 시작:
 ```
 [11:23:45.200] INF [AUDIO] Device started: Windows Audio | SR=48000 | BS=256 | Available BS: [64, 128, 256, 512, 1024]
+                           (macOS: CoreAudio | Linux: ALSA)
 [11:23:45.201] AUD [AUDIO] Device name: Speakers (Realtek High Definition Audio)
-[11:23:45.201] AUD [AUDIO] Device type: Windows Audio
+[11:23:45.201] AUD [AUDIO] Device type: Windows Audio  (or CoreAudio / ALSA)
 [11:23:45.201] AUD [AUDIO] Available SR: 44100, 48000, 96000, 192000
 [11:23:45.201] AUD [AUDIO] Available BS: 64, 128, 256, 512, 1024
 [11:23:45.201] AUD [AUDIO] Input channels: Left, Right

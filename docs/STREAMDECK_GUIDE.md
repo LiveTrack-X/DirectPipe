@@ -37,7 +37,8 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 
 1. Copy `com.directpipe.directpipe.sdPlugin/` folder to the Stream Deck plugins directory: / 플러그인 디렉토리에 복사:
    ```
-   %APPDATA%\Elgato\StreamDeck\Plugins\com.directpipe.directpipe.sdPlugin
+   Windows: %APPDATA%\Elgato\StreamDeck\Plugins\com.directpipe.directpipe.sdPlugin
+   macOS:   ~/Library/Application Support/com.elgato.StreamDeck/Plugins/com.directpipe.directpipe.sdPlugin
    ```
 
 2. Install dependencies: / 의존성 설치:
@@ -193,9 +194,9 @@ With DirectPipe actions on your Stream Deck, you get **full physical button cont
 
 ### 권장 레이아웃 / Recommended Layout
 
-VB-Cable(Discord) + Receiver VST(OBS) + Monitor(헤드폰)를 동시 사용하는 듀얼 앱 설정:
+VB-Cable(Discord) + Receiver VST(OBS) + Monitor(헤드폰)를 동시 사용하는 듀얼 앱 설정 (macOS/Linux에서는 BlackHole, PipeWire 등 플랫폼 가상 오디오 장치 사용):
 
-Dual-app setup with VB-Cable (Discord) + Receiver VST (OBS) + Monitor (headphones):
+Dual-app setup with VB-Cable (Discord) + Receiver VST (OBS) + Monitor (headphones). On macOS/Linux, use platform virtual audio devices (BlackHole, PipeWire, etc.) instead of VB-Cable:
 
 ```
 ┌───────────────────────────────────────┐
@@ -222,9 +223,9 @@ Dual-app setup with VB-Cable (Discord) + Receiver VST (OBS) + Monitor (headphone
 | 긴급 차단 해제 | **Panic Mute** (다시) | 이전 ON/OFF 상태 자동 복원 |
 | 상황 전환 | **Preset A/B/C** | VST 체인 즉시 전환 (모든 출력에 적용) |
 
-> **Tip**: Volume Control의 target을 `output`으로 설정하면 Discord(VB-Cable) 마이크의 뮤트 버튼이 됩니다. `monitor`로 설정하면 헤드폰 모니터의 뮤트 버튼이 됩니다. 이렇게 하면 IPC Toggle(OBS), Volume-mute-output(Discord), Monitor Toggle(헤드폰)으로 **3개 출력을 각각 독립 제어**할 수 있습니다.
+> **Tip**: Volume Control의 target을 `output`으로 설정하면 Discord(VB-Cable 등 가상 오디오) 마이크의 뮤트 버튼이 됩니다. `monitor`로 설정하면 헤드폰 모니터의 뮤트 버튼이 됩니다. 이렇게 하면 IPC Toggle(OBS), Volume-mute-output(Discord), Monitor Toggle(헤드폰)으로 **3개 출력을 각각 독립 제어**할 수 있습니다.
 >
-> **Tip**: Set Volume Control target to `output` for a Discord (VB-Cable) mute button. Set to `monitor` for headphone mute. Combined with IPC Toggle (OBS), you get **3 independent mute buttons** — one per output path.
+> **Tip**: Set Volume Control target to `output` for a Discord (VB-Cable or equivalent virtual audio) mute button. Set to `monitor` for headphone mute. Combined with IPC Toggle (OBS), you get **3 independent mute buttons** — one per output path.
 
 ---
 
@@ -289,7 +290,7 @@ dist/
 - Ensure WebSocket server is enabled in DirectPipe Controls > StreamDeck tab. / Controls > StreamDeck 탭에서 서버 활성화 확인.
 
 **Plugin keeps restarting? / 플러그인이 계속 재시작?**
-- Check logs: `%APPDATA%\Elgato\StreamDeck\logs\` / 로그 확인
+- Check logs: `%APPDATA%\Elgato\StreamDeck\logs\` (Windows) or `~/Library/Logs/ElgatoStreamDeck/` (macOS) / 로그 확인
 - Ensure `node_modules/` exists in the installed plugin folder. / 설치 폴더에 node_modules 확인.
 - Node.js v20+ required. / Node.js v20+ 필요.
 

@@ -8,30 +8,42 @@
 
 ## 1. 다운로드 & 실행 / Download & Launch
 
-[최신 릴리즈 다운로드 / Download latest release](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → ZIP 압축 해제 → `DirectPipe.exe` 실행
+[최신 릴리즈 다운로드 / Download latest release](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → 플랫폼별 파일 다운로드 / Download for your platform:
 
-Unzip → Run `DirectPipe.exe`
+| 플랫폼 / Platform | 파일 / File | 실행 / Run |
+|---|---|---|
+| Windows | `.zip` → 압축 해제 → `DirectPipe.exe` | Unzip → Run `.exe` |
+| macOS (beta) | `.dmg` → `DirectPipe.app`을 Applications로 드래그 | Drag `.app` to Applications |
+| Linux (experimental) | `.tar.gz` → 압축 해제 → `DirectPipe` 바이너리 | Extract → Run `./DirectPipe` |
 
-> SmartScreen 경고가 나타나면 "추가 정보" → "실행" 클릭 (오픈소스라 코드 서명이 없어서 나타나는 정상적인 경고).
->
+> **Windows**: SmartScreen 경고가 나타나면 "추가 정보" → "실행" 클릭 (오픈소스라 코드 서명이 없어서 나타나는 정상적인 경고).
 > If SmartScreen warns, click "More info" → "Run anyway" (normal for unsigned open-source apps).
+>
+> **macOS**: Gatekeeper 경고 시 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 열기" 클릭. / If Gatekeeper blocks, go to System Settings → Privacy & Security → click "Open Anyway".
+>
+> **Linux**: 실행 권한 필요: `chmod +x DirectPipe`. / Make executable: `chmod +x DirectPipe`.
 
 ---
 
 ## 2. USB 마이크 선택 / Select Your USB Mic
 
-1. 오른쪽 **Audio** 탭 → **Driver**: `Windows Audio` (기본값, 권장) / Right panel **Audio** tab → **Driver**: `Windows Audio` (default, recommended)
+1. 오른쪽 **Audio** 탭 → **Driver** 선택 / Right panel **Audio** tab → Select **Driver**:
+   - Windows: `Windows Audio` (기본값, 권장 / default, recommended)
+   - macOS: `CoreAudio`
+   - Linux: `ALSA` 또는 / or `JACK`
 2. **Input**: USB 마이크 선택 (예: `Microphone (Blue Yeti)`) / Select your USB mic
 3. 왼쪽 **INPUT** 미터가 움직이면 마이크 인식 성공 / If the left **INPUT** meter moves, mic is working
 
 ```
 Audio 탭 / Audio Tab
-┌─────────────────────────┐
-│ Driver: [Windows Audio] │  ← 기본값 그대로 / Keep default
-│ Input:  [Blue Yeti     ]│  ← USB 마이크 선택 / Select your mic
-│ Output: [CABLE Input   ]│  ← 3단계에서 설정 / Set in Step 3
-│ SR: 48000  BS: 256      │
-└─────────────────────────┘
+┌──────────────────────────────┐
+│ Driver: [Windows Audio     ] │  ← Windows 기본값 / Windows default
+│         [CoreAudio         ] │  ← macOS
+│         [ALSA / JACK       ] │  ← Linux
+│ Input:  [Blue Yeti         ] │  ← USB 마이크 선택 / Select your mic
+│ Output: [CABLE Input       ] │  ← 3단계에서 설정 / Set in Step 3
+│ SR: 48000  BS: 256           │
+└──────────────────────────────┘
 ```
 
 ---
@@ -40,21 +52,39 @@ Audio 탭 / Audio Tab
 
 사용 목적에 따라 아래에서 **해당하는 것만** 설정하세요. / Set up only what you need:
 
-### Discord / Zoom 사용자 (VB-Cable 필요) / Discord / Zoom Users
+### Discord / Zoom 사용자 (가상 오디오 케이블 필요) / Discord / Zoom Users (Virtual Audio Cable)
 
-1. [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) 설치 (무료) → **PC 재부팅** / Install VB-Cable (free) → **reboot PC**
-2. DirectPipe **Audio** 탭 → **Output**: `CABLE Input (VB-Audio Virtual Cable)` 선택 / Select as Output
-3. Discord/Zoom 음성 설정 → 마이크: `CABLE Output (VB-Audio Virtual Cable)` / Set as mic in Discord/Zoom
+가상 오디오 케이블 설치 / Install a virtual audio cable:
+
+| 플랫폼 / Platform | 소프트웨어 / Software | 비고 / Notes |
+|---|---|---|
+| Windows | [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (무료 / free) | 설치 후 **PC 재부팅** / **Reboot** after install |
+| macOS | [BlackHole](https://existential.audio/blackhole/) (무료 / free) 또는 / or [Loopback](https://rogueamoeba.com/loopback/) (유료 / paid) | BlackHole 2ch 권장 / BlackHole 2ch recommended |
+| Linux | [PipeWire](https://pipewire.org/) (내장 / built-in) 또는 / or JACK 라우팅 / routing | PipeWire가 최신 배포판 기본 / PipeWire default on modern distros |
+
+설정 / Setup:
+
+1. DirectPipe **Audio** 탭 → **Output**: 가상 케이블 입력 선택 / Select virtual cable input as Output
+   - Windows: `CABLE Input (VB-Audio Virtual Cable)`
+   - macOS: `BlackHole 2ch`
+   - Linux: PipeWire/JACK 가상 장치 / virtual device
+2. Discord/Zoom 음성 설정 → 마이크: 가상 케이블 출력 선택 / Set virtual cable output as mic in Discord/Zoom
+   - Windows: `CABLE Output (VB-Audio Virtual Cable)`
+   - macOS: `BlackHole 2ch`
+   - Linux: PipeWire/JACK 해당 장치 / corresponding device
 
 ```
-USB 마이크 → DirectPipe → CABLE Input
+USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
                                  ↓
-               Discord/Zoom ← CABLE Output (마이크로 인식 / recognized as mic)
+               Discord/Zoom ← 가상 케이블 출력 / Virtual Cable Output (마이크로 인식 / recognized as mic)
 ```
 
 ### OBS 사용자 (가상 케이블 불필요) / OBS Users (No Virtual Cable)
 
-1. `DirectPipe Receiver.dll`을 `C:\Program Files\VSTPlugins\`에 복사 / Copy DLL to VST2 folder
+1. Receiver 플러그인을 VST2 폴더에 복사 / Copy Receiver plugin to VST2 folder:
+   - Windows: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\`
+   - macOS: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/`
+   - Linux: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 / or `~/.vst/`
 2. DirectPipe 하단 **VST** 버튼 클릭 (초록색 = IPC ON) / Click **VST** button at bottom (green = ON)
 3. OBS → 오디오 소스 → 필터 → VST 2.x → **DirectPipe Receiver** 선택 / Select in OBS VST filter
 
@@ -134,12 +164,12 @@ Save your current plugin chain to load instantly next time.
 
 DirectPipe가 시스템 트레이에 상주합니다. X 버튼은 종료가 아닌 **트레이 최소화**입니다.
 
-DirectPipe stays in the system tray. The X button **minimizes to tray**, not quit.
+DirectPipe stays in the system tray (Windows/Linux) or menu bar (macOS). The X button **minimizes to tray**, not quit.
 
 | 동작 / Action | 방법 / How |
 |---|---|
-| 창 복원 / Restore | 트레이 아이콘 더블클릭 / Double-click tray icon |
-| 완전 종료 / Quit | 트레이 우클릭 → "Quit DirectPipe" / Right-click tray → "Quit DirectPipe" |
+| 창 복원 / Restore | 트레이 아이콘 더블클릭 (macOS: 메뉴 바 아이콘 클릭) / Double-click tray icon (macOS: click menu bar icon) |
+| 완전 종료 / Quit | 트레이 우클릭 → "Quit DirectPipe" (macOS: 메뉴 바 아이콘 → Quit) / Right-click tray → "Quit DirectPipe" |
 
 ---
 
@@ -151,5 +181,5 @@ DirectPipe stays in the system tray. The X button **minimizes to tray**, not qui
 | Stream Deck 연동 / Stream Deck setup | [Stream Deck Guide](STREAMDECK_GUIDE.md) |
 | MIDI 컨트롤러 매핑 / MIDI controller mapping | [User Guide — MIDI 제어](USER_GUIDE.md#midi-제어--midi-control) |
 | HTTP/WebSocket API 연동 / API integration | [Control API Reference](CONTROL_API.md) |
-| ASIO 저지연 설정 / ASIO low-latency setup | [User Guide — ASIO vs WASAPI](USER_GUIDE.md#asio-vs-wasapi-선택-가이드--asio-vs-wasapi-decision-guide) |
+| ASIO 저지연 설정 (Windows) / ASIO low-latency (Windows) | [User Guide — ASIO vs WASAPI](USER_GUIDE.md#asio-vs-wasapi-선택-가이드--asio-vs-wasapi-decision-guide) |
 | 소리 안 남 / No audio | [User Guide — 문제 해결](USER_GUIDE.md#문제-해결--troubleshooting) |
