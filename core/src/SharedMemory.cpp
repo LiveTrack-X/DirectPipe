@@ -191,7 +191,7 @@ namespace directpipe {
 SharedMemory::~SharedMemory() { close(); }
 
 SharedMemory::SharedMemory(SharedMemory&& other) noexcept
-    : data_(other.data_), size_(other.size_), fd_(other.fd_), name_(std::move(other.name_))
+    : data_(other.data_), size_(other.size_), fd_(other.fd_), name_(::std::move(other.name_))
 {
     other.data_ = nullptr;
     other.size_ = 0;
@@ -205,7 +205,7 @@ SharedMemory& SharedMemory::operator=(SharedMemory&& other) noexcept
         data_ = other.data_;
         size_ = other.size_;
         fd_ = other.fd_;
-        name_ = std::move(other.name_);
+        name_ = ::std::move(other.name_);
         other.data_ = nullptr;
         other.size_ = 0;
         other.fd_ = -1;
@@ -214,11 +214,11 @@ SharedMemory& SharedMemory::operator=(SharedMemory&& other) noexcept
 }
 
 /// Convert Windows-style "Local\\Name" to POSIX "/Name"
-static std::string toPosixName(const std::string& name)
+static ::std::string toPosixName(const ::std::string& name)
 {
-    std::string result = name;
+    ::std::string result = name;
     // Remove "Local\\" prefix
-    const std::string prefix = "Local\\";
+    const ::std::string prefix = "Local\\";
     if (result.rfind(prefix, 0) == 0) {
         result = result.substr(prefix.size());
     }
@@ -229,7 +229,7 @@ static std::string toPosixName(const std::string& name)
     return "/" + result;
 }
 
-bool SharedMemory::create(const std::string& name, size_t size)
+bool SharedMemory::create(const ::std::string& name, size_t size)
 {
     close();
     name_ = toPosixName(name);
@@ -260,7 +260,7 @@ bool SharedMemory::create(const std::string& name, size_t size)
     return true;
 }
 
-bool SharedMemory::open(const std::string& name, size_t size)
+bool SharedMemory::open(const ::std::string& name, size_t size)
 {
     close();
     name_ = toPosixName(name);
@@ -304,8 +304,12 @@ void SharedMemory::close()
 // macOS doesn't support eventfd or sem_timedwait.
 // Use sem_trywait + usleep polling for timed waits.
 
+} // close namespace directpipe for system includes
+
 #include <semaphore.h>
 #include <chrono>
+
+namespace directpipe {
 
 NamedEvent::~NamedEvent() { close(); }
 
@@ -382,7 +386,11 @@ bool NamedEvent::isOpen() const { return sem_ != nullptr; }
 #else
 // ═══ Linux: eventfd ════════════════════════════════════════════
 
+} // close namespace directpipe for system includes
+
 #include <sys/eventfd.h>
+
+namespace directpipe {
 
 NamedEvent::~NamedEvent() { close(); }
 
@@ -401,14 +409,14 @@ NamedEvent& NamedEvent::operator=(NamedEvent&& other) noexcept
     return *this;
 }
 
-bool NamedEvent::create(const std::string& /*name*/)
+bool NamedEvent::create(const ::std::string& /*name*/)
 {
     close();
     fd_ = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE);
     return fd_ >= 0;
 }
 
-bool NamedEvent::open(const std::string& /*name*/)
+bool NamedEvent::open(const ::std::string& /*name*/)
 {
     // eventfd is process-local. For cross-process, a POSIX named semaphore
     // would be needed. This works for in-process testing only.

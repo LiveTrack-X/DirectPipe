@@ -8,13 +8,6 @@ add_executable(directpipe-tests
     test_shared_memory.cpp
     test_latency.cpp
     test_ipc_integration.cpp
-    test_action_dispatcher.cpp
-    # ActionDispatcher source compiled directly (no JUCE dependency)
-    ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
-)
-
-target_include_directories(directpipe-tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/host/Source
 )
 
 target_link_libraries(directpipe-tests PRIVATE
@@ -37,6 +30,7 @@ if(DIRECTPIPE_BUILD_HOST)
 
     target_sources(directpipe-host-tests PRIVATE
         test_websocket_protocol.cpp
+        test_action_dispatcher.cpp
         # Host source files needed by the tests
         ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Control/StateBroadcaster.cpp
