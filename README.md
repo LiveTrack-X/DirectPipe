@@ -73,7 +73,7 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 > 다른 사람의 마이크 세팅을 대신 해주는 분들을 위한 워크플로우
 > — Workflow for people who set up microphones for others
 
-1. **포터블 exe** — USB에 DirectPipe를 넣고 상대방 PC에서 바로 실행 ([`portable.flag`로 설정도 USB에 저장](docs/USER_GUIDE.md#포터블-모드--portable-mode))
+1. **포터블 실행** — USB에 DirectPipe를 넣고 상대방 컴퓨터에서 바로 실행 ([`portable.flag`로 설정도 USB에 저장](docs/USER_GUIDE.md#포터블-모드--portable-mode))
 2. **프리셋 내보내기** — 최적화된 VST 체인을 `.dppreset` 파일로 내보내서 전달
 3. **프리셋 가져오기** — 상대방이 슬롯 우클릭 → Import로 즉시 적용
 4. **Full Backup** — Settings > Maintenance에서 설정 + 모든 슬롯을 `.dpfullbackup` 하나로 백업/복원
@@ -182,7 +182,7 @@ External Control:
 ### 녹음 / Recording
 
 - **오디오 녹음** — Output 탭에서 VST 체인 이후 처리된 오디오를 WAV로 녹음 (lock-free 실시간 안전) — Record post-chain audio to WAV in Output tab (lock-free, RT-safe)
-- **기본 폴더**: `Documents\DirectPipe Recordings`, 파일명: `DirectPipe_YYYYMMDD_HHMMSS.wav` — Default folder and naming format
+- **기본 폴더**: `Documents/DirectPipe Recordings` (사용자 문서 폴더), 파일명: `DirectPipe_YYYYMMDD_HHMMSS.wav` — Default folder (user Documents), naming format
 - **녹음 제어** — REC/STOP 버튼, 경과 시간 표시, Play (마지막 녹음 재생), Open Folder, 폴더 변경 — REC/STOP, elapsed time, Play last, Open Folder, change folder
 - **외부 제어** — Stream Deck (경과 시간 표시), HTTP API, WebSocket으로도 녹음 토글 가능 — Also controllable via Stream Deck (shows elapsed time), HTTP, WebSocket
 
@@ -586,7 +586,7 @@ DirectPipe supports different audio drivers per platform. Select from the **Driv
 - **macOS**: **CoreAudio** — macOS native audio system. Works automatically with low latency, no extra setup
 - **Linux**: **ALSA** (default) or **JACK** (low latency) — JACK requires running `jackd`
 
-#### Windows 드라이버 상세 / Windows Driver Details
+**Windows 드라이버 상세 / Windows Driver Details:**
 
 ### DirectSound (레거시 / Legacy)
 
