@@ -223,9 +223,248 @@ void HotkeyHandler::timerCallback()
     }
 }
 
+#elif defined(__APPLE__)
+// ═══════════════════════════════════════════════════════════════
+// macOS Implementation (CGEventTap)
+// ═══════════════════════════════════════════════════════════════
+
+#include <CoreGraphics/CoreGraphics.h>
+#include <ApplicationServices/ApplicationServices.h>
+
+// ─── CGKeyCode → Windows-style VK code mapping ──────────────────
+
+static uint32_t cgKeyToVK(int64_t cgKey)
+{
+    // Letters (macOS CGKeyCode is non-sequential)
+    static const struct { int64_t cg; uint32_t vk; } letters[] = {
+        {0x00,'A'},{0x0B,'B'},{0x08,'C'},{0x02,'D'},{0x0E,'E'},{0x03,'F'},
+        {0x05,'G'},{0x04,'H'},{0x22,'I'},{0x26,'J'},{0x28,'K'},{0x25,'L'},
+        {0x2E,'M'},{0x2D,'N'},{0x1F,'O'},{0x23,'P'},{0x0C,'Q'},{0x0F,'R'},
+        {0x01,'S'},{0x11,'T'},{0x20,'U'},{0x09,'V'},{0x0D,'W'},{0x07,'X'},
+        {0x10,'Y'},{0x06,'Z'},
+    };
+    for (const auto& m : letters) if (m.cg == cgKey) return m.vk;
+
+    // Numbers
+    static const struct { int64_t cg; uint32_t vk; } nums[] = {
+        {0x1D,'0'},{0x12,'1'},{0x13,'2'},{0x14,'3'},{0x15,'4'},
+        {0x17,'5'},{0x16,'6'},{0x1A,'7'},{0x1C,'8'},{0x19,'9'},
+    };
+    for (const auto& m : nums) if (m.cg == cgKey) return m.vk;
+
+    // Function keys (F1-F12): VK 0x70-0x7B
+    static const struct { int64_t cg; uint32_t vk; } fkeys[] = {
+        {0x7A,0x70},{0x78,0x71},{0x63,0x72},{0x76,0x73},{0x60,0x74},
+        {0x61,0x75},{0x62,0x76},{0x64,0x77},{0x65,0x78},{0x6D,0x79},
+        {0x67,0x7A},{0x6F,0x7B},
+    };
+    for (const auto& m : fkeys) if (m.cg == cgKey) return m.vk;
+
+    // Arrow keys
+    if (cgKey == 0x7E) return 0x26;  // Up
+    if (cgKey == 0x7D) return 0x28;  // Down
+    if (cgKey == 0x7B) return 0x25;  // Left
+    if (cgKey == 0x7C) return 0x27;  // Right
+
+    // Common keys
+    if (cgKey == 0x31) return 0x20;  // Space
+    if (cgKey == 0x24) return 0x0D;  // Return
+    if (cgKey == 0x35) return 0x1B;  // Escape
+    if (cgKey == 0x30) return 0x09;  // Tab
+
+    return 0;  // Unknown
+}
+
+static uint32_t cgFlagsToMods(CGEventFlags flags)
+{
+    uint32_t mods = 0;
+    if (flags & kCGEventFlagMaskControl)   mods |= HK_CTRL;
+    if (flags & kCGEventFlagMaskAlternate) mods |= HK_ALT;
+    if (flags & kCGEventFlagMaskShift)     mods |= HK_SHIFT;
+    if (flags & kCGEventFlagMaskCommand)   mods |= HK_WIN;
+    return mods;
+}
+
+// ─── CGEventTap callback ────────────────────────────────────────
+
+static CGEventRef macEventTapCallback(
+    CGEventTapProxy /*proxy*/, CGEventType type,
+    CGEventRef event, void* refcon)
+{
+    // Let non-keydown events pass through
+    if (type != kCGEventKeyDown)
+        return event;
+
+    auto* handler = static_cast<HotkeyHandler*>(refcon);
+    if (!handler) return event;
+
+    int64_t cgKeyCode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+    CGEventFlags cgFlags = CGEventGetFlags(event);
+
+    uint32_t vk = cgKeyToVK(cgKeyCode);
+    uint32_t mods = cgFlagsToMods(cgFlags);
+
+    if (vk == 0) return event;  // Unknown key
+
+    if (handler->macHandleKeyDown(mods, vk))
+        return nullptr;  // Consumed — don't pass to other apps
+
+    return event;  // Pass through
+}
+
+// ─── macHandleKeyDown (called by event tap callback) ────────────
+
+bool HotkeyHandler::macHandleKeyDown(uint32_t mods, uint32_t vk)
+{
+    // Recording mode: capture key combo
+    if (recording_ && recordCallback_) {
+        if (mods != 0 && vk != 0) {
+            auto name = keyToString(mods, vk);
+            auto cb = std::move(recordCallback_);
+            recording_ = false;
+            recordCallback_ = nullptr;
+            cb(mods, vk, name);
+            return true;
+        }
+        return false;
+    }
+
+    // Match against registered bindings
+    for (const auto& binding : bindings_) {
+        if (binding.modifiers == mods && binding.virtualKey == vk) {
+            processHotkeyMessage(binding.id);
+            return true;
+        }
+    }
+    return false;
+}
+
+// ─── Lifecycle ──────────────────────────────────────────────────
+
+void HotkeyHandler::initialize()
+{
+    if (initialized_) return;
+
+    // Check accessibility permission (required for CGEventTap)
+    if (!AXIsProcessTrusted()) {
+        juce::Logger::writeToLog(
+            "[HOTKEY] Accessibility permission not granted — "
+            "global hotkeys disabled. Grant access in "
+            "System Settings > Privacy & Security > Accessibility");
+    }
+
+    // Create a global event tap for key-down events
+    CGEventMask mask = CGEventMaskBit(kCGEventKeyDown);
+    CFMachPortRef tap = CGEventTapCreate(
+        kCGSessionEventTap,
+        kCGHeadInsertEventTap,
+        kCGEventTapOptionDefault,  // Active tap (can consume events)
+        mask,
+        macEventTapCallback,
+        this);
+
+    if (!tap) {
+        juce::Logger::writeToLog(
+            "[HOTKEY] Failed to create event tap — hotkeys will not work");
+        initialized_ = true;  // Allow binding storage even without tap
+        return;
+    }
+
+    // Add to main run loop (= JUCE message thread on macOS)
+    CFRunLoopSourceRef src = CFMachPortCreateRunLoopSource(
+        kCFAllocatorDefault, tap, 0);
+    CFRunLoopAddSource(CFRunLoopGetMain(), src, kCFRunLoopCommonModes);
+    CGEventTapEnable(tap, true);
+
+    eventTap_ = tap;
+    runLoopSource_ = src;
+    initialized_ = true;
+
+    // Timer for re-enabling disabled tap
+    startTimer(500);
+
+    juce::Logger::writeToLog("[HOTKEY] macOS event tap initialized");
+}
+
+void HotkeyHandler::shutdown()
+{
+    stopTimer();
+    unregisterAll();
+
+    if (eventTap_) {
+        auto* tap = static_cast<CFMachPortRef>(eventTap_);
+        CGEventTapEnable(tap, false);  // 1. Disable tap first (stops callbacks)
+
+        if (runLoopSource_) {
+            auto* src = static_cast<CFRunLoopSourceRef>(runLoopSource_);
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), src, kCFRunLoopCommonModes);
+            CFRelease(src);            // 2. Release source
+            runLoopSource_ = nullptr;
+        }
+
+        CFRelease(tap);                // 3. Release port last
+        eventTap_ = nullptr;
+    }
+
+    initialized_ = false;
+}
+
+bool HotkeyHandler::registerHotkey(uint32_t modifiers, uint32_t virtualKey,
+                                    const ActionEvent& action, const std::string& displayName)
+{
+    // macOS: store binding; matching is done in event tap callback
+    HotkeyBinding binding;
+    binding.id = nextId_++;
+    binding.modifiers = modifiers;
+    binding.virtualKey = virtualKey;
+    binding.action = action;
+    binding.displayName = displayName;
+    binding.registered = (eventTap_ != nullptr);
+    bindings_.push_back(binding);
+
+    if (eventTap_)
+        juce::Logger::writeToLog("[HOTKEY] Registered: " + juce::String(displayName.c_str()));
+
+    return true;
+}
+
+void HotkeyHandler::unregisterHotkey(int id)
+{
+    bindings_.erase(
+        std::remove_if(bindings_.begin(), bindings_.end(),
+                       [id](const HotkeyBinding& b) { return b.id == id; }),
+        bindings_.end());
+}
+
+bool HotkeyHandler::updateHotkey(int id, uint32_t newModifiers, uint32_t newVirtualKey,
+                                  const std::string& newDisplayName)
+{
+    auto it = std::find_if(bindings_.begin(), bindings_.end(),
+                           [id](const HotkeyBinding& b) { return b.id == id; });
+    if (it == bindings_.end()) return false;
+    it->modifiers = newModifiers;
+    it->virtualKey = newVirtualKey;
+    it->displayName = newDisplayName;
+    return true;
+}
+
+void HotkeyHandler::unregisterAll() { bindings_.clear(); }
+
+void HotkeyHandler::timerCallback()
+{
+    // Re-enable event tap if system disabled it (timeout protection)
+    if (eventTap_) {
+        auto* tap = static_cast<CFMachPortRef>(eventTap_);
+        if (!CGEventTapIsEnabled(tap)) {
+            CGEventTapEnable(tap, true);
+            juce::Logger::writeToLog("[HOTKEY] Re-enabled event tap");
+        }
+    }
+}
+
 #else
 // ═══════════════════════════════════════════════════════════════
-// Non-Windows Stub
+// Linux Stub
 // ═══════════════════════════════════════════════════════════════
 
 void HotkeyHandler::initialize() { initialized_ = true; }
@@ -240,7 +479,7 @@ bool HotkeyHandler::registerHotkey(uint32_t modifiers, uint32_t virtualKey,
     binding.virtualKey = virtualKey;
     binding.action = action;
     binding.displayName = displayName;
-    binding.registered = true;
+    binding.registered = false;
     bindings_.push_back(binding);
     return true;
 }

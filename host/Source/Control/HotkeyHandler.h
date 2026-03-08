@@ -148,6 +148,11 @@ public:
      */
     static std::string keyToString(uint32_t modifiers, uint32_t virtualKey);
 
+#if defined(__APPLE__)
+    /** @internal Called by CGEventTap callback. Returns true if event was consumed. */
+    bool macHandleKeyDown(uint32_t modifiers, uint32_t virtualKey);
+#endif
+
 private:
     void timerCallback() override;
     void processHotkeyMessage(int hotkeyId);
@@ -162,6 +167,9 @@ private:
 #ifdef _WIN32
     HWND messageWindow_ = nullptr;
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#elif defined(__APPLE__)
+    void* eventTap_ = nullptr;       // CFMachPortRef
+    void* runLoopSource_ = nullptr;   // CFRunLoopSourceRef
 #endif
 };
 
