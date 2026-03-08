@@ -319,7 +319,7 @@ Read timeout: 3 seconds. / 읽기 타임아웃: 3초.
 
 ## Examples / 예제
 
-### curl
+### curl 예제 / curl Examples
 
 ```bash
 # Get state / 상태 조회
@@ -356,7 +356,7 @@ curl http://127.0.0.1:8766/api/midi/cc/1/7/127
 curl http://127.0.0.1:8766/api/midi/note/1/60/127
 ```
 
-### Python (WebSocket)
+### Python (WebSocket) 예제 / Python (WebSocket) Example
 
 ```python
 import asyncio, websockets, json
@@ -378,7 +378,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### Node.js (WebSocket)
+### Node.js (WebSocket) 예제 / Node.js (WebSocket) Example
 
 ```javascript
 const WebSocket = require("ws");

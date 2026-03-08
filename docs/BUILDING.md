@@ -5,7 +5,7 @@
 ### Minimum / 최소
 
 - **Windows 10/11** (64-bit)
-- **Visual Studio 2022** (C++ Desktop Development workload)
+- **Visual Studio 2022** (C++ Desktop Development workload, C++17)
 - **CMake 3.22+**
 - **Git**
 

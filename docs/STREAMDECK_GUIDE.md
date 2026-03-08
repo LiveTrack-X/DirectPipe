@@ -77,7 +77,7 @@ const DIRECTPIPE_WS_URL = "ws://localhost:8770";
 
 ## Actions / 액션
 
-### Bypass Toggle
+### Bypass Toggle / 바이패스 토글
 
 **UUID:** `com.directpipe.directpipe.bypass-toggle`
 
@@ -230,11 +230,11 @@ Dual-app setup with VB-Cable (Discord) + Receiver VST (OBS) + Monitor (headphone
 
 ## Technical Details / 기술 세부사항
 
-### SDK Version
+### SDK Version / SDK 버전
 
 Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 3.10.0.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 3.10.0.0. SingletonAction 클래스 기반 아키텍처.
 
-### WebSocket Client (`websocket-client.js`)
+### WebSocket 클라이언트 / WebSocket Client (`websocket-client.js`)
 
 - EventEmitter-based: `connected`, `disconnected`, `state`, `error`, `message` events / 이벤트 기반
 - Ping keepalive every 15s / 15초마다 핑 유지

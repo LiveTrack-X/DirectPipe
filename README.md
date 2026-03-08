@@ -38,7 +38,7 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
 </p>
 
-**Who is DirectPipe for?**
+**DirectPipe는 누구를 위한 건가요? / Who is DirectPipe for?**
 
 | | 사용 예 / Use Case |
 |---|---|
@@ -49,14 +49,14 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 ---
 
-### Why DirectPipe?
+### DirectPipe를 써야 하는 이유 / Why DirectPipe?
 
 > DAW 없이, 설치 없이, 마이크에 VST를 거는 가장 가벼운 방법
 > — The lightest way to apply VST effects to your mic, without a DAW or installer.
 
 - **단일 exe, 설치 불필요** — Single portable exe, no installer, no system changes
 - **5종 외부 제어** — 핫키 · MIDI · Stream Deck · HTTP · WebSocket을 한 프로그램에서 — All 5 control methods in one app
-- **프리셋 즉시 전환** — A-E 슬롯, 이름 지정, 10-50ms 교체 — Named preset slots (A-E) with instant switching
+- **프리셋 즉시 전환** — A-E 슬롯, 이름 지정, 끊김 없는 교체 — Named preset slots (A-E) with seamless switching
 - **VST 출력 (Receiver VST2)** — 가상 케이블 없이 OBS 직접 연결 — Direct OBS connection without virtual cables
 - **오픈소스** — GPL v3, 누구나 기여 가능 — Open source, community-driven
 
@@ -153,7 +153,8 @@ External Control:
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 (Cancel 버튼으로 취소 가능). 플러그인 파라미터 직접 매핑도 지원 — CC/note mapping with Learn mode (Cancel button to abort). Direct plugin parameter mapping supported
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 GET 커맨드 — One-shot GET commands from curl or browser
-- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, VST Output — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
+- **UDP Discovery** (port 8767) — Stream Deck 자동 연결용 디스커버리 브로드캐스트 — Auto-discovery broadcast for instant Stream Deck connection
+- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
 
 ### VST 출력 (Receiver VST2) / VST Output (Receiver VST2)
 
@@ -177,7 +178,7 @@ External Control:
 - **녹음 제어** — REC/STOP 버튼, 경과 시간 표시, Play (마지막 녹음 재생), Open Folder, 폴더 변경 — REC/STOP, elapsed time, Play last, Open Folder, change folder
 - **외부 제어** — Stream Deck (경과 시간 표시), HTTP API, WebSocket으로도 녹음 토글 가능 — Also controllable via Stream Deck (shows elapsed time), HTTP, WebSocket
 
-### UI
+### UI / 사용자 인터페이스
 
 - **2컬럼 레이아웃** — 좌: 입력 미터 + 게인 + VST 체인 + 프리셋 슬롯 + 뮤트 버튼(OUT/MON/VST) + PANIC MUTE, 우: 설정 탭 패널 + 출력 미터 — Left: input meter + chain + controls, Right: tabbed settings + output meter
 - **4개 탭** — Tab layout:
@@ -304,6 +305,7 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 
 ## 문서 / Documentation
 
+- **[Quick Start](docs/QUICKSTART.md) — USB 마이크 5분 설정 가이드 / 5-minute USB mic setup guide**
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
 - [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety
 - [Build Guide](docs/BUILDING.md) — 빌드 가이드 / Build instructions and options
@@ -611,7 +613,7 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 **Quick Preset Slots (A–E):**
 - 현재 플러그인 체인과 설정을 **A–E** 슬롯에 저장할 수 있습니다
 - 슬롯 버튼 **(A/B/C/D/E)** 클릭 → 비어있으면 현재 상태 저장, 차있으면 해당 슬롯 로드
-- 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩** (프리로딩 캐시로 ~10-50ms 즉시 전환)
+- 같은 플러그인이면 파라미터만 바꿔서 **즉시 전환**, 다른 플러그인이면 **비동기 로딩** (프리로딩 캐시로 끊김 없이 즉시 전환)
 - 슬롯 **우클릭** → **이름 변경** (예: `A|게임`), **복제**, **삭제**, **내보내기/가져오기** (`.dppreset`)
 - **Save/Load** 버튼으로 .dppreset 파일에 프리셋 저장/불러오기 가능
 
@@ -622,7 +624,7 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 **Quick Preset Slots (A–E):**
 - Save your current plugin chain and settings to slots **A through E**
 - Click a slot button **(A/B/C/D/E)** → saves current state if empty, loads slot if occupied
-- If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading** (preloading cache enables ~10-50ms instant switching)
+- If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading** (preloading cache enables seamless instant switching)
 - **Right-click** slot → **Rename** (e.g., `A|Game`), **Copy**, **Delete**, **Export/Import** (`.dppreset`)
 - Use **Save/Load** buttons to save/load presets as .dppreset files
 
