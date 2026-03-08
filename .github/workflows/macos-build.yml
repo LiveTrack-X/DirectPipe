@@ -18,7 +18,7 @@ jobs:
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DDIRECTPIPE_BUILD_RECEIVER=OFF \
+            -DDIRECTPIPE_BUILD_RECEIVER=ON \
             -DDIRECTPIPE_BUILD_TESTS=ON \
             -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -Wno-error=deprecated"
 
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=OFF -DDIRECTPIPE_BUILD_TESTS=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=ON -DDIRECTPIPE_BUILD_TESTS=ON
 
       - name: Build Host
         run: cmake --build build --config Release --target DirectPipe
