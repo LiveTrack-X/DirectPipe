@@ -233,7 +233,7 @@ ControlConfig ControlMappingStore::createDefaults()
     for (int i = 0; i < 5; ++i) {
         HotkeyMapping hk;
         hk.modifiers = HK_CTRL | HK_SHIFT;
-        hk.virtualKey = VK_F1 + static_cast<uint32_t>(i);
+        hk.virtualKey = 0x70 + static_cast<uint32_t>(i);  // VK_F1=0x70
         std::string label(1, 'A' + static_cast<char>(i));
         hk.action = {Action::SwitchPresetSlot, i, 0.0f, "Preset Slot " + label};
         hk.displayName = "Ctrl+Shift+F" + std::to_string(i + 1);
