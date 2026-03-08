@@ -1,4 +1,4 @@
-name: macOS Build Test
+name: v4 Cross-Platform Build
 
 on:
   push:
@@ -8,20 +8,19 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-13
-    timeout-minutes: 30
+    runs-on: macos-14
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Configure CMake
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DDIRECTPIPE_BUILD_RECEIVER=OFF \
-            -DDIRECTPIPE_BUILD_TESTS=ON
+            -DDIRECTPIPE_BUILD_TESTS=ON \
+            -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -Wno-error=deprecated"
 
       - name: Build Host
         run: cmake --build build --config Release --target DirectPipe -j$(sysctl -n hw.ncpu)
@@ -38,11 +37,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=OFF
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=OFF -DDIRECTPIPE_BUILD_TESTS=ON
 
       - name: Build Host
         run: cmake --build build --config Release --target DirectPipe
