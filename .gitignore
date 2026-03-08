@@ -17,8 +17,7 @@ Thumbs.db
 # Driver build output
 driver/out/
 
-# Third-party SDKs (ASIO SDK — Windows only, not redistributed)
-thirdparty/asiosdk/
+# Third-party SDKs included in v4 branch (private repo only)
 
 # Node.js
 node_modules/
