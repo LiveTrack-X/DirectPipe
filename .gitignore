@@ -17,9 +17,8 @@ Thumbs.db
 # Driver build output
 driver/out/
 
-# Third-party SDKs (downloaded locally)
+# Third-party SDKs (ASIO SDK — Windows only, not redistributed)
 thirdparty/asiosdk/
-thirdparty/VST2_SDK/
 
 # Node.js
 node_modules/
