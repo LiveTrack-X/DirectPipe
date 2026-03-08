@@ -1,61 +1,26 @@
-name: v4 Cross-Platform Build
+name: Build & Release
 
 on:
   push:
     branches: [v4]
   pull_request:
     branches: [v4]
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Upload artifacts to this release tag (e.g., v4.0.0-alpha). Leave empty for CI-only.'
+        required: false
+        default: ''
+
+env:
+  BUILD_TYPE: Release
 
 jobs:
-  build-macos:
-    runs-on: macos-14
-    timeout-minutes: 45
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure CMake
-        run: |
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DDIRECTPIPE_BUILD_RECEIVER=ON \
-            -DDIRECTPIPE_BUILD_TESTS=ON \
-            -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -Wno-error=deprecated"
-
-      - name: Build All
-        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
-
-      - name: Run Tests
-        run: cd build && ctest --output-on-failure
-
-      - name: Upload DirectPipe.app
-        uses: actions/upload-artifact@v4
-        with:
-          name: DirectPipe-macOS
-          path: build/host/DirectPipe_artefacts/Release/DirectPipe.app
-          if-no-files-found: error
-
-      - name: Upload Receiver VST2 (for OBS)
-        uses: actions/upload-artifact@v4
-        with:
-          name: DirectPipeReceiver-macOS-VST2
-          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/
-          if-no-files-found: warn
-
-      - name: Upload Receiver AU
-        uses: actions/upload-artifact@v4
-        with:
-          name: DirectPipeReceiver-macOS-AU
-          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/AU/
-          if-no-files-found: warn
-
-      - name: Upload Receiver VST3
-        uses: actions/upload-artifact@v4
-        with:
-          name: DirectPipeReceiver-macOS-VST3
-          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/
-          if-no-files-found: warn
-
+  # ═══════════════════════════════════════════
+  # Windows — DirectPipe.exe + Receiver VST2/VST3
+  # ═══════════════════════════════════════════
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 45
@@ -63,36 +28,152 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=ON -DDIRECTPIPE_BUILD_TESTS=ON
+      # Optional: restore proprietary SDKs from repository secrets
+      - name: Restore VST2 SDK
+        shell: bash
+        env:
+          VST2_SDK_B64: ${{ secrets.VST2_SDK_B64 }}
+        run: |
+          if [ -n "$VST2_SDK_B64" ]; then
+            mkdir -p thirdparty/VST2_SDK/pluginterfaces/vst2.x
+            echo "$VST2_SDK_B64" | base64 -d | tar xz -C thirdparty/VST2_SDK/
+            echo "✓ VST2 SDK restored"
+          else
+            echo "VST2 SDK secret not set — VST2 format skipped"
+          fi
 
-      - name: Build All
+      - name: Restore ASIO SDK
+        shell: bash
+        env:
+          ASIO_SDK_B64: ${{ secrets.ASIO_SDK_B64 }}
+        run: |
+          if [ -n "$ASIO_SDK_B64" ]; then
+            mkdir -p thirdparty/asiosdk
+            echo "$ASIO_SDK_B64" | base64 -d | tar xz -C thirdparty/asiosdk/
+            echo "✓ ASIO SDK restored"
+          else
+            echo "ASIO SDK secret not set — ASIO driver disabled"
+          fi
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
         run: cmake --build build --config Release
 
       - name: Run Tests
         run: cd build && ctest --output-on-failure -C Release
 
-      - name: Upload DirectPipe.exe
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "build/host/DirectPipe_artefacts/Release/DirectPipe.exe" staging/
+
+          # Receiver VST3
+          if [ -d "build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3" ]; then
+            cp -r build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/*.vst3 staging/ 2>/dev/null || true
+          fi
+
+          # Receiver VST2 (only if SDK was available)
+          if [ -d "build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST" ]; then
+            cp build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/*.dll staging/ 2>/dev/null || true
+          fi
+
+          echo "=== Windows package contents ==="
+          ls -lh staging/
+
+      - name: Create ZIP
+        shell: bash
+        run: |
+          cd staging
+          7z a -tzip ../DirectPipe-win64.zip .
+          cd ..
+          ls -lh DirectPipe-win64.zip
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DirectPipe-Windows
-          path: build/host/DirectPipe_artefacts/Release/DirectPipe.exe
+          name: DirectPipe-win64
+          path: DirectPipe-win64.zip
           if-no-files-found: error
 
-      - name: Upload Receiver VST2
+  # ═══════════════════════════════════════════
+  # macOS — DirectPipe.app + Receiver VST2/VST3/AU (Universal Binary)
+  # ═══════════════════════════════════════════
+  build-macos:
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore VST2 SDK
+        env:
+          VST2_SDK_B64: ${{ secrets.VST2_SDK_B64 }}
+        run: |
+          if [ -n "$VST2_SDK_B64" ]; then
+            mkdir -p thirdparty/VST2_SDK/pluginterfaces/vst2.x
+            echo "$VST2_SDK_B64" | base64 -d | tar xz -C thirdparty/VST2_SDK/
+            echo "✓ VST2 SDK restored"
+          else
+            echo "VST2 SDK secret not set — VST2 format skipped"
+          fi
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
+
+      - name: Build
+        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+
+      - name: Run Tests
+        run: cd build && ctest --output-on-failure
+
+      - name: Package
+        run: |
+          mkdir -p staging
+
+          # DirectPipe.app (ditto preserves bundles, symlinks, resource forks)
+          ditto "build/host/DirectPipe_artefacts/Release/DirectPipe.app" "staging/DirectPipe.app"
+
+          # Receiver VST3
+          for f in build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/*.vst3; do
+            [ -e "$f" ] && ditto "$f" "staging/$(basename "$f")"
+          done
+
+          # Receiver VST2 (.vst bundle)
+          for f in build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/*.vst; do
+            [ -e "$f" ] && ditto "$f" "staging/$(basename "$f")"
+          done
+
+          # Receiver AU (.component bundle)
+          for f in build/plugins/receiver/DirectPipeReceiver_artefacts/Release/AU/*.component; do
+            [ -e "$f" ] && ditto "$f" "staging/$(basename "$f")"
+          done
+
+          echo "=== macOS package contents ==="
+          ls -lhR staging/
+
+      - name: Create ZIP
+        run: |
+          cd staging
+          ditto -c -k --sequesterRsrc --keepParent . ../DirectPipe-macOS.zip
+          cd ..
+          ls -lh DirectPipe-macOS.zip
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DirectPipeReceiver-Windows-VST2
-          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/
-          if-no-files-found: warn
+          name: DirectPipe-macOS
+          path: DirectPipe-macOS.zip
+          if-no-files-found: error
 
-      - name: Upload Receiver VST3
-        uses: actions/upload-artifact@v4
-        with:
-          name: DirectPipeReceiver-Windows-VST3
-          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/
-          if-no-files-found: warn
-
+  # ═══════════════════════════════════════════
+  # Linux — DirectPipe + Receiver VST2/VST3
+  # ═══════════════════════════════════════════
   build-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -100,7 +181,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -111,40 +192,159 @@ jobs:
             libxrandr-dev \
             libxinerama-dev \
             libxcursor-dev \
-            libgl-dev \
-            libwebkit2gtk-4.1-dev \
-            libcurl4-openssl-dev
+            libgl-dev
+
+      - name: Restore VST2 SDK
+        env:
+          VST2_SDK_B64: ${{ secrets.VST2_SDK_B64 }}
+        run: |
+          if [ -n "$VST2_SDK_B64" ]; then
+            mkdir -p thirdparty/VST2_SDK/pluginterfaces/vst2.x
+            echo "$VST2_SDK_B64" | base64 -d | tar xz -C thirdparty/VST2_SDK/
+            echo "✓ VST2 SDK restored"
+          else
+            echo "VST2 SDK secret not set — VST2 format skipped"
+          fi
 
       - name: Configure CMake
-        run: |
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DDIRECTPIPE_BUILD_RECEIVER=ON \
-            -DDIRECTPIPE_BUILD_TESTS=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build All
+      - name: Build
         run: cmake --build build --config Release -j$(nproc)
 
       - name: Run Tests
         run: cd build && ctest --output-on-failure
 
-      - name: Upload DirectPipe
+      - name: Package
+        run: |
+          mkdir -p staging
+
+          cp "build/host/DirectPipe_artefacts/Release/DirectPipe" staging/
+          chmod +x staging/DirectPipe
+
+          # Receiver VST3
+          cp -r build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/*.vst3 staging/ 2>/dev/null || true
+
+          # Receiver VST2 (.so)
+          cp build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/*.so staging/ 2>/dev/null || true
+
+          echo "=== Linux package contents ==="
+          ls -lh staging/
+
+      - name: Create tar.gz
+        run: |
+          cd staging
+          tar czf ../DirectPipe-linux-x64.tar.gz .
+          cd ..
+          ls -lh DirectPipe-linux-x64.tar.gz
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DirectPipe-Linux
-          path: build/host/DirectPipe_artefacts/Release/DirectPipe
+          name: DirectPipe-linux-x64
+          path: DirectPipe-linux-x64.tar.gz
           if-no-files-found: error
 
-      - name: Upload Receiver VST2
-        uses: actions/upload-artifact@v4
-        with:
-          name: DirectPipeReceiver-Linux-VST2
-          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/
-          if-no-files-found: warn
+  # ═══════════════════════════════════════════
+  # Stream Deck Plugin — cross-platform Node.js package
+  # ═══════════════════════════════════════════
+  build-streamdeck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
-      - name: Upload Receiver VST3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: com.directpipe.directpipe.sdPlugin
+        run: npm ci
+
+      - name: Generate icons (SVG -> PNG)
+        working-directory: com.directpipe.directpipe.sdPlugin
+        run: npm run icons
+
+      - name: Build (Rollup bundle)
+        working-directory: com.directpipe.directpipe.sdPlugin
+        run: npm run build
+
+      - name: Install Stream Deck CLI
+        run: npm install -g @elgato/cli
+
+      - name: Pack Stream Deck Plugin
+        working-directory: com.directpipe.directpipe.sdPlugin
+        run: |
+          streamdeck pack . --output ../dist/ --force
+          ls -lh ../dist/*.streamDeckPlugin
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DirectPipeReceiver-Linux-VST3
-          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/
-          if-no-files-found: warn
+          name: StreamDeck-Plugin
+          path: dist/com.directpipe.directpipe.streamDeckPlugin
+          if-no-files-found: error
+
+  # ═══════════════════════════════════════════
+  # Upload to GitHub Release
+  # Runs only on: release created / workflow_dispatch with tag
+  # ═══════════════════════════════════════════
+  upload-release:
+    if: >-
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+    needs: [build-windows, build-macos, build-linux, build-streamdeck]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Rename and list artifacts
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          mkdir -p release
+
+          # Windows ZIP
+          cp artifacts/DirectPipe-win64/DirectPipe-win64.zip \
+             "release/DirectPipe-${TAG}-win64.zip"
+
+          # macOS ZIP
+          cp artifacts/DirectPipe-macOS/DirectPipe-macOS.zip \
+             "release/DirectPipe-${TAG}-macOS.zip"
+
+          # Linux tar.gz
+          cp artifacts/DirectPipe-linux-x64/DirectPipe-linux-x64.tar.gz \
+             "release/DirectPipe-${TAG}-linux-x64.tar.gz"
+
+          # Stream Deck Plugin
+          cp artifacts/StreamDeck-Plugin/com.directpipe.directpipe.streamDeckPlugin \
+             "release/com.directpipe.directpipe.streamDeckPlugin"
+
+          echo "=== Release artifacts ==="
+          ls -lh release/
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh release upload "$TAG" \
+            release/* \
+            --repo ${{ github.repository }} \
+            --clobber
