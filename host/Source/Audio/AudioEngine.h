@@ -164,8 +164,9 @@ public:
     juce::StringArray getAvailableInputDevices() const;
     juce::StringArray getAvailableOutputDevices() const;
 
-    /** @brief Get Windows Audio (WASAPI) output devices regardless of current driver type. */
-    juce::StringArray getWasapiOutputDevices();
+    /** @brief Get shared-mode output devices regardless of current driver type.
+     *  On Windows returns WASAPI devices, on macOS CoreAudio, on Linux ALSA. */
+    juce::StringArray getSharedModeOutputDevices();
 
     bool isRunning() const { return running_; }
 

@@ -25,9 +25,7 @@
 #include "../Control/ControlMapping.h"
 #include "../Control/Log.h"
 
-// Forward declarations (defined in Main.cpp)
-bool isStartupEnabled();
-void setStartupEnabled(bool enable);
+#include "../Platform/AutoStart.h"
 
 namespace directpipe {
 
@@ -133,12 +131,14 @@ LogPanel::LogPanel()
 
     startupToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
     startupToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
-#if JUCE_WINDOWS
-    startupToggle_.setToggleState(::isStartupEnabled(), juce::dontSendNotification);
-    startupToggle_.onClick = [this] {
-        ::setStartupEnabled(startupToggle_.getToggleState());
-    };
-#endif
+    if (Platform::isAutoStartSupported()) {
+        startupToggle_.setToggleState(Platform::isAutoStartEnabled(), juce::dontSendNotification);
+        startupToggle_.onClick = [this] {
+            Platform::setAutoStartEnabled(startupToggle_.getToggleState());
+        };
+    } else {
+        startupToggle_.setEnabled(false);
+    }
     addAndMakeVisible(startupToggle_);
 
     quitBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kRedColour));

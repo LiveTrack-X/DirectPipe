@@ -174,7 +174,7 @@ bool NamedEvent::isOpen() const { return event_ != nullptr; }
 
 #else
 // ═══════════════════════════════════════════════════════════════
-// POSIX Implementation (Linux/macOS — for development/testing)
+// POSIX Implementation (Linux/macOS)
 // ═══════════════════════════════════════════════════════════════
 
 #include <sys/mman.h>
@@ -186,7 +186,7 @@ bool NamedEvent::isOpen() const { return event_ != nullptr; }
 
 namespace directpipe {
 
-// ─── SharedMemory ───────────────────────────────────────────────
+// ─── SharedMemory (shared between macOS and Linux) ──────────────
 
 SharedMemory::~SharedMemory() { close(); }
 
@@ -297,7 +297,90 @@ void SharedMemory::close()
     size_ = 0;
 }
 
-// ─── NamedEvent (POSIX: eventfd or pipe-based) ─────────────────
+// ─── NamedEvent ─────────────────────────────────────────────────
+
+#if defined(__APPLE__)
+// ═══ macOS: POSIX named semaphore (sem_open) ═══════════════════
+// macOS doesn't support eventfd or sem_timedwait.
+// Use sem_trywait + usleep polling for timed waits.
+
+#include <semaphore.h>
+#include <chrono>
+
+NamedEvent::~NamedEvent() { close(); }
+
+NamedEvent::NamedEvent(NamedEvent&& other) noexcept
+    : sem_(other.sem_), name_(std::move(other.name_))
+{
+    other.sem_ = nullptr;
+}
+
+NamedEvent& NamedEvent::operator=(NamedEvent&& other) noexcept
+{
+    if (this != &other) {
+        close();
+        sem_ = other.sem_;
+        name_ = std::move(other.name_);
+        other.sem_ = nullptr;
+    }
+    return *this;
+}
+
+bool NamedEvent::create(const std::string& name)
+{
+    close();
+    name_ = toPosixName(name);
+    sem_unlink(name_.c_str());  // Clean up stale
+    auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    if (s == SEM_FAILED) return false;
+    sem_ = static_cast<void*>(s);
+    return true;
+}
+
+bool NamedEvent::open(const std::string& name)
+{
+    close();
+    name_ = toPosixName(name);
+    auto* s = sem_open(name_.c_str(), 0);
+    if (s == SEM_FAILED) return false;
+    sem_ = static_cast<void*>(s);
+    return true;
+}
+
+void NamedEvent::signal()
+{
+    if (sem_) sem_post(static_cast<sem_t*>(sem_));
+}
+
+bool NamedEvent::wait(uint32_t timeout_ms)
+{
+    if (!sem_) return false;
+    auto* s = static_cast<sem_t*>(sem_);
+    auto deadline = std::chrono::steady_clock::now()
+                  + std::chrono::milliseconds(timeout_ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (sem_trywait(s) == 0) return true;
+        usleep(500);  // 0.5ms spin
+    }
+    return false;
+}
+
+void NamedEvent::close()
+{
+    if (sem_) {
+        sem_close(static_cast<sem_t*>(sem_));
+        sem_ = nullptr;
+    }
+    if (!name_.empty()) {
+        sem_unlink(name_.c_str());
+        name_.clear();
+    }
+}
+
+bool NamedEvent::isOpen() const { return sem_ != nullptr; }
+
+#else
+// ═══ Linux: eventfd ════════════════════════════════════════════
 
 #include <sys/eventfd.h>
 
@@ -327,9 +410,8 @@ bool NamedEvent::create(const std::string& /*name*/)
 
 bool NamedEvent::open(const std::string& /*name*/)
 {
-    // On POSIX, named events are not natively inter-process in this way.
-    // For cross-process use, you'd need a POSIX named semaphore or shared eventfd.
-    // This simplified implementation works for in-process testing only.
+    // eventfd is process-local. For cross-process, a POSIX named semaphore
+    // would be needed. This works for in-process testing only.
     return fd_ >= 0;
 }
 
@@ -371,6 +453,8 @@ void NamedEvent::close()
 }
 
 bool NamedEvent::isOpen() const { return fd_ >= 0; }
+
+#endif // __APPLE__ vs Linux
 
 } // namespace directpipe
 

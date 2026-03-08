@@ -74,7 +74,25 @@ target_sources(DirectPipe PRIVATE
     Source/Control/Log.cpp
     Source/IPC/SharedMemWriter.h
     Source/IPC/SharedMemWriter.cpp
+    # Platform abstraction headers
+    Source/Platform/PlatformAudio.h
+    Source/Platform/AutoStart.h
+    Source/Platform/ProcessPriority.h
+    Source/Platform/MultiInstanceLock.h
 )
+
+# ─── Platform-specific source files ───
+if(WIN32)
+    target_sources(DirectPipe PRIVATE
+        Source/Platform/Windows/WindowsAutoStart.cpp
+        Source/Platform/Windows/WindowsProcessPriority.cpp
+        Source/Platform/Windows/WindowsMultiInstanceLock.cpp
+    )
+else()
+    target_sources(DirectPipe PRIVATE
+        Source/Platform/PlatformStubs.cpp
+    )
+endif()
 
 juce_add_binary_data(DirectPipeBinaryData
     HEADER_NAME BinaryData.h
@@ -88,16 +106,19 @@ juce_add_binary_data(DirectPipeBinaryData
 
 juce_generate_juce_header(DirectPipe)
 
-# ─── ASIO SDK detection ───
-set(ASIO_SDK_DIR "${CMAKE_SOURCE_DIR}/thirdparty/asiosdk")
-if(EXISTS "${ASIO_SDK_DIR}/common/asio.h")
-    set(DIRECTPIPE_HAS_ASIO ON)
-    message(STATUS "ASIO SDK found at ${ASIO_SDK_DIR}")
-else()
-    set(DIRECTPIPE_HAS_ASIO OFF)
-    message(STATUS "ASIO SDK not found (looked in ${ASIO_SDK_DIR}/common/asio.h) — ASIO disabled")
+# ─── ASIO SDK detection (Windows only) ───
+set(DIRECTPIPE_HAS_ASIO OFF)
+if(WIN32)
+    set(ASIO_SDK_DIR "${CMAKE_SOURCE_DIR}/thirdparty/asiosdk")
+    if(EXISTS "${ASIO_SDK_DIR}/common/asio.h")
+        set(DIRECTPIPE_HAS_ASIO ON)
+        message(STATUS "ASIO SDK found at ${ASIO_SDK_DIR}")
+    else()
+        message(STATUS "ASIO SDK not found (looked in ${ASIO_SDK_DIR}/common/asio.h) — ASIO disabled")
+    endif()
 endif()
 
+# ─── Platform-common compile definitions ───
 target_compile_definitions(DirectPipe PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -106,13 +127,33 @@ target_compile_definitions(DirectPipe PRIVATE
     JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:DirectPipe,JUCE_VERSION>"
     JUCE_PLUGINHOST_VST3=1
     JUCE_PLUGINHOST_VST=1
-    JUCE_WASAPI=1
-    JUCE_WASAPI_EXCLUSIVE=1
-    JUCE_ASIO=$<BOOL:${DIRECTPIPE_HAS_ASIO}>
 )
 
-if(DIRECTPIPE_HAS_ASIO)
-    target_include_directories(DirectPipe PRIVATE "${ASIO_SDK_DIR}/common")
+# ─── Windows-specific definitions ───
+if(WIN32)
+    target_compile_definitions(DirectPipe PRIVATE
+        JUCE_WASAPI=1
+        JUCE_WASAPI_EXCLUSIVE=1
+        JUCE_ASIO=$<BOOL:${DIRECTPIPE_HAS_ASIO}>
+    )
+    if(DIRECTPIPE_HAS_ASIO)
+        target_include_directories(DirectPipe PRIVATE "${ASIO_SDK_DIR}/common")
+    endif()
+endif()
+
+# ─── macOS-specific definitions ───
+if(APPLE)
+    target_compile_definitions(DirectPipe PRIVATE
+        JUCE_PLUGINHOST_AU=1
+    )
+endif()
+
+# ─── Linux-specific definitions ───
+if(UNIX AND NOT APPLE)
+    target_compile_definitions(DirectPipe PRIVATE
+        JUCE_JACK=1
+        JUCE_ALSA=1
+    )
 endif()
 
 target_link_libraries(DirectPipe PRIVATE

@@ -160,8 +160,13 @@ public:
 private:
 #ifdef _WIN32
     HANDLE event_ = nullptr;
+#elif defined(__APPLE__)
+    // macOS: POSIX named semaphore (sem_open/sem_post/sem_trywait)
+    // Note: macOS doesn't support sem_timedwait, so we poll with sem_trywait.
+    void* sem_ = nullptr;  // sem_t* (void* to avoid including semaphore.h in header)
+    std::string name_;
 #else
-    // POSIX implementation using named semaphore or eventfd
+    // Linux: eventfd for efficient in-process signaling
     int fd_ = -1;
     std::string name_;
 #endif

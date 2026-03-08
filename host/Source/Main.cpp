@@ -30,112 +30,12 @@
 #include "Control/Log.h"
 
 // ═══════════════════════════════════════════════════════════════════
-// Windows startup (Run registry) helpers
+// Platform abstractions (AutoStart, ProcessPriority, MultiInstanceLock)
 // ═══════════════════════════════════════════════════════════════════
 
-#if JUCE_WINDOWS
-#include <Windows.h>
-#include <timeapi.h>
-#pragma comment(lib, "winmm.lib")
-
-// ─── Named Mutex for multi-instance external control priority ────
-// Two mutexes coordinate which instance owns external controls:
-//   DirectPipe_NormalRunning   — held by normal (non-portable) instance
-//   DirectPipe_ExternalControl — held by whichever instance owns hotkeys/MIDI/WS/HTTP
-static HANDLE g_normalRunningMutex = nullptr;
-static HANDLE g_externalControlMutex = nullptr;
-
-// Returns: 1 = enable controls, 0 = audio only, -1 = must quit (blocked)
-static int acquireExternalControlPriority()
-{
-    bool isPortable = directpipe::ControlMappingStore::isPortableMode();
-
-    if (!isPortable) {
-        // Normal mode: check if a portable instance already owns external controls
-        HANDLE probe = OpenMutexW(SYNCHRONIZE, FALSE, L"DirectPipe_ExternalControl");
-        if (probe) {
-            CloseHandle(probe);
-            return -1;  // Portable has control → must quit
-        }
-
-        // Claim both: signal that normal mode is running + own external controls
-        g_normalRunningMutex = CreateMutexW(nullptr, TRUE, L"DirectPipe_NormalRunning");
-        if (!g_normalRunningMutex) return -1;  // CreateMutex failed
-        g_externalControlMutex = CreateMutexW(nullptr, TRUE, L"DirectPipe_ExternalControl");
-        if (!g_externalControlMutex || GetLastError() == ERROR_ALREADY_EXISTS) {
-            // Portable grabbed control between our OpenMutex check and CreateMutex
-            if (g_externalControlMutex) { CloseHandle(g_externalControlMutex); g_externalControlMutex = nullptr; }
-            CloseHandle(g_normalRunningMutex); g_normalRunningMutex = nullptr;
-            return -1;
-        }
-        return 1;  // Full control
-    }
-
-    // Portable mode: check if normal mode is running
-    HANDLE probe = OpenMutexW(SYNCHRONIZE, FALSE, L"DirectPipe_NormalRunning");
-    if (probe) {
-        CloseHandle(probe);
-        return 0;  // Normal mode is running → audio only
-    }
-
-    // Try to claim external controls (first portable wins)
-    g_externalControlMutex = CreateMutexW(nullptr, TRUE, L"DirectPipe_ExternalControl");
-    if (g_externalControlMutex && GetLastError() == ERROR_ALREADY_EXISTS) {
-        CloseHandle(g_externalControlMutex);
-        g_externalControlMutex = nullptr;
-        return 0;  // Another portable already has control → audio only
-    }
-
-    return (g_externalControlMutex != nullptr) ? 1 : 0;
-}
-
-static void releaseExternalControlPriority()
-{
-    if (g_externalControlMutex) { CloseHandle(g_externalControlMutex); g_externalControlMutex = nullptr; }
-    if (g_normalRunningMutex)   { CloseHandle(g_normalRunningMutex);   g_normalRunningMutex = nullptr; }
-}
-
-static const wchar_t* kRunKeyPath = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
-static const wchar_t* kRunValueName = L"DirectPipe";
-static const wchar_t* kRunValueNamePortable = L"DirectPipe (Portable)";
-
-static const wchar_t* getRunValueName()
-{
-    return directpipe::ControlMappingStore::isPortableMode() ? kRunValueNamePortable : kRunValueName;
-}
-
-bool isStartupEnabled()
-{
-    HKEY hKey = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
-        return false;
-
-    DWORD type = 0;
-    DWORD size = 0;
-    bool exists = (RegQueryValueExW(hKey, getRunValueName(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS);
-    RegCloseKey(hKey);
-    return exists;
-}
-
-void setStartupEnabled(bool enable)
-{
-    HKEY hKey = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS)
-        return;
-
-    if (enable) {
-        auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                           .getFullPathName();
-        auto wPath = exePath.toWideCharPointer();
-        RegSetValueExW(hKey, getRunValueName(), 0, REG_SZ,
-                       reinterpret_cast<const BYTE*>(wPath),
-                       static_cast<DWORD>((wcslen(wPath) + 1) * sizeof(wchar_t)));
-    } else {
-        RegDeleteValueW(hKey, getRunValueName());
-    }
-    RegCloseKey(hKey);
-}
-#endif
+#include "Platform/AutoStart.h"
+#include "Platform/ProcessPriority.h"
+#include "Platform/MultiInstanceLock.h"
 
 // ═══════════════════════════════════════════════════════════════════
 // Out-of-process plugin scanner mode
@@ -292,18 +192,8 @@ public:
             return;
         }
 
-    #if JUCE_WINDOWS
-        // Reduce Windows timer granularity to 1ms (matched by timeEndPeriod in shutdown)
-        timeBeginPeriod(1);
-
-        // Disable Power Throttling (prevents Intel E-core scheduling on hybrid CPUs)
-        PROCESS_POWER_THROTTLING_STATE throttling{};
-        throttling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
-        throttling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
-        throttling.StateMask = 0;
-        SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling,
-                              &throttling, sizeof(throttling));
-    #endif
+        // Elevate process priority and timer resolution for real-time audio
+        directpipe::Platform::setHighPriority();
 
         // Portable mode: per-folder single instance lock
         // (JUCE's built-in lock is bypassed since moreThanOneInstanceAllowed returns true)
@@ -323,7 +213,8 @@ public:
         }
 
         // Multi-instance external control priority
-        int controlResult = acquireExternalControlPriority();
+        int controlResult = directpipe::Platform::acquireExternalControlPriority(
+            directpipe::ControlMappingStore::isPortableMode());
         if (controlResult < 0) {
             // A portable instance already owns external controls — block normal mode
             juce::AlertWindow::showMessageBoxAsync(
@@ -379,10 +270,8 @@ public:
         directpipe::Log::sessionEnd(sessionStartMs_);
         trayIcon_.reset();
         mainWindow_.reset();
-    #if JUCE_WINDOWS
-        releaseExternalControlPriority();
-        timeEndPeriod(1);
-    #endif
+        directpipe::Platform::releaseExternalControlPriority();
+        directpipe::Platform::restoreNormalPriority();
     }
 
     void systemRequestedQuit() override
@@ -521,10 +410,9 @@ private:
             juce::PopupMenu menu;
             menu.addItem(1, "Show Window");
             menu.addSeparator();
-        #if JUCE_WINDOWS
-            menu.addItem(3, "Start with Windows",
-                         true, isStartupEnabled());
-        #endif
+            if (directpipe::Platform::isAutoStartSupported())
+                menu.addItem(3, "Start with Windows",
+                             true, directpipe::Platform::isAutoStartEnabled());
             menu.addSeparator();
             menu.addItem(2, "Quit DirectPipe");
 
@@ -534,12 +422,10 @@ private:
                         app_.showWindow();
                     } else if (result == 2) {
                         juce::JUCEApplication::getInstance()->systemRequestedQuit();
+                    } else if (result == 3) {
+                        directpipe::Platform::setAutoStartEnabled(
+                            !directpipe::Platform::isAutoStartEnabled());
                     }
-                #if JUCE_WINDOWS
-                    else if (result == 3) {
-                        setStartupEnabled(!isStartupEnabled());
-                    }
-                #endif
                 });
         }
 
@@ -568,10 +454,7 @@ private:
             setResizeLimits(600, 800, 1400, 1200);
             centreWithSize(getWidth(), getHeight());
             // setVisible deferred — MainComponent shows window after initial load completes
-
-        #if JUCE_WINDOWS
-            SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-        #endif
+            // NOTE: Process priority already set by Platform::setHighPriority() in initialise()
         }
 
         void closeButtonPressed() override

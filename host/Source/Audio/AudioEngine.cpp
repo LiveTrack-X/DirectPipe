@@ -23,6 +23,7 @@
 
 #include "AudioEngine.h"
 #include "../Control/Log.h"
+#include "../Platform/PlatformAudio.h"
 #include <cmath>
 
 namespace directpipe {
@@ -433,20 +434,9 @@ juce::StringArray AudioEngine::getAvailableOutputDevices() const
     return devices;
 }
 
-juce::StringArray AudioEngine::getWasapiOutputDevices()
+juce::StringArray AudioEngine::getSharedModeOutputDevices()
 {
-    juce::StringArray devices;
-    for (auto* type : deviceManager_.getAvailableDeviceTypes()) {
-        if (type->getTypeName().containsIgnoreCase("Windows Audio") ||
-            type->getTypeName().containsIgnoreCase("DirectSound") ||
-            type->getTypeName().containsIgnoreCase("WASAPI")) {
-            type->scanForDevices();
-            devices = type->getDeviceNames(false);
-            if (devices.size() > 0)
-                break;
-        }
-    }
-    return devices;
+    return PlatformAudio::getSharedModeOutputDevices(deviceManager_);
 }
 
 // ─── Device type management ─────────────────────────────────────────────────

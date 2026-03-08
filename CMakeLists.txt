@@ -10,9 +10,9 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
-# Platform check
+# Platform info
 if(NOT WIN32)
-    message(WARNING "DirectPipe is designed for Windows. Some features may not be available on this platform.")
+    message(STATUS "Non-Windows build: some features (ASIO, WASAPI Exclusive) are Windows-only.")
 endif()
 
 # Options

@@ -23,6 +23,7 @@
 
 #include "MonitorOutput.h"
 #include "../Control/Log.h"
+#include "../Platform/PlatformAudio.h"
 
 namespace directpipe {
 
@@ -48,8 +49,8 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
 
     deviceManager_ = std::make_unique<juce::AudioDeviceManager>();
 
-    // Force WASAPI (Windows Audio) device type
-    deviceManager_->setCurrentAudioDeviceType("Windows Audio", true);
+    // Force shared-mode device type (WASAPI on Windows, CoreAudio on macOS)
+    deviceManager_->setCurrentAudioDeviceType(PlatformAudio::getDefaultSharedDeviceType(), true);
 
     auto result = deviceManager_->initialiseWithDefaultDevices(0, 2);
     if (result.isNotEmpty()) {
@@ -290,7 +291,7 @@ juce::StringArray MonitorOutput::getAvailableOutputDevices() const
             devices = type->getDeviceNames(false);
     } else {
         juce::AudioDeviceManager temp;
-        temp.setCurrentAudioDeviceType("Windows Audio", true);
+        temp.setCurrentAudioDeviceType(PlatformAudio::getDefaultSharedDeviceType(), true);
         temp.initialiseWithDefaultDevices(0, 2);
         if (auto* type = temp.getCurrentDeviceTypeObject())
             devices = type->getDeviceNames(false);

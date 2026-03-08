@@ -28,13 +28,29 @@ namespace directpipe {
 namespace {
     juce::String findCjkFontName()
     {
-        // Try Windows CJK fonts in preference order
+        // Platform-specific CJK font candidates
+    #if JUCE_MAC
+        static const char* candidates[] = {
+            "Apple SD Gothic Neo",  // Korean (macOS)
+            "PingFang SC",          // Chinese (macOS)
+            "Hiragino Sans",        // Japanese (macOS)
+            ".AppleSystemUIFont",   // System fallback
+        };
+    #elif JUCE_LINUX
+        static const char* candidates[] = {
+            "Noto Sans CJK KR",    // Korean (Linux)
+            "Noto Sans CJK SC",    // Chinese (Linux)
+            "Noto Sans CJK JP",    // Japanese (Linux)
+            "DejaVu Sans",         // Fallback
+        };
+    #else // Windows
         static const char* candidates[] = {
             "Malgun Gothic",     // 맑은 고딕 (Windows 7+)
             "Microsoft YaHei",   // Chinese fallback
             "Yu Gothic",         // Japanese fallback
             "Segoe UI",          // Wide Unicode coverage
         };
+    #endif
         auto allFonts = juce::Font::findAllTypefaceNames();
         for (auto* name : candidates) {
             if (allFonts.contains(name))

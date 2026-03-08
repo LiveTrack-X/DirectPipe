@@ -51,6 +51,10 @@ void sessionStart(const juce::String& version)
 
     info("APP", "Process priority: HIGH_PRIORITY_CLASS");
     info("APP", "Timer resolution: 1ms (timeBeginPeriod)");
+#else
+    // Cross-platform OS info via JUCE
+    info("APP", "OS: " + juce::SystemStats::getOperatingSystemName());
+    info("APP", "CPU cores: " + juce::String(juce::SystemStats::getNumCpus()));
 #endif
 
     info("APP", "─────────────────────────────────────────");
