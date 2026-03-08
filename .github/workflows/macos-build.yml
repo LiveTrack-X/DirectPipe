@@ -1,0 +1,54 @@
+name: macOS Build Test
+
+on:
+  push:
+    branches: [v4]
+  pull_request:
+    branches: [v4]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDIRECTPIPE_BUILD_RECEIVER=OFF \
+            -DDIRECTPIPE_BUILD_TESTS=ON
+
+      - name: Build Host
+        run: cmake --build build --config Release --target DirectPipe -j$(sysctl -n hw.ncpu)
+
+      - name: Build Core Tests
+        run: cmake --build build --config Release --target directpipe-core-tests -j$(sysctl -n hw.ncpu)
+
+      - name: Run Core Tests
+        run: cd build && ctest -R "core" --output-on-failure
+
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DDIRECTPIPE_BUILD_RECEIVER=OFF
+
+      - name: Build Host
+        run: cmake --build build --config Release --target DirectPipe
+
+      - name: Build Core Tests
+        run: cmake --build build --config Release --target directpipe-core-tests
+
+      - name: Run Core Tests
+        run: cd build && ctest -R "core" --output-on-failure -C Release
