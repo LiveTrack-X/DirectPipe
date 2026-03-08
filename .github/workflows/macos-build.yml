@@ -27,3 +27,24 @@ jobs:
 
       - name: Run Tests
         run: cd build && ctest --output-on-failure
+
+      - name: Upload DirectPipe.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipe-macOS
+          path: build/host/DirectPipe_artefacts/Release/DirectPipe.app
+          if-no-files-found: error
+
+      - name: Upload Receiver AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-macOS-AU
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/AU/
+          if-no-files-found: warn
+
+      - name: Upload Receiver VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipeReceiver-macOS-VST3
+          path: build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/
+          if-no-files-found: warn

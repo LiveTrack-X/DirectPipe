@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/version-3.10.0-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
@@ -28,13 +28,16 @@
   <em>DirectPipe is a modern lightweight VST host for applying studio-quality effects to your microphone.</em>
 </p>
 
-**스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** Windows용 실시간 마이크 프로세서.
+**스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** 크로스 플랫폼 실시간 마이크 프로세서.
 
 USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 즉시 전환할 수 있다.
 
-**Real-time microphone processor for streamers, podcasters, gamers, and voice chat users** on Windows.
+**Cross-platform real-time microphone processor for streamers, podcasters, gamers, and voice chat users.**
 
 Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deliver clean audio directly to Discord, Zoom, or OBS. Switch effects, adjust volume, and mute with a single Stream Deck button while live — or use hotkeys during gameplay, MIDI controllers for hands-on mixing. Set up a professional mic chain without a DAW, and instantly switch between situation presets (A-E).
+
+> **Platform support**: Windows (WASAPI/ASIO), macOS (CoreAudio), Linux (ALSA/JACK). Windows는 안정 빌드, macOS는 베타, Linux는 실험적 지원.
+> Windows is the stable release. macOS is in beta. Linux support is experimental.
 
 <p align="center">
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
@@ -101,7 +104,7 @@ DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
 ## 동작 원리 / How It Works
 
 ```
-Mic ─→ WASAPI Shared / ASIO ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
+Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
                                                                       │
                  ┌────────────────────────────────────────────────────┼────────────────────┐
                  │                                                    │                    │
@@ -129,8 +132,8 @@ External Control:
 
 ### 오디오 / Audio
 
-- **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
-- WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
+- **WASAPI Shared + ASIO** (Windows), **CoreAudio** (macOS), **ALSA/JACK** (Linux) — 런타임 전환 가능 — Runtime driver switching
+- 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
 - **장치 자동 재연결** — USB 장치 분리 시 알림, 재연결 시 3초 이내 자동 복구 (SR/BS/채널 설정 보존). 모니터 장치도 독립적으로 재연결. JUCE 자동 폴백 방지 (원하는 장치만 수락) — Auto-reconnection on USB disconnect/reconnect within 3 seconds (preserves SR/BS/channel settings). Monitor device reconnects independently. JUCE auto-fallback protection (only accepts desired device)
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 WASAPI 헤드폰) + VST Output (Receiver VST2 → OBS) — Three output paths: main, monitor headphones, VST output to OBS
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
@@ -139,7 +142,7 @@ External Control:
 
 ### 외부 제어 / External Control
 
-- **키보드 단축키** (모두 Controls > Hotkeys 탭에서 변경 가능, 드래그앤드롭 순서 변경) — All customizable in Controls > Hotkeys tab, drag-and-drop reorder
+- **키보드 단축키** (모두 Controls > Hotkeys 탭에서 변경 가능, 드래그앤드롭 순서 변경) — All customizable in Controls > Hotkeys tab, drag-and-drop reorder. macOS에서는 접근성 권한 필요 (CGEventTap). macOS requires Accessibility permission.
 
   | 단축키 / Shortcut | 동작 / Action |
   |---|---|
@@ -275,11 +278,26 @@ cmake --build build --config Release
 
 ### 요구 사항 / Requirements
 
+**Windows:**
 - Windows 10/11 (64-bit)
 - Visual Studio 2022 (C++ Desktop Development)
 - CMake 3.22+
-- JUCE 7.0.12 (CMake FetchContent 자동 다운로드 / auto-fetched)
 - ASIO SDK (`thirdparty/asiosdk/`) — ASIO 모드 사용 시 / for ASIO driver support (optional)
+
+**macOS (beta):**
+- macOS 10.15+ (Catalina 이상)
+- Xcode 14+ (Command Line Tools)
+- CMake 3.22+
+
+**Linux (experimental):**
+- GCC 9+ 또는 Clang 10+
+- CMake 3.22+
+- ALSA/JACK 개발 패키지 / ALSA/JACK development packages (`libasound2-dev`, `libjack-jackd2-dev`)
+- X11 개발 패키지 / X11 development packages
+
+**공통 / Common:**
+- JUCE 7.0.12 (CMake FetchContent 자동 다운로드 / auto-fetched)
+- VST2 SDK (`thirdparty/VST2_SDK/`) — VST2 포맷 사용 시 (optional)
 
 ## 프로젝트 구조 / Project Structure
 
@@ -293,12 +311,16 @@ host/                     JUCE host application (main)
                             HotkeyHandler, MidiHandler, StateBroadcaster,
                             DirectPipeLogger
     IPC/                    SharedMemWriter
+    Platform/               Cross-platform abstractions
+      Windows/                Registry autostart, Named Mutex, Win32 priority
+      macOS/                  LaunchAgent, CGEventTap hotkeys, pthread QoS
+      Linux/                  XDG autostart, setpriority, InterProcessLock
     UI/                     AudioSettings, OutputPanel, ControlSettingsPanel,
                             PluginChainEditor, PluginScanner, PresetManager,
                             LevelMeter, LogPanel, NotificationBar,
                             DirectPipeLookAndFeel, SettingsExporter
 core/                     IPC library (RingBuffer, SharedMemory, Protocol)
-plugins/receiver/         Receiver VST2 plugin (for OBS)
+plugins/receiver/         Receiver VST2/VST3/AU plugin (for OBS/DAW)
 com.directpipe.directpipe.sdPlugin/  Stream Deck plugin (Node.js, SDK v3)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)
@@ -370,19 +392,33 @@ Windows hides tray icons in the overflow area (▲ arrow) by default. To keep th
 </details>
 
 <details>
-<summary><b>처음 실행할 때 빨간색 "Windows의 PC 보호" 경고가 떠요 / SmartScreen warning on first run</b></summary>
+<summary><b>처음 실행할 때 보안 경고가 떠요 / Security warning on first run</b></summary>
 
 정상입니다! DirectPipe는 오픈소스라 코드 서명 인증서가 없어서 나타나는 경고입니다. 악성 소프트웨어가 아닙니다.
 
+**Windows (SmartScreen):**
 1. **"추가 정보"** 텍스트를 클릭하세요
 2. 아래에 나타나는 **"실행"** 버튼을 누르세요
-3. 한 번만 하면 이후로는 경고 없이 실행됩니다
 
-This is normal! DirectPipe is open-source and does not have a code signing certificate, so Windows SmartScreen shows a warning. It is not malware.
+**macOS (Gatekeeper):**
+1. **시스템 설정** → **개인 정보 보호 및 보안** → 하단의 **"확인 없이 열기"** 클릭
+2. 또는: Finder에서 DirectPipe.app을 **우클릭** → **열기** → **열기** 클릭
 
+한 번만 하면 이후로는 경고 없이 실행됩니다.
+
+---
+
+This is normal! DirectPipe is open-source and does not have a code signing certificate, so your OS shows a warning. It is not malware.
+
+**Windows (SmartScreen):**
 1. Click the **"More info"** text
 2. Click the **"Run anyway"** button that appears
-3. You only need to do this once — the warning won't appear again
+
+**macOS (Gatekeeper):**
+1. **System Settings** → **Privacy & Security** → click **"Open Anyway"** at the bottom
+2. Or: Right-click DirectPipe.app in Finder → **Open** → click **Open**
+
+You only need to do this once — the warning won't appear again.
 </details>
 
 <details>
@@ -639,7 +675,7 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 **Monitor**는 자기 목소리를 헤드폰으로 실시간 확인하는 기능입니다. VST 이펙트가 적용된 자신의 목소리를 들을 수 있습니다.
 
 - **Output** 탭에서 헤드폰이 연결된 오디오 장치를 선택
-- Main Output과는 별도의 WASAPI 장치를 사용하므로 **독립적으로 동작**
+- Main Output과는 별도의 오디오 장치를 사용하므로 **독립적으로 동작** (Windows: WASAPI, macOS: CoreAudio)
 - **MON** 버튼으로 켜기/끄기
 
 > **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 WASAPI 장치를 사용하기 때문에 **~15-20ms의 추가 지연**이 발생합니다. 이 지연은 WASAPI Shared Mode 듀얼 디바이스 구조의 한계입니다. 자기 목소리를 지연 없이 듣고 싶다면 **ASIO 드라이버 사용** (입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
@@ -649,20 +685,24 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 **Monitor** lets you hear your own processed voice through headphones in real-time, with all VST effects applied.
 
 - Select your headphone device in the **Output** tab
-- Uses a separate WASAPI device from the Main Output, so it **works independently**
+- Uses a separate audio device from the Main Output, so it **works independently** (Windows: WASAPI, macOS: CoreAudio)
 - Toggle on/off with the **MON** button
 
-> **Latency note**: Monitor output uses a separate WASAPI device, which adds **~15-20ms of extra latency** due to the dual-device WASAPI Shared Mode architecture. For zero-latency monitoring, use an **ASIO driver** (single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
+> **Latency note**: Monitor output uses a separate audio device, which adds **~15-20ms of extra latency** due to the dual-device architecture. For zero-latency monitoring, use an **ASIO driver** (Windows, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
 </details>
 
 <details>
-<summary><b>컴퓨터 시작할 때 자동으로 실행되게 하려면? / How to auto-start with Windows?</b></summary>
+<summary><b>컴퓨터 시작할 때 자동으로 실행되게 하려면? / How to auto-start at login?</b></summary>
 
 두 가지 방법:
 1. **시스템 트레이** 아이콘 우클릭 → **"Start with Windows"** 체크
 2. **Settings** 탭 → **"Start with Windows"** 체크
 
-활성화하면 Windows 시작 시 자동으로 트레이에서 실행됩니다. X 버튼으로 창을 닫아도 트레이에 남아서 계속 동작합니다.
+활성화하면 로그인 시 자동으로 트레이에서 실행됩니다. X 버튼으로 창을 닫아도 트레이에 남아서 계속 동작합니다.
+
+- **Windows**: 레지스트리 (`HKCU\...\Run`)
+- **macOS**: LaunchAgent (`~/Library/LaunchAgents/`)
+- **Linux**: XDG autostart (`~/.config/autostart/`)
 
 ---
 
@@ -670,7 +710,11 @@ Two ways to enable:
 1. Right-click the **system tray** icon → check **"Start with Windows"**
 2. **Settings** tab → check **"Start with Windows"**
 
-Once enabled, DirectPipe launches automatically in the system tray when Windows starts. Closing the window (X button) minimizes it to the tray — it keeps running in the background.
+Once enabled, DirectPipe launches automatically at login. Closing the window (X button) minimizes it to the tray — it keeps running in the background.
+
+- **Windows**: Registry (`HKCU\...\Run`)
+- **macOS**: LaunchAgent (`~/Library/LaunchAgents/`)
+- **Linux**: XDG autostart (`~/.config/autostart/`)
 </details>
 
 <details>
@@ -916,27 +960,19 @@ When enabled, the VST button turns **green**; when disabled, it's **red**.
 <details>
 <summary><b>업데이트는 어떻게 하나요? / How to update DirectPipe?</b></summary>
 
-DirectPipe v3.8.0부터 **인앱 자동 업데이트**를 지원합니다.
+DirectPipe는 **인앱 업데이트 알림**을 지원합니다. 새 버전이 있으면 하단 credit 라벨에 **"NEW vX.Y.Z"** 가 주황색으로 표시됩니다.
 
-1. 새 버전이 있으면 하단 credit 라벨에 **"NEW vX.Y.Z"** 가 주황색으로 표시됩니다
-2. 해당 라벨을 **클릭**하면 업데이트 다이얼로그가 뜹니다:
-   - **Update Now** — GitHub에서 자동 다운로드 → exe 교체 → 재시작
-   - **View on GitHub** — 릴리즈 페이지를 브라우저에서 열기
-   - **Later** — 닫기 (다음 실행 시 다시 알림)
-3. 업데이트 완료 후 앱이 자동 재시작되며, **"Updated to vX.Y.Z successfully!"** 알림이 표시됩니다
+**Windows**: "Update Now" 버튼으로 자동 다운로드 → exe 교체 → 재시작.
+**macOS/Linux**: "View on GitHub" 버튼으로 릴리즈 페이지에서 수동 다운로드.
 
 인터넷이 연결되지 않은 경우에도 기존 버전은 정상적으로 동작합니다.
 
 ---
 
-DirectPipe v3.8.0+ supports **in-app auto-update**.
+DirectPipe includes **in-app update notification**. When a newer version is available, the bottom credit label shows **"NEW vX.Y.Z"** in orange.
 
-1. When a newer version is available, the bottom credit label shows **"NEW vX.Y.Z"** in orange
-2. **Click** the label to open the update dialog:
-   - **Update Now** — Auto-download from GitHub → replace exe → restart
-   - **View on GitHub** — Open the release page in your browser
-   - **Later** — Dismiss (reminder appears on next launch)
-3. After the update, the app auto-restarts and shows **"Updated to vX.Y.Z successfully!"**
+**Windows**: Click "Update Now" for auto-download → replace exe → restart.
+**macOS/Linux**: Click "View on GitHub" to manually download from the release page.
 
 If you're offline, the current version continues to work normally.
 </details>
