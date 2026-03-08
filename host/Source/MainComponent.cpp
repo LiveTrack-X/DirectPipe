@@ -26,6 +26,7 @@
 #include "UI/SettingsExporter.h"  // Used by onSaveSettings/onLoadSettings callbacks
 #include <thread>
 
+#if JUCE_WINDOWS
 namespace {
     constexpr const char* kUpdateBatchFile = "_update.bat";
     constexpr const char* kUpdateDir       = "_update";
@@ -34,6 +35,7 @@ namespace {
     constexpr const char* kBackupExe       = "DirectPipe_backup.exe";
     constexpr const char* kUpdatedFlag     = "_updated.flag";
 }
+#endif
 
 namespace directpipe {
 
@@ -513,6 +515,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     }
     updateSlotButtonStates();
 
+#if JUCE_WINDOWS
     // Clean up leftover update files and check post-update flag
     {
         auto exeDir = juce::File::getSpecialLocation(
@@ -535,6 +538,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             });
         }
     }
+#endif // JUCE_WINDOWS
 
     // Check for new release on GitHub (background thread)
     checkForUpdate();
@@ -557,8 +561,10 @@ MainComponent::~MainComponent()
     // Remove slot button mouse listeners (right-click menu)
     for (int i = 0; i < kNumPresetSlots; ++i)
         slotButtons_[static_cast<size_t>(i)]->removeMouseListener(this);
+#if JUCE_WINDOWS
     if (downloadThread_.joinable())
         downloadThread_.join();
+#endif
     if (updateCheckThread_.joinable())
         updateCheckThread_.join();
     saveSettings();
@@ -1589,7 +1595,9 @@ void MainComponent::showUpdateDialog()
         "Would you like to update?",
         juce::MessageBoxIconType::InfoIcon);
 
+#if JUCE_WINDOWS
     window->addButton("Update Now", 1);
+#endif
     window->addButton("View on GitHub", 2);
     window->addButton("Later", 0);
 
@@ -1597,15 +1605,19 @@ void MainComponent::showUpdateDialog()
     window->enterModalState(true, juce::ModalCallbackFunction::create(
         [safeThis](int result) {
             if (!safeThis) return;
+#if JUCE_WINDOWS
             if (result == 1) {
                 safeThis->performUpdate();
-            } else if (result == 2) {
+            } else
+#endif
+            if (result == 2) {
                 juce::URL("https://github.com/LiveTrack-X/DirectPipe/releases/latest")
                     .launchInDefaultBrowser();
             }
         }), true);
 }
 
+#if JUCE_WINDOWS
 void MainComponent::performUpdate()
 {
     if (latestDownloadUrl_.isEmpty()) {
@@ -1796,5 +1808,6 @@ void MainComponent::performUpdate()
         });
     });
 }
+#endif // JUCE_WINDOWS
 
 } // namespace directpipe

@@ -177,13 +177,15 @@ private:
     // Update check — show "NEW" on credit label if newer release exists
     void checkForUpdate();
     void showUpdateDialog();
-    void performUpdate();
     std::thread updateCheckThread_;
     juce::String latestVersion_;       // e.g. "3.9.0"
     juce::String latestDownloadUrl_;   // GitHub release asset URL
     bool updateAvailable_ = false;
+#if JUCE_WINDOWS
+    void performUpdate();
     double downloadProgress_ = -1.0;  // -1 = indeterminate spinner
     std::thread downloadThread_;      // Background download thread (joined in destructor)
+#endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
