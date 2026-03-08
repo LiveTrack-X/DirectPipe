@@ -10,7 +10,7 @@
  * simultaneously (normal + portable mode).
  *
  * Windows:  Named Mutexes (DirectPipe_NormalRunning, DirectPipe_ExternalControl)
- * macOS/Linux:  JUCE InterProcessLock or flock (future)
+ * macOS/Linux:  JUCE InterProcessLock (file-based flock)
  */
 #pragma once
 

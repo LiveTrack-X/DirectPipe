@@ -6,8 +6,8 @@
  * @brief Platform-specific process priority and timer resolution
  *
  * Windows:  HIGH_PRIORITY_CLASS + timeBeginPeriod(1) + Power Throttling disable
- * macOS:    setpriority + thread QoS (future)
- * Linux:    nice / SCHED_FIFO (future)
+ * macOS:    setpriority + pthread QoS (USER_INTERACTIVE)
+ * Linux:    setpriority (nice -10)
  */
 #pragma once
 

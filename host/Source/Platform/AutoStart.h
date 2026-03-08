@@ -6,8 +6,8 @@
  * @brief Platform-specific auto-start (login item) management
  *
  * Windows:  Registry HKCU\...\Run
- * macOS:    ~/Library/LaunchAgents plist (future)
- * Linux:    ~/.config/autostart .desktop file (future)
+ * macOS:    ~/Library/LaunchAgents plist
+ * Linux:    ~/.config/autostart .desktop file (XDG)
  */
 #pragma once
 

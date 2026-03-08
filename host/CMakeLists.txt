@@ -96,7 +96,9 @@ elseif(APPLE)
     )
 else()
     target_sources(DirectPipe PRIVATE
-        Source/Platform/PlatformStubs.cpp
+        Source/Platform/Linux/LinuxAutoStart.cpp
+        Source/Platform/Linux/LinuxProcessPriority.cpp
+        Source/Platform/Linux/LinuxMultiInstanceLock.cpp
     )
 endif()
 
