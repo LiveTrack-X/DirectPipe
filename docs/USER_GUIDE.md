@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 3.10.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 4.0.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## DirectPipe란? / What is DirectPipe?
 
@@ -1119,13 +1119,13 @@ Playing monitor output through speakers creates an **echo/feedback loop** as the
 
 ### Receiver VST가 "Disconnected"로 표시돼요 / Receiver shows "Disconnected"
 
-1. **DirectPipe가 실행 중**인지 확인 (시스템 트레이 아이콘)
+1. **DirectPipe가 실행 중**인지 확인 (시스템 트레이/메뉴 바 아이콘)
 2. DirectPipe 하단의 **VST** 버튼이 **초록색**(IPC ON)인지 확인
 3. OBS의 VST 필터에서 **"DirectPipe Receiver"**가 선택되어 있는지 확인
 4. DirectPipe를 **먼저 실행**한 뒤 OBS를 시작하면 자동 연결됨
 5. OBS가 먼저 실행된 경우: Receiver가 약 1초마다 자동 재연결을 시도하므로 DirectPipe 실행 후 잠시 대기
 
-1. Check **DirectPipe is running** (system tray icon)
+1. Check **DirectPipe is running** (system tray / menu bar icon)
 2. Check the **VST** button at bottom of DirectPipe is **green** (IPC ON)
 3. Verify **"DirectPipe Receiver"** is selected in OBS VST filter
 4. Start **DirectPipe first**, then OBS — auto-connects

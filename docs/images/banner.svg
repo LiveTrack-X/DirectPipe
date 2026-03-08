@@ -25,25 +25,25 @@
   <text x="320" y="135" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="72" fill="#ffffff" letter-spacing="-1">DirectPipe</text>
 
   <!-- Tagline -->
-  <text x="322" y="180" font-family="Segoe UI, Arial, sans-serif" font-weight="400" font-size="24" fill="#8899aa">Real-time VST2/VST3 Host for Windows</text>
+  <text x="322" y="180" font-family="Segoe UI, Arial, sans-serif" font-weight="400" font-size="24" fill="#8899aa">Cross-Platform Real-time VST2/VST3 Host</text>
 
   <!-- Feature tags -->
   <g font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="500">
-    <!-- WASAPI + ASIO -->
-    <rect x="322" y="205" width="130" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="387" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">WASAPI + ASIO</text>
+    <!-- Multi-Platform -->
+    <rect x="322" y="205" width="170" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="407" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">Win / macOS / Linux</text>
     <!-- VST2/VST3 -->
-    <rect x="464" y="205" width="100" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="514" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">VST2 / VST3</text>
+    <rect x="504" y="205" width="100" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="554" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">VST2 / VST3</text>
     <!-- Stream Deck -->
-    <rect x="576" y="205" width="110" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="631" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">Stream Deck</text>
+    <rect x="616" y="205" width="110" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="671" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">Stream Deck</text>
     <!-- MIDI -->
-    <rect x="698" y="205" width="60" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="728" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">MIDI</text>
+    <rect x="738" y="205" width="60" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="768" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">MIDI</text>
     <!-- HTTP API -->
-    <rect x="770" y="205" width="90" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="815" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">HTTP API</text>
+    <rect x="810" y="205" width="90" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="855" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">HTTP API</text>
   </g>
 
   <!-- Decorative waveform on right side -->

@@ -3,41 +3,39 @@
 
 ---
 
-## What's New in v3.10.0
+## What's New in v4.0.0
 
-### Multi-Instance & Portable Mode / 다중 인스턴스 & 포터블 모드
-- **Multi-instance external control priority** — Named Mutex prevents hotkey/MIDI/WebSocket/HTTP conflicts between instances
-- 다중 인스턴스 외부 제어 우선순위 — Named Mutex로 인스턴스 간 단축키/MIDI/WebSocket/HTTP 충돌 방지
-- **Audio-only mode** — Secondary instances run with controls disabled (title bar, status bar, tray indicators)
-- 오디오 전용 모드 — 보조 인스턴스는 제어 비활성화 상태로 실행 (타이틀바, 상태바, 트레이 표시)
+### Cross-Platform Support / 크로스 플랫폼 지원
+- **macOS (Beta)** — CoreAudio driver, CGEventTap global hotkeys (Accessibility permission), LaunchAgent auto-start, Gatekeeper handling
+- macOS (베타) — CoreAudio 드라이버, CGEventTap 글로벌 핫키 (접근성 권한), LaunchAgent 자동 시작
+- **Linux (Experimental)** — ALSA + JACK drivers, XDG autostart, PipeWire JACK compatibility
+- Linux (실험적) — ALSA + JACK 드라이버, XDG 자동 시작, PipeWire JACK 호환
+- **Platform abstraction layer** — PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock interfaces with per-platform implementations
+- 플랫폼 추상화 레이어 — 오디오, 자동 시작, 프로세스 우선순위, 다중 인스턴스 인터페이스
 
-### Audio Engine / 오디오 엔진
-- **Driver type snapshot/restore** — Settings saved per driver type, restored when switching back (WASAPI <-> ASIO)
-- 드라이버 타입별 설정 저장/복원 — 드라이버 전환 시 이전 설정 자동 복원
-- **Device loss UI** — Combos show "(Disconnected)" on physical device loss instead of falling back to another device
-- 디바이스 분리 UI — 물리적 장치 분리 시 콤보에 "(Disconnected)" 표시, 다른 장치로 전환하지 않음
-- **Per-direction device loss handling** — Input/output loss tracked independently with edge-detection notifications
-- 방향별 디바이스 손실 처리 — 입력/출력 손실 독립 추적 + 알림
-- **Output "None" state fix** — WASAPI "None" -> ASIO switch no longer leaves OUT mute button stuck
-- 출력 "None" 상태 수정 — WASAPI "None" -> ASIO 전환 시 OUT 뮤트 버튼 고착 방지
+### Receiver Plugin / 리시버 플러그인
+- **VST3 + AU formats** — Receiver now builds as VST2, VST3, and AU (macOS) across all platforms
+- VST3 + AU 포맷 — 리시버를 VST2, VST3, AU (macOS)로 빌드
+- **macOS IPC** — POSIX named semaphore for cross-process signaling (replaces eventfd)
+- macOS IPC — POSIX named semaphore로 프로세스 간 시그널링
 
-### UI
-- **LevelMeter** — Smoother release (~230ms half-life), finer visual threshold
-- 레벨미터 — 부드러운 릴리스, 세밀한 시각 임계값
+### CI / 빌드
+- **3-platform CI** — GitHub Actions builds and tests on Windows, macOS, Linux with full artifact uploads
+- 3 플랫폼 CI — Windows, macOS, Linux에서 빌드 + 테스트 + 아티팩트 업로드
 
-### Stability / 안정성
-- PluginPreloadCache `cancelAndWait` heap-allocated join state (dangling reference fix)
-- HttpApiServer thread join outside mutex (deadlock prevention)
-- StateBroadcaster hash includes more fields for accurate dirty detection
-- PluginChainEditor delete fix (name mismatch from row prefix)
+### Documentation / 문서
+- All docs updated for cross-platform: README, User Guide, Quick Start, Architecture, Build Guide, Platform Guide (new), API Examples, Stream Deck Guide, Log Rules
+- 전체 문서 크로스 플랫폼 업데이트
 
-> Synced: Stream Deck Plugin v3.10.0.0 / DirectPipe Receiver v3.10.0
+> Synced: Stream Deck Plugin v4.0.0.0 / DirectPipe Receiver v4.0.0
 
 ### Downloads / 다운로드
 
 | File | Description |
 |------|-------------|
-| `DirectPipe-v3.10.0-win64.zip` | DirectPipe.exe + DirectPipe Receiver.dll |
+| `DirectPipe-v4.0.0-win64.zip` | DirectPipe.exe + DirectPipe Receiver.dll (Windows) |
+| `DirectPipe-macOS.zip` | DirectPipe.app (macOS beta) |
+| `DirectPipe-Linux.tar.gz` | DirectPipe binary (Linux experimental) |
 | `com.directpipe.directpipe.streamDeckPlugin` | Stream Deck Plugin (double-click to install) |
 
-**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v3.9.12...v3.10.0
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v3.10.0...v4.0.0
