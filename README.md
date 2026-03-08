@@ -21,8 +21,8 @@
 
 ## 다운로드 / Download
 
-- **Stable (안정 빌드)**: [v4.0.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.0) — 전체 테스트 통과 / Fully tested
-- **Latest (최신 빌드)**: [최신 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 최신 버그 수정 포함 / Includes latest fixes
+- **Stable (안정 빌드)**: [v3.10.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.0) — 전체 테스트 통과 / Fully tested (Windows only)
+- **Latest (최신 빌드)**: [최신 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 적용 *(실험적)* / Cross-platform support *(experimental)*
 
 > Windows (.exe), macOS (.app, beta), Linux (binary, experimental) 빌드 제공. 릴리즈 페이지에서 플랫폼별 다운로드.
 > Windows (.exe), macOS (.app, beta), and Linux (binary, experimental) builds available on the release page.
