@@ -88,6 +88,12 @@ if(WIN32)
         Source/Platform/Windows/WindowsProcessPriority.cpp
         Source/Platform/Windows/WindowsMultiInstanceLock.cpp
     )
+elseif(APPLE)
+    target_sources(DirectPipe PRIVATE
+        Source/Platform/macOS/MacAutoStart.cpp
+        Source/Platform/macOS/MacProcessPriority.cpp
+        Source/Platform/macOS/MacMultiInstanceLock.cpp
+    )
 else()
     target_sources(DirectPipe PRIVATE
         Source/Platform/PlatformStubs.cpp
