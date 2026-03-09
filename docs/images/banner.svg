@@ -32,18 +32,18 @@
     <!-- Multi-Platform -->
     <rect x="322" y="205" width="170" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
     <text x="407" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">Win / macOS / Linux</text>
-    <!-- VST2/VST3 -->
-    <rect x="504" y="205" width="100" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="554" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">VST2 / VST3</text>
+    <!-- VST2/VST3/AU -->
+    <rect x="504" y="205" width="130" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="569" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">VST2 / VST3 / AU</text>
     <!-- Stream Deck -->
-    <rect x="616" y="205" width="110" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="671" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">Stream Deck</text>
+    <rect x="646" y="205" width="110" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="701" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">Stream Deck</text>
     <!-- MIDI -->
-    <rect x="738" y="205" width="60" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="768" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">MIDI</text>
+    <rect x="768" y="205" width="60" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="798" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">MIDI</text>
     <!-- HTTP API -->
-    <rect x="810" y="205" width="90" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
-    <text x="855" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">HTTP API</text>
+    <rect x="840" y="205" width="90" height="28" rx="14" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>
+    <text x="885" y="224" fill="#4fc3f7" text-anchor="middle" opacity="0.9">HTTP API</text>
   </g>
 
   <!-- Decorative waveform on right side -->
