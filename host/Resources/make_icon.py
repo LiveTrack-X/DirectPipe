@@ -1,6 +1,7 @@
 """Generate DirectPipe app icon as PNG - unified with Stream Deck style."""
 from PIL import Image, ImageDraw, ImageFilter
 import math
+import os
 
 SIZE = 512
 img = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
@@ -86,7 +87,7 @@ for x, y_bot, y_top in bars:
     draw.ellipse([(x-7, y_bot-7), (x+7, y_bot+7)], fill=(*CYAN, 255))
 
 # --- Save ---
-output_dir = 'C:/Users/livet/Desktop/DirectLoopMic/host/Resources'
+output_dir = os.path.dirname(os.path.abspath(__file__))
 img.save(f'{output_dir}/icon.png', 'PNG')
 print(f"Icon saved: {SIZE}x{SIZE} PNG")
 

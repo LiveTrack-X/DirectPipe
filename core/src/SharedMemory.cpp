@@ -350,8 +350,12 @@ bool NamedEvent::create(const ::std::string& name)
 {
     close();
     name_ = toPosixName(name);
-    sem_unlink(name_.c_str());  // Clean up stale
+    // Try create first; if stale semaphore exists, unlink and retry once
     auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    if (s == SEM_FAILED && errno == EEXIST) {
+        sem_unlink(name_.c_str());
+        s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    }
     if (s == SEM_FAILED) return false;
     sem_ = static_cast<void*>(s);
     isCreator_ = true;
@@ -382,7 +386,7 @@ bool NamedEvent::wait(uint32_t timeout_ms)
                   + ::std::chrono::milliseconds(timeout_ms);
     while (::std::chrono::steady_clock::now() < deadline) {
         if (sem_trywait(s) == 0) return true;
-        usleep(500);  // 0.5ms spin
+        usleep(500);  // 0.5ms spin — macOS lacks sem_timedwait
     }
     return false;
 }
@@ -390,12 +394,11 @@ bool NamedEvent::wait(uint32_t timeout_ms)
 void NamedEvent::close()
 {
     if (sem_) {
-        sem_close(static_cast<sem_t*>(sem_));
+        if (sem_close(static_cast<sem_t*>(sem_)) != 0) {
+            // Log but continue cleanup
+        }
         sem_ = nullptr;
     }
-    // Only the creator (producer) unlinks the semaphore name.
-    // Consumer must not unlink — it would prevent producer from signaling
-    // and block other consumers from reconnecting via open().
     if (isCreator_ && !name_.empty()) {
         sem_unlink(name_.c_str());
     }
@@ -441,8 +444,12 @@ bool NamedEvent::create(const ::std::string& name)
 {
     close();
     name_ = toPosixName(name);
-    sem_unlink(name_.c_str());  // Clean up stale
+    // Try create first; if stale semaphore exists, unlink and retry once
     auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    if (s == SEM_FAILED && errno == EEXIST) {
+        sem_unlink(name_.c_str());
+        s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    }
     if (s == SEM_FAILED) return false;
     sem_ = static_cast<void*>(s);
     isCreator_ = true;
@@ -486,12 +493,11 @@ bool NamedEvent::wait(uint32_t timeout_ms)
 void NamedEvent::close()
 {
     if (sem_) {
-        sem_close(static_cast<sem_t*>(sem_));
+        if (sem_close(static_cast<sem_t*>(sem_)) != 0) {
+            // Log but continue cleanup
+        }
         sem_ = nullptr;
     }
-    // Only the creator (producer) unlinks the semaphore name.
-    // Consumer must not unlink — it would prevent producer from signaling
-    // and block other consumers from reconnecting via open().
     if (isCreator_ && !name_.empty()) {
         sem_unlink(name_.c_str());
     }

@@ -2,7 +2,7 @@
 // Copyright (C) 2025 LiveTrack
 
 /**
- * @file MacAutoStart.mm
+ * @file MacAutoStart.cpp
  * @brief macOS LaunchAgent-based auto-start implementation
  *
  * Creates/removes ~/Library/LaunchAgents/com.directpipe.host.plist
