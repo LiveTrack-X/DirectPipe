@@ -60,7 +60,7 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Run Tests
-        run: cd build && ctest --output-on-failure -C Release
+        run: cd build && ctest --output-on-failure --timeout 120 -C Release --timeout 120
 
       - name: Package
         shell: bash
@@ -128,7 +128,7 @@ jobs:
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
       - name: Run Tests
-        run: cd build && ctest --output-on-failure
+        run: cd build && ctest --output-on-failure --timeout 120
 
       - name: Package
         run: |
@@ -211,7 +211,7 @@ jobs:
         run: cmake --build build --config Release -j$(nproc)
 
       - name: Run Tests
-        run: cd build && ctest --output-on-failure
+        run: cd build && ctest --output-on-failure --timeout 120
 
       - name: Package
         run: |
