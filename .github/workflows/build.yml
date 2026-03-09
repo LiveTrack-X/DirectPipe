@@ -1,8 +1,6 @@
 name: Build & Release
 
 on:
-  push:
-    branches: [v4, main]
   pull_request:
     branches: [v4, main]
   release:
