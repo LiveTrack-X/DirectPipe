@@ -17,7 +17,9 @@ Thumbs.db
 # Driver build output
 driver/out/
 
-# Third-party SDKs included in v4 branch (private repo only)
+# Third-party SDKs (proprietary, must not be in public repo)
+thirdparty/VST2_SDK/
+thirdparty/asiosdk/
 
 # Node.js
 node_modules/
