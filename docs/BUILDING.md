@@ -1,5 +1,8 @@
 # Building DirectPipe / 빌드 가이드
 
+> **플랫폼 지원 상태**: Windows (안정), macOS (베타), Linux (실험적). macOS/Linux 빌드는 실험적이며 실기기 테스트가 제한적입니다.
+> **Platform support**: Windows (stable), macOS (beta), Linux (experimental). macOS/Linux builds are experimental with limited real-hardware testing.
+
 ## Requirements / 요구 사항
 
 ### Windows
