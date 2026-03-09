@@ -60,7 +60,7 @@ inline std::unique_ptr<juce::AudioPluginInstance> createPluginOnCorrectThread(
 {
 #if JUCE_MAC
     // Already on message thread — create directly
-    if (juce::MessageManager::getInstance()->isThisTheMessageManagerThread())
+    if (juce::MessageManager::getInstance()->isThisTheMessageThread())
         return formatMgr.createPluginInstance(desc, sampleRate, blockSize, error);
 
     // Shared state for cross-thread communication.
