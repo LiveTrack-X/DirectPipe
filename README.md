@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.10.0-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.10.1-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -21,7 +21,7 @@
 
 ## 다운로드 / Download
 
-- **Stable (안정 빌드)**: [v3.10.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.0) — 전체 테스트 통과 / Fully tested
+- **Stable (안정 빌드)**: [v3.10.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.1) — 전체 테스트 통과 / Fully tested
 - **Latest (최신 빌드)**: [최신 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 최신 버그 수정 포함 / Includes latest fixes
 
 <p align="center">

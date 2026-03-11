@@ -1,24 +1,33 @@
-## What's New in v3.9.11
-
-### 출력 장치 변경 시 입력 끊김 수정 / Fix Input Loss When Changing Output Device
-- **Fallback 오탐 수정** — AudioSettings UI에서 출력 장치 변경 시 `intentionalChange_` 플래그가 설정되지 않아 fallback protection이 원래 장치로 강제 복귀시키던 문제 해결 (예: CABLE Input 선택 불가) — Fixed `intentionalChange_` flag not being set when changing output device from AudioSettings UI, causing fallback protection to revert device changes (e.g., unable to select CABLE Input)
-- **입력 채널 보존** — 출력 장치 변경 시 JUCE가 `inputChannels` 비트마스크를 리셋하여 입력이 끊기던 문제 해결. `setOutputDevice`/`setInputDevice`에서 채널 비트가 0이면 `channelMode_`에 맞게 자동 복원 — Fixed JUCE resetting `inputChannels` bitmask when output device changes, causing input audio loss. `setOutputDevice`/`setInputDevice` now restore channel bits based on `channelMode_` when cleared
-- **ASIO 장치 설정 통합** — `setAsioDevice()` 메서드 추가로 ASIO input/output 동시 설정 시 `intentionalChange_` + `desiredDevice` 추적 보장 — Added `setAsioDevice()` method ensuring proper `intentionalChange_` + desired device tracking for ASIO single-device setup
+### [최신버전](../releases/latest)이 있습니다. 해당 버전을 받아 주세요.
+### A [newer version](../releases/latest) is available. Please download the latest release.
 
 ---
 
-> **출력 장치 변경 버그 수정.** WASAPI 모드에서 출력 장치 전환 시 입력이 끊기거나 장치가 되돌아가던 문제 해결. Receiver VST2와 Stream Deck 플러그인은 버전만 동기화 (3.9.11.0) — 기능 변경 없음, 기존 버전 그대로 사용 가능합니다.
->
-> **Output device switching bug fix.** Fixed input audio loss and unwanted device revert when switching output devices in WASAPI mode. Receiver VST2 and Stream Deck plugin version synced to 3.9.11.0 — no functional changes, existing installations do not need to be updated.
+## What's New in v3.10.1
 
----
+### Bugfix: VST Bypass / VST 바이패스 수정
+- **Graph-connection bypass** — Bypassed plugins are disconnected from the signal chain (fixes RNNoise/Clear bypass not working)
+- 그래프 연결 바이패스 — 바이패스된 플러그인을 신호 체인에서 분리 (RNNoise/Clear 바이패스 미작동 수정)
+- **Triple bypass sync** — Graph connections + node bypass flag + bypass parameter all synced together
+- 3중 바이패스 동기화 — 그래프 연결 + 노드 바이패스 플래그 + 바이패스 파라미터 모두 동기화
+- **No audio stutter on bypass toggle** — `rebuildGraph(suspend=false)` skips `suspendProcessing` for connection-only changes
+- 바이패스 토글 시 오디오 끊김 없음 — 연결 변경만 하는 경우 `suspendProcessing` 생략
 
-## Downloads
+### Bugfix: Preset Slot Oscillation / 프리셋 슬롯 진동 수정
+- **Per-slot version counter** — Prevents stale preload cache from overwriting invalidated entries
+- 슬롯별 버전 카운터 — 오래된 프리로드 캐시가 무효화된 항목을 덮어쓰지 못하도록 방지
+- **Structure-based cache validation** — `isCachedWithStructure` compares plugin names+paths in order (not just count)
+- 구조 기반 캐시 검증 — 플러그인 이름+경로를 순서대로 비교 (단순 개수가 아닌)
+- **Iterator invalidation fix** — `rebuildGraph` copies connection array before removal loop
+- 이터레이터 무효화 수정 — 연결 배열을 복사 후 제거 루프 실행
 
-| 파일 / File | 설명 / Description |
-|---|---|
-| `DirectPipe-v3.9.11-win64.zip` | DirectPipe.exe + DirectPipe Receiver.dll |
-| `com.directpipe.directpipe.streamDeckPlugin` | Stream Deck 플러그인 (v3.9.11.0) |
+> Synced: Stream Deck Plugin v3.10.1.0 / DirectPipe Receiver v3.10.1
 
-## Full Changelog
-https://github.com/LiveTrack-X/DirectPipe/compare/v3.9.10...v3.9.11
+### Downloads / 다운로드
+
+| File | Description |
+|------|-------------|
+| `DirectPipe-v3.10.1-win64.zip` | DirectPipe.exe + DirectPipe Receiver.dll |
+| `com.directpipe.directpipe.streamDeckPlugin` | Stream Deck Plugin (double-click to install) |
+
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v3.10.0...v3.10.1

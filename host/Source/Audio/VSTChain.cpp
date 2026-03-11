@@ -458,9 +458,24 @@ void VSTChain::setPluginBypassed(int index, bool bypassed)
         chain_[static_cast<size_t>(index)].bypassed = bypassed;
         logMsg = "[VST] Bypass: \"" + chain_[static_cast<size_t>(index)].name + "\" [" + juce::String(index) + "] = " + (bypassed ? "true" : "false");
 
-        if (auto* node = graph_->getNodeForId(chain_[static_cast<size_t>(index)].nodeId)) {
+        // Also sync the node/plugin bypass state. replaceChainWithPreloaded sets
+        // node->setBypassed(true) + bypass parameter = 1.0 for cached plugins.
+        // Without clearing these here, un-bypassing only reconnects in the graph
+        // but the plugin's internal bypass stays active (e.g., Clear, RNNoise).
+        auto* node = graph_->getNodeForId(chain_[static_cast<size_t>(index)].nodeId);
+        if (node) {
             node->setBypassed(bypassed);
+            if (auto* bp = node->getProcessor()->getBypassParameter())
+                bp->setValueNotifyingHost(bypassed ? 1.0f : 0.0f);
         }
+
+        // Rebuild graph connections: bypassed plugins are disconnected from the
+        // signal chain (audio routes around them). This is more reliable than
+        // JUCE's node->setBypassed() which doesn't work for plugins that have
+        // their own bypass parameter (VST2 canDo("bypass"), VST3 bypass param).
+        // suspend=false: only connections change (no nodes added/removed), so
+        // the render sequence swaps atomically without audio gap.
+        rebuildGraph(/*suspend=*/false);
     }
 
     juce::Logger::writeToLog(logMsg);
@@ -605,38 +620,48 @@ void VSTChain::closePluginEditor(int index)
         Log::audit("VST", auditMsg);
 }
 
-void VSTChain::rebuildGraph()
+void VSTChain::rebuildGraph(bool suspend)
 {
     using UK = juce::AudioProcessorGraph::UpdateKind;
 
-    // Suspend graph processing while rebuilding connections
-    // This prevents the RT thread from calling processBlock on a half-built graph
-    graph_->suspendProcessing(true);
+    // When nodes are added/removed, suspend processing to prevent the RT thread
+    // from accessing a half-built graph. When only connections change (bypass
+    // toggle), suspension is unnecessary — the render sequence swaps atomically
+    // via UK::sync, so the audio thread sees either the old or new sequence.
+    if (suspend)
+        graph_->suspendProcessing(true);
 
     // Guard: I/O nodes must exist (created in prepareToPlay)
     if (inputNodeId_.uid == 0 || outputNodeId_.uid == 0) {
-        graph_->suspendProcessing(false);
+        if (suspend) graph_->suspendProcessing(false);
         return;
     }
 
-    // Remove all existing connections (async — defer render sequence rebuild)
-    for (auto conn : graph_->getConnections()) {
-        graph_->removeConnection(conn, UK::async);
+    // Remove all existing connections (async — defer render sequence rebuild).
+    // Copy first: removeConnection modifies the array, invalidating iterators.
+    {
+        auto conns = graph_->getConnections();
+        for (const auto& conn : conns)
+            graph_->removeConnection(conn, UK::async);
     }
 
     if (chain_.empty()) {
         // Direct connection: input -> output (last connection triggers rebuild)
         graph_->addConnection({{inputNodeId_, 0}, {outputNodeId_, 0}}, UK::async);
         graph_->addConnection({{inputNodeId_, 1}, {outputNodeId_, 1}}, UK::sync);
-        graph_->suspendProcessing(false);
+        if (suspend) graph_->suspendProcessing(false);
         return;
     }
 
     // Build serial chain: Input -> Plugin[0] -> ... -> Plugin[N-1] -> Output
+    // Bypassed plugins are skipped in the connection graph (audio routes around them).
+    // This is more reliable than JUCE's node->setBypassed() which doesn't work for
+    // VST2/VST3 plugins that report their own bypass parameter (getBypassParameter()).
     // All connections use async except the very last one (triggers single rebuild)
     auto prevNodeId = inputNodeId_;
     for (size_t i = 0; i < chain_.size(); ++i) {
         auto& slot = chain_[i];
+        if (slot.bypassed) continue;  // skip bypassed plugins in connection graph
         for (int ch = 0; ch < 2; ++ch) {
             graph_->addConnection({
                 {prevNodeId, ch},
@@ -646,12 +671,12 @@ void VSTChain::rebuildGraph()
         prevNodeId = slot.nodeId;
     }
 
-    // Last plugin -> Output (final connection triggers the single rebuild)
+    // Last non-bypassed plugin (or input) -> Output (final connection triggers the single rebuild)
     graph_->addConnection({{prevNodeId, 0}, {outputNodeId_, 0}}, UK::async);
     graph_->addConnection({{prevNodeId, 1}, {outputNodeId_, 1}}, UK::sync);
 
-    // Resume processing now that the graph is fully wired
-    graph_->suspendProcessing(false);
+    if (suspend)
+        graph_->suspendProcessing(false);
 }
 
 std::unique_ptr<juce::AudioPluginInstance> VSTChain::loadPlugin(
@@ -765,8 +790,11 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
                     slot.bypassed = entry.request.bypassed;
                     chain_.push_back(slot);
 
-                    if (slot.bypassed)
+                    if (slot.bypassed) {
                         node->setBypassed(true);
+                        if (auto* bp = node->getProcessor()->getBypassParameter())
+                            bp->setValueNotifyingHost(1.0f);
+                    }
 
                     if (entry.request.hasState && slot.instance)
                         slot.instance->setStateInformation(
@@ -852,8 +880,11 @@ void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
             slot.bypassed = entry.request.bypassed;
             chain_.push_back(slot);
 
-            if (slot.bypassed)
+            if (slot.bypassed) {
                 node->setBypassed(true);
+                if (auto* bp = node->getProcessor()->getBypassParameter())
+                    bp->setValueNotifyingHost(1.0f);
+            }
 
             if (entry.request.hasState && slot.instance)
                 slot.instance->setStateInformation(

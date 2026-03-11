@@ -572,9 +572,25 @@ bool PresetManager::saveSlot(int slotIndex)
     bool ok = file.replaceWithText(json);
     if (ok) {
         activeSlot_ = slotIndex;
-        // Don't invalidate preload cache on save — cached plugin instances are still valid.
-        // The state data in cache may be slightly stale (parameter changes since last preload),
-        // but loadSlotAsync re-reads state from file when using cached instances.
+        // Invalidate cache only if chain STRUCTURE changed (names/paths/order).
+        // Parameter-only changes (bypass, state) don't need invalidation because
+        // loadSlotAsync re-reads fresh state from the file at load time.
+        // This avoids clearing the cache on every auto-save or bypass toggle.
+        {
+            auto& chain = engine_.getVSTChain();
+            int count = chain.getPluginCount();
+            std::vector<std::pair<juce::String, juce::String>> structure;
+            structure.reserve(static_cast<size_t>(count));
+            for (int i = 0; i < count; ++i) {
+                if (auto* slot = chain.getPluginSlot(i))
+                    structure.push_back({slot->name, slot->path});
+            }
+            auto* device = engine_.getDeviceManager().getCurrentAudioDevice();
+            double sr = device ? device->getCurrentSampleRate() : 0;
+            int bs = device ? device->getCurrentBufferSizeSamples() : 0;
+            if (!preloadCache_.isCachedWithStructure(slotIndex, sr, bs, structure))
+                preloadCache_.invalidateSlot(slotIndex);
+        }
         slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
         juce::Logger::writeToLog("[PRESET] Saved slot " + juce::String::charToString(slotLabel(slotIndex)));
     }
@@ -709,15 +725,29 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         Log::audit("PRESET", "Cache check: slot=" + juce::String(slotIndex)
             + " sr=" + juce::String(static_cast<int>(sr)) + " bs=" + juce::String(bs));
         auto cached = preloadCache_.take(slotIndex, sr, bs);
+        // Re-read fresh state from file (for both validation and state refresh)
+        std::vector<TargetPlugin> freshTargets;
         if (cached) {
             Log::audit("PRESET", "Cache hit: " + juce::String(static_cast<int>(cached->entries.size()))
                 + " entries, cacheSR=" + juce::String(static_cast<int>(cached->sampleRate))
                 + " cacheBS=" + juce::String(cached->blockSize));
+
+            freshTargets = parseSlotFile(slotIndex);
+
+            // Structural mismatch: cache has different plugin count than file.
+            // This happens when plugins were added/removed/moved after the cache
+            // was populated. Discard stale cache and fall through to slow path.
+            if (freshTargets.size() != cached->entries.size()) {
+                Log::audit("PRESET", "Cache stale: cached=" + juce::String(static_cast<int>(cached->entries.size()))
+                    + " file=" + juce::String(static_cast<int>(freshTargets.size()))
+                    + " - discarding cache, using slow path");
+                cached.reset();  // destroy stale instances (we're on message thread, safe)
+                // Fall through to slow/async path below
+            }
+        }
+        if (cached) {
             // Request preload stop (non-blocking) — thread will finish current plugin then exit
             preloadCache_.requestCancel();
-
-            // Re-read fresh state from file (parameter changes since preload are picked up)
-            auto freshTargets = parseSlotFile(slotIndex);
 
             std::vector<VSTChain::PreloadedPlugin> preloaded;
             for (auto& ce : cached->entries) {
