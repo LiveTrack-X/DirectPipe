@@ -20,6 +20,12 @@
 - **Receiver plugin**: Added `JUCE_PLUGINHOST_AU=1` for macOS AudioUnit builds.
 - **CMake**: Platform-conditional WASAPI/ASIO/CoreAudio/ALSA/JACK defines.
 
+### Bugfix Ports from v3.10.1
+
+- **VST Bypass fix**: `setPluginBypassed` now syncs `node->setBypassed()` + `getBypassParameter()->setValueNotifyingHost()` and calls `rebuildGraph(false)` to disconnect bypassed plugins in the signal chain. Fixes bypass not working for plugins with internal bypass parameter (Clear, RNNoise, etc.). `rebuildGraph` gains `suspend` parameter (default `true`) — bypass toggle uses `false` for glitch-free connection-only rebuild. Iterator safety fix (copy `getConnections()` before removal).
+- **Preload cache race condition fix**: Per-slot version counter (`slotVersions_`) prevents background preload thread from storing stale plugin instances after `invalidateSlot` was called mid-preload. Version captured at file-read time, checked before cache store.
+- **Cache structure validation**: `saveSlot` now checks plugin structure (names/paths/order) via `isCachedWithStructure` before deciding to invalidate cache. Parameter-only saves (bypass, state) skip invalidation. Prevents stale cache when plugins are added/removed/replaced/reordered.
+
 ### Docs
 
 - Platform Guide (new): OS-specific setup, features, and limitations.
