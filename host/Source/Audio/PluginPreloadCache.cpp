@@ -82,6 +82,7 @@ void PluginPreloadCache::preloadAllSlots(
     struct SlotData {
         int index;
         juce::String json;
+        uint32_t version;  // slot version at file-read time (stale detection)
     };
     std::vector<SlotData> slotsToLoad;
     // Load ALL slots including active slot (so switching away and back is instant).
@@ -90,13 +91,13 @@ void PluginPreloadCache::preloadAllSlots(
         if (i == exceptSlot) continue;
         auto json = slotFileReader(i);
         if (json.isNotEmpty())
-            slotsToLoad.push_back({i, json});
+            slotsToLoad.push_back({i, json, slotVersions_[static_cast<size_t>(i)].load()});
     }
     // Also load the active slot (lower priority — last in queue)
     if (exceptSlot >= 0 && exceptSlot < kNumSlots) {
         auto json = slotFileReader(exceptSlot);
         if (json.isNotEmpty())
-            slotsToLoad.push_back({exceptSlot, json});
+            slotsToLoad.push_back({exceptSlot, json, slotVersions_[static_cast<size_t>(exceptSlot)].load()});
     }
 
     if (slotsToLoad.empty()) {
@@ -236,13 +237,22 @@ void PluginPreloadCache::preloadAllSlots(
             }
 
             if (!cachedSlot->entries.empty()) {
-                std::lock_guard<std::mutex> lock(cacheMutex_);
-                // Move old entry to pendingDestroy (plugin instances must be
-                // destroyed on message thread, not this background thread)
-                auto it = cache_.find(slotData.index);
-                if (it != cache_.end() && it->second && !it->second->entries.empty())
-                    pendingDestroy.push_back(std::move(it->second));
-                cache_[slotData.index] = std::move(cachedSlot);
+                // Check slot version: if it changed since we read the file,
+                // the chain was modified and our cached data is stale.
+                // This prevents the race where a stale preload overwrites
+                // a cache entry that was just invalidated by saveSlot.
+                if (slotData.index >= 0 && slotData.index < kNumSlots &&
+                    slotVersions_[static_cast<size_t>(slotData.index)].load() != slotData.version) {
+                    pendingDestroy.push_back(std::move(cachedSlot));
+                } else {
+                    std::lock_guard<std::mutex> lock(cacheMutex_);
+                    // Move old entry to pendingDestroy (plugin instances must be
+                    // destroyed on message thread, not this background thread)
+                    auto it = cache_.find(slotData.index);
+                    if (it != cache_.end() && it->second && !it->second->entries.empty())
+                        pendingDestroy.push_back(std::move(it->second));
+                    cache_[slotData.index] = std::move(cachedSlot);
+                }
             }
         }
 
@@ -274,12 +284,17 @@ void PluginPreloadCache::preloadAllSlots(
 
 void PluginPreloadCache::invalidateSlot(int slotIndex)
 {
+    if (slotIndex >= 0 && slotIndex < kNumSlots)
+        slotVersions_[static_cast<size_t>(slotIndex)].fetch_add(1);
     std::lock_guard<std::mutex> lock(cacheMutex_);
     cache_.erase(slotIndex);
 }
 
 void PluginPreloadCache::invalidateAll()
 {
+    // Bump all slot versions so running preload thread discards stale results
+    for (int i = 0; i < kNumSlots; ++i)
+        slotVersions_[static_cast<size_t>(i)].fetch_add(1);
     // Do NOT join the thread here — this method is called on the message thread.
     // Joining can deadlock if the preload thread is in createPluginInstance
     // waiting for COM STA dispatch on the message thread (VST3 plugins).
@@ -352,6 +367,25 @@ void PluginPreloadCache::joinPreloadThread()
     if (preloadThread_ && preloadThread_->joinable())
         preloadThread_->join();
     preloadThread_.reset();
+}
+
+bool PluginPreloadCache::isCachedWithStructure(
+    int slotIndex, double currentSR, int currentBS,
+    const std::vector<std::pair<juce::String, juce::String>>& chainStructure)
+{
+    std::lock_guard<std::mutex> lock(cacheMutex_);
+    auto it = cache_.find(slotIndex);
+    if (it == cache_.end()) return true;  // not cached → no mismatch
+    if (it->second->sampleRate != currentSR || it->second->blockSize != currentBS)
+        return true;  // SR/BS mismatch → will be rejected by take() anyway
+    auto& entries = it->second->entries;
+    if (entries.size() != chainStructure.size()) return false;
+    for (size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].name != chainStructure[i].first ||
+            entries[i].path != chainStructure[i].second)
+            return false;
+    }
+    return true;
 }
 
 } // namespace directpipe

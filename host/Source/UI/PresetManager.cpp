@@ -578,9 +578,25 @@ bool PresetManager::saveSlot(int slotIndex)
     bool ok = file.replaceWithText(json);
     if (ok) {
         activeSlot_ = slotIndex;
-        // Don't invalidate preload cache on save — cached plugin instances are still valid.
-        // The state data in cache may be slightly stale (parameter changes since last preload),
-        // but loadSlotAsync re-reads state from file when using cached instances.
+        // Invalidate cache only if chain STRUCTURE changed (names/paths/order).
+        // Parameter-only changes (bypass, state) don't need invalidation because
+        // loadSlotAsync re-reads fresh state from the file at load time.
+        // This avoids clearing the cache on every auto-save or bypass toggle.
+        {
+            auto& chain = engine_.getVSTChain();
+            int count = chain.getPluginCount();
+            std::vector<std::pair<juce::String, juce::String>> structure;
+            structure.reserve(static_cast<size_t>(count));
+            for (int i = 0; i < count; ++i) {
+                if (auto* slot = chain.getPluginSlot(i))
+                    structure.push_back({slot->name, slot->path});
+            }
+            auto* device = engine_.getDeviceManager().getCurrentAudioDevice();
+            double sr = device ? device->getCurrentSampleRate() : 0;
+            int bs = device ? device->getCurrentBufferSizeSamples() : 0;
+            if (!preloadCache_.isCachedWithStructure(slotIndex, sr, bs, structure))
+                preloadCache_.invalidateSlot(slotIndex);
+        }
         slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
         juce::Logger::writeToLog("[PRESET] Saved slot " + juce::String::charToString(slotLabel(slotIndex)));
     }

@@ -28,6 +28,7 @@
 
 #include <JuceHeader.h>
 #include <map>
+#include <array>
 #include <mutex>
 #include <memory>
 #include <thread>
@@ -90,6 +91,13 @@ public:
     /** @brief Invalidate all cached slots. */
     void invalidateAll();
 
+    /**
+     * @brief Check if cached slot matches given plugin structure (names+paths in order).
+     * @return true if not cached OR matches structure. false if cached but structure differs.
+     */
+    bool isCachedWithStructure(int slotIndex, double currentSR, int currentBS,
+                               const std::vector<std::pair<juce::String, juce::String>>& chainStructure);
+
     /** @brief Cancel any running preload and wait for it to finish. */
     void cancelAndWait();
 
@@ -111,6 +119,7 @@ private:
     std::unique_ptr<std::thread> preloadThread_;
     std::atomic<bool> cancelPreload_{false};
     std::atomic<uint32_t> preloadGeneration_{0};  ///< Generation counter for superseding old preloads
+    std::array<std::atomic<uint32_t>, kNumSlots> slotVersions_{};  ///< Per-slot version counter (prevents stale preload store after invalidation)
 };
 
 } // namespace directpipe

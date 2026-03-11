@@ -241,8 +241,11 @@ public:
 private:
     /**
      * @brief Rebuild the audio graph connections after chain modification.
+     * @param suspend If true, suspend/resume processing around rebuild
+     *        (needed when nodes are added/removed). If false, only connections
+     *        change and the render sequence swaps atomically (no audio gap).
      */
-    void rebuildGraph();
+    void rebuildGraph(bool suspend = true);
 
     /**
      * @brief Load a VST plugin from a description.
