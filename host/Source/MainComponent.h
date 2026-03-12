@@ -26,6 +26,7 @@
 #include "Audio/AudioEngine.h"
 #include "Audio/OutputRouter.h"
 #include "Control/ActionDispatcher.h"
+#include "Control/ActionHandler.h"
 #include "Control/StateBroadcaster.h"
 #include "Control/ControlManager.h"
 #include "UI/PluginChainEditor.h"
@@ -117,6 +118,9 @@ private:
     // Quick preset slot bar (A..E) — delegated to PresetSlotBar
     std::unique_ptr<PresetSlotBar> presetSlotBar_;
 
+    // Action routing — delegated to ActionHandler
+    std::unique_ptr<ActionHandler> actionHandler_;
+
     // Mute indicators (clickable) + panic mute button
     juce::TextButton outputMuteBtn_{"OUT"};
     juce::TextButton monitorMuteBtn_{"MON"};
@@ -157,11 +161,6 @@ private:
     std::atomic<bool> partialLoad_ { false };  // prevents auto-save after partial plugin load
     double lastCachedSR_ = 0.0;  // track SR/BS for smart cache invalidation
     int lastCachedBS_ = 0;
-
-    // Panic mute: remember pre-mute state for restore on unmute
-    bool preMuteMonitorEnabled_ = false;
-    bool preMuteOutputMuted_ = false;
-    bool preMuteVstEnabled_ = false;
 
     // Non-intrusive notification system
     NotificationBar notificationBar_;

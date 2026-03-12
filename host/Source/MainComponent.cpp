@@ -382,6 +382,35 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     addAndMakeVisible(*presetSlotBar_);
 
+    // ── Action Handler (routes ActionEvents to engine/UI) ──
+    actionHandler_ = std::make_unique<ActionHandler>(
+        audioEngine_, *presetManager_, *presetSlotBar_, loadingSlot_, partialLoad_);
+    actionHandler_->onDirty = [this] { markSettingsDirty(); };
+    actionHandler_->onInputGainSync = [this](float gain) {
+        inputGainSlider_.setValue(gain, juce::dontSendNotification);
+    };
+    actionHandler_->onPanicStateChanged = [this](bool muted) {
+        panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
+        panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
+                                juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+    };
+    actionHandler_->onIpcStateChanged = [this](bool enabled) {
+        if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
+            outPanel->setIpcToggleState(enabled);
+    };
+    actionHandler_->onNotification = [this](const juce::String& msg, NotificationLevel level) {
+        showNotification(msg, level);
+    };
+    actionHandler_->getRecordingFolder = [this]() -> juce::File {
+        return outputPanelPtr_ ? outputPanelPtr_->getRecordingFolder()
+            : juce::File::getSpecialLocation(
+                juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
+    };
+    actionHandler_->onRecordingStopped = [this](const juce::File& file) {
+        if (outputPanelPtr_)
+            outputPanelPtr_->setLastRecordedFile(file);
+    };
+
     // ── Mute Status Indicators (clickable) ──
     auto setupMuteBtn = [this](juce::TextButton& btn) {
         btn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
@@ -392,64 +421,15 @@ MainComponent::MainComponent(bool enableExternalControls)
     setupMuteBtn(monitorMuteBtn_);
     setupMuteBtn(vstMuteBtn_);
     vstMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
-    outputMuteBtn_.onClick = [this] {
-        if (audioEngine_.isMuted()) return;  // Locked during panic mute
-        if (audioEngine_.isOutputNone()) return;  // Can't unmute when output is "None"
-        bool outputMuted = !audioEngine_.isOutputMuted();
-        audioEngine_.setOutputMuted(outputMuted);
-        audioEngine_.clearOutputAutoMute();  // User manually toggled — take over from auto-mute
-        markSettingsDirty();
-    };
-    monitorMuteBtn_.onClick = [this] {
-        if (audioEngine_.isMuted()) return;  // Locked during panic mute
-        auto& router = audioEngine_.getOutputRouter();
-        bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
-        router.setEnabled(OutputRouter::Output::Monitor, enabled);
-        audioEngine_.setMonitorEnabled(enabled);
-        markSettingsDirty();
-    };
-    vstMuteBtn_.onClick = [this] {
-        if (audioEngine_.isMuted()) return;  // Locked during panic mute
-        bool enabled = !audioEngine_.isIpcEnabled();
-        audioEngine_.setIpcEnabled(enabled);
-        // Sync Output tab toggle
-        if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
-            outPanel->setIpcToggleState(enabled);
-        markSettingsDirty();
-    };
+    outputMuteBtn_.onClick = [this] { actionHandler_->toggleOutputMute(); };
+    monitorMuteBtn_.onClick = [this] { actionHandler_->toggleMonitorMute(); };
+    vstMuteBtn_.onClick = [this] { actionHandler_->toggleIpcMute(); };
 
     // ── Panic Mute Button ──
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
     panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     panicMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-    panicMuteBtn_.onClick = [this] {
-        bool muted = !audioEngine_.isMuted();
-        audioEngine_.setMuted(muted);
-        auto& router = audioEngine_.getOutputRouter();
-        if (muted) {
-            preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-            preMuteOutputMuted_ = audioEngine_.isOutputMuted();
-            preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
-            audioEngine_.setOutputMuted(false);
-            router.setEnabled(OutputRouter::Output::Monitor, false);
-            audioEngine_.setMonitorEnabled(false);
-            if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
-        } else {
-            // Respect outputNone_ — keep muted if output is "None"
-            bool restoreMuted = audioEngine_.isOutputNone() ? true : preMuteOutputMuted_;
-            audioEngine_.setOutputMuted(restoreMuted);
-            router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
-            audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
-            if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
-        }
-        // Sync Output tab VST toggle
-        if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
-            outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
-        panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
-        panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                                juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
-        markSettingsDirty();
-    };
+    panicMuteBtn_.onClick = [this] { actionHandler_->togglePanicMute(); };
     addAndMakeVisible(panicMuteBtn_);
 
     // ── Section Labels (left column only) ──
@@ -573,186 +553,7 @@ void MainComponent::onAction(const ActionEvent& event)
 
 void MainComponent::handleAction(const ActionEvent& event)
 {
-    switch (event.action) {
-        case Action::PluginBypass: {
-            audioEngine_.getVSTChain().togglePluginBypassed(event.intParam);
-            break;
-        }
-
-        case Action::MasterBypass: {
-            bool anyActive = false;
-            for (int i = 0; i < audioEngine_.getVSTChain().getPluginCount(); ++i) {
-                if (!audioEngine_.getVSTChain().isPluginBypassed(i)) { anyActive = true; break; }
-            }
-            // Suppress auto-save during batch bypass toggle (save once at end)
-            loadingSlot_ = true;
-            for (int i = 0; i < audioEngine_.getVSTChain().getPluginCount(); ++i)
-                audioEngine_.getVSTChain().setPluginBypassed(i, anyActive);
-            loadingSlot_ = false;
-            // Save once after all bypass changes
-            int activeSlot = presetManager_->getActiveSlot();
-            if (activeSlot >= 0 && !partialLoad_.load())
-                presetManager_->saveSlot(activeSlot);
-            markSettingsDirty();
-            break;
-        }
-
-        case Action::ToggleMute: {
-            if (event.stringParam == "monitor") {
-                if (audioEngine_.isMuted()) break;  // Locked during panic mute
-                // Monitor mute = toggle monitor enable (headphones only)
-                auto& router = audioEngine_.getOutputRouter();
-                bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
-                router.setEnabled(OutputRouter::Output::Monitor, enabled);
-                audioEngine_.setMonitorEnabled(enabled);
-            } else if (event.stringParam == "output") {
-                if (audioEngine_.isMuted()) break;  // Locked during panic mute
-                if (audioEngine_.isOutputNone()) break;  // Can't unmute when output is "None"
-                // Output mute = silence main output only, monitor keeps working
-                bool outputMuted = !audioEngine_.isOutputMuted();
-                audioEngine_.setOutputMuted(outputMuted);
-                audioEngine_.clearOutputAutoMute();  // User manually toggled
-            } else {
-                // Input / global mute (same as panic)
-                bool muted = !audioEngine_.isMuted();
-                audioEngine_.setMuted(muted);
-                auto& router = audioEngine_.getOutputRouter();
-                if (muted) {
-                    preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-                    preMuteOutputMuted_ = audioEngine_.isOutputMuted();
-                    preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
-                    audioEngine_.setOutputMuted(false);
-                    router.setEnabled(OutputRouter::Output::Monitor, false);
-                    audioEngine_.setMonitorEnabled(false);
-                    if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
-                } else {
-                    bool restoreMuted = audioEngine_.isOutputNone() ? true : preMuteOutputMuted_;
-                    audioEngine_.setOutputMuted(restoreMuted);
-                    router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
-                    audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
-                    if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
-                }
-                if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
-                    outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
-                panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
-                panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                                        juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
-            }
-            markSettingsDirty();
-            break;
-        }
-
-        case Action::PanicMute:
-        case Action::InputMuteToggle: {
-            bool muted = !audioEngine_.isMuted();
-            audioEngine_.setMuted(muted);
-            auto& router = audioEngine_.getOutputRouter();
-            if (muted) {
-                preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-                preMuteOutputMuted_ = audioEngine_.isOutputMuted();
-                preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
-                audioEngine_.setOutputMuted(false);
-                router.setEnabled(OutputRouter::Output::Monitor, false);
-                audioEngine_.setMonitorEnabled(false);
-                if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
-            } else {
-                bool restoreMuted = audioEngine_.isOutputNone() ? true : preMuteOutputMuted_;
-                audioEngine_.setOutputMuted(restoreMuted);
-                router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
-                audioEngine_.setMonitorEnabled(preMuteMonitorEnabled_);
-                if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(true);
-            }
-            if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
-                outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
-            panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
-            panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                                    juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
-            markSettingsDirty();
-            break;
-        }
-
-        case Action::InputGainAdjust:
-            audioEngine_.setInputGain(audioEngine_.getInputGain() + event.floatParam * 0.1f);
-            inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
-            markSettingsDirty();
-            break;
-
-        case Action::SetVolume:
-            if (event.stringParam == "monitor") {
-                if (audioEngine_.isMuted()) break;  // Locked during panic mute
-                audioEngine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
-                markSettingsDirty();
-            } else if (event.stringParam == "input") {
-                audioEngine_.setInputGain(event.floatParam);
-                inputGainSlider_.setValue(event.floatParam, juce::dontSendNotification);
-                markSettingsDirty();
-            }
-            break;
-
-        case Action::MonitorToggle: {
-            if (audioEngine_.isMuted()) break;  // Locked during panic mute
-            auto& router = audioEngine_.getOutputRouter();
-            bool enabled = !router.isEnabled(OutputRouter::Output::Monitor);
-            router.setEnabled(OutputRouter::Output::Monitor, enabled);
-            audioEngine_.setMonitorEnabled(enabled);
-            markSettingsDirty();
-            break;
-        }
-
-        case Action::RecordingToggle: {
-            auto& recorder = audioEngine_.getRecorder();
-            if (recorder.isRecording()) {
-                auto lastFile = recorder.getRecordingFile();
-                recorder.stopRecording();
-                if (outputPanelPtr_)
-                    outputPanelPtr_->setLastRecordedFile(lastFile);
-            } else {
-                auto& monitor = audioEngine_.getLatencyMonitor();
-                double sr = monitor.getSampleRate();
-                if (sr <= 0.0) {
-                    juce::Logger::writeToLog("Recording: no audio device active");
-                    break;
-                }
-                auto timestamp = juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S");
-                auto dir = outputPanelPtr_ ? outputPanelPtr_->getRecordingFolder()
-                    : juce::File::getSpecialLocation(
-                        juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
-                dir.createDirectory();
-                auto file = dir.getChildFile("DirectPipe_" + timestamp + ".wav");
-                if (!recorder.startRecording(file, sr, 2))
-                    showNotification("Recording failed - check folder permissions",
-                                     NotificationLevel::Error);
-            }
-            break;
-        }
-
-        case Action::SetPluginParameter: {
-            audioEngine_.getVSTChain().setPluginParameter(
-                event.intParam, event.intParam2, event.floatParam);
-            break;
-        }
-
-        case Action::IpcToggle: {
-            if (audioEngine_.isMuted()) break;  // Locked during panic mute
-            bool enabled = !audioEngine_.isIpcEnabled();
-            audioEngine_.setIpcEnabled(enabled);
-            // Sync Output tab toggle
-            if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
-                outPanel->setIpcToggleState(enabled);
-            markSettingsDirty();
-            break;
-        }
-
-        case Action::LoadPreset:
-        case Action::SwitchPresetSlot:
-        case Action::NextPreset:
-        case Action::PreviousPreset:
-            presetSlotBar_->handlePresetAction(event);
-            break;
-
-        default:
-            break;
-    }
+    actionHandler_->handle(event);
 }
 
 // ─── Paint ──────────────────────────────────────────────────────────────────
@@ -1118,16 +919,7 @@ void MainComponent::loadSettings()
         loadingSlot_ = false;
 
         // Restore panic mute lockout (monitor/IPC disabled while muted)
-        if (audioEngine_.isMuted()) {
-            auto& router = audioEngine_.getOutputRouter();
-            preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-            preMuteOutputMuted_ = audioEngine_.isOutputMuted();
-            preMuteVstEnabled_ = audioEngine_.isIpcEnabled();
-            audioEngine_.setOutputMuted(false);
-            router.setEnabled(OutputRouter::Output::Monitor, false);
-            audioEngine_.setMonitorEnabled(false);
-            if (preMuteVstEnabled_) audioEngine_.setIpcEnabled(false);
-        }
+        actionHandler_->restorePanicMuteFromSettings();
 
         refreshUI();
         presetSlotBar_->updateSlotButtonStates();
