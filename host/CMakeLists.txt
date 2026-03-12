@@ -56,6 +56,12 @@ target_sources(DirectPipe PRIVATE
     Source/UI/OutputPanel.cpp
     Source/UI/ControlSettingsPanel.h
     Source/UI/ControlSettingsPanel.cpp
+    Source/UI/HotkeyTab.h
+    Source/UI/HotkeyTab.cpp
+    Source/UI/MidiTab.h
+    Source/UI/MidiTab.cpp
+    Source/UI/StreamDeckTab.h
+    Source/UI/StreamDeckTab.cpp
     Source/UI/SettingsExporter.h
     Source/UI/SettingsExporter.cpp
     Source/UI/NotificationBar.h
