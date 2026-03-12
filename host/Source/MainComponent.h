@@ -94,7 +94,7 @@ private:
     std::unique_ptr<LevelMeter> inputMeter_;
     std::unique_ptr<LevelMeter> outputMeter_;
     std::unique_ptr<OutputPanel> outputPanel_;
-    OutputPanel* outputPanelPtr_ = nullptr;  // raw ptr (rightTabs_ owns the component)
+    juce::Component::SafePointer<OutputPanel> outputPanelPtr_;  // safe ref (rightTabs_ owns the component)
     std::unique_ptr<ControlSettingsPanel> controlSettingsPanel_;
 
     // Right-column tabbed panel (Audio Settings / Output / Controls)
