@@ -888,7 +888,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& event)
                             safeThis2->updateSlotButtonStates();
                             safeThis2->markSettingsDirty();
                         }
-                    }), true);
+                    }), false);
                 return;
             }
 
