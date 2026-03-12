@@ -37,9 +37,9 @@
 #include "UI/ControlSettingsPanel.h"
 #include "UI/NotificationBar.h"
 #include "UI/LogPanel.h"
+#include "UI/PresetSlotBar.h"
 #include "UI/UpdateChecker.h"
 
-#include <array>
 #include <memory>
 #include <thread>
 
@@ -54,8 +54,6 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
-    void mouseDown(const juce::MouseEvent& event) override;
-
     // ActionListener
     void onAction(const ActionEvent& event) override;
     void handleAction(const ActionEvent& event);
@@ -114,15 +112,10 @@ private:
     static constexpr int kDefaultWidth  = 800;
     static constexpr int kDefaultHeight = 800;
     static constexpr int kStatusBarHeight = 30;
-    static constexpr int kSlotBtnGap = 4;
     static constexpr int kMeterWidth = 40;
 
-    // Quick preset slot buttons (A..E)
-    static constexpr int kNumPresetSlots = 5;
-    std::array<std::unique_ptr<juce::TextButton>, 5> slotButtons_;
-    void onSlotClicked(int slotIndex);
-    void updateSlotButtonStates();
-    void setSlotButtonsEnabled(bool enabled);
+    // Quick preset slot bar (A..E) — delegated to PresetSlotBar
+    std::unique_ptr<PresetSlotBar> presetSlotBar_;
 
     // Mute indicators (clickable) + panic mute button
     juce::TextButton outputMuteBtn_{"OUT"};
@@ -162,7 +155,6 @@ private:
     int dirtyCooldown_ = 0;   // ticks remaining before save (30Hz)
     std::atomic<bool> loadingSlot_ { false };
     std::atomic<bool> partialLoad_ { false };  // prevents auto-save after partial plugin load
-    int pendingSlot_ = -1;  // queued slot request during loadingSlot_
     double lastCachedSR_ = 0.0;  // track SR/BS for smart cache invalidation
     int lastCachedBS_ = 0;
 

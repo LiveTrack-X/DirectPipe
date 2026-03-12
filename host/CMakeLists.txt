@@ -46,6 +46,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/LevelMeter.cpp
     Source/UI/PresetManager.h
     Source/UI/PresetManager.cpp
+    Source/UI/PresetSlotBar.h
+    Source/UI/PresetSlotBar.cpp
     Source/UI/DirectPipeLookAndFeel.h
     Source/UI/DirectPipeLookAndFeel.cpp
     Source/UI/AudioSettings.h
