@@ -31,7 +31,7 @@ cd "$PROJECT_ROOT"
 
 # ─── Results tracking ───
 RESULTS=()
-add_result() { RESULTS+=("$1|$2"); }  # "StepName|PASS" or "StepName|FAIL:detail"
+add_result() { RESULTS+=("$1"); }
 
 echo ""
 echo "============================================"
@@ -193,7 +193,7 @@ else
   rm -f "$BUILD_DIR/plugins/receiver/DirectPipeReceiver_artefacts/JuceLibraryCode/DirectPipeReceiver_resources.rc" 2>/dev/null
 
   BUILD_START=$SECONDS
-  if "$CMAKE" --build "$BUILD_DIR" --config Release 2>&1 | tail -5; then
+  if "$CMAKE" --build "$BUILD_DIR" --config Release --target DirectPipe DirectPipeReceiver_VST directpipe-tests directpipe-host-tests 2>&1 | tail -5; then
     BUILD_TIME=$((SECONDS - BUILD_START))
     pass "Build completed (${BUILD_TIME}s)"
     add_result "Build|PASS"
@@ -229,7 +229,7 @@ echo ""
 # ═══════════════════════════════════════════════
 echo "[Step 4] Host Unit Tests"
 echo "─────────────────────────────────────"
-HOST_TEST_EXE="$BUILD_DIR/tests/Release/directpipe-host-tests.exe"
+HOST_TEST_EXE="$BUILD_DIR/tests/directpipe-host-tests_artefacts/Release/directpipe-host-tests.exe"
 if [[ -f "$HOST_TEST_EXE" ]]; then
   if "$HOST_TEST_EXE" 2>&1 | tail -3; then
     pass "Host tests"
