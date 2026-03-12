@@ -498,12 +498,17 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
             type->scanForDevices();
             auto devices = type->getDeviceNames(false);
             if (devices.size() > 0) {
-                // Use preferred device if available, then last-used ASIO, then first
-                juce::String deviceToUse = devices[0];
+                // Build ordered try-list: preferred first, then lastAsio, then rest
+                juce::StringArray tryOrder;
                 if (preferredAsioDevice.isNotEmpty() && devices.contains(preferredAsioDevice))
-                    deviceToUse = preferredAsioDevice;
-                else if (lastAsioDevice_.isNotEmpty() && devices.contains(lastAsioDevice_))
-                    deviceToUse = lastAsioDevice_;
+                    tryOrder.add(preferredAsioDevice);
+                if (lastAsioDevice_.isNotEmpty() && devices.contains(lastAsioDevice_)
+                    && !tryOrder.contains(lastAsioDevice_))
+                    tryOrder.add(lastAsioDevice_);
+                for (auto& d : devices) {
+                    if (!tryOrder.contains(d))
+                        tryOrder.add(d);
+                }
 
                 // Use snapshot SR/BS if available (known to work on this ASIO device),
                 // otherwise fall back to current values from the old driver.
@@ -514,32 +519,43 @@ bool AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::S
                     if (snapIt->second.bufferSize > 0) bs = snapIt->second.bufferSize;
                 }
 
-                juce::AudioDeviceManager::AudioDeviceSetup setup;
-                setup.inputDeviceName = deviceToUse;
-                setup.outputDeviceName = deviceToUse;
-                setup.sampleRate = sr;
-                setup.bufferSize = bs;
-                setup.useDefaultInputChannels = false;
-                setup.useDefaultOutputChannels = false;
-                setup.inputChannels.setRange(0, 2, true);
-                setup.outputChannels.setRange(0, 2, true);
+                bool asioOpened = false;
+                for (auto& deviceToUse : tryOrder) {
+                    juce::AudioDeviceManager::AudioDeviceSetup setup;
+                    setup.inputDeviceName = deviceToUse;
+                    setup.outputDeviceName = deviceToUse;
+                    setup.sampleRate = sr;
+                    setup.bufferSize = bs;
+                    setup.useDefaultInputChannels = false;
+                    setup.useDefaultOutputChannels = false;
+                    setup.inputChannels.setRange(0, 2, true);
+                    setup.outputChannels.setRange(0, 2, true);
 
-                auto result = deviceManager_.setAudioDeviceSetup(setup, true);
-                if (result.isNotEmpty()) {
-                    Log::warn("AUDIO", "ASIO setup failed (device='" + deviceToUse + "' SR=" + juce::String(sr) + " BS=" + juce::String(bs) + "): " + result);
-                    // Try with device defaults
-                    setup.sampleRate = 0;  // let device choose
-                    setup.bufferSize = 0;
-                    result = deviceManager_.setAudioDeviceSetup(setup, true);
+                    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
                     if (result.isNotEmpty()) {
-                        Log::error("AUDIO", "ASIO fallback failed (device='" + deviceToUse + "'): " + result);
-                        intentionalChange_ = false;
-                        deviceManager_.setCurrentAudioDeviceType(currentType, true);
-                        deviceManager_.initialiseWithDefaultDevices(2, 2);
-                        deviceManager_.addAudioCallback(this);
-                        if (onDeviceError) onDeviceError("ASIO switch failed - reverted to previous driver");
-                        return false;
+                        Log::warn("AUDIO", "ASIO setup failed (device='" + deviceToUse + "' SR=" + juce::String(sr) + " BS=" + juce::String(bs) + "): " + result);
+                        // Try with device defaults
+                        setup.sampleRate = 0;
+                        setup.bufferSize = 0;
+                        result = deviceManager_.setAudioDeviceSetup(setup, true);
+                        if (result.isNotEmpty()) {
+                            Log::warn("AUDIO", "ASIO device unavailable: '" + deviceToUse + "': " + result);
+                            continue;  // try next ASIO device
+                        }
                     }
+                    Log::info("AUDIO", "ASIO device opened: '" + deviceToUse + "'");
+                    asioOpened = true;
+                    break;
+                }
+
+                if (!asioOpened) {
+                    Log::error("AUDIO", "All ASIO devices failed, reverting to " + currentType);
+                    intentionalChange_ = false;
+                    deviceManager_.setCurrentAudioDeviceType(currentType, true);
+                    deviceManager_.initialiseWithDefaultDevices(2, 2);
+                    deviceManager_.addAudioCallback(this);
+                    if (onDeviceError) onDeviceError("ASIO switch failed - reverted to previous driver");
+                    return false;
                 }
             }
         }

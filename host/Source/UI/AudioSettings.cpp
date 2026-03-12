@@ -321,7 +321,17 @@ void AudioSettings::onDriverTypeChanged()
     int id = driverCombo_.getSelectedId();
     auto types = engine_.getAvailableDeviceTypes();
     if (id >= 1 && id <= types.size()) {
-        engine_.setAudioDeviceType(types[id - 1]);
+        bool success = engine_.setAudioDeviceType(types[id - 1]);
+
+        // If switch failed (e.g. ASIO device unavailable), engine reverted
+        // to previous driver — sync combo to actual current driver type
+        if (!success) {
+            auto actualType = engine_.getCurrentDeviceType();
+            int actualIdx = types.indexOf(actualType);
+            if (actualIdx >= 0)
+                driverCombo_.setSelectedId(actualIdx + 1, juce::dontSendNotification);
+        }
+
         rebuildDeviceLists();
         rebuildSampleRateList();
         rebuildBufferSizeList();
