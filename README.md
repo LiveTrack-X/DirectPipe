@@ -3,11 +3,12 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.10.3-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/stable-v3.10.3-4fc3f7?style=flat-square" alt="Stable">
+  <img src="https://img.shields.io/badge/pre--release-v4.0.0--alpha-orange?style=flat-square" alt="Pre-release">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
+  <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
   <br>
   <a href="https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3">
     <img src="https://img.shields.io/badge/Stream%20Deck-Marketplace-8B5CF6?style=for-the-badge&logo=elgato&logoColor=white" alt="Stream Deck Marketplace">
@@ -21,24 +22,26 @@
 
 ## 다운로드 / Download
 
-> **v3.10.x는 Windows 전용 최종 안정 버전입니다.** 이후 새 기능은 추가되지 않으며, 치명적 버그와 보안 이슈만 패치됩니다. 크로스 플랫폼(macOS/Linux) 지원은 [v4.0](https://github.com/LiveTrack-X/DirectPipe/releases)을 참조하세요.
->
-> **v3.10.x is the final stable release for Windows.** No new features will be added — only critical bugs and security issues will be patched. For cross-platform support (macOS/Linux), see [v4.0](https://github.com/LiveTrack-X/DirectPipe/releases).
+- **Stable (안정 빌드)**: [v3.10.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — 전체 테스트 통과 / Fully tested (Windows only)
+- **Pre-release (프리릴리즈)**: [v4.0.0-alpha 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.0-alpha) — 크로스 플랫폼 / Cross-platform (Windows, macOS, Linux)
 
-- **Stable (안정 빌드)**: [v3.10.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — 최종 안정 버전 / Final stable release
-- **Next (크로스 플랫폼)**: [최신 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — macOS/Linux 지원 / Cross-platform support
+> **Pre-release 주의사항**: macOS/Linux 빌드는 실험적이며, 실기기 테스트가 완료되지 않았습니다. 프로덕션 환경에서는 Stable 빌드를 사용하세요.
+> **Pre-release notice**: macOS/Linux builds are experimental and have not been tested on real hardware. Use the Stable build for production.
 
 <p align="center">
   <em>DirectPipe is a modern lightweight VST host for applying studio-quality effects to your microphone.</em>
 </p>
 
-**스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** Windows용 실시간 마이크 프로세서.
+**스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** 크로스 플랫폼 실시간 마이크 프로세서.
 
 USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 즉시 전환할 수 있다.
 
-**Real-time microphone processor for streamers, podcasters, gamers, and voice chat users** on Windows.
+**Cross-platform real-time microphone processor for streamers, podcasters, gamers, and voice chat users.**
 
 Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deliver clean audio directly to Discord, Zoom, or OBS. Switch effects, adjust volume, and mute with a single Stream Deck button while live — or use hotkeys during gameplay, MIDI controllers for hands-on mixing. Set up a professional mic chain without a DAW, and instantly switch between situation presets (A-E).
+
+> **Platform support**: Windows (WASAPI/ASIO), macOS (CoreAudio), Linux (ALSA/JACK). Windows는 안정 빌드, macOS는 베타, Linux는 실험적 지원.
+> Windows is the stable release. macOS is in beta. Linux support is experimental.
 
 <p align="center">
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
@@ -51,7 +54,7 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 | **스트리머 / Streamers** | OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. Receiver VST2로 가상 케이블 없이 OBS 직접 연결 — Control effects live with Stream Deck while streaming to OBS. Direct OBS connection via Receiver VST2, no virtual cable needed |
 | **팟캐스터 / Podcasters** | 노이즈 제거 + EQ + 컴프레서 체인을 한 번 설정하면 매번 자동 적용. 녹음 기능 내장 — Set up your noise removal + EQ + compressor chain once, auto-applied every time. Built-in recording |
 | **게이머 / Gamers** | 단축키(Ctrl+Shift)로 게임 중 뮤트/프리셋 전환. 시스템 트레이 상주, 리소스 최소 사용 — Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. Runs in system tray, minimal resource usage |
-| **보이스챗 / Voice Chat** | [VB-Cable](https://vb-audio.com/Cable/) *(별도 설치 필요)* 로 Discord/Zoom에 처리된 음성 전달. 상대방에게 깨끗한 마이크 음질 제공 — Route processed audio to Discord/Zoom via [VB-Cable](https://vb-audio.com/Cable/) *(separate install required)*. Deliver clean mic quality to others |
+| **보이스챗 / Voice Chat** | 가상 오디오 케이블 *(별도 설치 필요)* 로 Discord/Zoom에 처리된 음성 전달. Windows: [VB-Cable](https://vb-audio.com/Cable/), macOS: [BlackHole](https://existential.audio/blackhole/)/[Loopback](https://rogueamoeba.com/loopback/), Linux: PipeWire/JACK — Route processed audio to Discord/Zoom via virtual audio cable *(separate install)*. Windows: VB-Cable, macOS: BlackHole/Loopback, Linux: PipeWire/JACK |
 
 ---
 
@@ -60,10 +63,10 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 > DAW 없이, 설치 없이, 마이크에 VST를 거는 가장 가벼운 방법
 > — The lightest way to apply VST effects to your mic, without a DAW or installer.
 
-- **단일 exe, 설치 불필요** — Single portable exe, no installer, no system changes
+- **설치 불필요** — Windows: 단일 .exe, macOS: .app 번들, Linux: 단일 바이너리. 인스톨러 없음 — Windows: single .exe, macOS: .app bundle, Linux: single binary. No installer needed
 - **5종 외부 제어** — 핫키 · MIDI · Stream Deck · HTTP · WebSocket을 한 프로그램에서 — All 5 control methods in one app
 - **프리셋 즉시 전환** — A-E 슬롯, 이름 지정, 끊김 없는 교체 — Named preset slots (A-E) with seamless switching
-- **VST 출력 (Receiver VST2)** — 가상 케이블 없이 OBS 직접 연결 — Direct OBS connection without virtual cables
+- **VST 출력 (DirectPipe Receiver, VST2/VST3/AU)** — 가상 케이블 없이 OBS/DAW 직접 연결 — Direct OBS/DAW connection without virtual cables
 - **오픈소스** — GPL v3, 누구나 기여 가능 — Open source, community-driven
 
 ### For Setup Helpers / 세팅 도우미를 위한 기능
@@ -71,10 +74,10 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 > 다른 사람의 마이크 세팅을 대신 해주는 분들을 위한 워크플로우
 > — Workflow for people who set up microphones for others
 
-1. **포터블 exe** — USB에 DirectPipe를 넣고 상대방 PC에서 바로 실행 ([`portable.flag`로 설정도 USB에 저장](docs/USER_GUIDE.md#포터블-모드--portable-mode))
+1. **포터블 실행** — USB에 DirectPipe를 넣고 상대방 컴퓨터에서 바로 실행 ([`portable.flag`로 설정도 USB에 저장](docs/USER_GUIDE.md#포터블-모드--portable-mode))
 2. **프리셋 내보내기** — 최적화된 VST 체인을 `.dppreset` 파일로 내보내서 전달
 3. **프리셋 가져오기** — 상대방이 슬롯 우클릭 → Import로 즉시 적용
-4. **Full Backup** — Settings > Maintenance에서 설정 + 모든 슬롯을 `.dpfullbackup` 하나로 백업/복원
+4. **Full Backup** — Settings > Maintenance에서 설정 + 모든 슬롯을 `.dpfullbackup` 하나로 백업/복원. 같은 OS끼리만 복원 가능 (백업 파일에 플랫폼 정보 포함, 다른 OS에서 복원 시 차단) / Same-OS restore only (backup includes platform info, cross-OS restore is blocked)
 
 ```
 세팅 도우미 PC                          스트리머 PC
@@ -105,15 +108,15 @@ DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
 ## 동작 원리 / How It Works
 
 ```
-Mic ─→ WASAPI Shared / ASIO ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
+Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
                                                                       │
                  ┌────────────────────────────────────────────────────┼────────────────────┐
                  │                                                    │                    │
            Main Output                                         Monitor Output        VST Output
-     (Audio tab Output device)                             (Output tab, separate   (Receiver VST2)
-     예: VB-Cable → Discord/Zoom                             WASAPI → Headphones)   → Shared Memory
+     (Audio tab Output device)                             (Output tab, separate   (DirectPipe Receiver)
+     예: Virtual Cable → Discord/Zoom                          별도 장치 → Headphones)   → Shared Memory
                  │                                                                      │
-           AudioRecorder                                                    OBS / DAW [Receiver VST2]
+           AudioRecorder                                                    OBS / DAW [DirectPipe Receiver]
            → WAV File (Output tab)
 
 External Control:
@@ -133,17 +136,17 @@ External Control:
 
 ### 오디오 / Audio
 
-- **WASAPI Shared + ASIO** 듀얼 드라이버, 런타임 전환 — Dual driver support with runtime switching
-- WASAPI Shared 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
-- **장치 자동 재연결** — USB 장치 분리 시 알림, 재연결 시 3초 이내 자동 복구 (SR/BS/채널 설정 보존). 모니터 장치도 독립적으로 재연결. JUCE 자동 폴백 방지 (원하는 장치만 수락) — Auto-reconnection on USB disconnect/reconnect within 3 seconds (preserves SR/BS/channel settings). Monitor device reconnects independently. JUCE auto-fallback protection (only accepts desired device)
-- **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 WASAPI 헤드폰) + VST Output (Receiver VST2 → OBS) — Three output paths: main, monitor headphones, VST output to OBS
+- **WASAPI Shared + ASIO** (Windows), **CoreAudio** (macOS), **ALSA/JACK** (Linux) — 런타임 전환 가능 — Runtime driver switching
+- 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
+- **장치 자동 재연결** — USB 장치 분리 시 알림, 원하는 장치가 다시 연결될 때까지 무기한 대기 후 자동 복구 (SR/BS/채널 설정 보존, 다른 장치로 폴백하지 않음). 모니터 장치도 독립적으로 재연결 — Auto-reconnection on USB disconnect: waits indefinitely for desired device (no fallback), auto-recovers preserving SR/BS/channel settings. Monitor device reconnects independently
+- **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 오디오 장치로 헤드폰 모니터링) + VST Output (DirectPipe Receiver → OBS/DAW) — Three output paths: main, monitor headphones (via separate audio device), VST output to OBS/DAW
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
 
 ### 외부 제어 / External Control
 
-- **키보드 단축키** (모두 Controls > Hotkeys 탭에서 변경 가능, 드래그앤드롭 순서 변경) — All customizable in Controls > Hotkeys tab, drag-and-drop reorder
+- **키보드 단축키** (모두 Controls > Hotkeys 탭에서 변경 가능, 드래그앤드롭 순서 변경) — All customizable in Controls > Hotkeys tab, drag-and-drop reorder. macOS에서는 접근성 권한 필요 (CGEventTap). macOS requires Accessibility permission.
 
   | 단축키 / Shortcut | 동작 / Action |
   |---|---|
@@ -162,11 +165,11 @@ External Control:
 - **UDP Discovery** (port 8767) — Stream Deck 자동 연결용 디스커버리 브로드캐스트 — Auto-discovery broadcast for instant Stream Deck connection
 - **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
 
-### VST 출력 (Receiver VST2) / VST Output (Receiver VST2)
+### VST 출력 (DirectPipe Receiver) / VST Output (DirectPipe Receiver)
 
-- **Receiver VST2 플러그인** — OBS 등 VST2 지원 앱에서 공유 메모리로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력 — Receive audio via shared memory. **No virtual cable needed**. Output-only plugin (no input bus) — ignores upstream audio in OBS filter chain, only outputs audio sent from DirectPipe
+- **DirectPipe Receiver (VST2/VST3/AU)** — OBS, DAW 등에서 공유 메모리로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력 — Receive audio via shared memory in OBS, DAWs, and other hosts. **No virtual cable needed**. Output-only plugin (no input bus) — ignores upstream audio in the host's filter chain, only outputs audio sent from DirectPipe
 - **VST 출력 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
-- **버퍼 크기 설정** — Receiver VST GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver VST GUI. Actual latency (ms) depends on sample rate
+- **버퍼 크기 설정** — Receiver 플러그인 GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver plugin GUI. Actual latency (ms) depends on sample rate
 
   | 프리셋 / Preset | 샘플 / Samples | @48kHz | @44.1kHz | 용도 / Best for |
   |---|---|---|---|---|
@@ -180,7 +183,7 @@ External Control:
 ### 녹음 / Recording
 
 - **오디오 녹음** — Output 탭에서 VST 체인 이후 처리된 오디오를 WAV로 녹음 (lock-free 실시간 안전) — Record post-chain audio to WAV in Output tab (lock-free, RT-safe)
-- **기본 폴더**: `Documents\DirectPipe Recordings`, 파일명: `DirectPipe_YYYYMMDD_HHMMSS.wav` — Default folder and naming format
+- **기본 폴더**: `Documents/DirectPipe Recordings` (사용자 문서 폴더), 파일명: `DirectPipe_YYYYMMDD_HHMMSS.wav` — Default folder (user Documents), naming format
 - **녹음 제어** — REC/STOP 버튼, 경과 시간 표시, Play (마지막 녹음 재생), Open Folder, 폴더 변경 — REC/STOP, elapsed time, Play last, Open Folder, change folder
 - **외부 제어** — Stream Deck (경과 시간 표시), HTTP API, WebSocket으로도 녹음 토글 가능 — Also controllable via Stream Deck (shows elapsed time), HTTP, WebSocket
 
@@ -188,10 +191,10 @@ External Control:
 
 - **2컬럼 레이아웃** — 좌: 입력 미터 + 게인 + VST 체인 + 프리셋 슬롯 + 뮤트 버튼(OUT/MON/VST) + PANIC MUTE, 우: 설정 탭 패널 + 출력 미터 — Left: input meter + chain + controls, Right: tabbed settings + output meter
 - **4개 탭** — Tab layout:
-  - **Audio**: 드라이버(WASAPI/ASIO), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드. **Audio 탭의 샘플레이트가 VST 체인·모니터 출력·IPC 전체에 적용됨** — Driver, devices, SR, buffer, channel mode. **Audio tab SR applies to VST chain, monitor output, and IPC**
+  - **Audio**: 드라이버 선택 (Windows: WASAPI/ASIO, macOS: CoreAudio, Linux: ALSA/JACK), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드. **Audio 탭의 샘플레이트가 VST 체인·모니터 출력·IPC 전체에 적용됨** — Driver (Windows: WASAPI/ASIO, macOS: CoreAudio, Linux: ALSA/JACK), devices, SR, buffer, channel mode. **Audio tab SR applies to VST chain, monitor output, and IPC**
   - **Output**: 모니터 출력(장치/볼륨/상태), VST 출력 토글, 녹음(REC/Play/폴더) — Monitor output, VST output toggle, recording
   - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
-  - **Settings**: Start with Windows, 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore, Clear Cache/Presets, Factory Reset) — Startup, settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore, Clear Cache/Presets, Factory Reset)
+  - **Settings**: 자동 시작 (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset)
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
 - **Panic Mute** — 전체 출력 즉시 뮤트, 해제 시 이전 상태 복원. 패닉 중 OUT/MON/VST 및 외부 제어 잠금 — Instant mute all, locks controls until unmuted
 - **상태 바** — 레이턴시, CPU %, 오디오 포맷, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU, format, portable mode, version. Auto-fade notifications
@@ -206,23 +209,31 @@ USB 마이크에 VST 이펙트(노이즈 제거, 디에서, EQ 등)를 걸고, �
 
 To apply VST effects (noise removal, de-esser, EQ, etc.) to a USB mic and route the processed audio as a virtual microphone to apps like Discord, Zoom, or OBS, you need a virtual audio cable.
 
+**플랫폼별 가상 오디오 케이블 / Virtual Audio Cable by Platform:**
+| 플랫폼 / Platform | 추천 / Recommended | 비용 / Cost |
+|---|---|---|
+| **Windows** | [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) | 무료 / Free |
+| **macOS** | [BlackHole](https://existential.audio/blackhole/) | 무료 / Free |
+| **macOS** | [Loopback](https://rogueamoeba.com/loopback/) | 유료 / Paid |
+| **Linux** | PipeWire (virtual sink) 또는 JACK | 내장 / Built-in |
+
 ### 설정 방법 / Setup
 
-1. **[VB-Audio Virtual Cable](https://vb-audio.com/Cable/)** 설치 (무료) — Install VB-Audio Virtual Cable (free)
+1. 가상 오디오 케이블 설치 — Install a virtual audio cable (위 표 참조 / see table above)
 2. DirectPipe **Audio** 탭에서 설정 — Configure in DirectPipe Audio tab:
    - **Input**: USB 마이크 선택 — Select your USB microphone
-   - **Output**: `CABLE Input (VB-Audio Virtual Cable)` 선택 — Select VB-Cable as output
-3. Discord/Zoom/OBS 등에서 마이크를 `CABLE Output (VB-Audio Virtual Cable)`로 변경 — In your app, set mic to `CABLE Output`
+   - **Output**: 가상 케이블 입력 선택 (예: Windows `CABLE Input`, macOS `BlackHole 2ch`) — Select virtual cable input (e.g., Windows `CABLE Input`, macOS `BlackHole 2ch`)
+3. Discord/Zoom/OBS 등에서 마이크를 가상 케이블 출력으로 변경 (예: Windows `CABLE Output`, macOS `BlackHole 2ch`) — In your app, set mic to virtual cable output
 
 ```
-USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...) → VB-Cable Input
+USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...) → Virtual Cable Input
                                                                       ↓
-                                                Discord/Zoom/OBS ← VB-Cable Output
+                                                Discord/Zoom/OBS ← Virtual Cable Output
 ```
 
 4. (선택) **Output** 탭에서 헤드폰 장치를 설정하면 처리된 자신의 목소리를 실시간으로 모니터링 가능 — Optionally configure headphone monitoring in the Output tab
 
-> **Tip**: [VoiceMeeter](https://vb-audio.com/Voicemeeter/) 등 다른 가상 오디오 장치도 동일하게 사용 가능. Output 장치만 바꾸면 된다. — Any virtual audio device works; just change the Output device.
+> **Tip**: [VoiceMeeter](https://vb-audio.com/Voicemeeter/) (Windows) 등 다른 가상 오디오 장치도 동일하게 사용 가능. Output 장치만 바꾸면 된다. — Any virtual audio device works; just change the Output device.
 
 ### OBS에서 VST 출력으로 직접 연결 (가상 케이블 불필요) / Direct OBS Connection via VST Output (No Virtual Cable)
 
@@ -230,10 +241,10 @@ OBS에서는 Receiver VST2 플러그인을 사용하면 가상 케이블 없이 
 
 If you use OBS, the Receiver VST2 plugin offers a simpler setup without any virtual cable.
 
-1. `DirectPipe Receiver.dll`을 아래 VST2 폴더 중 하나에 복사 — Copy DLL to one of these VST2 folders:
-   - `C:\Program Files\VSTPlugins\` (권장 / Recommended)
-   - `C:\Program Files\Common Files\VST2\`
-   - `C:\Program Files\Steinberg\VstPlugins\`
+1. Receiver 플러그인 파일을 VST2 폴더에 복사 — Copy the Receiver plugin to a VST2 folder:
+   - **Windows**: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\` (권장), `C:\Program Files\Common Files\VST2\`, 또는 `C:\Program Files\Steinberg\VstPlugins\`
+   - **macOS**: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/` 또는 `~/Library/Audio/Plug-Ins/VST/`
+   - **Linux**: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 `~/.vst/`
 2. DirectPipe에서 **VST** 버튼 클릭 (VST 출력 켜기) — Enable VST output in DirectPipe
 3. OBS → 오디오 소스 (ex.기존 마이크)→ 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택 — Add VST filter in OBS
 
@@ -243,19 +254,19 @@ USB Mic → DirectPipe (VST Chain: 노이즈 제거, EQ, 컴프 ...)
 OBS [DirectPipe Receiver VST 필터] → 방송/녹화
 ```
 
-> **Tip**: 가상 케이블과 Receiver VST를 **동시에** 사용할 수도 있습니다. Discord는 VB-Cable로, OBS는 Receiver VST로 각각 보내면 됩니다. — You can use both methods simultaneously: VB-Cable for Discord, Receiver VST for OBS.
+> **Tip**: 가상 케이블과 DirectPipe Receiver를 **동시에** 사용할 수도 있습니다. Discord는 가상 케이블로, OBS는 Receiver로 각각 보내면 됩니다. — You can use both methods simultaneously: virtual cable for Discord, DirectPipe Receiver for OBS.
 
-> **중요**: Receiver VST는 **입력 버스가 없는 출력 전용 플러그인**입니다. OBS 오디오 소스(마이크 캡처 등)의 오디오나 앞단 필터의 오디오는 완전히 무시되고, DirectPipe에서 IPC로 전송된 처리 완료 오디오만 출력됩니다.
+> **중요**: DirectPipe Receiver는 **입력 버스가 없는 출력 전용 플러그인**입니다. OBS 오디오 소스(마이크 캡처 등)의 오디오나 앞단 필터의 오디오는 완전히 무시되고, DirectPipe에서 IPC로 전송된 처리 완료 오디오만 출력됩니다.
 >
-> **Important**: Receiver VST is an **output-only plugin with no input bus**. Audio from the OBS source (mic capture, etc.) or preceding filters is completely ignored — only the processed audio sent from DirectPipe via IPC is output.
+> **Important**: DirectPipe Receiver is an **output-only plugin with no input bus**. Audio from the OBS source (mic capture, etc.) or preceding filters is completely ignored — only the processed audio sent from DirectPipe via IPC is output.
 
 ### 출력별 개별 제어 활용 / Independent Output Control
 
-VB-Cable(Discord) + Receiver VST2(OBS)를 동시 사용하면 **OUT/VST 버튼으로 각 앱의 마이크를 개별 제어**할 수 있습니다. — Using both together lets you **independently control each app's mic feed with OUT/VST buttons**.
+가상 케이블(Discord) + Receiver VST2(OBS)를 동시 사용하면 **OUT/VST 버튼으로 각 앱의 마이크를 개별 제어**할 수 있습니다. — Using virtual cable (Discord) + Receiver VST2 (OBS) together lets you **independently control each app's mic feed with OUT/VST buttons**.
 
 ```
 USB Mic → DirectPipe (Plugin Chain)
-    ├─ OUT → VB-Cable → Discord      ← OUT 버튼으로 개별 뮤트
+    ├─ OUT → Virtual Cable → Discord  ← OUT 버튼으로 개별 뮤트
     ├─ VST → Receiver VST2 → OBS     ← VST 버튼으로 개별 뮤트
     └─ MON → Headphones              ← MON 버튼으로 개별 뮤트
 ```
@@ -279,11 +290,26 @@ cmake --build build --config Release
 
 ### 요구 사항 / Requirements
 
+**Windows:**
 - Windows 10/11 (64-bit)
 - Visual Studio 2022 (C++ Desktop Development)
 - CMake 3.22+
-- JUCE 7.0.12 (CMake FetchContent 자동 다운로드 / auto-fetched)
 - ASIO SDK (`thirdparty/asiosdk/`) — ASIO 모드 사용 시 / for ASIO driver support (optional)
+
+**macOS (beta):**
+- macOS 10.15+ (Catalina 이상)
+- Xcode 14+ (Command Line Tools)
+- CMake 3.22+
+
+**Linux (experimental):**
+- GCC 9+ 또는 Clang 10+
+- CMake 3.22+
+- ALSA/JACK 개발 패키지 / ALSA/JACK development packages (`libasound2-dev`, `libjack-jackd2-dev`)
+- X11 개발 패키지 / X11 development packages
+
+**공통 / Common:**
+- JUCE 7.0.12 (CMake FetchContent 자동 다운로드 / auto-fetched)
+- VST2 SDK (`thirdparty/VST2_SDK/`) — VST2 포맷 사용 시 (optional)
 
 ## 프로젝트 구조 / Project Structure
 
@@ -297,12 +323,16 @@ host/                     JUCE host application (main)
                             HotkeyHandler, MidiHandler, StateBroadcaster,
                             DirectPipeLogger
     IPC/                    SharedMemWriter
+    Platform/               Cross-platform abstractions
+      Windows/                Registry autostart, Named Mutex, Win32 priority
+      macOS/                  LaunchAgent, CGEventTap hotkeys, pthread QoS
+      Linux/                  XDG autostart, setpriority, InterProcessLock
     UI/                     AudioSettings, OutputPanel, ControlSettingsPanel,
                             PluginChainEditor, PluginScanner, PresetManager,
                             LevelMeter, LogPanel, NotificationBar,
                             DirectPipeLookAndFeel, SettingsExporter
 core/                     IPC library (RingBuffer, SharedMemory, Protocol)
-plugins/receiver/         Receiver VST2 plugin (for OBS)
+plugins/receiver/         Receiver VST2/VST3/AU plugin (for OBS/DAW)
 com.directpipe.directpipe.sdPlugin/  Stream Deck plugin (Node.js, SDK v3)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)
@@ -312,9 +342,10 @@ thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
 ## 문서 / Documentation
 
 - **[Quick Start](docs/QUICKSTART.md) — USB 마이크 5분 설정 가이드 / 5-minute USB mic setup guide**
+- [Platform Guide](docs/PLATFORM_GUIDE.md) — 플랫폼별 가이드 (Windows/macOS/Linux) / Platform-specific setup, features, and limitations
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
 - [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety
-- [Build Guide](docs/BUILDING.md) — 빌드 가이드 / Build instructions and options
+- [Build Guide](docs/BUILDING.md) — 빌드 가이드 (멀티 플랫폼) / Build instructions for all platforms
 - [User Guide](docs/USER_GUIDE.md) — 사용법 / Setup and usage
 - [Control API](docs/CONTROL_API.md) — WebSocket / HTTP API 레퍼런스 / API reference
 - [API Examples](docs/API_EXAMPLES.md) — 자동화 예제 (Python, AutoHotkey, OBS 연동, curl, PowerShell) / Automation examples
@@ -358,6 +389,10 @@ Windows는 기본적으로 트레이 아이콘을 숨김 영역(▲ 화살표 �
 2. 목록에서 **DirectPipe**를 찾아 **켬** 으로 변경
 3. 또는: 숨김 영역(▲)에서 DirectPipe 아이콘을 **작업 표시줄로 드래그**
 
+**macOS:** 메뉴 바에 자동으로 표시됩니다. 메뉴 바 아이콘이 너무 많으면 Cmd 키를 누른 채 아이콘을 드래그하여 순서를 변경하세요.
+
+**Linux:** 데스크톱 환경에 따라 다릅니다. GNOME은 AppIndicator 확장, KDE는 시스템 트레이에 자동 표시됩니다.
+
 ---
 
 Windows hides tray icons in the overflow area (▲ arrow) by default. To keep the DirectPipe icon always visible, **pin it to the taskbar tray**.
@@ -371,22 +406,40 @@ Windows hides tray icons in the overflow area (▲ arrow) by default. To keep th
 1. **Settings** → **Personalization** → **Taskbar** → **Notification area** → click **Select which icons appear on the taskbar**
 2. Find **DirectPipe** and toggle it **On**
 3. Or: drag the DirectPipe icon from the overflow area (▲) onto the **taskbar**
+
+**macOS:** Appears automatically in the menu bar. If crowded, hold Cmd and drag to reorder menu bar icons.
+
+**Linux:** Depends on desktop environment. GNOME requires AppIndicator extension; KDE shows in system tray automatically.
 </details>
 
 <details>
-<summary><b>처음 실행할 때 빨간색 "Windows의 PC 보호" 경고가 떠요 / SmartScreen warning on first run</b></summary>
+<summary><b>처음 실행할 때 보안 경고가 떠요 / Security warning on first run</b></summary>
 
 정상입니다! DirectPipe는 오픈소스라 코드 서명 인증서가 없어서 나타나는 경고입니다. 악성 소프트웨어가 아닙니다.
 
+**Windows (SmartScreen):**
 1. **"추가 정보"** 텍스트를 클릭하세요
 2. 아래에 나타나는 **"실행"** 버튼을 누르세요
-3. 한 번만 하면 이후로는 경고 없이 실행됩니다
 
-This is normal! DirectPipe is open-source and does not have a code signing certificate, so Windows SmartScreen shows a warning. It is not malware.
+**macOS (Gatekeeper):**
+1. **시스템 설정** → **개인 정보 보호 및 보안** → 하단의 **"확인 없이 열기"** 클릭
+2. 또는: Finder에서 DirectPipe.app을 **우클릭** → **열기** → **열기** 클릭
 
+한 번만 하면 이후로는 경고 없이 실행됩니다.
+
+---
+
+This is normal! DirectPipe is open-source and does not have a code signing certificate, so your OS shows a warning. It is not malware.
+
+**Windows (SmartScreen):**
 1. Click the **"More info"** text
 2. Click the **"Run anyway"** button that appears
-3. You only need to do this once — the warning won't appear again
+
+**macOS (Gatekeeper):**
+1. **System Settings** → **Privacy & Security** → click **"Open Anyway"** at the bottom
+2. Or: Right-click DirectPipe.app in Finder → **Open** → click **Open**
+
+You only need to do this once — the warning won't appear again.
 </details>
 
 <details>
@@ -418,40 +471,40 @@ After installing plugins, click **"Scan..."** in DirectPipe to scan your plugin 
 <details>
 <summary><b>Discord / Zoom / OBS에서 처리된 마이크를 쓰려면? / How to use with Discord, Zoom, or OBS?</b></summary>
 
-[VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (무료)이 필요합니다.
+가상 오디오 케이블이 필요합니다. Windows: [VB-Cable](https://vb-audio.com/Cable/) (무료), macOS: [BlackHole](https://existential.audio/blackhole/) (무료) 또는 [Loopback](https://rogueamoeba.com/loopback/), Linux: PipeWire virtual sink 또는 JACK.
 
 **설정 순서:**
-1. VB-Audio Virtual Cable을 설치하고 PC를 재부팅합니다
+1. 가상 오디오 케이블을 설치 (Windows: VB-Cable 설치 후 재부팅, macOS: BlackHole 설치, Linux: PipeWire/JACK 설정)
 2. DirectPipe **Audio** 탭:
    - **Input** → 내 USB 마이크 선택
-   - **Output** → `CABLE Input (VB-Audio Virtual Cable)` 선택
+   - **Output** → 가상 케이블 입력 선택 (예: Windows `CABLE Input`, macOS `BlackHole 2ch`)
 3. Discord/Zoom/OBS 음성 설정:
-   - **마이크** → `CABLE Output (VB-Audio Virtual Cable)` 선택
+   - **마이크** → 가상 케이블 출력 선택 (예: Windows `CABLE Output`, macOS `BlackHole 2ch`)
 4. 자기 목소리를 확인하려면 **Output** 탭에서 헤드폰 장치를 설정하세요
 
 ```
-내 USB 마이크 → DirectPipe (노이즈 제거, EQ 등) → VB-Cable Input
+내 USB 마이크 → DirectPipe (노이즈 제거, EQ 등) → Virtual Cable Input
                                                          ↓
-                                       Discord/Zoom/OBS ← VB-Cable Output (마이크로 인식)
+                                       Discord/Zoom/OBS ← Virtual Cable Output (마이크로 인식)
 ```
 
 ---
 
-You'll need [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (free).
+You need a virtual audio cable. Windows: [VB-Cable](https://vb-audio.com/Cable/) (free), macOS: [BlackHole](https://existential.audio/blackhole/) (free) or [Loopback](https://rogueamoeba.com/loopback/), Linux: PipeWire virtual sink or JACK.
 
 **Setup steps:**
-1. Install VB-Audio Virtual Cable and reboot your PC
+1. Install a virtual audio cable (Windows: VB-Cable + reboot, macOS: BlackHole, Linux: configure PipeWire/JACK)
 2. In DirectPipe **Audio** tab:
    - **Input** → Select your USB microphone
-   - **Output** → Select `CABLE Input (VB-Audio Virtual Cable)`
+   - **Output** → Select virtual cable input (e.g., Windows `CABLE Input`, macOS `BlackHole 2ch`)
 3. In Discord / Zoom / OBS voice settings:
-   - **Microphone** → Select `CABLE Output (VB-Audio Virtual Cable)`
+   - **Microphone** → Select virtual cable output (e.g., Windows `CABLE Output`, macOS `BlackHole 2ch`)
 4. To hear yourself, configure your headphone device in the **Output** tab
 
 ```
-USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
+USB Mic → DirectPipe (Noise removal, EQ, etc.) → Virtual Cable Input
                                                         ↓
-                                      Discord/Zoom/OBS ← VB-Cable Output (recognized as mic)
+                                      Discord/Zoom/OBS ← Virtual Cable Output (recognized as mic)
 ```
 </details>
 
@@ -462,7 +515,9 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 1. **Audio 탭** → Input 장치가 올바르게 선택되어 있는지 확인
 2. 왼쪽 **INPUT 레벨 미터**가 움직이는지 확인 → 움직이면 마이크 입력은 정상
 3. 레벨 미터가 움직이지 않으면:
-   - Windows 설정 → 개인 정보 → 마이크에서 앱 접근이 허용되어 있는지 확인
+   - **Windows**: 설정 → 개인 정보 → 마이크에서 앱 접근이 허용되어 있는지 확인
+   - **macOS**: 시스템 설정 → 개인 정보 보호 및 보안 → 마이크에서 DirectPipe 허용
+   - **Linux**: PulseAudio/PipeWire 볼륨 설정에서 입력 장치 확인
    - 다른 앱(Discord 등)이 마이크를 독점 모드로 사용 중이면 해제
 4. **OUT** 버튼이 초록색인지 확인 (빨간색이면 뮤트 상태 → 클릭해서 해제)
 5. **PANIC MUTE**가 활성화되어 있으면 다시 클릭해서 해제
@@ -473,7 +528,9 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 1. **Audio tab** → Make sure the correct Input device is selected
 2. Check if the left **INPUT level meter** is moving → if it moves, mic input is working
 3. If the level meter doesn't move:
-   - Windows Settings → Privacy → Microphone — make sure app access is allowed
+   - **Windows**: Settings → Privacy → Microphone — make sure app access is allowed
+   - **macOS**: System Settings → Privacy & Security → Microphone — allow DirectPipe
+   - **Linux**: Check input device in PulseAudio/PipeWire volume settings
    - If another app (e.g., Discord) is using the mic in exclusive mode, disable exclusive mode
 4. Check that the **OUT** button is green (red means muted → click to unmute)
 5. If **PANIC MUTE** is active, click it again to deactivate
@@ -490,10 +547,12 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 
 **그래도 끊긴다면:**
 - 플러그인 수를 줄이거나, CPU를 많이 쓰는 플러그인을 Bypass 처리
-- 오디오 인터페이스가 있다면 **ASIO** 드라이버 사용 (더 낮은 지연 가능)
+- 오디오 인터페이스가 있다면 **ASIO** 드라이버 사용 (Windows, 더 낮은 지연 가능)
 - 하단 상태 바의 **CPU %** 수치를 확인 — 60% 이상이면 과부하
 - 하단 상태 바의 **XRun** 수치를 확인 — 1분간 버퍼 언더런 횟수 표시
 - **Windows Audio (Low Latency)** 모드에서 끊긴다면 → **Windows Audio**로 변경 시도 (FAQ의 드라이버 가이드 참조)
+- **macOS**: CoreAudio 기본 버퍼 크기 조절 (Audio MIDI Setup에서도 확인 가능)
+- **Linux**: JACK 사용 시 `jackd` 설정에서 period/nperiods 조절
 
 ---
 
@@ -505,18 +564,30 @@ USB Mic → DirectPipe (Noise removal, EQ, etc.) → VB-Cable Input
 
 **Still crackling?**
 - Reduce the number of plugins, or Bypass CPU-heavy ones
-- If you have an audio interface, switch to **ASIO** driver (allows even lower latency)
+- If you have an audio interface, switch to **ASIO** driver (Windows, allows even lower latency)
 - Check the **CPU %** in the bottom status bar — above 60% indicates overload
 - Check the **XRun** count in the status bar — shows buffer underruns in the last 60 seconds
-- If crackling in **Windows Audio (Low Latency)** → try switching to **Windows Audio** (see Driver Guide FAQ)
+- **Windows**: If crackling in **Windows Audio (Low Latency)** → try switching to **Windows Audio** (see Driver Guide FAQ)
+- **macOS**: Adjust CoreAudio buffer size (also configurable in Audio MIDI Setup)
+- **Linux**: With JACK, tune `jackd` period/nperiods settings
 </details>
 
 <details>
 <summary><b>오디오 드라이버 종류와 선택 가이드 / Audio Driver Types & Selection Guide</b></summary>
 
-DirectPipe는 5가지 오디오 드라이버를 지원합니다. Audio 탭의 **Driver** 드롭다운에서 선택할 수 있습니다.
+DirectPipe는 플랫폼별로 다른 오디오 드라이버를 지원합니다. Audio 탭의 **Driver** 드롭다운에서 선택할 수 있습니다.
 
-DirectPipe supports 5 audio driver types. Select from the **Driver** dropdown in the Audio tab.
+- **Windows**: 5가지 드라이버 (아래 상세 설명)
+- **macOS**: **CoreAudio** — macOS 기본 오디오 시스템. 추가 설정 없이 자동 동작, 충분히 낮은 지연
+- **Linux**: **ALSA** (기본) 또는 **JACK** (저지연) — JACK 사용 시 `jackd` 실행 필요
+
+DirectPipe supports different audio drivers per platform. Select from the **Driver** dropdown in the Audio tab.
+
+- **Windows**: 5 driver types (detailed below)
+- **macOS**: **CoreAudio** — macOS native audio system. Works automatically with low latency, no extra setup
+- **Linux**: **ALSA** (default) or **JACK** (low latency) — JACK requires running `jackd`
+
+**Windows 드라이버 상세 / Windows Driver Details:**
 
 ### DirectSound (레거시 / Legacy)
 
@@ -578,7 +649,7 @@ Professional low-latency driver. Requires native ASIO driver from your audio int
 - **다른 앱 동시 사용 / Shared access**: 장치에 따라 다름 / Depends on device
 - **추천 / Recommended for**: 전문가, 오디오 인터페이스 사용자 / Pros, audio interface users
 
-### 비교 요약 / Comparison
+### Windows 비교 요약 / Windows Driver Comparison
 
 | | DirectSound | Windows Audio | Low Latency | Exclusive Mode | ASIO |
 |---|---|---|---|---|---|
@@ -591,10 +662,15 @@ Professional low-latency driver. Requires native ASIO driver from your audio int
 
 ### 선택 가이드 / Quick Selection Guide
 
+**Windows:**
 1. **USB 마이크 사용자** -> **Windows Audio** 사용 (가장 안정적, 충분히 낮은 지연) / Use Windows Audio (most reliable, low enough latency)
 2. **오디오 인터페이스가 있다면** -> **ASIO** 사용 (최저 지연) / Use ASIO (lowest latency)
 3. **LL 모드를 시도해봤는데 버퍼 변경이 안 되거나 지연이 높다면** -> **Windows Audio**로 돌아가세요 / If LL mode doesn't allow buffer changes or has higher latency, go back to Windows Audio
 4. **녹음 전용 PC라면** -> **Windows Audio (Exclusive Mode)** 도 고려 / Consider Exclusive Mode
+
+**macOS:** CoreAudio 하나만 사용 (추가 선택 불필요) / CoreAudio is the only option (no driver selection needed)
+
+**Linux:** 일반 사용은 ALSA, 저지연이 필요하면 JACK 사용 / Use ALSA for general use, JACK for low latency
 </details>
 
 <details>
@@ -603,14 +679,14 @@ Professional low-latency driver. Requires native ASIO driver from your audio int
 플러그인 스캔은 **별도 프로세스**에서 실행되므로 DirectPipe가 멈추거나 크래시하지 않습니다. 일부 플러그인은 스캔에 시간이 오래 걸릴 수 있습니다 (최대 5분).
 
 - 크래시를 유발하는 플러그인은 자동으로 **블랙리스트**에 등록되어 다음 스캔에서 건너뜁니다
-- 스캔 로그: `%AppData%/DirectPipe/scanner-log.txt`에서 확인 가능
+- 스캔 로그 확인: Windows `%AppData%/DirectPipe/scanner-log.txt`, macOS `~/Library/Application Support/DirectPipe/scanner-log.txt`, Linux `~/.config/DirectPipe/scanner-log.txt`
 
 ---
 
 Plugin scanning runs in a **separate process**, so DirectPipe itself will never freeze or crash. Some plugins may take a while to scan (up to 5 minutes).
 
 - Plugins that cause crashes are automatically **blacklisted** and skipped in future scans
-- Scan log: check `%AppData%/DirectPipe/scanner-log.txt`
+- Scan log: Windows `%AppData%/DirectPipe/scanner-log.txt`, macOS `~/Library/Application Support/DirectPipe/scanner-log.txt`, Linux `~/.config/DirectPipe/scanner-log.txt`
 </details>
 
 <details>
@@ -643,38 +719,50 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 **Monitor**는 자기 목소리를 헤드폰으로 실시간 확인하는 기능입니다. VST 이펙트가 적용된 자신의 목소리를 들을 수 있습니다.
 
 - **Output** 탭에서 헤드폰이 연결된 오디오 장치를 선택
-- Main Output과는 별도의 WASAPI 장치를 사용하므로 **독립적으로 동작**
+- Main Output과는 별도의 오디오 장치를 사용하므로 **독립적으로 동작** (Windows: WASAPI, macOS: CoreAudio)
 - **MON** 버튼으로 켜기/끄기
 
-> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 WASAPI 장치를 사용하기 때문에 **~15-20ms의 추가 지연**이 발생합니다. 이 지연은 WASAPI Shared Mode 듀얼 디바이스 구조의 한계입니다. 자기 목소리를 지연 없이 듣고 싶다면 **ASIO 드라이버 사용** (입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
+> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하기 때문에 **~15-20ms의 추가 지연**이 발생합니다. 이 지연은 듀얼 디바이스 구조의 한계입니다. 자기 목소리를 지연 없이 듣고 싶다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
 
 ---
 
 **Monitor** lets you hear your own processed voice through headphones in real-time, with all VST effects applied.
 
 - Select your headphone device in the **Output** tab
-- Uses a separate WASAPI device from the Main Output, so it **works independently**
+- Uses a separate audio device from the Main Output, so it **works independently** (Windows: WASAPI, macOS: CoreAudio)
 - Toggle on/off with the **MON** button
 
-> **Latency note**: Monitor output uses a separate WASAPI device, which adds **~15-20ms of extra latency** due to the dual-device WASAPI Shared Mode architecture. For zero-latency monitoring, use an **ASIO driver** (single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
+> **Latency note**: Monitor output uses a separate audio device, which adds **~15-20ms of extra latency** due to the dual-device architecture. For zero-latency monitoring, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
 </details>
 
 <details>
-<summary><b>컴퓨터 시작할 때 자동으로 실행되게 하려면? / How to auto-start with Windows?</b></summary>
+<summary><b>컴퓨터 시작할 때 자동으로 실행되게 하려면? / How to auto-start at login?</b></summary>
 
 두 가지 방법:
-1. **시스템 트레이** 아이콘 우클릭 → **"Start with Windows"** 체크
-2. **Settings** 탭 → **"Start with Windows"** 체크
+1. **시스템 트레이** 아이콘 우클릭 → 자동 시작 체크
+2. **Settings** 탭 → 자동 시작 체크
 
-활성화하면 Windows 시작 시 자동으로 트레이에서 실행됩니다. X 버튼으로 창을 닫아도 트레이에 남아서 계속 동작합니다.
+라벨은 플랫폼별로 다릅니다: Windows "Start with Windows", macOS "Start at Login", Linux "Start on Login".
+
+활성화하면 로그인 시 자동으로 트레이에서 실행됩니다. X 버튼으로 창을 닫아도 트레이에 남아서 계속 동작합니다.
+
+- **Windows**: 레지스트리 (`HKCU\...\Run`)
+- **macOS**: LaunchAgent (`~/Library/LaunchAgents/`)
+- **Linux**: XDG autostart (`~/.config/autostart/`)
 
 ---
 
 Two ways to enable:
-1. Right-click the **system tray** icon → check **"Start with Windows"**
-2. **Settings** tab → check **"Start with Windows"**
+1. Right-click the **system tray** icon → check the auto-start toggle
+2. **Settings** tab → check the auto-start toggle
 
-Once enabled, DirectPipe launches automatically in the system tray when Windows starts. Closing the window (X button) minimizes it to the tray — it keeps running in the background.
+The label adapts to your platform: Windows "Start with Windows", macOS "Start at Login", Linux "Start on Login".
+
+Once enabled, DirectPipe launches automatically at login. Closing the window (X button) minimizes it to the tray — it keeps running in the background.
+
+- **Windows**: Registry (`HKCU\...\Run`)
+- **macOS**: LaunchAgent (`~/Library/LaunchAgents/`)
+- **Linux**: XDG autostart (`~/.config/autostart/`)
 </details>
 
 <details>
@@ -707,39 +795,39 @@ Yes! Multiple control methods are available:
 </details>
 
 <details>
-<summary><b>Receiver VST2 플러그인이 뭔가요? / What is the Receiver VST2 plugin?</b></summary>
+<summary><b>DirectPipe Receiver 플러그인이 뭔가요? / What is the DirectPipe Receiver plugin?</b></summary>
 
-**Receiver VST2**는 DirectPipe에서 처리한 마이크 오디오를 **OBS, DAW 등 VST2 플러그인을 지원하는 앱**에서 직접 받을 수 있게 해주는 플러그인입니다.
+**DirectPipe Receiver**는 DirectPipe에서 처리한 마이크 오디오를 **OBS, DAW 등**에서 직접 받을 수 있게 해주는 플러그인입니다. VST2, VST3, AU 포맷으로 제공됩니다 (OBS는 VST2만 지원).
 
-보통 DirectPipe에서 처리된 오디오를 OBS로 보내려면 **VB-Audio Virtual Cable** 같은 가상 오디오 케이블이 필요합니다. Receiver VST2를 사용하면 **가상 케이블 없이** 공유 메모리(IPC)를 통해 오디오를 직접 받을 수 있어 설정이 더 간단하고 지연도 적습니다.
+보통 DirectPipe에서 처리된 오디오를 OBS로 보내려면 가상 오디오 케이블 (VB-Cable, BlackHole 등)이 필요합니다. DirectPipe Receiver를 사용하면 **가상 케이블 없이** 공유 메모리(IPC)를 통해 오디오를 직접 받을 수 있어 설정이 더 간단하고 지연도 적습니다.
 
 ---
 
-**Receiver VST2** is a plugin that lets **OBS, DAWs, and other apps that support VST2 plugins** receive DirectPipe's processed mic audio directly.
+**DirectPipe Receiver** is a plugin that lets **OBS, DAWs, and other hosts** receive DirectPipe's processed mic audio directly. Available in VST2, VST3, and AU formats (OBS only supports VST2).
 
-Normally, to route DirectPipe's processed audio to OBS, you need a **virtual audio cable** like VB-Audio Virtual Cable. With the Receiver VST2, you can receive audio directly via shared memory (IPC) — **no virtual cable needed**, simpler setup, lower latency.
+Normally, to route DirectPipe's processed audio to OBS, you need a **virtual audio cable** (VB-Cable, BlackHole, etc.). With the DirectPipe Receiver, you can receive audio directly via shared memory (IPC) — **no virtual cable needed**, simpler setup, lower latency.
 
-**Receiver VST2 vs. Virtual Cable 비교 / Comparison:**
+**DirectPipe Receiver vs. Virtual Cable 비교 / Comparison:**
 
-| | Receiver VST2 | VB-Audio Virtual Cable |
+| | DirectPipe Receiver | 가상 오디오 케이블 / Virtual Audio Cable |
 |---|---|---|
-| 설치 / Install | DirectPipe Receiver.dll을 VST 폴더에 복사 / Copy DLL to VST folder | VB-Cable 설치 + PC 재부팅 / Install VB-Cable + reboot |
-| 설정 / Setup | OBS에서 VST 필터 추가만 하면 됨 / Just add VST filter in OBS | DirectPipe Output + OBS Input 양쪽 설정 필요 / Configure both sides |
+| 설치 / Install | Receiver 플러그인을 VST/AU 폴더에 복사 / Copy plugin to VST/AU folder | 가상 케이블 설치 (VB-Cable/BlackHole 등) / Install virtual cable |
+| 설정 / Setup | OBS/DAW에서 플러그인 필터 추가만 하면 됨 / Just add plugin filter in OBS/DAW | DirectPipe Output + OBS Input 양쪽 설정 필요 / Configure both sides |
 | 지연 / Latency | ~5–85ms (프리셋 선택 가능) / Configurable | 드라이버에 의존 / Depends on driver |
-| 추가 소프트웨어 / Extra software | 불필요 / None needed | VB-Cable 필요 / VB-Cable required |
-| 호환성 / Compatibility | VST2 지원 앱만 / VST2-capable apps only | 모든 앱 / Any app |
-| 추천 / Recommended for | OBS 사용자 / OBS users | Discord, Zoom 등 일반 앱 / General apps |
+| 추가 소프트웨어 / Extra software | 불필요 / None needed | 가상 케이블 필요 (VB-Cable/BlackHole 등) / Virtual cable required |
+| 호환성 / Compatibility | VST2/VST3/AU 지원 앱 / VST2/VST3/AU-capable apps | 모든 앱 / Any app |
+| 추천 / Recommended for | OBS, DAW 사용자 / OBS, DAW users | Discord, Zoom 등 일반 앱 / General apps |
 </details>
 
 <details>
-<summary><b>OBS에서 Receiver VST2는 어떻게 사용하나요? / How to use Receiver VST2 in OBS?</b></summary>
+<summary><b>OBS에서 Receiver VST2는 어떻게 사용하나요? / How to use the Receiver VST2 in OBS?</b></summary>
 
-**OBS에서 Receiver VST2 설정하기:**
+**OBS에서 Receiver VST2 설정하기 (OBS는 VST2만 지원):**
 
-1. **DirectPipe Receiver.dll**을 아래 VST2 폴더 중 하나에 복사
-   - `C:\Program Files\VSTPlugins\` (권장 / Recommended)
-   - `C:\Program Files\Common Files\VST2\`
-   - `C:\Program Files\Steinberg\VstPlugins\`
+1. **Receiver 플러그인**을 VST2 폴더에 복사
+   - **Windows**: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\` (권장), `C:\Program Files\Common Files\VST2\`, 또는 `C:\Program Files\Steinberg\VstPlugins\`
+   - **macOS**: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/` 또는 `~/Library/Audio/Plug-Ins/VST/`
+   - **Linux**: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 `~/.vst/`
 
 2. **DirectPipe**에서 IPC 출력 켜기
    - DirectPipe 실행 → 하단의 **VST** 버튼 클릭 (초록색으로 변경)
@@ -766,12 +854,12 @@ OBS [DirectPipe Receiver VST 필터]
 
 ---
 
-**Setting up Receiver VST2 in OBS:**
+**Setting up Receiver VST2 in OBS (OBS only supports VST2):**
 
-1. **Copy DirectPipe Receiver.dll** to one of these VST2 folders:
-   - `C:\Program Files\VSTPlugins\` (Recommended)
-   - `C:\Program Files\Common Files\VST2\`
-   - `C:\Program Files\Steinberg\VstPlugins\`
+1. **Copy the Receiver plugin** to a VST2 folder:
+   - **Windows**: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\` (Recommended), `C:\Program Files\Common Files\VST2\`, or `C:\Program Files\Steinberg\VstPlugins\`
+   - **macOS**: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/` or `~/Library/Audio/Plug-Ins/VST/`
+   - **Linux**: `DirectPipe Receiver.so` → `/usr/lib/vst/` or `~/.vst/`
 
 2. **Enable IPC output in DirectPipe**
    - Run DirectPipe → click the **VST** button at the bottom (turns green)
@@ -798,11 +886,11 @@ Stream / Recording
 </details>
 
 <details>
-<summary><b>Receiver VST2에서 끊김/지연이 있어요 / Audio crackling or latency with Receiver VST2</b></summary>
+<summary><b>Receiver 플러그인에서 끊김/지연이 있어요 / Audio crackling or latency with DirectPipe Receiver</b></summary>
 
 **버퍼 크기를 조정하세요:**
 
-Receiver VST의 플러그인 UI를 열면 **Buffer** 드롭다운에서 버퍼 크기를 선택할 수 있습니다.
+Receiver 플러그인 UI를 열면 **Buffer** 드롭다운에서 버퍼 크기를 선택할 수 있습니다.
 
 | 프리셋 | 지연 | 권장 상황 |
 |---|---|---|
@@ -821,7 +909,7 @@ Receiver VST의 플러그인 UI를 열면 **Buffer** 드롭다운에서 버퍼 �
 
 **Adjust the buffer size:**
 
-Open the Receiver VST plugin interface and select a buffer size from the **Buffer** dropdown.
+Open the Receiver plugin interface and select a buffer size from the **Buffer** dropdown.
 
 | Preset | Latency | Recommended for |
 |---|---|---|
@@ -838,51 +926,53 @@ Open the Receiver VST plugin interface and select a buffer size from the **Buffe
 </details>
 
 <details>
-<summary><b>Receiver VST2와 가상 케이블 중 뭘 써야 하나요? / Should I use Receiver VST2 or Virtual Cable?</b></summary>
+<summary><b>DirectPipe Receiver와 가상 케이블 중 뭘 써야 하나요? / Should I use DirectPipe Receiver or Virtual Cable?</b></summary>
 
 **상황에 따라 다릅니다:**
 
-**Receiver VST2를 추천하는 경우:**
+**DirectPipe Receiver를 추천하는 경우:**
 - **OBS**에서 DirectPipe 오디오를 사용하는 경우 (OBS는 VST2 지원)
+- **DAW**에서 DirectPipe 오디오를 받아 추가 처리하는 경우 (VST3/AU 사용 가능)
 - 가상 오디오 케이블을 설치하고 싶지 않은 경우
 - 설정을 최소화하고 싶은 경우
 
-**VB-Audio Virtual Cable을 추천하는 경우:**
+**가상 오디오 케이블을 추천하는 경우 (VB-Cable/BlackHole/PipeWire):**
 - **Discord, Zoom, Google Meet** 등 VST 플러그인을 지원하지 않는 앱에서 사용하는 경우
 - 여러 앱에서 동시에 DirectPipe 오디오를 사용해야 하는 경우
 - OBS 이외의 앱에서도 가상 마이크가 필요한 경우
 
 **둘 다 동시에 사용 가능합니다!**
-- DirectPipe Output → VB-Cable (Discord/Zoom용)
+- DirectPipe Output → 가상 케이블 (Discord/Zoom용)
 - DirectPipe IPC → Receiver VST2 (OBS용)
-- 이렇게 하면 Discord에는 VB-Cable로, OBS에는 Receiver VST로 동시에 오디오를 보낼 수 있습니다
+- 이렇게 하면 Discord에는 가상 케이블로, OBS에는 DirectPipe Receiver로 동시에 오디오를 보낼 수 있습니다
 
 ---
 
 **Depends on your use case:**
 
-**Use Receiver VST2 when:**
+**Use DirectPipe Receiver when:**
 - Using DirectPipe audio in **OBS** (OBS supports VST2)
+- Using DirectPipe audio in a **DAW** (VST3/AU available)
 - Don't want to install virtual audio cable software
 - Want minimal setup
 
-**Use VB-Audio Virtual Cable when:**
+**Use a virtual audio cable (VB-Cable/BlackHole/PipeWire) when:**
 - Using apps that **don't support VST plugins** (Discord, Zoom, Google Meet, etc.)
 - Need to use DirectPipe audio in multiple apps simultaneously
 - Need a virtual microphone for non-OBS apps
 
 **You can use both at the same time!**
-- DirectPipe Output → VB-Cable (for Discord/Zoom)
+- DirectPipe Output → Virtual cable (for Discord/Zoom)
 - DirectPipe IPC → Receiver VST2 (for OBS)
-- This lets you send audio to Discord via VB-Cable and to OBS via Receiver VST simultaneously
+- This lets you send audio to Discord via virtual cable and to OBS via DirectPipe Receiver simultaneously
 </details>
 
 <details>
 <summary><b>IPC 출력(VST 버튼)은 뭔가요? 켜야 하나요? / What is IPC Output (VST button)? Do I need to enable it?</b></summary>
 
-**IPC(Inter-Process Communication) 출력**은 DirectPipe에서 처리한 오디오를 **공유 메모리**를 통해 다른 프로세스(Receiver VST 플러그인)에 전달하는 기능입니다.
+**IPC(Inter-Process Communication) 출력**은 DirectPipe에서 처리한 오디오를 **공유 메모리**를 통해 다른 프로세스(DirectPipe Receiver 플러그인)에 전달하는 기능입니다.
 
-**기본값은 꺼져(OFF) 있습니다.** VB-Audio Virtual Cable만 사용하는 경우에는 켤 필요가 없습니다.
+**기본값은 꺼져(OFF) 있습니다.** 가상 오디오 케이블 (VB-Cable, BlackHole 등)만 사용하는 경우에는 켤 필요가 없습니다.
 
 **켜야 하는 경우:**
 - OBS에서 **DirectPipe Receiver VST2** 플러그인을 사용할 때
@@ -899,9 +989,9 @@ Open the Receiver VST plugin interface and select a buffer size from the **Buffe
 
 ---
 
-**IPC (Inter-Process Communication) Output** sends DirectPipe's processed audio to another process (the Receiver VST plugin) via **shared memory**.
+**IPC (Inter-Process Communication) Output** sends DirectPipe's processed audio to another process (the DirectPipe Receiver plugin) via **shared memory**.
 
-**It's OFF by default.** If you only use VB-Audio Virtual Cable, you don't need to enable it.
+**It's OFF by default.** If you only use a virtual audio cable (VB-Cable, BlackHole, etc.), you don't need to enable it.
 
 **Enable it when:**
 - Using the **DirectPipe Receiver VST2** plugin in OBS
@@ -920,30 +1010,33 @@ When enabled, the VST button turns **green**; when disabled, it's **red**.
 <details>
 <summary><b>업데이트는 어떻게 하나요? / How to update DirectPipe?</b></summary>
 
-DirectPipe v3.8.0부터 **인앱 자동 업데이트**를 지원합니다.
+DirectPipe는 **인앱 업데이트 알림**을 지원합니다. 새 버전이 있으면 하단 credit 라벨에 **"NEW vX.Y.Z"** 가 주황색으로 표시됩니다.
 
-1. 새 버전이 있으면 하단 credit 라벨에 **"NEW vX.Y.Z"** 가 주황색으로 표시됩니다
-2. 해당 라벨을 **클릭**하면 업데이트 다이얼로그가 뜹니다:
-   - **Update Now** — GitHub에서 자동 다운로드 → exe 교체 → 재시작
-   - **View on GitHub** — 릴리즈 페이지를 브라우저에서 열기
-   - **Later** — 닫기 (다음 실행 시 다시 알림)
-3. 업데이트 완료 후 앱이 자동 재시작되며, **"Updated to vX.Y.Z successfully!"** 알림이 표시됩니다
+**Windows**: "Update Now" 버튼으로 자동 다운로드 → exe 교체 → 재시작.
+**macOS/Linux**: "View on GitHub" 버튼으로 릴리즈 페이지에서 수동 다운로드.
 
 인터넷이 연결되지 않은 경우에도 기존 버전은 정상적으로 동작합니다.
 
 ---
 
-DirectPipe v3.8.0+ supports **in-app auto-update**.
+DirectPipe includes **in-app update notification**. When a newer version is available, the bottom credit label shows **"NEW vX.Y.Z"** in orange.
 
-1. When a newer version is available, the bottom credit label shows **"NEW vX.Y.Z"** in orange
-2. **Click** the label to open the update dialog:
-   - **Update Now** — Auto-download from GitHub → replace exe → restart
-   - **View on GitHub** — Open the release page in your browser
-   - **Later** — Dismiss (reminder appears on next launch)
-3. After the update, the app auto-restarts and shows **"Updated to vX.Y.Z successfully!"**
+**Windows**: Click "Update Now" for auto-download → replace exe → restart.
+**macOS/Linux**: Click "View on GitHub" to manually download from the release page.
 
 If you're offline, the current version continues to work normally.
 </details>
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=LiveTrack-X%2FDirectPipe&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&legend=top-left" />
+ </picture>
+</a>
+
 
 ## 후원 / Support
 
