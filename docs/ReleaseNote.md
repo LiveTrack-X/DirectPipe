@@ -26,6 +26,11 @@
 - **Preload cache race condition fix**: Per-slot version counter (`slotVersions_`) prevents background preload thread from storing stale plugin instances after `invalidateSlot` was called mid-preload. Version captured at file-read time, checked before cache store.
 - **Cache structure validation**: `saveSlot` now checks plugin structure (names/paths/order) via `isCachedWithStructure` before deciding to invalidate cache. Parameter-only saves (bypass, state) skip invalidation. Prevents stale cache when plugins are added/removed/replaced/reordered.
 
+### Bugfix Ports from v3.10.2
+
+- **ASIO device iteration fix**: `setAudioDeviceType` now builds an ordered try-list (`tryOrder`: preferred → lastAsio → all remaining devices) and iterates through all available ASIO devices. Previously only tried `devices[0]` — if that device was disconnected, no other ASIO devices were attempted. Individual device failures log `warn` and `continue` to next device; full revert to previous driver only when all devices fail.
+- **Driver combo sync on ASIO failure**: `AudioSettings::onDriverTypeChanged` now checks the `bool` return value of `setAudioDeviceType`. On failure (engine reverted to previous driver), syncs the driver combo to the actual current driver type via `getCurrentDeviceType()`. Fixes UI showing "ASIO" while engine was already back on WASAPI.
+
 ### Docs
 
 - Platform Guide (new): OS-specific setup, features, and limitations.
