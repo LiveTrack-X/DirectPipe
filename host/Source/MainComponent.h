@@ -40,6 +40,7 @@
 #include "UI/NotificationBar.h"
 #include "UI/LogPanel.h"
 #include "UI/PresetSlotBar.h"
+#include "UI/StatusUpdater.h"
 #include "UI/UpdateChecker.h"
 
 #include <memory>
@@ -123,26 +124,16 @@ private:
     // Settings auto-save — delegated to SettingsAutosaver
     std::unique_ptr<SettingsAutosaver> settingsAutosaver_;
 
+    // Status bar + mute indicators + broadcaster updates — delegated to StatusUpdater
+    std::unique_ptr<StatusUpdater> statusUpdater_;
+
     // Mute indicators (clickable) + panic mute button
     juce::TextButton outputMuteBtn_{"OUT"};
     juce::TextButton monitorMuteBtn_{"MON"};
     juce::TextButton vstMuteBtn_{"VST"};
     juce::TextButton panicMuteBtn_{"PANIC MUTE"};
 
-    // Cached mute states (avoid redundant repaints)
-    bool cachedOutputMuted_ = false;
-    bool cachedMonitorMuted_ = false;
-    bool cachedVstEnabled_ = false;
-
-    // Cached status bar values (avoid string reconstruction every 30Hz tick)
-    double cachedMainLatency_ = -1.0;
-    double cachedMonitorLatency_ = -1.0;
-    bool cachedMonEnabled_ = false;
-    double cachedCpuPercent_ = -1.0;
-    int cachedXruns_ = -1;
-    int cachedSampleRate_ = 0;
-    int cachedBufferSize_ = 0;
-    int cachedChannelMode_ = 0;
+    // Notification visibility cache
     bool cachedNotifActive_ = false;
 
     // Status bar labels

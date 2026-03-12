@@ -370,6 +370,9 @@ MainComponent::MainComponent(bool enableExternalControls)
             w->setVisible(true);
     };
 
+    // ── Status Updater (mute indicators, status bar, broadcaster) ──
+    statusUpdater_ = std::make_unique<StatusUpdater>(audioEngine_, broadcaster_);
+
     // ── Mute Status Indicators (clickable) ──
     auto setupMuteBtn = [this](juce::TextButton& btn) {
         btn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
@@ -441,6 +444,11 @@ MainComponent::MainComponent(bool enableExternalControls)
     // ── Notification Bar (overlays status bar labels on error) ──
     addAndMakeVisible(notificationBar_);
     notificationBar_.setVisible(false);
+
+    // Bind UI component pointers to StatusUpdater (all components created above)
+    statusUpdater_->setUI(&latencyLabel_, &cpuLabel_, &formatLabel_,
+                          &outputMuteBtn_, &monitorMuteBtn_, &vstMuteBtn_,
+                          &inputGainSlider_, inputMeter_.get(), outputMeter_.get());
 
     // Start UI update timer (30 Hz)
     startTimerHz(30);
@@ -648,166 +656,8 @@ void MainComponent::timerCallback()
     if (auto* logComp = dynamic_cast<LogPanel*>(rightTabs_->getTabContentComponent(3)))
         logComp->flushPendingLogs();
 
-    auto& monitor = audioEngine_.getLatencyMonitor();
-
-    bool muted = audioEngine_.isMuted();
-    inputMeter_->setLevel(audioEngine_.getInputLevel());
-    outputMeter_->setLevel(muted ? 0.0f : audioEngine_.getOutputLevel());
-    inputMeter_->tick();
-    outputMeter_->tick();
-
-    // Update mute indicator colours (cached to avoid redundant repaints)
-    {
-        bool outMuted = audioEngine_.isOutputMuted() || muted;
-        if (outMuted != cachedOutputMuted_) {
-            cachedOutputMuted_ = outMuted;
-            outputMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                outMuted ? juce::Colour(0xFFE05050) : juce::Colour(0xFF4CAF50));
-        }
-
-        bool monMuted = !audioEngine_.getOutputRouter().isEnabled(OutputRouter::Output::Monitor) || muted;
-        if (monMuted != cachedMonitorMuted_) {
-            cachedMonitorMuted_ = monMuted;
-            monitorMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                monMuted ? juce::Colour(0xFFE05050) : juce::Colour(0xFF4CAF50));
-        }
-
-        bool vstActive = audioEngine_.isIpcEnabled();
-        if (vstActive != cachedVstEnabled_) {
-            cachedVstEnabled_ = vstActive;
-            vstMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                vstActive ? juce::Colour(0xFF4CAF50) : juce::Colour(0xFFE05050));
-        }
-    }
-
-    // Main output latency: input buffer + processing + output buffer
-    double mainLatency = monitor.getTotalLatencyVirtualMicMs();
-
-    // Monitor output latency
-    auto& monOut = audioEngine_.getMonitorOutput();
-    auto& router = audioEngine_.getOutputRouter();
-    bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
-
-    // Latency label — only rebuild string when values change
-    {
-        double monitorLatency = 0.0;
-        if (monEnabled) {
-            monitorLatency = mainLatency;
-            if (monOut.isActive()) {
-                double monSR = monOut.getActualSampleRate();
-                if (monSR > 0.0)
-                    monitorLatency += (static_cast<double>(monOut.getActualBufferSize()) / monSR) * 1000.0;
-            }
-        }
-        // Check if values changed (0.05ms precision)
-        if (std::abs(mainLatency - cachedMainLatency_) > 0.05 ||
-            std::abs(monitorLatency - cachedMonitorLatency_) > 0.05 ||
-            monEnabled != cachedMonEnabled_)
-        {
-            cachedMainLatency_ = mainLatency;
-            cachedMonitorLatency_ = monitorLatency;
-            cachedMonEnabled_ = monEnabled;
-            juce::String latencyText = "Latency: " + juce::String(mainLatency, 1) + "ms";
-            if (monEnabled)
-                latencyText += " | Mon: " + juce::String(monitorLatency, 1) + "ms";
-            latencyLabel_.setText(latencyText, juce::dontSendNotification);
-        }
-    }
-
-    // CPU/XRun label — only rebuild when values change
-    {
-        audioEngine_.updateXRunTracking();
-        double cpuPct = monitor.getCpuUsagePercent();
-        int xruns = audioEngine_.getRecentXRunCount();
-        if (std::abs(cpuPct - cachedCpuPercent_) > 0.1 || xruns != cachedXruns_) {
-            cachedCpuPercent_ = cpuPct;
-            cachedXruns_ = xruns;
-            juce::String cpuText = "CPU: " + juce::String(cpuPct, 1) + "%";
-            if (xruns > 0) {
-                cpuText += " | XRun: " + juce::String(xruns);
-                cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF6B6B));
-            } else {
-                cpuLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
-            }
-            cpuLabel_.setText(cpuText, juce::dontSendNotification);
-        }
-    }
-
-    // Format label — SR/BS/channel rarely change, only rebuild on change
-    {
-        int sr = static_cast<int>(monitor.getSampleRate());
-        int bs = monitor.getBufferSize();
-        int cm = audioEngine_.getChannelMode();
-        if (sr != cachedSampleRate_ || bs != cachedBufferSize_ || cm != cachedChannelMode_) {
-            cachedSampleRate_ = sr;
-            cachedBufferSize_ = bs;
-            cachedChannelMode_ = cm;
-            formatLabel_.setText(
-                juce::String(sr) + "Hz / " + juce::String(bs) + " smp / " +
-                juce::String(cm == 1 ? "Mono" : "Stereo"),
-                juce::dontSendNotification);
-        }
-    }
-
-    float currentGain = audioEngine_.getInputGain();
-    if (std::abs(static_cast<float>(inputGainSlider_.getValue()) - currentGain) > 0.01f) {
-        inputGainSlider_.setValue(currentGain, juce::dontSendNotification);
-    }
-
-    // Broadcast state to WebSocket clients (Stream Deck, etc.)
-    auto& chain = audioEngine_.getVSTChain();
-    broadcaster_.updateState([&](AppState& s) {
-        s.inputGain = audioEngine_.getInputGain();
-        s.monitorVolume = router.getVolume(OutputRouter::Output::Monitor);
-        s.muted = muted;
-        s.outputMuted = audioEngine_.isOutputMuted();
-        s.inputMuted = muted;
-        s.masterBypassed = true;
-        s.latencyMs = static_cast<float>(mainLatency);
-        if (monEnabled) {
-            double monitorLat = mainLatency;
-            if (monOut.isActive()) {
-                double monSR2 = monOut.getActualSampleRate();
-                if (monSR2 > 0.0)
-                    monitorLat += (static_cast<double>(monOut.getActualBufferSize()) / monSR2) * 1000.0;
-            }
-            s.monitorLatencyMs = static_cast<float>(monitorLat);
-        } else {
-            s.monitorLatencyMs = 0.0f;
-        }
-        s.inputLevelDb = audioEngine_.getInputLevel();
-        s.cpuPercent = static_cast<float>(monitor.getCpuUsagePercent());
-        s.sampleRate = monitor.getSampleRate();
-        s.bufferSize = monitor.getBufferSize();
-        s.channelMode = audioEngine_.getChannelMode();
-        s.monitorEnabled = router.isEnabled(OutputRouter::Output::Monitor);
-        s.activeSlot = presetManager_ ? presetManager_->getActiveSlot() : 0;
-        s.recording = audioEngine_.getRecorder().isRecording();
-        s.recordingSeconds = audioEngine_.getRecorder().getRecordedSeconds();
-        s.ipcEnabled = audioEngine_.isIpcEnabled();
-        s.deviceLost = audioEngine_.isDeviceLost();
-        s.monitorLost = audioEngine_.getMonitorOutput().isDeviceLost();
-
-        s.plugins.clear();
-        for (int i = 0; i < chain.getPluginCount(); ++i) {
-            auto* slot = chain.getPluginSlot(i);
-            if (slot) {
-                AppState::PluginState ps;
-                ps.name = slot->name.toStdString();
-                ps.bypassed = slot->bypassed;
-                ps.loaded = slot->instance != nullptr;
-                s.plugins.push_back(ps);
-                if (!ps.bypassed && ps.loaded) s.masterBypassed = false;
-            }
-        }
-        if (s.plugins.empty()) s.masterBypassed = false;
-
-        // Slot names
-        if (presetManager_) {
-            for (int si = 0; si < PresetSlotBar::kNumPresetSlots; ++si)
-                s.slotNames[static_cast<size_t>(si)] = presetManager_->getSlotName(si).toStdString();
-        }
-    });
+    // ── Status bar, mute indicators, level meters, broadcaster ──
+    statusUpdater_->tick(presetManager_.get(), PresetSlotBar::kNumPresetSlots);
 
     // Update recording state in OutputPanel (Monitor tab)
     if (outputPanelPtr_) {
