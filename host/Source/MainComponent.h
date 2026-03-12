@@ -37,6 +37,7 @@
 #include "UI/ControlSettingsPanel.h"
 #include "UI/NotificationBar.h"
 #include "UI/LogPanel.h"
+#include "UI/UpdateChecker.h"
 
 #include <array>
 #include <memory>
@@ -174,18 +175,8 @@ private:
     NotificationBar notificationBar_;
     void showNotification(const juce::String& message, NotificationLevel level);
 
-    // Update check — show "NEW" on credit label if newer release exists
-    void checkForUpdate();
-    void showUpdateDialog();
-    std::thread updateCheckThread_;
-    juce::String latestVersion_;       // e.g. "3.9.0"
-    juce::String latestDownloadUrl_;   // GitHub release asset URL
-    bool updateAvailable_ = false;
-#if JUCE_WINDOWS
-    void performUpdate();
-    double downloadProgress_ = -1.0;  // -1 = indeterminate spinner
-    std::thread downloadThread_;      // Background download thread (joined in destructor)
-#endif
+    // Update check — delegated to UpdateChecker
+    UpdateChecker updateChecker_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

@@ -60,6 +60,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/NotificationBar.cpp
     Source/UI/LogPanel.h
     Source/UI/LogPanel.cpp
+    Source/UI/UpdateChecker.h
+    Source/UI/UpdateChecker.cpp
     Source/Control/ActionDispatcher.h
     Source/Control/ActionDispatcher.cpp
     Source/Control/StateBroadcaster.h
