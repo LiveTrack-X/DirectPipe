@@ -58,6 +58,9 @@ public:
     /** Called when the user changes any audio setting. */
     std::function<void()> onSettingsChanged;
 
+    /** Called when a device operation fails (message suitable for NotificationBar). */
+    std::function<void(const juce::String&)> onError;
+
     /** Output "None" mode — mutes main output, keeps device open for input/IPC/monitor. */
     bool isOutputNone() const { return engine_.isOutputNone(); }
     void setOutputNone(bool none);

@@ -329,6 +329,7 @@ void AudioSettings::onDriverTypeChanged()
             int actualIdx = types.indexOf(actualType);
             if (actualIdx >= 0)
                 driverCombo_.setSelectedId(actualIdx + 1, juce::dontSendNotification);
+            if (onError) onError(result.message);
         }
 
         rebuildDeviceLists();
@@ -354,7 +355,8 @@ void AudioSettings::onInputDeviceChanged()
     if (selectedText.isEmpty() || selectedText.contains("(Disconnected)")) return;
 
     if (isAsioMode()) {
-        engine_.setAsioDevice(selectedText);
+        auto r = engine_.setAsioDevice(selectedText);
+        if (!r && onError) onError(r.message);
 
         // Sync output combo to match (ASIO single device)
         auto outputs = engine_.getAvailableOutputDevices();
@@ -364,7 +366,8 @@ void AudioSettings::onInputDeviceChanged()
 
         rebuildChannelLists();
     } else {
-        engine_.setInputDevice(selectedText);
+        auto r = engine_.setInputDevice(selectedText);
+        if (!r && onError) onError(r.message);
     }
 
     rebuildSampleRateList();
@@ -398,7 +401,8 @@ void AudioSettings::onOutputDeviceChanged()
     }
 
     if (isAsioMode()) {
-        engine_.setAsioDevice(selectedText);
+        auto r = engine_.setAsioDevice(selectedText);
+        if (!r && onError) onError(r.message);
 
         // Sync input combo to match (ASIO single device)
         auto inputs = engine_.getAvailableInputDevices();
@@ -408,7 +412,8 @@ void AudioSettings::onOutputDeviceChanged()
 
         rebuildChannelLists();
     } else {
-        engine_.setOutputDevice(selectedText);
+        auto r = engine_.setOutputDevice(selectedText);
+        if (!r && onError) onError(r.message);
     }
 
     rebuildSampleRateList();
@@ -455,7 +460,8 @@ void AudioSettings::onSampleRateChanged()
 
     auto rates = engine_.getAvailableSampleRates();
     if (id - 1 < rates.size()) {
-        engine_.setSampleRate(rates[id - 1]);
+        auto r = engine_.setSampleRate(rates[id - 1]);
+        if (!r && onError) onError(r.message);
         updateLatencyDisplay();
 
         if (onSettingsChanged) onSettingsChanged();
@@ -469,7 +475,8 @@ void AudioSettings::onBufferSizeChanged()
 
     auto sizes = engine_.getAvailableBufferSizes();
     if (id - 1 < sizes.size()) {
-        engine_.setBufferSize(sizes[id - 1]);
+        auto r = engine_.setBufferSize(sizes[id - 1]);
+        if (!r && onError) onError(r.message);
         updateLatencyDisplay();
 
         if (onSettingsChanged) onSettingsChanged();

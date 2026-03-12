@@ -430,7 +430,8 @@ void OutputPanel::onMonitorDeviceSelected()
 {
     auto selectedText = monitorDeviceCombo_.getText();
     if (selectedText.isNotEmpty()) {
-        engine_.setMonitorDevice(selectedText);
+        auto r = engine_.setMonitorDevice(selectedText);
+        if (!r && onError) onError(r.message);
         refreshBufferSizeCombo();
         if (onSettingsChanged) onSettingsChanged();
     }
@@ -448,7 +449,8 @@ void OutputPanel::onMonitorBufferSizeChanged()
     auto text = monitorBufferCombo_.getText();
     int bufferSize = text.getIntValue();
     if (bufferSize > 0) {
-        engine_.setMonitorBufferSize(bufferSize);
+        auto r = engine_.setMonitorBufferSize(bufferSize);
+        if (!r && onError) onError(r.message);
 
         // Update combo to show the actual buffer size WASAPI applied
         int actual = engine_.getMonitorOutput().getActualBufferSize();

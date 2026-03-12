@@ -88,6 +88,9 @@ MainComponent::MainComponent(bool enableExternalControls)
             }
         }
     };
+    audioSettings_->onError = [this](const juce::String& msg) {
+        showNotification(msg, NotificationLevel::Error);
+    };
 
     // ── Plugin Chain Editor ──
     pluginChainEditor_ = std::make_unique<PluginChainEditor>(audioEngine_.getVSTChain());
@@ -116,6 +119,9 @@ MainComponent::MainComponent(bool enableExternalControls)
     // ── Output Panel ──
     outputPanel_ = std::make_unique<OutputPanel>(audioEngine_);
     outputPanel_->onSettingsChanged = [this] { markSettingsDirty(); };
+    outputPanel_->onError = [this](const juce::String& msg) {
+        showNotification(msg, NotificationLevel::Error);
+    };
     outputPanel_->onRecordToggle = [this] {
         ActionEvent ev;
         ev.action = Action::RecordingToggle;

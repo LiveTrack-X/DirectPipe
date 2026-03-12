@@ -45,6 +45,9 @@ public:
     std::function<void()> onRecordToggle;
     std::function<void(bool)> onIpcToggle;
 
+    /** Called when a monitor operation fails (message suitable for NotificationBar). */
+    std::function<void(const juce::String&)> onError;
+
     /** Set the IPC toggle state externally (e.g., when loading settings). */
     void setIpcToggleState(bool enabled);
 
