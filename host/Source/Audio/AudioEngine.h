@@ -26,6 +26,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../ActionResult.h"
 #include "VSTChain.h"
 #include "OutputRouter.h"
 #include "LatencyMonitor.h"
@@ -80,14 +81,14 @@ public:
     LatencyMonitor& getLatencyMonitor() { return latencyMonitor_; }
     AudioRecorder& getRecorder() { return recorder_; }
     // Device type (ASIO / Windows Audio)
-    bool setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice = {});
+    ActionResult setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice = {});
     juce::String getCurrentDeviceType() const;
     juce::StringArray getAvailableDeviceTypes();
 
     // Device selection
-    bool setInputDevice(const juce::String& deviceName);
-    bool setOutputDevice(const juce::String& deviceName);
-    bool setAsioDevice(const juce::String& deviceName);
+    ActionResult setInputDevice(const juce::String& deviceName);
+    ActionResult setOutputDevice(const juce::String& deviceName);
+    ActionResult setAsioDevice(const juce::String& deviceName);
 
     /** @brief Get the desired device type (survives fallback, unlike getCurrentDeviceType). */
     juce::String getDesiredDeviceType() const { return desiredDeviceType_.isEmpty() ? getCurrentDeviceType() : desiredDeviceType_; }
@@ -101,8 +102,8 @@ public:
     juce::Array<double> getAvailableSampleRates() const;
     juce::Array<int> getAvailableBufferSizes() const;
 
-    void setBufferSize(int bufferSize);
-    void setSampleRate(double sampleRate);
+    ActionResult setBufferSize(int bufferSize);
+    ActionResult setSampleRate(double sampleRate);
 
     /** @brief Pre-set SR/BS before device type switch (avoids intermediate restarts). */
     void presetAudioParams(double sampleRate, int bufferSize);
@@ -115,9 +116,9 @@ public:
     juce::StringArray getOutputChannelNames() const;
 
     /** @brief Set which input channels are active (stereo pair starting at firstChannel). */
-    bool setActiveInputChannels(int firstChannel, int numChannels = 2);
+    ActionResult setActiveInputChannels(int firstChannel, int numChannels = 2);
     /** @brief Set which output channels are active (stereo pair starting at firstChannel). */
-    bool setActiveOutputChannels(int firstChannel, int numChannels = 2);
+    ActionResult setActiveOutputChannels(int firstChannel, int numChannels = 2);
 
     /** @brief Get the first active input channel index. */
     int getActiveInputChannelOffset() const;
@@ -128,12 +129,12 @@ public:
     bool isMonitorEnabled() const { return outputRouter_.isEnabled(OutputRouter::Output::Monitor); }
 
     /** Set the monitor output WASAPI device (independent of main driver). */
-    bool setMonitorDevice(const juce::String& deviceName);
+    ActionResult setMonitorDevice(const juce::String& deviceName);
     juce::String getMonitorDeviceName() const { return monitorOutput_.getDeviceName(); }
     MonitorOutput& getMonitorOutput() { return monitorOutput_; }
 
     /** Set/get the monitor output buffer size (independent of main device). */
-    bool setMonitorBufferSize(int bufferSize);
+    ActionResult setMonitorBufferSize(int bufferSize);
     int getMonitorBufferSize() const { return monitorOutput_.getPreferredBufferSize(); }
 
     void setChannelMode(int channels);

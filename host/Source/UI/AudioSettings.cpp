@@ -321,10 +321,10 @@ void AudioSettings::onDriverTypeChanged()
     int id = driverCombo_.getSelectedId();
     auto types = engine_.getAvailableDeviceTypes();
     if (id >= 1 && id <= types.size()) {
-        bool success = engine_.setAudioDeviceType(types[id - 1]);
+        auto result = engine_.setAudioDeviceType(types[id - 1]);
 
         // If switch failed, sync combo to actual current driver type
-        if (!success) {
+        if (!result) {
             auto actualType = engine_.getCurrentDeviceType();
             int actualIdx = types.indexOf(actualType);
             if (actualIdx >= 0)

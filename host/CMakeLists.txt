@@ -18,6 +18,7 @@ juce_add_gui_app(DirectPipe
 )
 
 target_sources(DirectPipe PRIVATE
+    Source/ActionResult.h
     Source/Main.cpp
     Source/MainComponent.h
     Source/MainComponent.cpp
