@@ -27,8 +27,8 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include <map>
 #include <array>
+#include <map>
 #include <mutex>
 #include <memory>
 #include <thread>
@@ -70,6 +70,19 @@ public:
     bool isCached(int slotIndex, double currentSR, int currentBS);
 
     /**
+     * @brief Check if a slot is cached with matching SR/BS AND plugin count.
+     * @return true if cached with matching count, false otherwise (including not cached).
+     */
+    bool isCachedWithCount(int slotIndex, double currentSR, int currentBS, int expectedCount);
+
+    /**
+     * @brief Check if cached slot matches given plugin structure (names+paths in order).
+     * @return true if not cached OR matches structure. false if cached but structure differs.
+     */
+    bool isCachedWithStructure(int slotIndex, double currentSR, int currentBS,
+                               const std::vector<std::pair<juce::String, juce::String>>& chainStructure);
+
+    /**
      * @brief Start pre-loading all occupied slots except the given one.
      * Runs on a background thread. Cancels any previous preload.
      * @param exceptSlot Slot to skip (currently active).
@@ -90,13 +103,6 @@ public:
 
     /** @brief Invalidate all cached slots. */
     void invalidateAll();
-
-    /**
-     * @brief Check if cached slot matches given plugin structure (names+paths in order).
-     * @return true if not cached OR matches structure. false if cached but structure differs.
-     */
-    bool isCachedWithStructure(int slotIndex, double currentSR, int currentBS,
-                               const std::vector<std::pair<juce::String, juce::String>>& chainStructure);
 
     /** @brief Cancel any running preload and wait for it to finish. */
     void cancelAndWait();
