@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/version-3.10.2-4fc3f7?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.10.3-4fc3f7?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3-supported-ff6f00?style=flat-square" alt="VST">
@@ -21,8 +21,12 @@
 
 ## 다운로드 / Download
 
-- **Stable (안정 빌드)**: [v3.10.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.1) — 전체 테스트 통과 / Fully tested
-- **Latest (최신 빌드)**: [최신 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 최신 버그 수정 포함 / Includes latest fixes
+> **v3.10.x는 Windows 전용 최종 안정 버전입니다.** 이후 새 기능은 추가되지 않으며, 치명적 버그와 보안 이슈만 패치됩니다. 크로스 플랫폼(macOS/Linux) 지원은 [v4.0](https://github.com/LiveTrack-X/DirectPipe/releases)을 참조하세요.
+>
+> **v3.10.x is the final stable release for Windows.** No new features will be added — only critical bugs and security issues will be patched. For cross-platform support (macOS/Linux), see [v4.0](https://github.com/LiveTrack-X/DirectPipe/releases).
+
+- **Stable (안정 빌드)**: [v3.10.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — 최종 안정 버전 / Final stable release
+- **Next (크로스 플랫폼)**: [최신 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — macOS/Linux 지원 / Cross-platform support
 
 <p align="center">
   <em>DirectPipe is a modern lightweight VST host for applying studio-quality effects to your microphone.</em>
