@@ -1027,6 +1027,17 @@ DirectPipe includes **in-app update notification**. When a newer version is avai
 If you're offline, the current version continues to work normally.
 </details>
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=LiveTrack-X%2FDirectPipe&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&legend=top-left" />
+ </picture>
+</a>
+
+
 ## 후원 / Support
 
 프로젝트가 도움이 되셨다면 커피 한 잔 사주세요! / If you find this project useful, consider buying me a coffee!
