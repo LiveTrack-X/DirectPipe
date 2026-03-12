@@ -62,9 +62,25 @@ static bool parseActionMessage(const std::string& message, ActionEvent& event)
         event.intParam = params ? static_cast<int>(params->getProperty("index")) : 0;
     } else if (actionStr == "panic_mute") {
         event.action = Action::PanicMute;
-    } else if (actionStr == "input_gain") {
+    } else if (actionStr == "input_gain" || actionStr == "input_gain_adjust") {
         event.action = Action::InputGainAdjust;
         event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("delta"))) : 1.0f;
+    } else if (actionStr == "input_mute_toggle") {
+        event.action = Action::InputMuteToggle;
+    } else if (actionStr == "switch_preset" || actionStr == "switch_preset_slot") {
+        event.action = Action::SwitchPresetSlot;
+        event.intParam = params ? static_cast<int>(params->getProperty("slot")) : 0;
+    } else if (actionStr == "monitor_toggle") {
+        event.action = Action::MonitorToggle;
+    } else if (actionStr == "recording_toggle") {
+        event.action = Action::RecordingToggle;
+    } else if (actionStr == "set_plugin_param") {
+        event.action = Action::SetPluginParameter;
+        event.intParam = params ? static_cast<int>(params->getProperty("plugin")) : 0;
+        event.intParam2 = params ? static_cast<int>(params->getProperty("param")) : 0;
+        event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : 0.0f;
+    } else if (actionStr == "ipc_toggle") {
+        event.action = Action::IpcToggle;
     } else {
         return false;
     }
@@ -424,4 +440,109 @@ TEST_F(WebSocketProtocolTest, RoundTripSetVolume) {
     EXPECT_EQ(event.action, Action::SetVolume);
     EXPECT_EQ(event.stringParam, "virtual_mic");
     EXPECT_FLOAT_EQ(event.floatParam, 0.42f);
+}
+
+// ─── Additional Protocol Tests ───────────────────────────────────────
+
+TEST_F(WebSocketProtocolTest, ParseRecordingToggle) {
+    std::string msg = R"({"type":"action","action":"recording_toggle"})";
+    ActionEvent event;
+    ASSERT_TRUE(parseActionMessage(msg, event));
+    EXPECT_EQ(event.action, Action::RecordingToggle);
+}
+
+TEST_F(WebSocketProtocolTest, ParseIpcToggle) {
+    std::string msg = R"({"type":"action","action":"ipc_toggle"})";
+    ActionEvent event;
+    ASSERT_TRUE(parseActionMessage(msg, event));
+    EXPECT_EQ(event.action, Action::IpcToggle);
+}
+
+TEST_F(WebSocketProtocolTest, ParseMonitorToggle) {
+    std::string msg = R"({"type":"action","action":"monitor_toggle"})";
+    ActionEvent event;
+    ASSERT_TRUE(parseActionMessage(msg, event));
+    EXPECT_EQ(event.action, Action::MonitorToggle);
+}
+
+TEST_F(WebSocketProtocolTest, ParseInputGainAdjust) {
+    std::string msg = R"({"type":"action","action":"input_gain_adjust","params":{"delta":0.1}})";
+    ActionEvent event;
+    ASSERT_TRUE(parseActionMessage(msg, event));
+    EXPECT_EQ(event.action, Action::InputGainAdjust);
+    EXPECT_FLOAT_EQ(event.floatParam, 0.1f);
+}
+
+TEST_F(WebSocketProtocolTest, ParseInputMuteToggle) {
+    std::string msg = R"({"type":"action","action":"input_mute_toggle"})";
+    ActionEvent event;
+    ASSERT_TRUE(parseActionMessage(msg, event));
+    EXPECT_EQ(event.action, Action::InputMuteToggle);
+}
+
+TEST_F(WebSocketProtocolTest, ParseSetPluginParameter) {
+    std::string msg = R"({"type":"action","action":"set_plugin_param","params":{"plugin":1,"param":3,"value":0.6}})";
+    ActionEvent event;
+    ASSERT_TRUE(parseActionMessage(msg, event));
+    EXPECT_EQ(event.action, Action::SetPluginParameter);
+    EXPECT_EQ(event.intParam, 1);
+    EXPECT_EQ(event.intParam2, 3);
+    EXPECT_FLOAT_EQ(event.floatParam, 0.6f);
+}
+
+TEST_F(WebSocketProtocolTest, RejectNonObjectMessage) {
+    ActionEvent event;
+    EXPECT_FALSE(parseActionMessage("just a string", event));
+    EXPECT_FALSE(parseActionMessage("42", event));
+    EXPECT_FALSE(parseActionMessage("null", event));
+    EXPECT_FALSE(parseActionMessage("[1,2,3]", event));
+}
+
+TEST_F(WebSocketProtocolTest, RejectEmptyActionString) {
+    std::string msg = R"({"type":"action","action":""})";
+    ActionEvent event;
+    EXPECT_FALSE(parseActionMessage(msg, event));
+}
+
+// ─── Additional State Serialization Tests ────────────────────────────
+
+TEST_F(StateSerializationTest, StateJsonIncludesDeviceLostFields) {
+    auto state = juce::String(broadcaster->toJSON());
+    auto parsed = juce::JSON::parse(state);
+    auto* data = parsed.getDynamicObject()->getProperty("data").getDynamicObject();
+
+    EXPECT_TRUE(data->hasProperty("device_lost"));
+    EXPECT_TRUE(data->hasProperty("monitor_lost"));
+    EXPECT_EQ(static_cast<bool>(data->getProperty("device_lost")), false);
+    EXPECT_EQ(static_cast<bool>(data->getProperty("monitor_lost")), false);
+}
+
+TEST_F(StateSerializationTest, StateJsonIncludesSlotNames) {
+    auto state = juce::String(broadcaster->toJSON());
+    auto parsed = juce::JSON::parse(state);
+    auto* data = parsed.getDynamicObject()->getProperty("data").getDynamicObject();
+
+    ASSERT_TRUE(data->hasProperty("slot_names"));
+    auto* names = data->getProperty("slot_names").getArray();
+    ASSERT_NE(names, nullptr);
+    EXPECT_EQ(names->size(), 5);
+}
+
+TEST_F(StateSerializationTest, StateJsonIncludesRecordingFields) {
+    auto state = juce::String(broadcaster->toJSON());
+    auto parsed = juce::JSON::parse(state);
+    auto* data = parsed.getDynamicObject()->getProperty("data").getDynamicObject();
+
+    EXPECT_TRUE(data->hasProperty("recording"));
+    EXPECT_TRUE(data->hasProperty("recording_seconds"));
+    EXPECT_EQ(static_cast<bool>(data->getProperty("recording")), false);
+}
+
+TEST_F(StateSerializationTest, StateJsonIncludesIpcEnabled) {
+    auto state = juce::String(broadcaster->toJSON());
+    auto parsed = juce::JSON::parse(state);
+    auto* data = parsed.getDynamicObject()->getProperty("data").getDynamicObject();
+
+    EXPECT_TRUE(data->hasProperty("ipc_enabled"));
+    EXPECT_EQ(static_cast<bool>(data->getProperty("ipc_enabled")), false);
 }

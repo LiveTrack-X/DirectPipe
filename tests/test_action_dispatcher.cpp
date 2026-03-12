@@ -423,3 +423,123 @@ TEST_F(ActionDispatcherTest, ConcurrentDispatchFromMultipleThreads) {
     EXPECT_EQ(listener.events.size(),
               static_cast<size_t>(kThreads * kDispatchesPerThread));
 }
+
+// ─── Additional Coverage ─────────────────────────────────────────────
+
+TEST_F(ActionDispatcherTest, DispatchWithStringParam) {
+    MockActionListener listener;
+    dispatcher->addListener(&listener);
+
+    ActionEvent event;
+    event.action = Action::SetVolume;
+    event.stringParam = "monitor";
+    event.floatParam = 0.75f;
+    dispatcher->dispatch(event);
+
+    ASSERT_EQ(listener.events.size(), 1u);
+    EXPECT_EQ(listener.lastEvent().stringParam, "monitor");
+    EXPECT_FLOAT_EQ(listener.lastEvent().floatParam, 0.75f);
+    dispatcher->removeListener(&listener);
+}
+
+TEST_F(ActionDispatcherTest, DispatchSetPluginParameter) {
+    MockActionListener listener;
+    dispatcher->addListener(&listener);
+
+    ActionEvent event;
+    event.action = Action::SetPluginParameter;
+    event.intParam = 2;    // plugin index
+    event.intParam2 = 5;   // param index
+    event.floatParam = 0.3f;
+    dispatcher->dispatch(event);
+
+    ASSERT_EQ(listener.events.size(), 1u);
+    EXPECT_EQ(listener.lastEvent().action, Action::SetPluginParameter);
+    EXPECT_EQ(listener.lastEvent().intParam, 2);
+    EXPECT_EQ(listener.lastEvent().intParam2, 5);
+    EXPECT_FLOAT_EQ(listener.lastEvent().floatParam, 0.3f);
+    dispatcher->removeListener(&listener);
+}
+
+TEST_F(ActionDispatcherTest, DispatchRecordingToggle) {
+    MockActionListener listener;
+    dispatcher->addListener(&listener);
+
+    ActionEvent event;
+    event.action = Action::RecordingToggle;
+    dispatcher->dispatch(event);
+
+    ASSERT_EQ(listener.events.size(), 1u);
+    EXPECT_EQ(listener.lastEvent().action, Action::RecordingToggle);
+    dispatcher->removeListener(&listener);
+}
+
+TEST_F(ActionDispatcherTest, DispatchIpcToggle) {
+    MockActionListener listener;
+    dispatcher->addListener(&listener);
+
+    ActionEvent event;
+    event.action = Action::IpcToggle;
+    dispatcher->dispatch(event);
+
+    ASSERT_EQ(listener.events.size(), 1u);
+    EXPECT_EQ(listener.lastEvent().action, Action::IpcToggle);
+    dispatcher->removeListener(&listener);
+}
+
+TEST_F(ActionDispatcherTest, DispatchInputGainAdjust) {
+    MockActionListener listener;
+    dispatcher->addListener(&listener);
+
+    ActionEvent event;
+    event.action = Action::InputGainAdjust;
+    event.floatParam = -0.1f;
+    dispatcher->dispatch(event);
+
+    ASSERT_EQ(listener.events.size(), 1u);
+    EXPECT_EQ(listener.lastEvent().action, Action::InputGainAdjust);
+    EXPECT_FLOAT_EQ(listener.lastEvent().floatParam, -0.1f);
+    dispatcher->removeListener(&listener);
+}
+
+TEST_F(ActionDispatcherTest, DispatchMonitorToggle) {
+    MockActionListener listener;
+    dispatcher->addListener(&listener);
+
+    ActionEvent event;
+    event.action = Action::MonitorToggle;
+    dispatcher->dispatch(event);
+
+    ASSERT_EQ(listener.events.size(), 1u);
+    EXPECT_EQ(listener.lastEvent().action, Action::MonitorToggle);
+    dispatcher->removeListener(&listener);
+}
+
+TEST_F(ActionDispatcherTest, RemoveNonexistentListenerNoOp) {
+    MockActionListener listener;
+    // Remove a listener that was never added — should not crash
+    dispatcher->removeListener(&listener);
+
+    // Dispatch should still work with no listeners
+    ActionEvent event;
+    event.action = Action::PanicMute;
+    dispatcher->dispatch(event);
+}
+
+TEST_F(ActionDispatcherTest, SequentialDispatchPreservesOrder) {
+    MockActionListener listener;
+    dispatcher->addListener(&listener);
+
+    for (int i = 0; i < 20; ++i) {
+        ActionEvent event;
+        event.action = Action::SwitchPresetSlot;
+        event.intParam = i % 5;
+        dispatcher->dispatch(event);
+    }
+
+    EXPECT_EQ(listener.events.size(), 20u);
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(listener.events[i].intParam, i % 5);
+    }
+    dispatcher->removeListener(&listener);
+}

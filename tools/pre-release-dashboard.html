@@ -61,8 +61,12 @@ input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--gr
 <button id="btnRun" onclick="runAll()">Run All Auto Tests</button>
 <button id="btnExport" onclick="exportReport()">Export Report</button>
 <button id="btnReset" onclick="resetAll()">Reset</button>
+<label style="padding:8px 20px;border:none;border-radius:5px;cursor:pointer;font-size:.9em;font-weight:600;background:#0f3460;color:#eee;display:inline-block">
+Load GTest JSON<input type="file" accept=".json" multiple style="display:none" onchange="loadGTestFiles(this.files)">
+</label>
 </div>
 <div class="stats">
+<div class="st w" id="sU">Unit: --</div>
 <div class="st w" id="sA">Auto: --</div>
 <div class="st w" id="sM">Manual: --</div>
 <div class="st w" id="sT">Total: --</div>
@@ -77,6 +81,7 @@ const D=ms=>new Promise(r=>setTimeout(r,ms));
 let R={};// results: id->'pass'|'fail'|'skip'|'pending'
 let snap=null;// state snapshot for restore
 let platform=localStorage.getItem('dp_platform')||'win';
+let gtestData=null;// parsed GTest JSON results
 
 // ════════════════════════════════════════════════════════
 // PLATFORM HELPERS
@@ -483,6 +488,61 @@ const sections=[
 ];
 
 // ════════════════════════════════════════════════════════
+// GTEST INTEGRATION
+// ════════════════════════════════════════════════════════
+function loadGTestFiles(files){
+  gtestData={testsuites:[],totals:{tests:0,failures:0,disabled:0,time:''}};
+  let loaded=0;
+  for(const f of files){
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const j=JSON.parse(e.target.result);
+        if(j.testsuites){
+          for(const ts of j.testsuites)gtestData.testsuites.push(ts);
+          gtestData.totals.tests+=j.tests||0;
+          gtestData.totals.failures+=j.failures||0;
+          gtestData.totals.disabled+=j.disabled||0;
+        }
+      }catch(err){log('Failed to parse GTest JSON: '+err.message,'e');}
+      loaded++;
+      if(loaded===files.length){
+        log('Loaded '+gtestData.totals.tests+' GTest results ('+gtestData.totals.failures+' failures, '+gtestData.totals.disabled+' disabled)','i');
+        render();
+      }
+    };
+    reader.readAsText(f);
+  }
+}
+function renderGTestSection(){
+  if(!gtestData||gtestData.testsuites.length===0)return'';
+  let h='';
+  for(const ts of gtestData.testsuites){
+    const total=ts.testsuite?ts.testsuite.length:0;
+    if(total===0)continue;
+    const passed=ts.testsuite.filter(t=>!t.failures||t.failures.length===0).length;
+    const failed=total-passed-(ts.disabled||0);
+    const badge=failed>0?'<span class="badge" style="background:var(--red);color:#fff">FAIL '+failed+'</span>':'<span class="badge ba">PASS '+passed+'</span>';
+    h+='<div class="sec"><h2 onclick="toggleSec(this)">'+ts.name+' '+badge+'<span class="cnt">'+passed+'/'+total+'</span></h2><table>';
+    h+='<tr><th>#</th><th>Test</th><th>Time</th><th>Result</th></tr>';
+    ts.testsuite.forEach((t,i)=>{
+      const ok=!t.failures||t.failures.length===0;
+      const cls=ok?'P':'F';
+      const label=ok?'PASS':'FAIL';
+      const time=t.time?t.time:'--';
+      let row='<tr><td>'+(i+1)+'</td><td>'+t.name+'</td><td style="font-size:.75em;color:var(--dim)">'+time+'</td><td><span class="'+cls+'">'+label+'</span></td></tr>';
+      if(!ok&&t.failures){
+        for(const f of t.failures)
+          row+='<tr><td></td><td colspan=3 style="color:var(--red);font-size:.75em;white-space:pre-wrap">'+f.failure.replace(/</g,'&lt;').substring(0,200)+'</td></tr>';
+      }
+      h+=row;
+    });
+    h+='</table></div>';
+  }
+  return h;
+}
+
+// ════════════════════════════════════════════════════════
 // RENDER
 // ════════════════════════════════════════════════════════
 function render(){
@@ -491,7 +551,8 @@ function render(){
     b.classList.toggle('active',['win','mac','linux'][i]===platform);
   });
   const el=document.getElementById('content');
-  el.innerHTML='<div id="col0"></div><div id="col1"></div>';
+  const gtestHtml=renderGTestSection();
+  el.innerHTML=(gtestHtml?'<div style="grid-column:1/-1">'+gtestHtml+'</div>':'')+'<div id="col0"></div><div id="col1"></div>';
   for(const sec of sections){
     const visTests=sec.tests.filter(matchPlatform);
     if(visTests.length===0)continue;
@@ -541,13 +602,21 @@ function updateStats(){
     if(t.type==='auto'){at++;if(R[t.id]==='pass')ap++;if(R[t.id]==='fail')af++;}
     else{mt++;if(R[t.id]==='pass')mp++;}
   }
+  // Unit test (GTest) stats
+  let up=0,uf=0,ut=0;
+  if(gtestData){
+    ut=gtestData.totals.tests;uf=gtestData.totals.failures;up=ut-uf-gtestData.totals.disabled;
+  }
+  const ue=document.getElementById('sU');
+  if(ut>0){ue.textContent='Unit: '+up+'/'+ut+(uf?' ('+uf+' fail)':'');ue.className='st '+(uf?'f':up===ut?'p':'w');}
+  else{ue.textContent='Unit: --';ue.className='st w';}
   const ae=document.getElementById('sA');ae.textContent='Auto: '+ap+'/'+at+(af?' ('+af+' fail)':'');ae.className='st '+(af?'f':ap===at?'p':'w');
   const me=document.getElementById('sM');me.textContent='Manual: '+mp+'/'+mt;me.className='st '+(mp===mt?'p':'w');
-  const tot=ap+mp,all=at+mt;
-  const te=document.getElementById('sT');te.textContent='Total: '+tot+'/'+all;te.className='st '+(af?'f':tot===all?'p':'w');
+  const tot=ap+mp+up,all=at+mt+ut,totalFail=af+uf;
+  const te=document.getElementById('sT');te.textContent='Total: '+tot+'/'+all;te.className='st '+(totalFail?'f':tot===all?'p':'w');
   const ov=document.getElementById('ovr');
-  if(af>0){ov.textContent='FAIL - '+af+' auto test(s) failed';ov.className='ov f';}
-  else if(tot===all){ov.textContent='READY TO RELEASE';ov.className='ov p';}
+  if(totalFail>0){ov.textContent='FAIL - '+(af?af+' auto':'')+(af&&uf?' + ':'')+(uf?uf+' unit':'')+ ' test(s) failed';ov.className='ov f';}
+  else if(tot===all&&all>0){ov.textContent='READY TO RELEASE';ov.className='ov p';}
   else{ov.textContent=(all-tot)+' items remaining';ov.className='ov w';}
   // update section counts
   for(const sec of sections){
@@ -639,10 +708,16 @@ function log(m,c){const e=document.getElementById('logArea');const t=new Date().
 function exportReport(){
   const vis=getVisibleTests();
   const rpt={timestamp:new Date().toISOString(),platform:platform,results:R,log:document.getElementById('logArea').innerText,
-    summary:{auto_pass:0,auto_fail:0,auto_total:0,manual_pass:0,manual_total:0}};
+    summary:{auto_pass:0,auto_fail:0,auto_total:0,manual_pass:0,manual_total:0,unit_pass:0,unit_fail:0,unit_total:0}};
   for(const t of vis){
     if(t.type==='auto'){rpt.summary.auto_total++;if(R[t.id]==='pass')rpt.summary.auto_pass++;if(R[t.id]==='fail')rpt.summary.auto_fail++;}
     else{rpt.summary.manual_total++;if(R[t.id]==='pass')rpt.summary.manual_pass++;}
+  }
+  if(gtestData){
+    rpt.summary.unit_total=gtestData.totals.tests;
+    rpt.summary.unit_fail=gtestData.totals.failures;
+    rpt.summary.unit_pass=gtestData.totals.tests-gtestData.totals.failures-gtestData.totals.disabled;
+    rpt.gtest=gtestData;
   }
   const b=new Blob([JSON.stringify(rpt,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);

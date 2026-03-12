@@ -42,9 +42,13 @@ if(DIRECTPIPE_BUILD_HOST)
     target_sources(directpipe-host-tests PRIVATE
         test_websocket_protocol.cpp
         test_action_dispatcher.cpp
+        test_action_result.cpp
+        test_control_mapping.cpp
+        test_notification_queue.cpp
         # Host source files needed by the tests
         ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Control/StateBroadcaster.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Control/ControlMapping.cpp
     )
 
     juce_generate_juce_header(directpipe-host-tests)
@@ -62,6 +66,8 @@ if(DIRECTPIPE_BUILD_HOST)
         directpipe-core
         GTest::gtest
         GTest::gtest_main
+        juce::juce_audio_basics
+        juce::juce_audio_devices
         juce::juce_core
         juce::juce_data_structures
         juce::juce_events
