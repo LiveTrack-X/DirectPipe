@@ -171,118 +171,57 @@ MainComponent::MainComponent(bool enableExternalControls)
             presetManager_->invalidatePreloadCache();
             // Reload with factory defaults
             controlManager_->reloadConfig();
-            loadSettings();
+            settingsAutosaver_->loadFromFile();
             loadingSlot_ = false;
             refreshUI();
             presetSlotBar_->updateSlotButtonStates();
             pluginChainEditor_->refreshList();
         };
-        settingsPanel->onSaveSettings = [this] {
-            auto chooser = std::make_shared<juce::FileChooser>(
-                "Save Settings",
-                juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                    .getChildFile("DirectPipe_backup.dpbackup"),
-                "*.dpbackup");
-            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
-            chooser->launchAsync(juce::FileBrowserComponent::saveMode |
-                                 juce::FileBrowserComponent::canSelectFiles,
-                                 [safeThis, chooser](const juce::FileChooser& fc) {
-                if (!safeThis) return;
-                auto file = fc.getResult();
-                if (file != juce::File()) {
-                    auto target = file.withFileExtension("dpbackup");
-                    auto json = SettingsExporter::exportAll(*safeThis->presetManager_, safeThis->controlManager_->getConfigStore());
-                    target.replaceWithText(json);
-                }
-            });
+        settingsPanel->onSaveSettings = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+            SettingsExporter::showSaveDialog("DirectPipe_backup.dpbackup", "*.dpbackup", "dpbackup",
+                [safeThis]() -> juce::String {
+                    if (!safeThis) return {};
+                    return SettingsExporter::exportAll(*safeThis->presetManager_,
+                                                       safeThis->controlManager_->getConfigStore());
+                });
         };
-        settingsPanel->onLoadSettings = [this] {
-            auto chooser = std::make_shared<juce::FileChooser>(
-                "Load Settings",
-                juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
-                "*.dpbackup");
-            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
-            chooser->launchAsync(juce::FileBrowserComponent::openMode |
-                                 juce::FileBrowserComponent::canSelectFiles,
-                                 [safeThis, chooser](const juce::FileChooser& fc) {
-                if (!safeThis) return;
-                auto file = fc.getResult();
-                if (file.existsAsFile()) {
-                    auto json = file.loadFileAsString();
-                    if (!SettingsExporter::isPlatformCompatible(json)) {
-                        auto backupPlatform = SettingsExporter::getBackupPlatform(json);
-                        juce::AlertWindow::showMessageBoxAsync(
-                            juce::MessageBoxIconType::WarningIcon,
-                            "Platform Mismatch",
-                            "This backup was created on " + backupPlatform + ".\n"
-                            "Backup/restore is only supported between the same OS.");
-                        juce::Logger::writeToLog("[APP] Platform mismatch: backup=" + backupPlatform
-                            + " current=" + SettingsExporter::getCurrentPlatform());
-                        return;
-                    }
+        settingsPanel->onLoadSettings = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+            SettingsExporter::showLoadDialog("*.dpbackup",
+                [safeThis](const juce::String& json) -> bool {
+                    if (!safeThis) return false;
                     safeThis->loadingSlot_ = true;
-                    if (!SettingsExporter::importAll(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore())) {
+                    if (!SettingsExporter::importAll(json, *safeThis->presetManager_,
+                                                     safeThis->controlManager_->getConfigStore())) {
                         safeThis->loadingSlot_ = false;
-                        juce::Logger::writeToLog("[APP] Failed to import settings from " + file.getFullPathName());
-                        return;
+                        return false;
                     }
                     safeThis->controlManager_->reloadConfig();
                     safeThis->loadingSlot_ = false;
                     safeThis->markSettingsDirty();
                     safeThis->refreshUI();
                     safeThis->presetSlotBar_->updateSlotButtonStates();
-                }
-            });
+                    return true;
+                });
         };
-        settingsPanel->onFullBackup = [this] {
-            auto chooser = std::make_shared<juce::FileChooser>(
-                "Full Backup",
-                juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                    .getChildFile("DirectPipe_full.dpfullbackup"),
-                "*.dpfullbackup");
-            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
-            chooser->launchAsync(juce::FileBrowserComponent::saveMode |
-                                 juce::FileBrowserComponent::canSelectFiles,
-                                 [safeThis, chooser](const juce::FileChooser& fc) {
-                if (!safeThis) return;
-                auto file = fc.getResult();
-                if (file != juce::File()) {
-                    auto target = file.withFileExtension("dpfullbackup");
-                    auto json = SettingsExporter::exportFullBackup(*safeThis->presetManager_, safeThis->controlManager_->getConfigStore());
-                    target.replaceWithText(json);
-                    juce::Logger::writeToLog("[APP] Full backup saved to " + target.getFullPathName());
-                }
-            });
+        settingsPanel->onFullBackup = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+            SettingsExporter::showSaveDialog("DirectPipe_full.dpfullbackup", "*.dpfullbackup", "dpfullbackup",
+                [safeThis]() -> juce::String {
+                    if (!safeThis) return {};
+                    auto json = SettingsExporter::exportFullBackup(*safeThis->presetManager_,
+                                                                    safeThis->controlManager_->getConfigStore());
+                    juce::Logger::writeToLog("[APP] Full backup saved");
+                    return json;
+                });
         };
-        settingsPanel->onFullRestore = [this] {
-            auto chooser = std::make_shared<juce::FileChooser>(
-                "Full Restore",
-                juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
-                "*.dpfullbackup");
-            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
-            chooser->launchAsync(juce::FileBrowserComponent::openMode |
-                                 juce::FileBrowserComponent::canSelectFiles,
-                                 [safeThis, chooser](const juce::FileChooser& fc) {
-                if (!safeThis) return;
-                auto file = fc.getResult();
-                if (file.existsAsFile()) {
-                    auto json = file.loadFileAsString();
-                    if (!SettingsExporter::isPlatformCompatible(json)) {
-                        auto backupPlatform = SettingsExporter::getBackupPlatform(json);
-                        juce::AlertWindow::showMessageBoxAsync(
-                            juce::MessageBoxIconType::WarningIcon,
-                            "Platform Mismatch",
-                            "This backup was created on " + backupPlatform + ".\n"
-                            "Backup/restore is only supported between the same OS.");
-                        juce::Logger::writeToLog("[APP] Platform mismatch: backup=" + backupPlatform
-                            + " current=" + SettingsExporter::getCurrentPlatform());
-                        return;
-                    }
+        settingsPanel->onFullRestore = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+            SettingsExporter::showLoadDialog("*.dpfullbackup",
+                [safeThis](const juce::String& json) -> bool {
+                    if (!safeThis) return false;
                     safeThis->loadingSlot_ = true;
-                    if (!SettingsExporter::importFullBackup(json, *safeThis->presetManager_, safeThis->controlManager_->getConfigStore())) {
+                    if (!SettingsExporter::importFullBackup(json, *safeThis->presetManager_,
+                                                            safeThis->controlManager_->getConfigStore())) {
                         safeThis->loadingSlot_ = false;
-                        juce::Logger::writeToLog("[APP] Failed to import full backup from " + file.getFullPathName());
-                        return;
+                        return false;
                     }
                     safeThis->controlManager_->reloadConfig();
                     safeThis->presetManager_->refreshSlotOccupancy();
@@ -294,8 +233,8 @@ MainComponent::MainComponent(bool enableExternalControls)
                     safeThis->presetSlotBar_->updateSlotButtonStates();
                     safeThis->pluginChainEditor_->refreshList();
                     juce::Logger::writeToLog("[APP] Full backup restored");
-                }
-            });
+                    return true;
+                });
         };
         rightTabs_->addTab("Settings", tabBg, settingsPanel.release(), true);
     }
@@ -411,6 +350,26 @@ MainComponent::MainComponent(bool enableExternalControls)
             outputPanelPtr_->setLastRecordedFile(file);
     };
 
+    // ── Settings Autosaver (dirty-flag + debounce + save/load) ──
+    settingsAutosaver_ = std::make_unique<SettingsAutosaver>(
+        *presetManager_, audioEngine_, loadingSlot_, partialLoad_);
+    settingsAutosaver_->onRestorePanicMute = [this] {
+        actionHandler_->restorePanicMuteFromSettings();
+    };
+    settingsAutosaver_->onPostLoad = [this] {
+        refreshUI();
+        presetSlotBar_->updateSlotButtonStates();
+    };
+    settingsAutosaver_->onFlushLogs = [this] {
+        if (auto* sp = dynamic_cast<LogPanel*>(rightTabs_->getTabContentComponent(3)))
+            sp->flushPendingLogs();
+    };
+    settingsAutosaver_->onShowWindow = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+        if (!safeThis) return;
+        if (auto* w = safeThis->getTopLevelComponent())
+            w->setVisible(true);
+    };
+
     // ── Mute Status Indicators (clickable) ──
     auto setupMuteBtn = [this](juce::TextButton& btn) {
         btn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
@@ -489,7 +448,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     setSize(kDefaultWidth, kDefaultHeight);
 
     // Auto-load last saved settings
-    loadSettings();
+    settingsAutosaver_->loadFromFile();
 
     // First launch: auto-select slot A
     if (presetManager_->getActiveSlot() < 0) {
@@ -535,7 +494,7 @@ MainComponent::MainComponent(bool enableExternalControls)
 MainComponent::~MainComponent()
 {
     stopTimer();
-    saveSettings();
+    settingsAutosaver_->saveNow();
     dispatcher_.removeListener(this);
     controlManager_->shutdown();
     audioEngine_.shutdown();
@@ -860,97 +819,15 @@ void MainComponent::timerCallback()
     // Device reconnection check (~3s interval fallback for missed change notifications)
     audioEngine_.checkReconnection();
 
-    // Dirty-flag auto-save with 1-second debounce (30 ticks at 30Hz)
-    if (settingsDirty_ && dirtyCooldown_ > 0) {
-        if (--dirtyCooldown_ == 0) {
-            // Defer save if chain is in transitional state (async loading)
-            if (loadingSlot_.load() || audioEngine_.getVSTChain().isLoading()) {
-                dirtyCooldown_ = 10;  // retry in ~300ms
-            } else {
-                settingsDirty_ = false;
-                saveSettings();
-            }
-        }
-    }
+    // Dirty-flag auto-save with 1-second debounce
+    settingsAutosaver_->tick();
 }
 
-// ─── Settings auto-save/load ─────────────────────────────────────────────────
+// ─── Settings dirty flag ─────────────────────────────────────────────────────
 
 void MainComponent::markSettingsDirty()
 {
-    settingsDirty_ = true;
-    dirtyCooldown_ = 30;  // reset debounce: save after ~1 second of inactivity
-}
-
-void MainComponent::saveSettings()
-{
-    // Skip saving during async chain load — chain is in transitional state
-    // (empty or partially loaded). Saving now would corrupt the active slot file.
-    if (loadingSlot_.load() || audioEngine_.getVSTChain().isLoading())
-        return;
-
-    // Save current slot's chain state (captures plugin internal state)
-    // Skip slot save if partial load (some plugins failed) — preserve original slot file
-    int currentSlot = presetManager_->getActiveSlot();
-    if (currentSlot >= 0 && !partialLoad_.load())
-        presetManager_->saveSlot(currentSlot);
-
-    auto file = PresetManager::getAutoSaveFile();
-    presetManager_->savePreset(file);
-}
-
-void MainComponent::loadSettings()
-{
-    auto file = PresetManager::getAutoSaveFile();
-    if (file.existsAsFile()) {
-        loadingSlot_ = true;
-        presetManager_->loadPreset(file);
-
-        // Self-healing: if settings.dppreset had an empty/corrupt chain but the
-        // active slot file is valid, reload chain from the slot file.
-        int activeSlot = presetManager_->getActiveSlot();
-        if (activeSlot >= 0 && presetManager_->isSlotOccupied(activeSlot)
-            && audioEngine_.getVSTChain().getPluginCount() == 0) {
-            juce::Logger::writeToLog("[PRESET] Self-healing: reloading slot "
-                + juce::String::charToString(PresetManager::slotLabel(activeSlot)) + " from file");
-            presetManager_->loadSlot(activeSlot);
-        }
-
-        loadingSlot_ = false;
-
-        // Restore panic mute lockout (monitor/IPC disabled while muted)
-        actionHandler_->restorePanicMuteFromSettings();
-
-        refreshUI();
-        presetSlotBar_->updateSlotButtonStates();
-
-        // Sync Settings tab UI (audit mode toggle, pending logs) before window is shown
-        if (auto* settingsPanel = dynamic_cast<LogPanel*>(rightTabs_->getTabContentComponent(3)))
-            settingsPanel->flushPendingLogs();
-
-        // Pre-load other slots in background for instant switching.
-        // Deferred via callAsync to ensure audio device is fully started
-        // before preload thread uses formatManager.
-        // Window is shown AFTER preload completes (prevents "frozen UI" appearance).
-        auto safeThis = juce::Component::SafePointer<MainComponent>(this);
-        juce::MessageManager::callAsync([safeThis]() {
-            if (!safeThis) return;
-            safeThis->presetManager_->triggerPreload([safeThis]() {
-                if (!safeThis) return;
-                if (auto* w = safeThis->getTopLevelComponent())
-                    w->setVisible(true);
-            });
-        });
-        return;  // window will be shown by preload callback
-    }
-
-    // No settings file → show window immediately
-    auto safeThis = juce::Component::SafePointer<MainComponent>(this);
-    juce::MessageManager::callAsync([safeThis]() {
-        if (!safeThis) return;
-        if (auto* w = safeThis->getTopLevelComponent())
-            w->setVisible(true);
-    });
+    settingsAutosaver_->markDirty();
 }
 
 void MainComponent::refreshUI()

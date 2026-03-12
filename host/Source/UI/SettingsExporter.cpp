@@ -221,4 +221,56 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
     return true;
 }
 
+// ─── FileChooser dialog helpers ──────────────────────────────────────────────
+
+void SettingsExporter::showSaveDialog(const juce::String& defaultFilename,
+                                       const juce::String& filter,
+                                       const juce::String& extension,
+                                       std::function<juce::String()> exporter)
+{
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Save",
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+            .getChildFile(defaultFilename),
+        filter);
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode |
+                         juce::FileBrowserComponent::canSelectFiles,
+                         [chooser, extension, exporter](const juce::FileChooser& fc) {
+        auto file = fc.getResult();
+        if (file == juce::File()) return;
+        auto target = file.withFileExtension(extension);
+        auto json = exporter();
+        if (json.isNotEmpty())
+            target.replaceWithText(json);
+    });
+}
+
+void SettingsExporter::showLoadDialog(const juce::String& filter,
+                                       std::function<bool(const juce::String& json)> importer)
+{
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Load",
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+        filter);
+    chooser->launchAsync(juce::FileBrowserComponent::openMode |
+                         juce::FileBrowserComponent::canSelectFiles,
+                         [chooser, importer](const juce::FileChooser& fc) {
+        auto file = fc.getResult();
+        if (!file.existsAsFile()) return;
+        auto json = file.loadFileAsString();
+        if (!isPlatformCompatible(json)) {
+            auto backupPlatform = getBackupPlatform(json);
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Platform Mismatch",
+                "This backup was created on " + backupPlatform + ".\n"
+                "Backup/restore is only supported between the same OS.");
+            juce::Logger::writeToLog("[APP] Platform mismatch: backup=" + backupPlatform
+                + " current=" + getCurrentPlatform());
+            return;
+        }
+        importer(json);
+    });
+}
+
 } // namespace directpipe

@@ -66,6 +66,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/UpdateChecker.cpp
     Source/Control/ActionHandler.h
     Source/Control/ActionHandler.cpp
+    Source/Control/SettingsAutosaver.h
+    Source/Control/SettingsAutosaver.cpp
     Source/Control/ActionDispatcher.h
     Source/Control/ActionDispatcher.cpp
     Source/Control/StateBroadcaster.h

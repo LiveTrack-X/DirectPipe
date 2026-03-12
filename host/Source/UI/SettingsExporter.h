@@ -25,6 +25,7 @@
 #include <JuceHeader.h>
 #include "PresetManager.h"
 #include "../Control/ControlMapping.h"
+#include <functional>
 
 namespace directpipe {
 
@@ -66,6 +67,19 @@ public:
 
     static constexpr const char* kFileExtension = ".dpbackup";
     static constexpr const char* kFullBackupExtension = ".dpfullbackup";
+
+    // ── FileChooser dialog helpers (async, with platform compatibility check) ──
+    // Callbacks must be SafePointer-guarded by the caller for async safety.
+
+    /** Show async save FileChooser. exporter() returns JSON to write. */
+    static void showSaveDialog(const juce::String& defaultFilename,
+                                const juce::String& filter,
+                                const juce::String& extension,
+                                std::function<juce::String()> exporter);
+
+    /** Show async load FileChooser with platform check. importer(json) returns success. */
+    static void showLoadDialog(const juce::String& filter,
+                                std::function<bool(const juce::String& json)> importer);
 };
 
 } // namespace directpipe

@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025 LiveTrack
+//
+// This file is part of DirectPipe.
+//
+// DirectPipe is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// DirectPipe is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with DirectPipe. If not, see <https://www.gnu.org/licenses/>.
+
+/**
+ * @file SettingsAutosaver.cpp
+ * @brief Dirty-flag auto-save implementation
+ */
+
+#include "SettingsAutosaver.h"
+#include "../Audio/AudioEngine.h"
+#include "../UI/PresetManager.h"
+
+namespace directpipe {
+
+SettingsAutosaver::SettingsAutosaver(PresetManager& presetMgr, AudioEngine& engine,
+                                     std::atomic<bool>& loadingSlot,
+                                     std::atomic<bool>& partialLoad)
+    : presetMgr_(presetMgr),
+      engine_(engine),
+      loadingSlot_(loadingSlot),
+      partialLoad_(partialLoad)
+{
+}
+
+void SettingsAutosaver::markDirty()
+{
+    dirty_ = true;
+    cooldown_ = 30;  // reset debounce: save after ~1 second of inactivity
+}
+
+void SettingsAutosaver::tick()
+{
+    if (!dirty_ || cooldown_ <= 0) return;
+
+    if (--cooldown_ == 0) {
+        // Defer save if chain is in transitional state (async loading)
+        if (loadingSlot_.load() || engine_.getVSTChain().isLoading()) {
+            cooldown_ = 10;  // retry in ~300ms
+        } else {
+            dirty_ = false;
+            saveNow();
+        }
+    }
+}
+
+void SettingsAutosaver::saveNow()
+{
+    // Skip saving during async chain load — chain is in transitional state
+    // (empty or partially loaded). Saving now would corrupt the active slot file.
+    if (loadingSlot_.load() || engine_.getVSTChain().isLoading())
+        return;
+
+    // Save current slot's chain state (captures plugin internal state)
+    // Skip slot save if partial load (some plugins failed) — preserve original slot file
+    int currentSlot = presetMgr_.getActiveSlot();
+    if (currentSlot >= 0 && !partialLoad_.load())
+        presetMgr_.saveSlot(currentSlot);
+
+    auto file = PresetManager::getAutoSaveFile();
+    presetMgr_.savePreset(file);
+}
+
+void SettingsAutosaver::loadFromFile()
+{
+    auto file = PresetManager::getAutoSaveFile();
+    if (file.existsAsFile()) {
+        loadingSlot_ = true;
+        presetMgr_.loadPreset(file);
+
+        // Self-healing: if settings.dppreset had an empty/corrupt chain but the
+        // active slot file is valid, reload chain from the slot file.
+        int activeSlot = presetMgr_.getActiveSlot();
+        if (activeSlot >= 0 && presetMgr_.isSlotOccupied(activeSlot)
+            && engine_.getVSTChain().getPluginCount() == 0) {
+            juce::Logger::writeToLog("[PRESET] Self-healing: reloading slot "
+                + juce::String::charToString(PresetManager::slotLabel(activeSlot)) + " from file");
+            presetMgr_.loadSlot(activeSlot);
+        }
+
+        loadingSlot_ = false;
+
+        // Restore panic mute lockout (monitor/IPC disabled while muted)
+        if (onRestorePanicMute) onRestorePanicMute();
+
+        if (onPostLoad) onPostLoad();
+        if (onFlushLogs) onFlushLogs();
+
+        // Pre-load other slots in background for instant switching.
+        // Deferred via callAsync to ensure audio device is fully started
+        // before preload thread uses formatManager.
+        // Window is shown AFTER preload completes (prevents "frozen UI" appearance).
+        auto showWindowCb = onShowWindow;
+        auto* pm = &presetMgr_;
+        juce::MessageManager::callAsync([pm, showWindowCb]() {
+            pm->triggerPreload([showWindowCb]() {
+                if (showWindowCb) showWindowCb();
+            });
+        });
+        return;  // window will be shown by preload callback
+    }
+
+    // No settings file → show window immediately
+    auto showWindowCb = onShowWindow;
+    juce::MessageManager::callAsync([showWindowCb]() {
+        if (showWindowCb) showWindowCb();
+    });
+}
+
+} // namespace directpipe

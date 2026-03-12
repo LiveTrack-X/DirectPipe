@@ -27,6 +27,7 @@
 #include "Audio/OutputRouter.h"
 #include "Control/ActionDispatcher.h"
 #include "Control/ActionHandler.h"
+#include "Control/SettingsAutosaver.h"
 #include "Control/StateBroadcaster.h"
 #include "Control/ControlManager.h"
 #include "UI/PluginChainEditor.h"
@@ -73,8 +74,6 @@ public:
 
 private:
     void timerCallback() override;
-    void saveSettings();
-    void loadSettings();
     void markSettingsDirty();
 
     // Audio engine (core)
@@ -121,6 +120,9 @@ private:
     // Action routing — delegated to ActionHandler
     std::unique_ptr<ActionHandler> actionHandler_;
 
+    // Settings auto-save — delegated to SettingsAutosaver
+    std::unique_ptr<SettingsAutosaver> settingsAutosaver_;
+
     // Mute indicators (clickable) + panic mute button
     juce::TextButton outputMuteBtn_{"OUT"};
     juce::TextButton monitorMuteBtn_{"MON"};
@@ -154,9 +156,7 @@ private:
     juce::Label inputSectionLabel_;
     juce::Label vstSectionLabel_;
 
-    // Dirty-flag auto-save (debounce: save ~1s after last change)
-    bool settingsDirty_ = false;
-    int dirtyCooldown_ = 0;   // ticks remaining before save (30Hz)
+    // Shared atomics (owned here, shared with PresetSlotBar/ActionHandler/SettingsAutosaver)
     std::atomic<bool> loadingSlot_ { false };
     std::atomic<bool> partialLoad_ { false };  // prevents auto-save after partial plugin load
     double lastCachedSR_ = 0.0;  // track SR/BS for smart cache invalidation
