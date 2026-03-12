@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/stable-v3.10.2-4fc3f7?style=flat-square" alt="Stable">
+  <img src="https://img.shields.io/badge/stable-v3.10.3-4fc3f7?style=flat-square" alt="Stable">
   <img src="https://img.shields.io/badge/pre--release-v4.0.0--alpha-orange?style=flat-square" alt="Pre-release">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
@@ -22,7 +22,7 @@
 
 ## 다운로드 / Download
 
-- **Stable (안정 빌드)**: [v3.10.2 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.2) — 전체 테스트 통과 / Fully tested (Windows only)
+- **Stable (안정 빌드)**: [v3.10.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — 전체 테스트 통과 / Fully tested (Windows only)
 - **Pre-release (프리릴리즈)**: [v4.0.0-alpha 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.0-alpha) — 크로스 플랫폼 / Cross-platform (Windows, macOS, Linux)
 
 > **Pre-release 주의사항**: macOS/Linux 빌드는 실험적이며, 실기기 테스트가 완료되지 않았습니다. 프로덕션 환경에서는 Stable 빌드를 사용하세요.
