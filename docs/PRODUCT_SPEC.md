@@ -1070,8 +1070,9 @@ DirectPipe/
 ├── host/                           → JUCE 메인 앱
 │   ├── Resources/                  → 아이콘 (16~512px PNG + SVG)
 │   └── Source/
-│       ├── Main.cpp                → 앱 진입점, 트레이, 스캐너 모드, 업데이트 체크
-│       ├── MainComponent.h/cpp     → 메인 UI 레이아웃, 프리셋 슬롯, 뮤트 버튼
+│       ├── Main.cpp                → 앱 진입점, 트레이, 스캐너 모드
+│       ├── MainComponent.h/cpp     → 메인 UI 레이아웃 (~729줄, 헬퍼 클래스에 위임)
+│       ├── ActionResult.h          → 성공/실패 반환 타입 (ok/fail/bool 변환)
 │       ├── Audio/
 │       │   ├── AudioEngine.h/cpp       → 오디오 콜백, 장치 관리, 재연결, XRun
 │       │   ├── VSTChain.h/cpp          → 플러그인 체인, 그래프, 비동기 로딩
@@ -1083,6 +1084,8 @@ DirectPipe/
 │       │   └── LatencyMonitor.h        → 실시간 레이턴시/CPU 측정
 │       ├── Control/
 │       │   ├── ActionDispatcher.h      → 15개 Action enum, 메시지 스레드 디스패치
+│       │   ├── ActionHandler.h/cpp     → 중앙 액션 이벤트 처리 (MainComponent에서 추출)
+│       │   ├── SettingsAutosaver.h/cpp → dirty-flag + 디바운스 자동 저장 (MainComponent에서 추출)
 │       │   ├── ControlManager.h        → 컨트롤 핸들러 소유, configStore_
 │       │   ├── ControlMapping.cpp      → 기본 핫키 18개
 │       │   ├── WebSocketServer.h/cpp   → RFC 6455, UDP 디스커버리, 16 명령
@@ -1097,7 +1100,13 @@ DirectPipe/
 │       └── UI/
 │           ├── AudioSettings.h/cpp     → 5종 드라이버, ASIO 채널, SR/BS
 │           ├── OutputPanel.h/cpp       → 모니터 + IPC + 녹음 UI
-│           ├── ControlSettingsPanel.h/cpp → 4 서브탭 (Hotkeys/MIDI/SD/General)
+│           ├── ControlSettingsPanel.h/cpp → 3 서브탭 컨테이너 (탭별 별도 클래스)
+│           ├── HotkeyTab.h/cpp         → 핫키 설정 탭 (ControlSettingsPanel에서 추출)
+│           ├── MidiTab.h/cpp           → MIDI 설정 탭 (ControlSettingsPanel에서 추출)
+│           ├── StreamDeckTab.h/cpp     → Stream Deck 설정 탭 (ControlSettingsPanel에서 추출)
+│           ├── PresetSlotBar.h/cpp     → 프리셋 슬롯 A-E 버튼 바 (MainComponent에서 추출)
+│           ├── StatusUpdater.h/cpp     → 상태 바 업데이트 (MainComponent에서 추출)
+│           ├── UpdateChecker.h/cpp     → 백그라운드 업데이트 체크 (MainComponent에서 추출)
 │           ├── PluginChainEditor.h/cpp → 드래그드롭, 바이패스, GUI 편집
 │           ├── PluginScanner.h/cpp     → Out-of-process 스캔, 검색/정렬
 │           ├── PresetManager.h/cpp     → 슬롯 A-E, 자동 저장, Copy/Delete
@@ -1120,8 +1129,8 @@ DirectPipe/
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉
 │       └── actions/                → 7개 SingletonAction 클래스
 │
-├── tests/                          → Google Test (core + host)
-├── tools/                          → midi-test.py (MIDI 테스트 CLI)
+├── tests/                          → Google Test (core + host, 110+ tests)
+├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등
 └── dist/                           → 빌드 산출물 + .streamDeckPlugin
 ```

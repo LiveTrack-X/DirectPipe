@@ -176,37 +176,54 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 - **Sections / 섹션**: API, Volume, Mute, Presets, Plugins, Devices, Hotkeys, MIDI, Stream Deck, IPC, Settings, UI, Regression tests
 - **Platform selector / 플랫폼 선택**: Tests are tagged per OS (Windows/macOS/Linux). Select your platform at the top to show only relevant tests. Platform stored in localStorage and included in exported reports.
   테스트는 OS별 태그 지정. 상단에서 플랫폼 선택하면 관련 테스트만 표시. 플랫폼은 localStorage에 저장되며 내보내기 리포트에 포함.
-- **Features / 기능**: One-click auto test run, pass/fail tracking, export report, localStorage persistence
-  원클릭 자동 테스트, 통과/실패 추적, 리포트 내보내기, localStorage 저장
+- **Features / 기능**: One-click auto test run, pass/fail tracking, export report, localStorage persistence, GTest JSON result loading
+  원클릭 자동 테스트, 통과/실패 추적, 리포트 내보내기, localStorage 저장, GTest JSON 결과 로딩
 
 ## Test Suite / 테스트
 
-Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE).
+Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Total: **110+ tests** across 12 test groups.
 
-두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요).
+두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 총 **110+ 테스트**, 12개 테스트 그룹.
 
 ### directpipe-tests (Core)
 
-| Test Group | Description |
-|------------|-------------|
-| RingBufferTest | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
-| SharedMemoryTest | Shared memory create/map, named events / 공유 메모리 생성/매핑 |
-| LatencyTest | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
-| IPCIntegrationTest | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
-| ReceiverSimulationTest | Receiver VST processBlock simulation (de-interleave, underrun, clock drift, producer death) / Receiver VST processBlock 시뮬레이션 |
-| CrossProcessIPC | Cross-process shared memory + ring buffer validation via child process / 자식 프로세스를 통한 크로스 프로세스 IPC 검증 |
+| Test Group | Tests | Description |
+|------------|-------|-------------|
+| RingBufferTest | ~10 | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
+| SharedMemoryTest | ~5 | Shared memory create/map, named events / 공유 메모리 생성/매핑 |
+| LatencyTest | ~3 | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
+| IPCIntegrationTest | ~5 | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
+| ReceiverSimulationTest | ~5 | Receiver VST processBlock simulation (de-interleave, underrun, clock drift, producer death) / Receiver VST processBlock 시뮬레이션 |
+| CrossProcessIPC | ~3 | Cross-process shared memory + ring buffer validation via child process / 자식 프로세스를 통한 크로스 프로세스 IPC 검증 |
 
 ### directpipe-host-tests (Host)
 
-| Test Group | Description |
-|------------|-------------|
-| WebSocketProtocolTest | JSON protocol parsing, state serialization / JSON 프로토콜 파싱, 상태 직렬화 |
-| ActionDispatcherTest | Action dispatch, listener management, thread safety / 액션 디스패치, 스레드 안전 |
+| Test Group | Tests | Description |
+|------------|-------|-------------|
+| WebSocketProtocolTest | 30 | JSON protocol parsing, state serialization, error handling, edge cases / JSON 프로토콜 파싱, 상태 직렬화, 오류 처리, 엣지 케이스 |
+| ActionDispatcherTest | 31 | Action dispatch, listener management, thread safety, ActionResult / 액션 디스패치, 리스너 관리, 스레드 안전, ActionResult |
+| ActionResultTest | 12 | ActionResult data type: ok/fail factory methods, bool conversion, message propagation / ActionResult 데이터 타입 테스트 |
+| ControlMappingTest | 16 | Hotkey/MIDI/server config serialization roundtrip, defaults, error handling / 핫키/MIDI/서버 설정 직렬화, 기본값, 오류 처리 |
+| NotificationQueueTest | 10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐: 푸시/팝, FIFO, 오버플로, 랩어라운드, 크로스스레드 |
+
+Host test source files: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`.
+
+호스트 테스트 소스: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`.
+
+### GTest JSON Output / GTest JSON 출력
+
+`tools/pre-release-test.sh` generates GTest JSON output files (`test-results-core.json`, `test-results-host.json`) that can be loaded into the pre-release dashboard for visual test result inspection.
+
+`tools/pre-release-test.sh`는 GTest JSON 출력 파일을 생성하며, 프리릴리즈 대시보드에서 로드하여 시각적으로 테스트 결과를 확인할 수 있습니다.
 
 ```bash
 # Run all tests / 전체 테스트 실행
 cd build && ctest --config Release --output-on-failure
 
 # Run specific test group / 특정 그룹만 실행
-./bin/Release/directpipe-tests --gtest_filter="ActionDispatcherTest.*"
+./bin/Release/directpipe-tests --gtest_filter="RingBufferTest.*"
+./tests/directpipe-host-tests_artefacts/Release/directpipe-host-tests.exe --gtest_filter="ActionDispatcherTest.*"
+
+# Generate JSON output for dashboard / 대시보드용 JSON 출력 생성
+bash tools/pre-release-test.sh
 ```

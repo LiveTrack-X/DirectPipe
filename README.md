@@ -316,9 +316,11 @@ cmake --build build --config Release
 ```
 host/                     JUCE host application (main)
   Source/
+    ActionResult.h          Typed success/failure return value
     Audio/                  AudioEngine, VSTChain, OutputRouter, MonitorOutput,
                             AudioRingBuffer, LatencyMonitor, AudioRecorder
-    Control/                ActionDispatcher, ControlManager, ControlMapping,
+    Control/                ActionDispatcher, ActionHandler, SettingsAutosaver,
+                            ControlManager, ControlMapping,
                             WebSocketServer, HttpApiServer,
                             HotkeyHandler, MidiHandler, StateBroadcaster,
                             DirectPipeLogger
@@ -328,6 +330,8 @@ host/                     JUCE host application (main)
       macOS/                  LaunchAgent, CGEventTap hotkeys, pthread QoS
       Linux/                  XDG autostart, setpriority, InterProcessLock
     UI/                     AudioSettings, OutputPanel, ControlSettingsPanel,
+                            HotkeyTab, MidiTab, StreamDeckTab,
+                            PresetSlotBar, StatusUpdater, UpdateChecker,
                             PluginChainEditor, PluginScanner, PresetManager,
                             LevelMeter, LogPanel, NotificationBar,
                             DirectPipeLookAndFeel, SettingsExporter

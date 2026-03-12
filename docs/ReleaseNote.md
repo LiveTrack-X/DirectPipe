@@ -2,6 +2,29 @@
 
 ## v4.0.0
 
+### Code Architecture Refactoring
+
+- **MainComponent split**: Reduced `MainComponent.cpp` from ~1835 lines to ~729 lines by extracting 6 focused classes:
+  - `ActionHandler` (`Control/`) — Centralized action event handling (moved from MainComponent's 200+ line switch-case)
+  - `SettingsAutosaver` (`Control/`) — Dirty-flag + debounce auto-save logic
+  - `PresetSlotBar` (`UI/`) — Preset slot A-E buttons, naming, right-click menu
+  - `StatusUpdater` (`UI/`) — Status bar updates (latency, CPU, format, notifications)
+  - `UpdateChecker` (`UI/`) — Background GitHub release check + update dialog
+  - `HotkeyTab`, `MidiTab`, `StreamDeckTab` (`UI/`) — Split from monolithic `ControlSettingsPanel`
+- **ActionResult pattern**: New `ActionResult` struct (`ActionResult.h`) for typed success/failure returns with messages. Replaces bare `bool`/`void` returns on AudioEngine device methods. `static ok()` / `static fail(msg)`, `explicit operator bool()`.
+- **onError callback pattern**: `std::function<void(const juce::String&)> onError` on `AudioSettings` and `OutputPanel`, wired to `MainComponent::showNotification()` for clean error propagation.
+
+### Test Suite Expansion
+
+- **52 → 110+ tests** across 6 host test suites (was 2):
+  - `WebSocketProtocolTest` (30 tests) — expanded with state serialization, error handling, edge cases
+  - `ActionDispatcherTest` (31 tests) — expanded with ActionResult integration, error paths
+  - `ActionResultTest` (12 tests) — new: ok/fail factory, bool conversion, message propagation
+  - `ControlMappingTest` (16 tests) — new: hotkey/MIDI/server serialization roundtrip, defaults, error handling
+  - `NotificationQueueTest` (10 tests) — new: lock-free SPSC queue correctness, overflow, cross-thread
+- **GTest dashboard integration**: `pre-release-dashboard.html` now loads GTest JSON output files for visual test result inspection.
+- **GTest JSON output**: `pre-release-test.sh` generates `--gtest_output=json:` files for both core and host tests.
+
 ### Cross-Platform Support
 
 - **Platform abstraction layer**: New `host/Source/Platform/` module with per-platform implementations (PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock). Replaces hardcoded Windows API calls with cross-platform interfaces.
