@@ -54,6 +54,17 @@
 - **ASIO device iteration fix**: `setAudioDeviceType` now builds an ordered try-list (`tryOrder`: preferred → lastAsio → all remaining devices) and iterates through all available ASIO devices. Previously only tried `devices[0]` — if that device was disconnected, no other ASIO devices were attempted. Individual device failures log `warn` and `continue` to next device; full revert to previous driver only when all devices fail.
 - **Driver combo sync on ASIO failure**: `AudioSettings::onDriverTypeChanged` now checks the `bool` return value of `setAudioDeviceType`. On failure (engine reverted to previous driver), syncs the driver combo to the actual current driver type via `getCurrentDeviceType()`. Fixes UI showing "ASIO" while engine was already back on WASAPI.
 
+### Bugfixes
+
+- **UpdateChecker lifetime fix**: `alive_` promoted from local variable to class member. Destructor sets `false` before joining threads, preventing use-after-free in pending `callAsync` lambdas.
+- **IPC lock-free assertion**: `Protocol.h` now has `static_assert(std::atomic<uint64_t/bool>::is_always_lock_free)` — compile-time guarantee that shared memory atomics never use hidden mutexes.
+- **MidiTab Learn race fix**: `startLearn` callback captures `manager_` reference directly instead of raw `this`, eliminating potential use-after-free when MIDI thread fires callback during tab destruction.
+- **VSTChain addPlugin double-suspend fix**: Removed orphaned `suspendProcessing(true)` around `addNode()`. JUCE uses a counter-based suspend mechanism — the extra suspend without matching resume left the audio graph muted after plugin load.
+- **RingBuffer availableWrite clamp**: Added `std::min` overflow guard matching `availableRead()`, preventing underflow if positions are transiently inconsistent.
+- **HTTP API numeric validation**: Plugin parameter endpoint (`/api/plugin/:id/param/:id/:value`) now validates numeric input. Non-numeric strings like "abc" return 400 instead of silently setting value to 0.0.
+- **Receiver VST RT-safety**: Replaced `std::vector::resize()` in `saveLastOutput` (called from `processBlock`) with `jassert` — buffer is pre-allocated in `prepareToPlay`.
+- **Code deduplication**: Extracted identical `actionToDisplayName` (~40 lines) from `HotkeyTab.cpp` and `MidiTab.cpp` to shared `ActionDispatcher.h`.
+
 ### Docs
 
 - Platform Guide (new): OS-specific setup, features, and limitations.
