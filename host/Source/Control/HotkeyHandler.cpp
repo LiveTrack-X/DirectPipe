@@ -109,8 +109,9 @@ bool HotkeyHandler::registerHotkey(uint32_t modifiers, uint32_t virtualKey,
 
     BOOL result = RegisterHotKey(messageWindow_, id, winMods, virtualKey);
     if (!result) {
-        juce::Logger::writeToLog("[HOTKEY] Failed to register: " +
-                                 juce::String(displayName.c_str()));
+        auto keyComboString = juce::String(displayName.c_str());
+        juce::Logger::writeToLog("[HOTKEY] Registration failed: key="
+            + keyComboString + ", error=" + juce::String(static_cast<int>(GetLastError())));
         return false;
     }
 
@@ -481,7 +482,13 @@ void HotkeyHandler::timerCallback()
 // Linux Stub
 // ═══════════════════════════════════════════════════════════════
 
-void HotkeyHandler::initialize() { initialized_ = true; }
+void HotkeyHandler::initialize()
+{
+    initialized_ = true;
+#if JUCE_LINUX
+    juce::Logger::writeToLog("[HOTKEY] Global hotkeys not supported on Linux — use MIDI, WebSocket, or HTTP instead");
+#endif
+}
 void HotkeyHandler::shutdown() { initialized_ = false; bindings_.clear(); }
 
 bool HotkeyHandler::registerHotkey(uint32_t modifiers, uint32_t virtualKey,

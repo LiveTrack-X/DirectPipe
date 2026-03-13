@@ -97,6 +97,13 @@ void MidiHandler::closeAllDevices()
 void MidiHandler::addBinding(const MidiBinding& binding)
 {
     std::lock_guard<std::mutex> lock(bindingsMutex_);
+    for (const auto& existing : bindings_) {
+        if (existing.cc == binding.cc && existing.channel == binding.channel
+            && existing.cc >= 0) {
+            juce::Logger::writeToLog("[MIDI] Warning: duplicate CC" + juce::String(binding.cc)
+                + " ch" + juce::String(binding.channel) + " binding");
+        }
+    }
     bindings_.push_back(binding);
 }
 
@@ -116,16 +123,35 @@ void MidiHandler::startLearn(
         learnCallback_ = std::move(callback);
     }
     learning_.store(true, std::memory_order_release);
+
+    // 30-second timeout to prevent infinite waiting
+    struct LearnTimeout : juce::Timer {
+        MidiHandler& handler;
+        LearnTimeout(MidiHandler& h) : handler(h) {}
+        void timerCallback() override {
+            juce::Logger::writeToLog("[MIDI] Learn timed out after 30s");
+            handler.stopLearn();
+            stopTimer();
+        }
+    };
+    learnTimer_ = std::make_unique<LearnTimeout>(*this);
+    static_cast<LearnTimeout*>(learnTimer_.get())->startTimer(30000);
+
     juce::Logger::writeToLog("[MIDI] Learn started");
 }
 
 void MidiHandler::stopLearn()
 {
+    if (learnTimer_) {
+        learnTimer_->stopTimer();
+        learnTimer_.reset();
+    }
     learning_.store(false, std::memory_order_release);
     {
         std::lock_guard<std::mutex> lock(bindingsMutex_);
         learnCallback_ = nullptr;
     }
+    juce::Logger::writeToLog("[MIDI] Learn stopped");
 }
 
 void MidiHandler::handleIncomingMidiMessage(

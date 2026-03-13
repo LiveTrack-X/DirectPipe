@@ -177,6 +177,7 @@ private:
 
     std::atomic<bool> learning_{false};
     std::function<void(int, int, int, const juce::String&)> learnCallback_;  // guarded by bindingsMutex_
+    std::unique_ptr<juce::Timer> learnTimer_;
 };
 
 } // namespace directpipe
