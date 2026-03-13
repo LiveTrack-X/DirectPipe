@@ -648,7 +648,8 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     }
 
     deviceManager_.addAudioCallback(this);
-    Log::info("AUDIO", "Switched to " + typeName + " (SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + ")");
+    Log::info("AUDIO", "Driver switch: " + currentType + " -> " + typeName
+        + " (SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + ")");
     if (Log::isAuditMode()) {
         if (auto* dev = deviceManager_.getCurrentAudioDevice()) {
             Log::audit("AUDIO", "Driver switch details: device='" + dev->getName() + "' type=" + dev->getTypeName());
@@ -1240,6 +1241,9 @@ void AudioEngine::attemptReconnection()
     if (!deviceLost_.load(std::memory_order_relaxed)) return;
     if (attemptingReconnection_) return;  // Re-entrancy guard
     attemptingReconnection_ = true;
+
+    Log::info("AUDIO", "Reconnect attempt #" + juce::String(reconnectMissCount_ + 1)
+        + " — desired in='" + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
 
     auto* type = deviceManager_.getCurrentDeviceTypeObject();
     if (!type) {

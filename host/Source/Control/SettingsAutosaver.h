@@ -74,7 +74,9 @@ private:
     std::atomic<bool>& partialLoad_;
 
     bool dirty_ = false;
-    int cooldown_ = 0;  // ticks remaining before save (at 30Hz)
+    int cooldown_ = 0;      // ticks remaining before save (at 30Hz)
+    int deferCount_ = 0;    // consecutive deferred attempts (force save after limit)
+    static constexpr int kMaxDeferCount = 50;  // ~15s at 300ms per retry
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsAutosaver)
 };

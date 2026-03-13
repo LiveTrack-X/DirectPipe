@@ -24,6 +24,7 @@
 #include "StatusUpdater.h"
 #include "../Audio/AudioEngine.h"
 #include "../Control/StateBroadcaster.h"
+#include "../Control/Log.h"
 #include "LevelMeter.h"
 #include "PresetManager.h"
 
@@ -53,6 +54,9 @@ void StatusUpdater::setUI(juce::Label* latencyLabel, juce::Label* cpuLabel, juce
 void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
 {
     if (!inputMeter_) return;
+
+    if (engine_.getOutputRouter().checkAndClearBufferTruncated())
+        Log::warn("AUDIO", "Buffer truncation detected — consider increasing buffer size");
 
     auto& monitor = engine_.getLatencyMonitor();
     bool muted = engine_.isMuted();

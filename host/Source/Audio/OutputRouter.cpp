@@ -53,7 +53,17 @@ void OutputRouter::shutdown()
 
 void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSamples)
 {
-    numSamples = juce::jmin(numSamples, scaledBuffer_.getNumSamples());
+    const int maxSamples = scaledBuffer_.getNumSamples();
+    if (maxSamples == 0) {
+        bufferTruncated_.store(true, std::memory_order_relaxed);
+        return;  // Not initialized yet
+    }
+    if (numSamples > maxSamples) {
+        // RT-safe: set atomic flag only (no heap alloc / no mutex in audio callback).
+        // Message-thread code can check bufferTruncated_ for diagnostics.
+        bufferTruncated_.store(true, std::memory_order_relaxed);
+        numSamples = maxSamples;
+    }
     const int numChannels = juce::jmin(buffer.getNumChannels(), 2);
 
     // Main output goes directly through the audio callback's outputChannelData.

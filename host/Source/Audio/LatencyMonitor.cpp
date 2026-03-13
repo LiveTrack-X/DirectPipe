@@ -28,11 +28,11 @@ namespace directpipe {
 
 void LatencyMonitor::reset(double sampleRate, int bufferSize)
 {
-    sampleRate_ = sampleRate;
-    bufferSize_ = bufferSize;
+    sampleRate_ = (sampleRate > 0.0) ? sampleRate : 48000.0;
+    bufferSize_ = (bufferSize > 0) ? bufferSize : 128;
 
     // Calculate buffer latencies
-    double bufferMs = (static_cast<double>(bufferSize) / sampleRate) * 1000.0;
+    double bufferMs = (static_cast<double>(bufferSize_) / sampleRate_) * 1000.0;
     inputLatencyMs_.store(bufferMs, std::memory_order_relaxed);
     outputLatencyMs_.store(bufferMs, std::memory_order_relaxed);
     processingTimeMs_.store(0.0, std::memory_order_relaxed);

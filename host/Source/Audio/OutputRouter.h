@@ -69,6 +69,9 @@ public:
     /** Check if monitor output is active and receiving audio. */
     bool isMonitorOutputActive() const;
 
+    /** Check and clear buffer truncation flag (message thread diagnostics). */
+    bool checkAndClearBufferTruncated() { return bufferTruncated_.exchange(false, std::memory_order_relaxed); }
+
 private:
     static constexpr int kOutputCount = static_cast<int>(Output::Count);
 
@@ -88,6 +91,7 @@ private:
     double sampleRate_ = 48000.0;
     int bufferSize_ = 128;
     uint32_t rmsDecimationCounter_ = 0;  ///< RMS decimation for monitor level (RT thread only)
+    std::atomic<bool> bufferTruncated_{false};   ///< RT-safe flag: numSamples exceeded scaledBuffer capacity
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OutputRouter)
 };

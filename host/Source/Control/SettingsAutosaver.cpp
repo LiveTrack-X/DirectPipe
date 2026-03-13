@@ -50,8 +50,17 @@ void SettingsAutosaver::tick()
     if (--cooldown_ == 0) {
         // Defer save if chain is in transitional state (async loading)
         if (loadingSlot_.load() || engine_.getVSTChain().isLoading()) {
-            cooldown_ = 10;  // retry in ~300ms
+            if (++deferCount_ >= kMaxDeferCount) {
+                // Force save after ~15s of deferred attempts to prevent data loss
+                juce::Logger::writeToLog("[PRESET] Autosave forced after " + juce::String(kMaxDeferCount) + " deferred attempts");
+                deferCount_ = 0;
+                dirty_ = false;
+                saveNow();
+            } else {
+                cooldown_ = 10;  // retry in ~300ms
+            }
         } else {
+            deferCount_ = 0;
             dirty_ = false;
             saveNow();
         }
