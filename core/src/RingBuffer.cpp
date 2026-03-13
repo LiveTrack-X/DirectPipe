@@ -176,7 +176,9 @@ uint32_t RingBuffer::availableWrite() const
     const uint64_t write_pos = header_->write_pos.load(std::memory_order_relaxed);
     const uint64_t read_pos = header_->read_pos.load(std::memory_order_acquire);
     const uint64_t used = write_pos - read_pos;
-    return header_->buffer_frames - static_cast<uint32_t>(used);
+    // Clamp to [0, buffer_frames] — mirrors availableRead() safety guard
+    const uint64_t clamped = std::min(used, static_cast<uint64_t>(header_->buffer_frames));
+    return header_->buffer_frames - static_cast<uint32_t>(clamped);
 }
 
 void RingBuffer::reset()

@@ -40,6 +40,7 @@ UpdateChecker::UpdateChecker() = default;
 
 UpdateChecker::~UpdateChecker()
 {
+    alive_->store(false);
 #if JUCE_WINDOWS
     if (downloadThread_.joinable())
         downloadThread_.join();
@@ -74,9 +75,8 @@ void UpdateChecker::cleanupPreviousUpdate()
 void UpdateChecker::checkForUpdate()
 {
     auto currentVersion = juce::String(ProjectInfo::versionString);
-    auto alive = std::make_shared<std::atomic<bool>>(true);
 
-    updateCheckThread_ = std::thread([this, alive, currentVersion]() {
+    updateCheckThread_ = std::thread([this, alive = alive_, currentVersion]() {
         juce::URL url("https://api.github.com/repos/LiveTrack-X/DirectPipe/releases/latest");
         auto stream = url.createInputStream(
             juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
@@ -157,9 +157,8 @@ void UpdateChecker::showUpdateDialog()
     window->addButton("View on GitHub", 2);
     window->addButton("Later", 0);
 
-    auto alive = std::make_shared<std::atomic<bool>>(true);
     window->enterModalState(true, juce::ModalCallbackFunction::create(
-        [this, alive](int result) {
+        [this, alive = alive_](int result) {
             if (!alive->load()) return;
 #if JUCE_WINDOWS
             if (result == 1) {
@@ -204,7 +203,6 @@ void UpdateChecker::performUpdate()
     (*progressDlg)->addProgressBarComponent(downloadProgress_);
     (*progressDlg)->enterModalState(true, nullptr, false);
 
-    auto alive = std::make_shared<std::atomic<bool>>(true);
     auto downloadUrl = latestDownloadUrl_;
     auto version = latestVersion_;
     bool isZip = downloadUrl.endsWithIgnoreCase(".zip");
@@ -219,7 +217,7 @@ void UpdateChecker::performUpdate()
         (*progressDlg)->exitModalState(0);
         return;
     }
-    downloadThread_ = std::thread([alive, downloadUrl, updateDir, batchFile, currentExe, version, isZip, progressDlg]() {
+    downloadThread_ = std::thread([alive = alive_, downloadUrl, updateDir, batchFile, currentExe, version, isZip, progressDlg]() {
         // Download the file
         juce::URL url(downloadUrl);
         int statusCode = 0;

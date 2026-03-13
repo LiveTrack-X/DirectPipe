@@ -68,6 +68,9 @@ private:
     juce::String latestDownloadUrl_;
     bool updateAvailable_ = false;
 
+    /// Shared lifetime flag — set to false in destructor to invalidate pending callAsync lambdas
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(UpdateChecker)
 };
 

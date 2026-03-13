@@ -25,48 +25,6 @@
 
 namespace directpipe {
 
-static juce::String actionToDisplayName(const ActionEvent& event)
-{
-    // Handle actions that use stringParam for display first
-    switch (event.action) {
-        case Action::ToggleMute:
-            if (event.stringParam == "output")  return "Output Mute Toggle";
-            if (event.stringParam == "monitor") return "Monitor Mute Toggle";
-            return "Toggle Mute";
-        case Action::SetPluginParameter:
-            if (!event.stringParam.empty())
-                return juce::String(event.stringParam);
-            return "Plugin[" + juce::String(event.intParam) + "].Param[" +
-                   juce::String(event.intParam2) + "]";
-        default:
-            break;
-    }
-
-    // For other actions, prefer stringParam as friendly display name
-    if (!event.stringParam.empty())
-        return juce::String(event.stringParam);
-
-    switch (event.action) {
-        case Action::PluginBypass:    return "Plugin " + juce::String(event.intParam + 1) + " Bypass";
-        case Action::MasterBypass:    return "Master Bypass";
-        case Action::SetVolume:       return "Set Volume";
-        case Action::LoadPreset:      return "Load Preset";
-        case Action::PanicMute:       return "Panic Mute";
-        case Action::InputGainAdjust: return "Input Gain Adjust";
-        case Action::NextPreset:      return "Next Preset";
-        case Action::PreviousPreset:  return "Previous Preset";
-        case Action::InputMuteToggle: return "Input Mute Toggle";
-        case Action::SwitchPresetSlot: {
-            char label = 'A' + static_cast<char>(event.intParam);
-            return "Preset Slot " + juce::String::charToString(label);
-        }
-        case Action::MonitorToggle:   return "Monitor Toggle";
-        case Action::RecordingToggle: return "Recording Toggle";
-        case Action::IpcToggle:       return "IPC Toggle";
-        default:                      return "Unknown";
-    }
-}
-
 // =============================================================================
 //  HotkeyTab::BindingRow — per-row drag source + drop target
 // =============================================================================

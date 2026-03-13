@@ -330,7 +330,11 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (pluginIndex < 0 || paramIndex < 0)
             return {400, R"({"error": "Invalid index"})"};
 
-        float value = juce::String(segments[5]).getFloatValue();
+        // Validate numeric input — getFloatValue() silently returns 0.0 for non-numeric strings
+        auto valueStr = juce::String(segments[5]);
+        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.") < 0)
+            return {400, R"({"error": "value must be a number 0.0-1.0"})"};
+        float value = valueStr.getFloatValue();
         if (value < 0.0f || value > 1.0f)
             return {400, R"({"error": "value must be 0.0-1.0"})"};
         ActionEvent event;

@@ -225,11 +225,12 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
         return -1;
     }
 
-    // Suspend processing while modifying graph to prevent audio thread races
-    graph_->suspendProcessing(true);
+    // addNode inserts into the node list — the render sequence is not rebuilt
+    // until rebuildGraph() which handles its own suspend/resume pair.
+    // Do NOT suspendProcessing here: JUCE uses a counter, so an extra
+    // suspend(true) without a matching suspend(false) leaves the graph muted.
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
-        graph_->suspendProcessing(false);
         juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;
@@ -307,11 +308,9 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
         return -1;
     }
 
-    // Suspend processing while modifying graph to prevent audio thread races
-    graph_->suspendProcessing(true);
+    // See addPlugin(PluginDescription) comment — no suspendProcessing here
     auto node = graph_->addNode(std::move(instance));
     if (!node) {
-        graph_->suspendProcessing(false);
         juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
         if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
         return -1;

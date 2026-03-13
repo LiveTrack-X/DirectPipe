@@ -76,6 +76,12 @@ struct DirectPipeHeader {
 #pragma warning(pop)
 #endif
 
+// Atomics must be lock-free for cross-process shared memory (no hidden mutexes)
+static_assert(std::atomic<uint64_t>::is_always_lock_free,
+              "std::atomic<uint64_t> must be lock-free for IPC");
+static_assert(std::atomic<bool>::is_always_lock_free,
+              "std::atomic<bool> must be lock-free for IPC");
+
 // Ensure header fields are properly aligned
 static_assert(alignof(DirectPipeHeader) >= 64,
               "DirectPipeHeader must be at least 64-byte aligned");
