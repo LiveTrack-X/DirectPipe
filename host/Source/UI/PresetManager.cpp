@@ -24,6 +24,7 @@
 #include "PresetManager.h"
 #include "../Control/ControlMapping.h"
 #include "../Control/Log.h"
+#include "../Util/AtomicFileIO.h"
 
 namespace directpipe {
 
@@ -39,43 +40,26 @@ bool PresetManager::savePreset(const juce::File& file)
     auto json = exportToJSON();
     if (json.isEmpty()) return false;
 
-    // Keep a backup of the previous file in case shutdown interrupts the write
-    if (file.existsAsFile())
-        file.copyFileTo(file.withFileExtension("dppreset.backup"));
+    if (!atomicWriteFile(file, json)) {
+        juce::Logger::writeToLog("[PRESET] Failed to save: " + file.getFullPathName());
+        return false;
+    }
 
-    bool ok = file.replaceWithText(json);
-    if (ok) juce::Logger::writeToLog("[PRESET] Saved: " + file.getFileName());
-    return ok;
+    juce::Logger::writeToLog("[PRESET] Saved: " + file.getFileName()
+        + " (size=" + juce::String(json.getNumBytesAsUTF8()) + ")");
+    return true;
 }
 
 bool PresetManager::loadPreset(const juce::File& file)
 {
-    if (!file.existsAsFile()) {
-        // Main file missing — try backup (may have been lost during forced shutdown)
-        auto backup = file.withFileExtension("dppreset.backup");
-        if (backup.existsAsFile()) {
-            juce::Logger::writeToLog("[PRESET] Main file missing, restoring from backup");
-            backup.copyFileTo(file);
-        }
-    }
-    if (!file.existsAsFile()) return false;
+    auto json = loadFileWithBackupFallback(file);
+    if (json.isEmpty()) return false;
 
-    auto json = file.loadFileAsString();
     bool ok = importFromJSON(json);
-    if (!ok) {
-        // Corrupt file — try backup
-        auto backup = file.withFileExtension("dppreset.backup");
-        if (backup.existsAsFile()) {
-            juce::Logger::writeToLog("[PRESET] Settings corrupt, restoring from backup");
-            json = backup.loadFileAsString();
-            ok = importFromJSON(json);
-            if (ok) {
-                // Replace corrupt main file with working backup
-                backup.copyFileTo(file);
-            }
-        }
-    }
-    if (ok) juce::Logger::writeToLog("[PRESET] Loaded: " + file.getFileName());
+    if (ok)
+        juce::Logger::writeToLog("[PRESET] Loaded: " + file.getFileName());
+    else
+        juce::Logger::writeToLog("[PRESET] Failed to parse: " + file.getFileName());
     return ok;
 }
 
@@ -571,11 +555,7 @@ bool PresetManager::saveSlot(int slotIndex)
         }
     }
 
-    // Keep backup in case shutdown interrupts the write
-    if (file.existsAsFile())
-        file.copyFileTo(file.withFileExtension("dppreset.backup"));
-
-    bool ok = file.replaceWithText(json);
+    bool ok = atomicWriteFile(file, json);
     if (ok) {
         activeSlot_ = slotIndex;
         // Invalidate cache only if chain STRUCTURE changed (names/paths/order).
@@ -609,27 +589,10 @@ bool PresetManager::loadSlot(int slotIndex)
     juce::Logger::writeToLog("[PRESET] Loading slot " + juce::String::charToString(slotLabel(slotIndex)));
 
     auto file = getSlotFile(slotIndex);
-    if (!file.existsAsFile()) {
-        // Try backup (may have been lost during forced shutdown)
-        auto backup = file.withFileExtension("dppreset.backup");
-        if (backup.existsAsFile()) {
-            juce::Logger::writeToLog("[PRESET] Slot file missing, restoring from backup");
-            backup.copyFileTo(file);
-        }
-    }
-    if (!file.existsAsFile()) return false;
+    auto json = loadFileWithBackupFallback(file);
+    if (json.isEmpty()) return false;
 
-    auto json = file.loadFileAsString();
     bool ok = importChainFromJSON(json);
-    if (!ok) {
-        auto backup = file.withFileExtension("dppreset.backup");
-        if (backup.existsAsFile()) {
-            juce::Logger::writeToLog("[PRESET] Slot file corrupt, restoring from backup");
-            json = backup.loadFileAsString();
-            ok = importChainFromJSON(json);
-            if (ok) backup.copyFileTo(file);
-        }
-    }
     if (ok) {
         activeSlot_ = slotIndex;
         // Read slot name from file

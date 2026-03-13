@@ -24,6 +24,7 @@
 #include "ControlMapping.h"
 #include "HotkeyHandler.h"
 #include "MidiHandler.h"
+#include "../Util/AtomicFileIO.h"
 
 namespace directpipe {
 
@@ -111,22 +112,20 @@ bool ControlMappingStore::save(const ControlConfig& config, const juce::File& fi
     root->setProperty("server", juce::var(server));
 
     auto json = juce::JSON::toString(juce::var(root.release()), true);
-    return targetFile.replaceWithText(json);
+    return atomicWriteFile(targetFile, json);
 }
 
 ControlConfig ControlMappingStore::load(const juce::File& file)
 {
     auto sourceFile = file.getFullPathName().isEmpty() ? getDefaultConfigFile() : file;
 
-    if (!sourceFile.existsAsFile()) {
+    auto json = loadFileWithBackupFallback(sourceFile);
+    if (json.isEmpty())
         return createDefaults();
-    }
 
-    auto json = sourceFile.loadFileAsString();
     auto parsed = juce::JSON::parse(json);
-    if (!parsed.isObject()) {
+    if (!parsed.isObject())
         return createDefaults();
-    }
 
     ControlConfig config;
     auto* root = parsed.getDynamicObject();
