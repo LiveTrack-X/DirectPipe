@@ -502,6 +502,21 @@ bool PresetManager::importChainFromJSON(const juce::String& json)
         applySlowPath(targets, chain);
     }
 
+    // Bypass state validation — force-sync runtime state to match saved state
+    // (addresses v3.10.1 bypass corruption bug)
+    for (size_t i = 0; i < targets.size() && static_cast<int>(i) < chain.getPluginCount(); ++i) {
+        if (auto* slot = chain.getPluginSlot(static_cast<int>(i))) {
+            if (slot->bypassed != targets[i].bypassed) {
+                juce::Logger::writeToLog("[PRESET] Bypass mismatch on plugin "
+                    + juce::String(static_cast<int>(i)) + " (" + targets[i].name
+                    + "): saved=" + juce::String(targets[i].bypassed ? "true" : "false")
+                    + ", actual=" + juce::String(slot->bypassed ? "true" : "false")
+                    + " — forcing sync");
+                chain.setPluginBypassed(static_cast<int>(i), targets[i].bypassed);
+            }
+        }
+    }
+
     return true;
 }
 
