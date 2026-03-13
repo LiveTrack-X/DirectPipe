@@ -111,7 +111,7 @@ TEST_F(ActionHandlerTest, CallbackOrder) {
 }
 
 // Test 5: handle(ToggleMute) with "output" param — output mute toggled
-TEST_F(ActionHandlerTest, HotkeyPlatformSupport) {
+TEST_F(ActionHandlerTest, OutputMuteToggleViaHandle) {
     // Ensure engine is not in panic mute (so toggle works)
     EXPECT_FALSE(engine_->isMuted());
     EXPECT_FALSE(engine_->isOutputMuted());

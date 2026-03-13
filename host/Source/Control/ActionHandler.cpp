@@ -22,6 +22,7 @@
  */
 
 #include "ActionHandler.h"
+#include "Log.h"
 #include "../Audio/AudioEngine.h"
 #include "../UI/PresetSlotBar.h"
 #include "../UI/PresetManager.h"
@@ -61,7 +62,7 @@ void ActionHandler::doPanicMute(bool mute)
         engine_.setMonitorEnabled(preMuteMonitorEnabled_);
         if (preMuteVstEnabled_) engine_.setIpcEnabled(true);
     }
-    juce::Logger::writeToLog("[ACTION] Panic mute " + juce::String(mute ? "engaged" : "disengaged")
+    Log::info("ACTION", "Panic mute " + juce::String(mute ? "engaged" : "disengaged")
         + " — pre-mute state: monitor=" + juce::String(preMuteMonitorEnabled_ ? "on" : "off")
         + ", outputMuted=" + juce::String(preMuteOutputMuted_ ? "yes" : "no")
         + ", vstEnabled=" + juce::String(preMuteVstEnabled_ ? "yes" : "no"));
