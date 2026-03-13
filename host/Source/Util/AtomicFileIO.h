@@ -46,7 +46,8 @@ inline juce::String loadFileWithBackupFallback(const juce::File& file)
         auto content = file.loadFileAsString();
         if (juce::JSON::parse(content).isObject())
             return content;
-        juce::Logger::writeToLog("[IO] Corrupt file: " + file.getFileName() + ", trying backup");
+        juce::Logger::writeToLog("[IO] JSON parse failed: " + file.getFileName()
+            + " — first 200 chars: " + content.substring(0, 200));
     }
 
     // Try .bak

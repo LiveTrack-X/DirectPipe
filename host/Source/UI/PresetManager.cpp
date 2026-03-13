@@ -593,7 +593,17 @@ bool PresetManager::saveSlot(int slotIndex)
                 preloadCache_.invalidateSlot(slotIndex);
         }
         slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
-        juce::Logger::writeToLog("[PRESET] Saved slot " + juce::String::charToString(slotLabel(slotIndex)));
+        juce::String bypassStr;
+        auto& chain = engine_.getVSTChain();
+        for (int i = 0; i < chain.getPluginCount(); ++i) {
+            if (auto* slot = chain.getPluginSlot(i))
+                bypassStr += (slot->bypassed ? "T" : "F") + juce::String(i < chain.getPluginCount() - 1 ? "," : "");
+        }
+        juce::Logger::writeToLog("[PRESET] Saved slot "
+            + juce::String::charToString(slotLabel(slotIndex))
+            + ": " + juce::String(chain.getPluginCount()) + " plugins"
+            + ", bypass=[" + bypassStr + "]"
+            + ", size=" + juce::String(json.getNumBytesAsUTF8()) + "bytes");
     }
     return ok;
 }
@@ -618,6 +628,16 @@ bool PresetManager::loadSlot(int slotIndex)
             else
                 slotNames_[static_cast<size_t>(slotIndex)] = juce::String();
         }
+        juce::String bypassStr;
+        auto& chain = engine_.getVSTChain();
+        for (int i = 0; i < chain.getPluginCount(); ++i) {
+            if (auto* slot = chain.getPluginSlot(i))
+                bypassStr += (slot->bypassed ? "T" : "F") + juce::String(i < chain.getPluginCount() - 1 ? "," : "");
+        }
+        juce::Logger::writeToLog("[PRESET] Loaded slot "
+            + juce::String::charToString(slotLabel(slotIndex))
+            + ": " + juce::String(chain.getPluginCount()) + " plugins"
+            + ", bypass=[" + bypassStr + "]");
     }
     return ok;
 }

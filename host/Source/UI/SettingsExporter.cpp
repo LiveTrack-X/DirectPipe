@@ -57,6 +57,7 @@ bool SettingsExporter::isPlatformCompatible(const juce::String& json)
 juce::String SettingsExporter::exportAll(PresetManager& presetManager,
                                           ControlMappingStore& controlStore)
 {
+    juce::Logger::writeToLog("[PRESET] Export: tier=backup, platform=" + getCurrentPlatform());
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("version", 2);
     root->setProperty("platform", getCurrentPlatform());
@@ -94,6 +95,7 @@ bool SettingsExporter::importAll(const juce::String& json,
                                   PresetManager& presetManager,
                                   ControlMappingStore& controlStore)
 {
+    juce::Logger::writeToLog("[PRESET] Import: tier=backup, platform=" + getCurrentPlatform());
     auto parsed = juce::JSON::parse(json);
     if (!parsed.isObject()) return false;
 
@@ -131,6 +133,7 @@ bool SettingsExporter::importAll(const juce::String& json,
 juce::String SettingsExporter::exportFullBackup(PresetManager& presetManager,
                                                   ControlMappingStore& controlStore)
 {
+    juce::Logger::writeToLog("[PRESET] Export: tier=full, platform=" + getCurrentPlatform());
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("version", 2);
     root->setProperty("type", "full");
@@ -177,6 +180,7 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
                                           PresetManager& presetManager,
                                           ControlMappingStore& controlStore)
 {
+    juce::Logger::writeToLog("[PRESET] Import: tier=full, platform=" + getCurrentPlatform());
     auto parsed = juce::JSON::parse(json);
     if (!parsed.isObject()) return false;
 
