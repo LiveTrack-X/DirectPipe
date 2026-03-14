@@ -55,6 +55,12 @@ void ActionHandler::doPanicMute(bool mute)
         router.setEnabled(OutputRouter::Output::Monitor, false);
         engine_.setMonitorEnabled(false);
         if (preMuteVstEnabled_) engine_.setIpcEnabled(false);
+        auto& recorder = engine_.getRecorder();
+        if (recorder.isRecording()) {
+            auto lastFile = recorder.getRecordingFile();
+            recorder.stopRecording();
+            if (onRecordingStopped) onRecordingStopped(lastFile);
+        }
     } else {
         bool restoreMuted = engine_.isOutputNone() ? true : preMuteOutputMuted_;
         engine_.setOutputMuted(restoreMuted);
@@ -126,11 +132,13 @@ void ActionHandler::handle(const ActionEvent& event)
 {
     switch (event.action) {
         case Action::PluginBypass: {
+            if (engine_.isMuted()) break;
             engine_.getVSTChain().togglePluginBypassed(event.intParam);
             break;
         }
 
         case Action::MasterBypass: {
+            if (engine_.isMuted()) break;
             bool anyActive = false;
             for (int i = 0; i < engine_.getVSTChain().getPluginCount(); ++i) {
                 if (!engine_.getVSTChain().isPluginBypassed(i)) { anyActive = true; break; }
@@ -173,6 +181,7 @@ void ActionHandler::handle(const ActionEvent& event)
             break;
 
         case Action::InputGainAdjust:
+            if (engine_.isMuted()) break;
             engine_.setInputGain(engine_.getInputGain() + event.floatParam * 0.1f);
             if (onInputGainSync) onInputGainSync(engine_.getInputGain());
             if (onDirty) onDirty();
@@ -184,6 +193,7 @@ void ActionHandler::handle(const ActionEvent& event)
                 engine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, event.floatParam);
                 if (onDirty) onDirty();
             } else if (event.stringParam == "input") {
+                if (engine_.isMuted()) break;
                 engine_.setInputGain(event.floatParam);
                 if (onInputGainSync) onInputGainSync(event.floatParam);
                 if (onDirty) onDirty();
@@ -201,6 +211,7 @@ void ActionHandler::handle(const ActionEvent& event)
         }
 
         case Action::RecordingToggle: {
+            if (engine_.isMuted()) break;
             auto& recorder = engine_.getRecorder();
             if (recorder.isRecording()) {
                 auto lastFile = recorder.getRecordingFile();
@@ -227,6 +238,7 @@ void ActionHandler::handle(const ActionEvent& event)
         }
 
         case Action::SetPluginParameter: {
+            if (engine_.isMuted()) break;
             engine_.getVSTChain().setPluginParameter(
                 event.intParam, event.intParam2, event.floatParam);
             break;
@@ -245,6 +257,7 @@ void ActionHandler::handle(const ActionEvent& event)
         case Action::SwitchPresetSlot:
         case Action::NextPreset:
         case Action::PreviousPreset:
+            if (engine_.isMuted()) break;
             slotBar_.handlePresetAction(event);
             break;
 

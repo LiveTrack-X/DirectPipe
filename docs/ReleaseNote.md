@@ -42,6 +42,7 @@
 - **Core library**: Added POSIX library linking for macOS (`-lpthread`) and Linux (`-lrt -lpthread`).
 - **Receiver plugin**: Added `JUCE_PLUGINHOST_AU=1` for macOS AudioUnit builds.
 - **CMake**: Platform-conditional WASAPI/ASIO/CoreAudio/ALSA/JACK defines.
+- **CI/CD**: macOS build artifact changed from `.zip` to `.dmg` — prevents v3 auto-updater from downloading wrong binary (updater looks for `.zip` → `.dmg` is invisible to it).
 
 ### Bugfix Ports from v3.10.1
 
@@ -56,14 +57,19 @@
 
 ### Bugfixes
 
+- **Panic mute comprehensive blocking**: All action cases in `ActionHandler::handle()` now check `engine_.isMuted()` — PluginBypass, MasterBypass, InputGainAdjust, SetVolume (input), SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle. Previously some actions (bypass, gain, presets) could execute during panic mute.
+- **Panic mute stops recording**: `doPanicMute(true)` now stops active recording (recording is mic output → must stop). Recording does not auto-restart on unmute. RecordingToggle is also blocked during panic.
+- **HTTP CORS preflight**: Added `OPTIONS` request handler with `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS` for browser-based clients (e.g., pre-release dashboard). Without this, browser PUT/DELETE requests got connection reset before reaching the 405 handler.
+- **HTTP gain delta scaling**: `/api/gain/:delta` now multiplies delta by 10× to compensate for `ActionHandler`'s `*0.1f` scaling (designed for hotkey steps of ±1.0 meaning ±1 dB = ±0.1 gain). Previously `GET /api/gain/1.0` only applied +0.1 gain instead of +1.0.
+- **HTTP volume/parameter validation**: Volume and parameter endpoints validate numeric input — `indexOfAnyOf("0123456789.")` check rejects non-numeric strings like "abc" which `getFloatValue()` silently converts to 0.0.
 - **UpdateChecker lifetime fix**: `alive_` promoted from local variable to class member. Destructor sets `false` before joining threads, preventing use-after-free in pending `callAsync` lambdas.
 - **IPC lock-free assertion**: `Protocol.h` now has `static_assert(std::atomic<uint64_t/bool>::is_always_lock_free)` — compile-time guarantee that shared memory atomics never use hidden mutexes.
 - **MidiTab Learn race fix**: `startLearn` callback captures `manager_` reference directly instead of raw `this`, eliminating potential use-after-free when MIDI thread fires callback during tab destruction.
 - **VSTChain addPlugin double-suspend fix**: Removed orphaned `suspendProcessing(true)` around `addNode()`. JUCE uses a counter-based suspend mechanism — the extra suspend without matching resume left the audio graph muted after plugin load.
 - **RingBuffer availableWrite clamp**: Added `std::min` overflow guard matching `availableRead()`, preventing underflow if positions are transiently inconsistent.
-- **HTTP API numeric validation**: Plugin parameter endpoint (`/api/plugin/:id/param/:id/:value`) now validates numeric input. Non-numeric strings like "abc" return 400 instead of silently setting value to 0.0.
 - **Receiver VST RT-safety**: Replaced `std::vector::resize()` in `saveLastOutput` (called from `processBlock`) with `jassert` — buffer is pre-allocated in `prepareToPlay`.
 - **Code deduplication**: Extracted identical `actionToDisplayName` (~40 lines) from `HotkeyTab.cpp` and `MidiTab.cpp` to shared `ActionDispatcher.h`.
+- **`input_muted` clarification**: `input_muted` state field mirrors `muted` (panic mute). `InputMuteToggle` action triggers `doPanicMute()` — there is no independent input mute.
 
 ### Docs
 

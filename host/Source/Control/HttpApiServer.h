@@ -83,6 +83,7 @@ private:
     void serverThread();
     void handleClient(std::unique_ptr<juce::StreamingSocket> client);
     std::pair<int, std::string> processRequest(const std::string& method, std::string path);
+    std::string makePreflightResponse();
     std::string makeResponse(int statusCode, const std::string& body);
 
     ActionDispatcher& dispatcher_;

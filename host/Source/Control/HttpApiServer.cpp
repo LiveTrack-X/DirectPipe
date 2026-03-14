@@ -176,6 +176,14 @@ void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
         }
     }
 
+    // Handle CORS preflight (OPTIONS) — browser sends this before PUT/DELETE/etc.
+    if (method == "OPTIONS") {
+        std::string response = makePreflightResponse();
+        client->write(response.c_str(), static_cast<int>(response.size()));
+        client->close();
+        return;
+    }
+
     auto [statusCode, responseBody] = processRequest(method, path);
     Log::info("HTTP", juce::String(method) + " " + juce::String(path) + " -> " + juce::String(statusCode));
     Log::audit("HTTP", "Response: " + juce::String(responseBody).substring(0, 200));
@@ -260,7 +268,11 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         const auto& target = segments[2];
         if (target != "monitor" && target != "input")
             return {400, "{\"error\": \"Unknown volume target, use monitor or input\"}"};
-        float value = juce::String(segments[3]).getFloatValue();
+        // Validate numeric input — getFloatValue() silently returns 0.0 for non-numeric strings
+        auto valueStr = juce::String(segments[3]);
+        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.") < 0)
+            return {400, R"({"error": "value must be a number"})"};
+        float value = valueStr.getFloatValue();
         // Input gain range is 0.0-2.0 (multiplier), others are 0.0-1.0
         float maxValue = (target == "input") ? 2.0f : 1.0f;
         if (value < 0.0f || value > maxValue)
@@ -283,10 +295,12 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                std::to_string(index) + "}"};
     }
 
-    // GET /api/gain/:delta
+    // GET /api/gain/:delta — delta is actual gain change (e.g., 0.1 = +0.1 gain)
+    // InputGainAdjust handler applies *0.1f (designed for hotkey steps ±1),
+    // so scale by 10 to get correct gain change.
     if (action == "gain" && segments.size() >= 3) {
         float delta = juce::String(segments[2]).getFloatValue();
-        dispatcher_.inputGainAdjust(delta);
+        dispatcher_.inputGainAdjust(delta * 10.0f);
         return {200, R"({"ok": true, "action": "input_gain", "delta": )" +
                floatToString(delta) + "}"};
     }
@@ -396,6 +410,16 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     }
 
     return {404, R"({"error": "Unknown endpoint"})"};
+}
+
+std::string HttpApiServer::makePreflightResponse()
+{
+    return "HTTP/1.1 204 No Content\r\n"
+           "Access-Control-Allow-Origin: *\r\n"
+           "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+           "Access-Control-Max-Age: 86400\r\n"
+           "Connection: close\r\n"
+           "\r\n";
 }
 
 std::string HttpApiServer::makeResponse(int statusCode, const std::string& body)

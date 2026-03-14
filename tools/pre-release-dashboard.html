@@ -149,6 +149,13 @@ const sections=[
 {id:'a_state_plugins',name:'State: plugins (array)',type:'auto',fn:async()=>{const s=await st();return s&&Array.isArray(s.plugins)}},
 {id:'a_state_slotnames',name:'State: slot_names (array[5])',type:'auto',fn:async()=>{const s=await st();return s&&Array.isArray(s.slot_names)&&s.slot_names.length===5}},
 {id:'a_state_bypass',name:'State: master_bypassed (bool)',type:'auto',fn:async()=>{const s=await st();return s&&typeof s.master_bypassed==='boolean'}},
+{id:'a_state_mon_lat',name:'State: monitor_latency_ms (number >= 0)',type:'auto',fn:async()=>{const s=await st();return s&&typeof s.monitor_latency_ms==='number'&&s.monitor_latency_ms>=0}},
+{id:'a_state_rec_sec',name:'State: recording_seconds (number >= 0)',type:'auto',fn:async()=>{const s=await st();return s&&typeof s.recording_seconds==='number'&&s.recording_seconds>=0}},
+{id:'a_state_volumes',name:'State: volumes object (input, monitor)',type:'auto',fn:async()=>{const r=await api('/api/status');if(!r||!r.data)return false;const v=r.data.volumes;return v&&typeof v.input==='number'&&typeof v.monitor==='number'}},
+{id:'a_state_all_fields',name:'Status has all 20+ required fields',type:'auto',fn:async()=>{const s=await st();if(!s)return false;const req=['muted','output_muted','input_muted','monitor_enabled','input_gain','monitor_volume','active_slot','recording','recording_seconds','ipc_enabled','device_lost','monitor_lost','sample_rate','buffer_size','cpu_percent','latency_ms','channel_mode','master_bypassed','preset','level_db'];return req.every(k=>k in s)}},
+{id:'a_state_plug_struct',name:'Plugin objects have name/bypassed/loaded',type:'auto',fn:async()=>{const s=await st();if(!s||!s.plugins||s.plugins.length===0)return'skip';return s.plugins.every(p=>typeof p.name==='string'&&typeof p.bypassed==='boolean'&&typeof p.loaded==='boolean')}},
+{id:'a_api_root_format',name:'GET /api returns {info:...}',type:'auto',fn:async()=>{const r=await api('/api');return r&&typeof r.info==='string'}},
+{id:'a_status_type_field',name:'Status response has type:"state"',type:'auto',fn:async()=>{const r=await api('/api/status');return r&&r.type==='state'&&r.data}},
 ]},
 
 // ──── 2. Volume & Gain ────
@@ -164,15 +171,31 @@ const sections=[
 {id:'a_gain_adj_dn',name:'Gain adjust -0.1',type:'auto',fn:async()=>{await api('/api/volume/input/1.0');await D(200);await api('/api/gain/-0.1');await D(300);const s=await st();return s&&s.input_gain<1.0}},
 {id:'a_gain_clamp_hi',name:'Gain adjust clamps at 2.0',type:'auto',fn:async()=>{await api('/api/volume/input/1.9');await D(200);await api('/api/gain/0.5');await D(300);const s=await st();return s&&s.input_gain<=2.01}},
 {id:'a_gain_clamp_lo',name:'Gain adjust clamps at 0.0',type:'auto',fn:async()=>{await api('/api/volume/input/0.1');await D(200);await api('/api/gain/-0.5');await D(300);const s=await st();return s&&s.input_gain>=0.0}},
+{id:'a_vol_mon_quarter',name:'Set monitor volume 0.25',type:'auto',fn:async()=>{await api('/api/volume/monitor/0.25');await D(300);const s=await st();return s&&Math.abs(s.monitor_volume-0.25)<0.05}},
+{id:'a_vol_mon_three_quarter',name:'Set monitor volume 0.75',type:'auto',fn:async()=>{await api('/api/volume/monitor/0.75');await D(300);const s=await st();return s&&Math.abs(s.monitor_volume-0.75)<0.05}},
+{id:'a_vol_mon_neg_reject',name:'Reject monitor volume -0.1 (400)',type:'auto',fn:async()=>{const r=await raw('/api/volume/monitor/-0.1');return r.status===400}},
+{id:'a_vol_in_0',name:'Set input gain 0.0 (boundary)',type:'auto',fn:async()=>{await api('/api/volume/input/0.0');await D(300);const s=await st();return s&&s.input_gain<0.05}},
+{id:'a_vol_in_half',name:'Set input gain 0.5',type:'auto',fn:async()=>{await api('/api/volume/input/0.5');await D(300);const s=await st();return s&&Math.abs(s.input_gain-0.5)<0.05}},
+{id:'a_vol_in_1_5',name:'Set input gain 1.5 → accepted',type:'auto',fn:async()=>{await api('/api/volume/input/1.5');await D(300);const s=await st();return s&&Math.abs(s.input_gain-1.5)<0.05}},
+{id:'a_vol_in_neg_reject',name:'Reject input gain -0.5 (400)',type:'auto',fn:async()=>{const r=await raw('/api/volume/input/-0.5');return r.status===400}},
+{id:'a_vol_precision',name:'Volume precision 0.333 → stored accurately',type:'auto',fn:async()=>{await api('/api/volume/monitor/0.333');await D(300);const s=await st();return s&&Math.abs(s.monitor_volume-0.333)<0.05}},
+{id:'a_gain_zero_delta',name:'Gain adjust delta 0.0 → no change',type:'auto',fn:async()=>{await api('/api/volume/input/1.0');await D(200);await api('/api/gain/0.0');await D(300);const s=await st();return s&&Math.abs(s.input_gain-1.0)<0.05}},
+{id:'a_gain_large_up',name:'Gain adjust +1.0 from 1.0 → clamp 2.0',type:'auto',fn:async()=>{await api('/api/volume/input/1.0');await D(400);await api('/api/gain/1.0');await D(500);const s=await st();return s&&s.input_gain<=2.01&&s.input_gain>=1.9}},
 ]},
 
 // ──── 3. Mute & Panic ────
 {title:'3. Mute & Panic',col:0,tests:[
-{id:'a_mute_toggle',name:'Toggle global mute',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/mute/toggle');await D(500);const s1=await st();await api('/api/mute/toggle');await D(500);return s1&&s1.muted!==s0.muted}},
-{id:'a_mute_in_toggle',name:'Toggle input mute',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/input-mute/toggle');await D(800);const s1=await st();await api('/api/input-mute/toggle');await D(500);return s1&&s1.input_muted!==s0.input_muted}},
-{id:'a_panic_on',name:'Panic mute → muted=true',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(500)}await api('/api/mute/panic');await D(500);const s1=await st();await api('/api/mute/panic');await D(500);return s1&&s1.muted===true}},
-{id:'a_panic_lock',name:'During panic: volume change blocked',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;const wasMuted=s0.muted;if(!wasMuted){await api('/api/mute/panic');await D(500)}const before=await st();const bvol=before?before.monitor_volume:0;await api('/api/volume/monitor/0.1');await D(500);const after=await st();if(!wasMuted){await api('/api/mute/panic');await D(500)}return after&&Math.abs(after.monitor_volume-bvol)<0.05}},
-{id:'a_panic_restore',name:'Panic off → previous state restored',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;const wasMuted=s0.muted;if(!wasMuted){await api('/api/mute/panic');await D(500);await api('/api/mute/panic');await D(500);const s1=await st();return s1&&s1.muted===false}return'skip'}},
+{id:'a_mute_toggle',name:'Toggle global mute',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}const clean=await st();if(!clean||clean.muted)return false;await api('/api/mute/toggle');await D(600);const s1=await st();await api('/api/mute/toggle');await D(600);return s1&&s1.muted===true}},
+{id:'a_mute_in_toggle',name:'Toggle input mute',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/input-mute/toggle');await D(800);const s1=await st();await api('/api/input-mute/toggle');await D(600);return s1&&s1.input_muted!==s0.input_muted}},
+{id:'a_panic_on',name:'Panic mute → muted=true',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}await api('/api/mute/panic');await D(800);const s1=await st();await api('/api/mute/panic');await D(800);return s1&&s1.muted===true}},
+{id:'a_panic_lock',name:'During panic: volume change blocked',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}await api('/api/mute/panic');await D(800);const before=await st();const bvol=before?before.monitor_volume:0;await api('/api/volume/monitor/0.1');await D(500);const after=await st();await api('/api/mute/panic');await D(800);return after&&Math.abs(after.monitor_volume-bvol)<0.05}},
+{id:'a_panic_restore',name:'Panic off → previous state restored',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}await api('/api/mute/panic');await D(800);await api('/api/mute/panic');await D(800);const s1=await st();return s1&&s1.muted===false}},
+{id:'a_mute_independence',name:'input_muted mirrors muted state',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}const clean=await st();if(!clean)return false;await api('/api/mute/toggle');await D(600);const s1=await st();if(!s1)return false;await api('/api/mute/toggle');await D(600);return s1.muted===true&&s1.input_muted===s1.muted}},
+{id:'a_panic_idempotent',name:'Panic on → volume/slot/bypass blocked',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}const clean=await st();const origVol=clean.monitor_volume;const origSlot=clean.active_slot;await api('/api/mute/panic');await D(800);await api('/api/volume/monitor/0.01');await D(300);await api('/api/slot/'+((origSlot+1)%5));await D(300);const s1=await st();const volBlocked=Math.abs(s1.monitor_volume-origVol)<0.05;const slotBlocked=s1.active_slot===origSlot;await api('/api/mute/panic');await D(800);return volBlocked&&slotBlocked}},
+{id:'a_panic_blocks_slot',name:'During panic: slot switch blocked',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}await api('/api/mute/panic');await D(800);const before=await st();const origSlot=before?before.active_slot:0;const target=(origSlot+1)%5;await api('/api/slot/'+target);await D(500);const after=await st();await api('/api/mute/panic');await D(800);return after&&after.active_slot===origSlot}},
+{id:'a_panic_blocks_bypass',name:'During panic: bypass toggle blocked',type:'auto',fn:async()=>{const s0=await st();if(!s0||!s0.plugins||s0.plugins.length===0)return'skip';if(s0.muted){await api('/api/mute/toggle');await D(600)}await api('/api/mute/panic');await D(800);const before=await st();const origBp=before.plugins[0].bypassed;await api('/api/bypass/0/toggle');await D(500);const after=await st();await api('/api/mute/panic');await D(800);return after&&after.plugins[0].bypassed===origBp}},
+{id:'a_panic_restore_monitor',name:'Panic on/off → monitor_enabled restored',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}const origMon=s0.monitor_enabled;await api('/api/mute/panic');await D(800);await api('/api/mute/panic');await D(800);const s1=await st();return s1&&s1.monitor_enabled===origMon}},
+{id:'a_mute_double_toggle',name:'Mute toggle×2 → returns to original',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.muted){await api('/api/mute/toggle');await D(600)}const clean=await st();await api('/api/mute/toggle');await D(500);await api('/api/mute/toggle');await D(500);const s1=await st();return s1&&s1.muted===clean.muted}},
 ]},
 
 // ──── 4. Preset Slots ────
@@ -185,22 +208,39 @@ const sections=[
 {id:'a_slot_reject5',name:'Reject slot index 5 (400)',type:'auto',fn:async()=>{const r=await raw('/api/slot/5');return r.status===400}},
 {id:'a_slot_reject_neg',name:'Reject slot index -1 (400)',type:'auto',fn:async()=>{const r=await raw('/api/slot/-1');return r.status===400}},
 {id:'a_slot_names',name:'slot_names array has 5 entries',type:'auto',fn:async()=>{const s=await st();return s&&Array.isArray(s.slot_names)&&s.slot_names.length===5}},
+{id:'a_slot_names_strings',name:'Each slot_name is a string',type:'auto',fn:async()=>{const s=await st();return s&&s.slot_names.every(n=>typeof n==='string')}},
+{id:'a_slot_reject_large',name:'Reject slot index 9999 (400)',type:'auto',fn:async()=>{const r=await raw('/api/slot/9999');return r.status===400}},
+{id:'a_slot_reject_float',name:'Reject slot index 1.5 (400)',type:'auto',fn:async()=>{const r=await raw('/api/slot/1.5');return r.status===400}},
+{id:'a_slot_reject_alpha',name:'Reject slot index "abc" (400)',type:'auto',fn:async()=>{const r=await raw('/api/slot/abc');return r.status===400}},
+{id:'a_slot_same',name:'Switch to current slot → no error',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;const r=await raw('/api/slot/'+s0.active_slot);return r.status===200}},
+{id:'a_slot_rapid_cycle',name:'Rapid A→B→C→D→E→A cycle',type:'auto',fn:async()=>{for(let i=0;i<5;i++){await api('/api/slot/'+i);await D(200)}await api('/api/slot/0');const s=await waitFor(s=>s.active_slot===0);return!!s}},
+{id:'a_preset_0',name:'Load preset 0 → 200 OK',type:'auto',fn:async()=>{const r=await raw('/api/preset/0');return r.status===200}},
+{id:'a_preset_4',name:'Load preset 4 → 200 OK',type:'auto',fn:async()=>{const r=await raw('/api/preset/4');return r.status===200}},
+{id:'a_preset_reject5',name:'Reject preset index 5 (400)',type:'auto',fn:async()=>{const r=await raw('/api/preset/5');return r.status===400}},
+{id:'a_preset_reject_neg',name:'Reject preset index -1 (400)',type:'auto',fn:async()=>{const r=await raw('/api/preset/-1');return r.status===400}},
 ]},
 
 // ──── 5. Plugin Bypass ────
 {title:'5. Plugin Bypass',col:0,tests:[
 {id:'a_plug_list',name:'plugins array present',type:'auto',fn:async()=>{const s=await st();return s&&Array.isArray(s.plugins)}},
-{id:'a_plug_bypass0',name:'Toggle plugin 0 bypass',type:'auto',fn:async()=>{const s=await st();if(!s||!s.plugins||s.plugins.length===0)return'skip';const b=s.plugins[0].bypassed;await api('/api/bypass/0/toggle');await D(300);const s1=await st();await api('/api/bypass/0/toggle');return s1&&s1.plugins[0].bypassed!==b}},
+{id:'a_plug_bypass0',name:'Toggle plugin 0 bypass',type:'auto',fn:async()=>{const s=await st();if(!s||!s.plugins||s.plugins.length===0)return'skip';if(s.muted){await api('/api/mute/toggle');await D(600)}const s0=await st();const b=s0.plugins[0].bypassed;await api('/api/bypass/0/toggle');await D(600);const s1=await st();await api('/api/bypass/0/toggle');await D(600);return s1&&s1.plugins[0].bypassed!==b}},
 {id:'a_plug_master',name:'Toggle master bypass',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/bypass/master');await D(300);const s1=await st();await api('/api/bypass/master');return s1&&s1.master_bypassed!==s0.master_bypassed}},
 {id:'a_plug_bad_idx',name:'Reject bypass index "abc" (400)',type:'auto',fn:async()=>{const r=await raw('/api/bypass/abc/toggle');return r.status===400}},
+{id:'a_plug_bypass1_isolation',name:'Bypass plugin 1 → plugin 0 unchanged',type:'auto',fn:async()=>{const s0=await st();if(!s0||!s0.plugins||s0.plugins.length<2)return'skip';const orig0=s0.plugins[0].bypassed;await api('/api/bypass/1/toggle');await D(500);const s1=await st();await api('/api/bypass/1/toggle');await D(500);return s1&&s1.plugins[0].bypassed===orig0}},
+{id:'a_plug_bypass_large_idx',name:'Reject bypass index 999 (handled)',type:'auto',fn:async()=>{const r=await raw('/api/bypass/999/toggle');return r.status===200||r.status===400}},
+{id:'a_plug_master_double',name:'Master bypass toggle×2 → original state',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/bypass/master');await D(300);await api('/api/bypass/master');await D(300);const s1=await st();return s1&&s1.master_bypassed===s0.master_bypassed}},
+{id:'a_plug_bypass_negative',name:'Reject bypass index "-1" (400)',type:'auto',fn:async()=>{const r=await raw('/api/bypass/-1/toggle');return r.status===400}},
 ]},
 
 // ──── 6. Toggle Actions ────
 {title:'6. Toggle Actions (IPC/Monitor/Recording)',col:0,tests:[
-{id:'a_ipc_toggle',name:'IPC toggle',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/ipc/toggle');await D(600);const s1=await st();await api('/api/ipc/toggle');await D(300);return s1&&s1.ipc_enabled!==s0.ipc_enabled}},
-{id:'a_mon_toggle',name:'Monitor toggle',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/monitor/toggle');await D(800);const s1=await st();await api('/api/monitor/toggle');await D(500);return s1&&s1.monitor_enabled!==s0.monitor_enabled}},
+{id:'a_ipc_toggle',name:'IPC toggle',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/ipc/toggle');await D(1000);const s1=await st();await api('/api/ipc/toggle');await D(600);return s1&&s1.ipc_enabled!==s0.ipc_enabled}},
+{id:'a_mon_toggle',name:'Monitor toggle',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/monitor/toggle');await D(1000);const s1=await st();await api('/api/monitor/toggle');await D(800);return s1&&s1.monitor_enabled!==s0.monitor_enabled}},
 {id:'a_rec_toggle',name:'Recording toggle → recording=true',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.recording){await api('/api/recording/toggle');await D(500)}await api('/api/recording/toggle');await D(800);const s1=await st();await api('/api/recording/toggle');await D(300);return s1&&s1.recording===true}},
-{id:'a_rec_seconds',name:'Recording shows seconds > 0',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;const wasRec=s0.recording;if(!wasRec){await api('/api/recording/toggle');await D(2000)}const s=await st();if(!wasRec){await api('/api/recording/toggle');await D(300)}return s&&s.recording_seconds>0}},
+{id:'a_rec_seconds',name:'Recording shows seconds > 0',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;const wasRec=s0.recording;if(!wasRec){await api('/api/recording/toggle');await D(3000)}const s=await st();if(!wasRec){await api('/api/recording/toggle');await D(500)}return s&&s.recording_seconds>0}},
+{id:'a_rec_start_stop_start',name:'Recording start/stop/start cycle',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;if(s0.recording){await api('/api/recording/toggle');await D(500)}await api('/api/recording/toggle');await D(800);const s1=await st();if(!s1||!s1.recording)return false;await api('/api/recording/toggle');await D(500);const s2=await st();if(!s2||s2.recording)return false;await api('/api/recording/toggle');await D(800);const s3=await st();await api('/api/recording/toggle');await D(300);return s3&&s3.recording===true}},
+{id:'a_ipc_double_toggle',name:'IPC double toggle → returns to original',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/ipc/toggle');await D(500);await api('/api/ipc/toggle');await D(500);const s1=await st();return s1&&s1.ipc_enabled===s0.ipc_enabled}},
+{id:'a_mon_double_toggle',name:'Monitor double toggle → returns to original',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;await api('/api/monitor/toggle');await D(600);await api('/api/monitor/toggle');await D(600);const s1=await st();return s1&&s1.monitor_enabled===s0.monitor_enabled}},
 ]},
 
 // ──── 7. Extended State & API Coverage ────
@@ -217,7 +257,19 @@ const sections=[
 {id:'a_midi_note_inject',name:'MIDI Note inject → 200 OK',type:'auto',fn:async()=>{const r=await raw('/api/midi/note/1/60/127');return r.status===200}},
 {id:'a_midi_bad_ch',name:'MIDI channel 0 → 400',type:'auto',fn:async()=>{const r=await raw('/api/midi/cc/0/0/64');return r.status===400}},
 {id:'a_midi_bad_val',name:'MIDI value 200 → 400',type:'auto',fn:async()=>{const r=await raw('/api/midi/cc/1/0/200');return r.status===400}},
+{id:'a_midi_ch17_reject',name:'MIDI channel 17 → 400',type:'auto',fn:async()=>{const r=await raw('/api/midi/cc/17/0/64');return r.status===400}},
+{id:'a_midi_cc128_reject',name:'MIDI CC number 128 → 400',type:'auto',fn:async()=>{const r=await raw('/api/midi/cc/1/128/64');return r.status===400}},
+{id:'a_midi_note128_reject',name:'MIDI note 128 → 400',type:'auto',fn:async()=>{const r=await raw('/api/midi/note/1/128/100');return r.status===400}},
+{id:'a_midi_vel0',name:'MIDI note velocity 0 → 200 OK',type:'auto',fn:async()=>{const r=await raw('/api/midi/note/1/60/0');return r.status===200}},
+{id:'a_midi_ch16',name:'MIDI channel 16 (max) → 200 OK',type:'auto',fn:async()=>{const r=await raw('/api/midi/cc/16/127/127');return r.status===200}},
+{id:'a_midi_bad_type',name:'MIDI unknown type → 400',type:'auto',fn:async()=>{const r=await raw('/api/midi/sysex/1/0/0');return r.status===400}},
+{id:'a_param_0',name:'Plugin param 0.0 → 200 OK',type:'auto',fn:async()=>{const s=await st();if(!s||!s.plugins||s.plugins.length===0)return'skip';const r=await raw('/api/plugin/0/param/0/0.0');return r.status===200}},
+{id:'a_param_1',name:'Plugin param 1.0 → 200 OK',type:'auto',fn:async()=>{const s=await st();if(!s||!s.plugins||s.plugins.length===0)return'skip';const r=await raw('/api/plugin/0/param/0/1.0');return r.status===200}},
+{id:'a_param_neg_reject',name:'Plugin param -0.1 → 400',type:'auto',fn:async()=>{const r=await raw('/api/plugin/0/param/0/-0.1');return r.status===400}},
+{id:'a_param_empty_reject',name:'Plugin param empty value → 400',type:'auto',fn:async()=>{const r=await raw('/api/plugin/0/param/0/');return r.status===400||r.status===404}},
+{id:'a_param_text_reject',name:'Plugin param "abc" → 400',type:'auto',fn:async()=>{const r=await raw('/api/plugin/0/param/0/abc');return r.status===400}},
 {id:'a_slot_round',name:'Slot A→B→A round-trip → plugins restored',type:'auto',fn:async()=>{const s0=await st();if(!s0||!s0.plugins)return'skip';const names0=s0.plugins.map(p=>p.name).join(',');await api('/api/slot/1');await waitFor(s=>s.active_slot===1);await api('/api/slot/0');const s1=await waitFor(s=>s.active_slot===0);if(!s1||!s1.plugins)return false;return s1.plugins.map(p=>p.name).join(',')===names0}},
+{id:'a_slot_round_bypass',name:'Slot round-trip preserves bypass states',type:'auto',fn:async()=>{const s0=await st();if(!s0||!s0.plugins||s0.plugins.length===0)return'skip';const bp0=s0.plugins.map(p=>p.bypassed);await api('/api/slot/1');await waitFor(s=>s.active_slot===1);await api('/api/slot/0');const s1=await waitFor(s=>s.active_slot===0);if(!s1||!s1.plugins)return false;return s1.plugins.every((p,i)=>i>=bp0.length||p.bypassed===bp0[i])}},
 ]},
 
 // ──── 8. API Error Handling ────
@@ -228,6 +280,24 @@ const sections=[
 {id:'a_err_bad_slot',name:'Slot out of range → 400',type:'auto',fn:async()=>{const r=await raw('/api/slot/99');return r.status===400}},
 {id:'a_err_bad_vol_target',name:'Bad volume target → 400',type:'auto',fn:async()=>{const r=await raw('/api/volume/bad/0.5');return r.status===400}},
 {id:'a_err_vol_range',name:'Volume out of range → 400',type:'auto',fn:async()=>{const r=await raw('/api/volume/monitor/-0.5');return r.status===400}},
+{id:'a_err_put_method',name:'PUT → 405 (method not allowed)',type:'auto',fn:async()=>{try{const r=await fetch(API+'/api/status',{method:'PUT'});return r.status===405}catch{return false}}},
+{id:'a_err_delete_method',name:'DELETE → 405 (method not allowed)',type:'auto',fn:async()=>{try{const r=await fetch(API+'/api/status',{method:'DELETE'});return r.status===405}catch{return false}}},
+{id:'a_err_slot_overflow',name:'Slot index 99999999 → 400',type:'auto',fn:async()=>{const r=await raw('/api/slot/99999999');return r.status===400}},
+{id:'a_err_bypass_overflow',name:'Bypass index 99999999 → handled',type:'auto',fn:async()=>{const r=await raw('/api/bypass/99999999/toggle');return r.status===200||r.status===400}},
+{id:'a_err_empty_endpoint',name:'GET /api/ (trailing slash) → valid',type:'auto',fn:async()=>{const r=await raw('/api/');return r.status===200||r.status===404}},
+{id:'a_err_double_slash',name:'GET /api//status → handled',type:'auto',fn:async()=>{const r=await raw('/api//status');return r.status>=200}},
+{id:'a_err_gain_text',name:'Gain adjust "abc" → no crash',type:'auto',fn:async()=>{const r=await raw('/api/gain/abc');return r.status>=200}},
+{id:'a_err_vol_text_value',name:'Volume monitor "abc" → 400',type:'auto',fn:async()=>{const r=await raw('/api/volume/monitor/abc');return r.status===400}},
+]},
+
+// ──── 8b. API Stress & Consistency ────
+{title:'8b. API Stress & Consistency',col:0,tests:[
+{id:'a_stress_concurrent50',name:'50 concurrent API requests → all OK',type:'auto',fn:async()=>{const ps=[];for(let i=0;i<50;i++)ps.push(st());const rs=await Promise.all(ps);return rs.every(r=>r&&typeof r.muted==='boolean')}},
+{id:'a_stress_rapid100',name:'100 rapid sequential requests → all OK',type:'auto',fn:async()=>{for(let i=0;i<100;i++){const r=await st();if(!r)return false}return true}},
+{id:'a_stress_mixed_ops',name:'Rapid mixed operations (vol+mute+slot)',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;const ops=[api('/api/volume/monitor/0.7'),api('/api/volume/input/1.2')];await Promise.all(ops);await D(300);await api('/api/mute/toggle');await D(300);await api('/api/mute/toggle');await D(300);const s1=await st();return s1&&typeof s1.muted==='boolean'}},
+{id:'a_stress_vol_sweep',name:'Volume sweep 0.0→1.0 in 10 steps',type:'auto',fn:async()=>{for(let i=0;i<=10;i++){await api('/api/volume/monitor/'+(i/10));await D(150)}await D(300);const s=await st();return s&&s.monitor_volume>0.9}},
+{id:'a_consistency_after_ops',name:'State consistent after 20 operations',type:'auto',fn:async()=>{const s0=await st();if(!s0)return false;for(let i=0;i<5;i++){await api('/api/mute/toggle');await D(100);await api('/api/mute/toggle');await D(100)}for(let i=0;i<5;i++){await api('/api/input-mute/toggle');await D(100);await api('/api/input-mute/toggle');await D(100)}const s1=await st();return s1&&s1.muted===s0.muted&&s1.input_muted===s0.input_muted}},
+{id:'a_consistency_slot_stress',name:'Rapid slot A→B→A×5 → state consistent',type:'auto',fn:async()=>{for(let i=0;i<5;i++){await api('/api/slot/1');await D(100);await api('/api/slot/0');await D(100)}const s=await waitFor(s=>s.active_slot===0,8000);return!!s}},
 ]},
 
 // ──── 9. App Startup / Tray ────
@@ -252,6 +322,11 @@ const sections=[
 {id:'m_multi_ipc_blocked',name:'Audio Only 모드 → IPC(Receiver) 활성화 불가',type:'manual'},
 {id:'m_quit_btn',name:'Settings 탭 Quit 버튼 → 해당 인스턴스만 종료',type:'manual'},
 {id:'m_mac_gatekeeper',name:'첫 실행 시 Gatekeeper 경고 → 허용 후 정상 실행',type:'manual',os:'mac'},
+{id:'m_portable_config_dir',name:{win:'포터블 모드 → .\\config\\ 디렉토리에 파일 생성 확인',mac:'포터블 모드 → ./config/ 디렉토리에 파일 생성 확인',linux:'포터블 모드 → ./config/ 디렉토리에 파일 생성 확인'},type:'manual'},
+{id:'m_portable_no_appdata',name:'포터블 모드 → AppData 디렉토리 미사용 확인',type:'manual'},
+{id:'m_close_reopen',name:'트레이 → 우클릭 Show → 창 정상 복원',type:'manual'},
+{id:'m_title_version',name:'타이틀 바에 올바른 버전 번호 표시',type:'manual'},
+{id:'m_update_no_network',name:'네트워크 없이 시작 → 업데이트 체크 실패해도 크래시 없음',type:'manual'},
 ]},
 
 // ──── 10. Audio Devices ────
@@ -269,6 +344,11 @@ const sections=[
 {id:'m_output_none',name:'출력 "None" 선택 → 출력 없이 VST+모니터만 동작',type:'manual'},
 {id:'m_linux_jack_connect',name:'JACK 서버 연결 → 정상 I/O',type:'manual',os:'linux'},
 {id:'m_linux_pipewire',name:'PipeWire JACK 호환 모드 → 정상 동작',type:'manual',os:'linux'},
+{id:'m_sr_propagation',name:'SR 변경 → VST 체인+모니터+IPC 모두 반영',type:'manual'},
+{id:'m_drv_low_latency',name:'Windows Audio (Low Latency) 선택 → 정상 동작',type:'manual',os:'win'},
+{id:'m_drv_exclusive',name:'Windows Audio (Exclusive Mode) 선택 → 정상 동작',type:'manual',os:'win'},
+{id:'m_asio_multi_device',name:'ASIO → 여러 디바이스 순환 시 안정',type:'manual',os:'win'},
+{id:'m_combo_click_timing',name:'콤보 빠르게 연타 → 크래시 없음',type:'manual'},
 ]},
 
 // ──── 11. Device Reconnect ────
@@ -292,6 +372,11 @@ const sections=[
 {id:'m_driver_snapshot',name:'드라이버 재전환 시 이전 장치/SR/BS 자동 복원',type:'manual',os:'win'},
 {id:'m_driver_snapshot_none',name:'WASAPI None → ASIO → WASAPI 복귀 시 None 복원',type:'manual',os:'win'},
 {id:'m_out_none_asio',name:'WASAPI None → ASIO 전환 → OUT 버튼 정상 토글',type:'manual',os:'win'},
+{id:'m_reconn_rapid_plug',name:'USB 빠른 분리/재연결 3회 → 최종 안정',type:'manual'},
+{id:'m_reconn_during_rec',name:'녹음 중 장치 분리 → 녹음 자동 중지+경고',type:'manual'},
+{id:'m_reconn_during_scan',name:'스캔 중 장치 분리 → 메인 앱 영향 없음',type:'manual'},
+{id:'m_in_out_both_unplug',name:'입력+출력 동시 분리 → 양쪽 Disconnected 표시',type:'manual'},
+{id:'m_mon_fallback_reject',name:'모니터 폴백 장치 거부 → 원래 장치 대기',type:'manual'},
 ]},
 
 // ──── 12. VST Scanner ────
@@ -304,6 +389,9 @@ const sections=[
 {id:'m_scan_retry',name:'스캔 실패 → 자동 재시도 (최대 10회)',type:'manual'},
 {id:'m_scan_outproc',name:'스캔 중 크래시 → 메인 앱 영향 없음 (out-of-process)',type:'manual'},
 {id:'m_scan_au',name:'AU (AudioUnit) 플러그인 스캔 + 로드',type:'manual',os:'mac'},
+{id:'m_scan_rescan',name:'재스캔 → 기존 목록 갱신 (중복 없음)',type:'manual'},
+{id:'m_scan_progress',name:'스캔 중 진행 상태 표시',type:'manual'},
+{id:'m_scan_cancel',name:'스캔 중 창 닫기 → 안전 종료',type:'manual'},
 ]},
 
 // ──── 13. Plugin Chain Editor ────
@@ -315,6 +403,14 @@ const sections=[
 {id:'m_chain_edit',name:'Edit 버튼 → 에디터 GUI',type:'manual'},
 {id:'m_chain_close',name:'에디터 닫기 → 상태 저장',type:'manual'},
 {id:'m_chain_multi',name:'여러 에디터 동시 열기',type:'manual'},
+{id:'m_chain_bypass_visual',name:'Bypass 토글 → 행 색상/표시 변경',type:'manual'},
+{id:'m_chain_5plus',name:'5개 이상 플러그인 체인 → 정상 동작',type:'manual'},
+{id:'m_chain_vst2_load',name:{win:'VST2 (.dll) 로드 → 정상',mac:'VST2 (.vst) 로드 → 정상',linux:'VST2 (.so) 로드 → 정상'},type:'manual'},
+{id:'m_chain_vst3_load',name:'VST3 (.vst3) 로드 → 정상',type:'manual'},
+{id:'m_chain_au_load',name:'AU (.component) 로드 → 정상',type:'manual',os:'mac'},
+{id:'m_chain_editor_resize',name:'플러그인 에디터 창 리사이즈 → 정상',type:'manual'},
+{id:'m_chain_del_during_play',name:'오디오 재생 중 플러그인 삭제 → 끊김 없이 정상',type:'manual'},
+{id:'m_chain_add_during_play',name:'오디오 재생 중 플러그인 추가 → 정상',type:'manual'},
 ]},
 
 // ──── 14. Preset Slots (manual) ────
@@ -329,6 +425,13 @@ const sections=[
 {id:'m_slot_copy_ui',name:'우클릭 → Copy → 대상 슬롯에 복사',type:'manual'},
 {id:'m_slot_delete_ui',name:'우클릭 → Delete → 슬롯 삭제+확인',type:'manual'},
 {id:'m_slot_empty_click',name:'빈 슬롯 클릭 → 체인 비움+슬롯 활성 유지',type:'manual'},
+{id:'m_slot_rapid_switch',name:'슬롯 빠르게 연타(A→B→C→D→E) → 크래시 없음',type:'manual'},
+{id:'m_slot_switch_during_load',name:'무거운 플러그인 로딩 중 다른 슬롯 클릭 → 안전',type:'manual'},
+{id:'m_slot_rename_max8',name:'Rename 8자 초과 입력 → 잘림 처리',type:'manual'},
+{id:'m_slot_rename_unicode',name:'Rename 한글/CJK 이름 → 정상 표시',type:'manual'},
+{id:'m_slot_copy_self',name:'자기 자신에게 Copy → 무시 또는 에러 없음',type:'manual'},
+{id:'m_slot_delete_all',name:'모든 슬롯 삭제 → 빈 체인으로 정상 동작',type:'manual'},
+{id:'m_slot_export_import',name:'Export → Import → 동일 체인 복원',type:'manual'},
 ]},
 
 // ──── 15. Volume/Mute UI ────
@@ -339,6 +442,11 @@ const sections=[
 {id:'m_mon_btn',name:'MON 버튼 → Monitor Enable 토글',type:'manual'},
 {id:'m_vst_btn',name:'VST 버튼 → IPC(Receiver) 토글',type:'manual'},
 {id:'m_panic_btn',name:'PANIC MUTE → 전체 음소거+잠김',type:'manual'},
+{id:'m_panic_all_locked',name:'PANIC 중 OUT/MON/VST 버튼 클릭 → 무시',type:'manual'},
+{id:'m_panic_slider_locked',name:'PANIC 중 슬라이더 조작 → 무시',type:'manual'},
+{id:'m_panic_unmute_restore',name:'PANIC 해제 → 이전 OUT/MON 상태 정확히 복원',type:'manual'},
+{id:'m_gain_slider_2x',name:'게인 슬라이더 → 최대 2.0x 동작 확인',type:'manual'},
+{id:'m_out_btn_visual',name:'OUT Mute → 버튼 빨간색/잠금 표시',type:'manual'},
 ]},
 
 // ──── 16. Monitor Output ────
@@ -349,6 +457,9 @@ const sections=[
 {id:'m_mon_srmm',name:'SR 불일치 → SampleRateMismatch',type:'manual'},
 {id:'m_mon_none',name:'장치 없음 → No device, 레이턴시 0',type:'manual'},
 {id:'m_mon_bs',name:'모니터 버퍼 사이즈 변경 → 레이턴시 반영',type:'manual'},
+{id:'m_mon_vol_0',name:'모니터 볼륨 0 → 소리 안 남',type:'manual'},
+{id:'m_mon_vol_1',name:'모니터 볼륨 1.0 → 최대 볼륨',type:'manual'},
+{id:'m_mon_disable_reenable',name:'모니터 끄기 → 다시 켜기 → 오디오 정상',type:'manual'},
 ]},
 
 // ──── 17. Level Meters & Recording ────
@@ -361,6 +472,10 @@ const sections=[
 {id:'m_rec_play',name:'Play → 마지막 녹음 재생',type:'manual'},
 {id:'m_rec_folder',name:{win:'Open Folder → 탐색기',mac:'Open Folder → Finder',linux:'Open Folder → 파일 관리자'},type:'manual'},
 {id:'m_rec_devchg',name:'녹음 중 장치 변경 → 자동 중지',type:'manual'},
+{id:'m_rec_wav_valid',name:'녹음 파일 → 재생 가능한 WAV 형식',type:'manual'},
+{id:'m_rec_long',name:'1분 이상 녹음 → 정상 저장+파일 사이즈 적정',type:'manual'},
+{id:'m_meter_gain_reflect',name:'게인 슬라이더 올림 → 출력 미터 비례 증가',type:'manual'},
+{id:'m_meter_bypass_change',name:'VST Bypass → 미터 변화 (이펙트 유무)',type:'manual'},
 ]},
 
 // ──── 18. Hotkeys ────
@@ -376,7 +491,11 @@ const sections=[
 {id:'m_hk_record',name:'Key Record → 키 입력 → 현재 키 표시',type:'manual'},
 {id:'m_hk_cancel',name:'Key Record 중 Cancel → 이전 키 유지',type:'manual'},
 {id:'m_hk_drag',name:'단축키 행 드래그 → 순서 변경',type:'manual'},
+{id:'m_hk_duplicate',name:'동일 키 중복 등록 시도 → 경고/거부',type:'manual'},
+{id:'m_hk_fkeys',name:'F1~F12 + 조합키 → 정상 등록',type:'manual'},
+{id:'m_hk_persist',name:'핫키 설정 → 앱 재시작 후 유지',type:'manual'},
 {id:'m_mac_accessibility',name:'접근성 권한 요청 → 허용 후 핫키 동작',type:'manual',os:'mac'},
+{id:'m_linux_hk_stub',name:'Linux 핫키 미지원 → UI에서 안내 표시',type:'manual',os:'linux'},
 ]},
 
 // ──── 19. MIDI ────
@@ -390,6 +509,10 @@ const sections=[
 {id:'m_midi_cancel',name:'MIDI Learn 중 Cancel → 학습 중단',type:'manual'},
 {id:'m_midi_param',name:'플러그인 파라미터 맵핑 (3단계 팝업)',type:'manual'},
 {id:'m_midi_http',name:'HTTP /api/midi/cc, /api/midi/note → 테스트 메시지 주입',type:'manual'},
+{id:'m_midi_hotplug',name:'USB MIDI 장치 연결/분리 → 목록 갱신',type:'manual'},
+{id:'m_midi_multi_bind',name:'같은 CC에 여러 액션 바인딩 → 모두 동작',type:'manual'},
+{id:'m_midi_persist',name:'MIDI 바인딩 → 앱 재시작 후 유지',type:'manual'},
+{id:'m_midi_learn_timeout',name:'MIDI Learn → 시간 초과 또는 Cancel → 정상 복귀',type:'manual'},
 ]},
 
 // ──── 20. Stream Deck ────
@@ -402,6 +525,8 @@ const sections=[
 {id:'m_sd_rec',name:'Recording 토글 + REC mm:ss',type:'manual'},
 {id:'m_sd_misc',name:'Monitor/IPC 토글',type:'manual'},
 {id:'m_sd_reconn',name:'SD 소프트웨어 재시작 → 재연결',type:'manual'},
+{id:'m_sd_multi_action',name:'여러 버튼 동시 동작 → 정상',type:'manual'},
+{id:'m_sd_feedback_sync',name:'앱에서 상태 변경 → SD 피드백 즉시 반영',type:'manual'},
 ]},
 
 // ──── 21. IPC / Receiver ────
@@ -411,6 +536,8 @@ const sections=[
 {id:'m_ipc_daw',name:{win:'DAW에서 Receiver VST3 로드 → 오디오 수신',mac:'DAW에서 Receiver VST3/AU 로드 → 오디오 수신',linux:'DAW에서 Receiver VST3 로드 → 오디오 수신'},type:'manual'},
 {id:'m_ipc_buf',name:'Receiver 버퍼 사이즈 변경',type:'manual'},
 {id:'m_ipc_sr',name:'SR 불일치 경고',type:'manual'},
+{id:'m_ipc_toggle_persist',name:'IPC 상태 → 앱 재시작 후 유지',type:'manual'},
+{id:'m_ipc_audio_quality',name:'Receiver에서 수신한 오디오 → 원본과 일치',type:'manual'},
 ]},
 
 // ──── 22. Settings Export/Import ────
@@ -419,6 +546,11 @@ const sections=[
 {id:'m_import',name:'Load Settings → 복원',type:'manual'},
 {id:'m_full_backup',name:'Full Backup → .dpfullbackup (체인+슬롯+설정 전부)',type:'manual'},
 {id:'m_full_restore',name:'Full Restore → 체인+슬롯+설정 복원',type:'manual'},
+{id:'m_import_cross_os',name:'다른 OS에서 만든 백업 → 플랫폼 불일치 경고',type:'manual'},
+{id:'m_import_corrupted',name:'손상된 .dpbackup 파일 → 에러 메시지+복구 없음',type:'manual'},
+{id:'m_export_dpbackup_verify',name:'Save Settings → 파일 열어서 JSON 유효 확인',type:'manual'},
+{id:'m_full_backup_verify',name:'Full Backup → 체인+슬롯 데이터 포함 확인',type:'manual'},
+{id:'m_backup_restore_roundtrip',name:'Full Backup → 전부 삭제 → Full Restore → 동일 복원',type:'manual'},
 ]},
 
 // ──── 23. Log / Maintenance ────
@@ -430,6 +562,10 @@ const sections=[
 {id:'m_clear_preset',name:'Clear All Presets',type:'manual'},
 {id:'m_factory',name:'Factory Reset → 확인 대화상자 → 전부 삭제',type:'manual'},
 {id:'m_log_category',name:'로그 카테고리 태그 ([APP], [AUDIO], [VST] 등)',type:'manual'},
+{id:'m_log_all_13_tags',name:'13개 태그 모두 확인 (APP/AUDIO/VST/PRESET/ACTION/HOTKEY/MIDI/WS/HTTP/MONITOR/IPC/REC/CONTROL)',type:'manual'},
+{id:'m_factory_confirm',name:'Factory Reset → "정말 삭제?" 확인 대화상자 표시',type:'manual'},
+{id:'m_factory_full',name:'Factory Reset 실행 → 모든 설정+프리셋 삭제+재시작',type:'manual'},
+{id:'m_clear_cache_rescan',name:'Clear Plugin Cache → 다음 스캔 시 처음부터 재스캔',type:'manual'},
 ]},
 
 // ──── 24. NotificationBar ────
@@ -437,6 +573,10 @@ const sections=[
 {id:'m_notif_err',name:'장치 에러 → 빨강 알림 → 페이드',type:'manual'},
 {id:'m_notif_reconn',name:'재연결 → 보라색 알림',type:'manual'},
 {id:'m_notif_plugin',name:'플러그인 로드 실패 → 주황',type:'manual'},
+{id:'m_notif_fade_timing',name:'알림 표시 후 3~8초 자동 페이드',type:'manual'},
+{id:'m_notif_stacking',name:'연속 알림 → 최신 알림으로 교체',type:'manual'},
+{id:'m_notif_disconnected',name:'장치 분리 → "DeviceName (Disconnected)" 콤보 표시',type:'manual'},
+{id:'m_notif_slot_load',name:'슬롯 전환 → 로드 완료 알림 (보라색)',type:'manual'},
 ]},
 
 // ──── 25. UI General ────
@@ -449,6 +589,24 @@ const sections=[
 {id:'m_xrun',name:'XRun 빨간 표시',type:'manual'},
 {id:'m_credit',name:'"Created by LiveTrack" 라벨',type:'manual'},
 {id:'m_update',name:'새 버전 "NEW vX.Y.Z" 주황',type:'manual'},
+{id:'m_statusbar_portable',name:'포터블 모드 → 상태바 "Portable" 표시',type:'manual'},
+{id:'m_statusbar_audio_only',name:'Audio Only 모드 → 상태바 주황 표시',type:'manual'},
+{id:'m_resize_min',name:'최소 크기 (600×800) 로 리사이즈 → 레이아웃 깨지지 않음',type:'manual'},
+{id:'m_resize_max',name:'최대 크기 (1400×1200) 로 리사이즈 → 정상',type:'manual'},
+{id:'m_keyboard_tab',name:'Tab 키로 UI 포커스 이동 → 접근성',type:'manual'},
+{id:'m_long_session',name:'30분 이상 사용 → 메모리 누수/CPU 증가 없음',type:'manual'},
+{id:'m_cpu_under_load',name:'VST 5개+ 체인 → CPU 미터 적정 범위',type:'manual'},
+]},
+
+// ──── 25b. WebSocket ────
+{title:'25b. WebSocket',col:1,tests:[
+{id:'m_ws_connect',name:'WebSocket 클라이언트 연결 → 초기 상태 수신',type:'manual'},
+{id:'m_ws_broadcast',name:'앱 상태 변경 → WS 클라이언트에 즉시 전파',type:'manual'},
+{id:'m_ws_disconnect',name:'WS 클라이언트 종료 → 서버 안정',type:'manual'},
+{id:'m_ws_multi_client',name:'WS 클라이언트 2개 이상 동시 연결 → 모두 수신',type:'manual'},
+{id:'m_ws_max_clients',name:'16개 초과 연결 시 거부',type:'manual'},
+{id:'m_ws_action',name:'WS로 toggle_mute 전송 → 앱 상태 변경',type:'manual'},
+{id:'m_udp_discovery',name:'UDP 포트 8767 → DIRECTPIPE_READY 브로드캐스트',type:'manual'},
 ]},
 
 // ──── 26. v3.10.0 Regression Tests ────

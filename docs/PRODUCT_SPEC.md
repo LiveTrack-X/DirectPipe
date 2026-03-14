@@ -112,7 +112,7 @@ GPL v3 (오픈소스)
 
 3가지 출력 경로는 모두 **독립적으로 켜기/끄기 및 볼륨 조절**이 가능하다. OUT/MON/VST 버튼 또는 외부 제어(핫키, MIDI, Stream Deck, HTTP API)로 각 경로를 개별 제어하여, 예를 들어 OBS 마이크만 끄고 Discord는 유지하거나 그 반대도 가능하다. Panic Mute(Ctrl+Shift+M)로 전체를 즉시 차단할 수 있으며, 해제 시 이전 ON/OFF 상태가 자동 복원된다.
 
-All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly; previous ON/OFF states auto-restore on unmute.
+All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly and stops active recording; previous ON/OFF states auto-restore on unmute (recording does not auto-restart). During panic, all actions (bypass, volume, preset, gain, recording, plugin parameters) are blocked.
 
 | 경로 | 설명 | 기술 | 제어 |
 |------|------|------|------|
@@ -734,12 +734,15 @@ rebuildGraph(bool suspend = true)
 
 | 항목 | 상세 |
 |------|------|
-| 동작 | 즉시 모든 오디오 출력 뮤트 |
+| 동작 | 즉시 모든 오디오 출력 뮤트 + 녹음 자동 중지 |
 | 잠금 | 패닉 뮤트 중 OUT/MON/VST 버튼 잠금 |
 | 외부 제어 잠금 | 핫키/MIDI/Stream Deck/HTTP 모두 잠금 — PanicMute 액션만 허용 |
-| 모니터 상태 | 뮤트 전 모니터 활성 상태 기억, 언뮤트 시 복원 |
+| 액션 차단 | 바이패스, 볼륨, 게인, 프리셋, 녹음, 플러그인 파라미터 등 모든 액션 차단 |
+| 녹음 | 녹음 중이면 자동 중지 (해제 시 자동 재시작 안 함) |
+| 모니터 상태 | 뮤트 전 모니터/출력/IPC 활성 상태 기억, 언뮤트 시 복원 |
 | 상태 지속 | 패닉 뮤트 상태가 재시작 후에도 유지됨 |
 | 해제 | PanicMute 액션으로만 해제 가능 |
+| input_muted | `muted`와 동일 (독립 입력 뮤트 없음, InputMuteToggle = PanicMute) |
 
 ---
 

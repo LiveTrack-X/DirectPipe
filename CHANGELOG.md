@@ -4,6 +4,39 @@ All notable changes to DirectPipe will be documented in this file.
 
 ---
 
+## [4.0.0-alpha] — Cross-Platform Alpha
+
+> **v3에서 아키텍처 리팩토링 + 크로스플랫폼 확장한 알파 버전입니다.**
+> MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입.
+>
+> **Architecture refactoring + cross-platform expansion from v3.**
+> MainComponent split into 7 focused modules, Platform/ abstraction layer introduced.
+
+### Added
+- **Cross-platform support** — macOS (beta), Linux (experimental) alongside Windows (stable)
+- **Platform abstraction layer** (`Platform/`) — PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock with per-OS implementations
+- **ActionHandler** — Centralized action routing extracted from MainComponent
+- **SettingsAutosaver** — Dirty-flag auto-save with debounce, extracted from MainComponent
+- **StatusUpdater** — Periodic UI status updates, extracted from MainComponent
+- **PresetSlotBar** — Preset slot A-E buttons, extracted from MainComponent
+- **UpdateChecker** — GitHub API polling + update dialog, extracted from MainComponent
+- **HotkeyTab / MidiTab / StreamDeckTab** — Controls sub-tabs split into separate files
+- **ActionResult** pattern — Structured ok/fail returns replacing bare bool/void
+- **HTTP CORS preflight** — OPTIONS request handler for browser-based clients (`Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`)
+- **HTTP input validation** — Volume and parameter endpoints validate numeric input (reject non-numeric strings like "abc")
+
+### Fixed
+- **Panic mute now blocks all actions** — PluginBypass, MasterBypass, InputGainAdjust, SetVolume (input), SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle all check `isMuted()` before executing / 패닉 뮤트 중 모든 액션 차단
+- **Panic mute stops recording** — Active recording is automatically stopped when panic mute engages (recording is mic output, so it must stop). Recording does not auto-restart on unmute / 패닉 뮤트 시 녹음 자동 중지 (해제 시 자동 재시작 안 함)
+- **HTTP gain delta scaling** — `/api/gain/:delta` now correctly applies the requested gain change (was applying 1/10th of intended value due to ActionHandler's `*0.1f` scaling for hotkey steps) / HTTP 게인 델타 스케일링 수정
+- **`input_muted` state field** — Clarified that `input_muted` mirrors `muted` (panic mute state). There is no independent input mute — `InputMuteToggle` triggers panic mute / `input_muted`는 `muted`와 동일 (독립 입력 뮤트 없음)
+
+### Changed
+- **CI/CD** — macOS build artifact changed from `.zip` to `.dmg` (updater safety: prevents v3 updater from downloading wrong binary)
+- **MainComponent** — Reduced from ~1,835 lines to ~729 lines via extraction of 7 focused classes
+
+---
+
 ## [3.10.3] — Final Stable Release
 
 > **이 버전은 v3.10.x 라인의 최종 안정 릴리스입니다 (Windows 전용).**

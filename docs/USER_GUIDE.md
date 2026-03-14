@@ -662,10 +662,11 @@ In portable mode, multiple DirectPipe instances can run simultaneously. External
 **전체 출력을 즉시 뮤트**합니다. 갑자기 큰 소리가 나거나 피드백이 발생했을 때 사용하세요.
 
 - 패닉 뮤트 중에는 OUT/MON/VST 버튼과 **모든 외부 제어가 잠금**됩니다 / During panic mute, OUT/MON/VST buttons and **all external controls are locked**
+- **녹음 중이면 자동 중지**됩니다 (해제 시 자동 재시작 안 함) / **Active recording is automatically stopped** (does not auto-restart on unmute)
 - 해제하면 이전 상태(모니터 켜짐/꺼짐, 출력 뮤트 등)가 **자동 복원**됩니다 / Previous state (monitor on/off, output mute, etc.) is **auto-restored** on unmute
 - 단축키 / Shortcut: **Ctrl+Shift+M**
 
-Immediately mutes all outputs. During panic mute, all buttons and external controls are locked — only PanicMute/unmute can change state. Previous state is restored on unmute.
+Immediately mutes all outputs and stops active recording. During panic mute, all buttons and external controls are locked — only PanicMute/unmute can change state. Previous state is restored on unmute (recording does not auto-restart).
 
 ### 활용 가이드 / Usage Guide
 
@@ -744,9 +745,11 @@ Press **Ctrl+Shift+M** once to instantly kill all outputs when unexpected noise,
 | **PANIC** | 🔴 활성 / Active | OUT + VST + MON **전부 즉시 뮤트 / all instantly muted** |
 
 - 패닉 뮤트 중에는 OUT/MON/VST 버튼과 **모든 외부 제어가 잠금** — 실수로 해제 불가
-- 해제하면 이전 ON/OFF 상태가 **자동 복원** (예: VST만 OFF였다면 그 상태로 돌아감)
+- **녹음 중이면 자동 중지** — 마이크 관련 출력이 전부 차단되므로 녹음도 함께 중지
+- 해제하면 이전 ON/OFF 상태가 **자동 복원** (예: VST만 OFF였다면 그 상태로 돌아감. 단, 녹음은 자동 재시작 안 함)
 - During panic mute, all buttons and external controls are **locked** — prevents accidental unmute
-- On unmute, previous ON/OFF states are **automatically restored**
+- **Active recording is automatically stopped** — all mic-related output is killed, so recording stops too
+- On unmute, previous ON/OFF states are **automatically restored** (recording does not auto-restart)
 
 > **사용 예**: 방송 중 갑자기 집 초인종이 울리거나, 피드백 소음이 터졌을 때. 하나씩 끌 필요 없이 한 번에 차단하고, 돌아오면 한 번에 복원. / Example: Doorbell rings during stream, or feedback loop occurs. Kill everything at once, restore everything when you're back.
 

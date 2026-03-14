@@ -102,27 +102,50 @@ void UpdateChecker::checkForUpdate()
                 auto [cMaj, cMin, cPat] = parseVer(currentVersion);
 
                 if (std::tie(rMaj, rMin, rPat) > std::tie(cMaj, cMin, cPat)) {
-                    // Find download URL from assets (prefer ZIP, fallback to exe)
+                    // Find download URL from assets — platform-aware selection
+                    // 1st pass: match platform-tagged asset (e.g. "DirectPipe-...-Windows.zip")
+                    // 2nd pass: fallback to any "DirectPipe*.zip/exe" (legacy releases without platform tag)
+#if JUCE_WINDOWS
+                    constexpr const char* platformTag = "Windows";
+                    constexpr const char* pkgExt      = ".zip";
+#elif JUCE_MAC
+                    constexpr const char* platformTag = "macOS";
+                    constexpr const char* pkgExt      = ".dmg";
+#elif JUCE_LINUX
+                    constexpr const char* platformTag = "Linux";
+                    constexpr const char* pkgExt      = ".tar.gz";
+#endif
                     juce::String downloadUrl;
                     if (auto* assets = obj->getProperty("assets").getArray()) {
-                        juce::String exeUrl;
+                        juce::String fallbackZipUrl;  // legacy: first DirectPipe*.zip
+                        juce::String fallbackExeUrl;  // legacy: first DirectPipe*.exe
                         for (auto& asset : *assets) {
                             if (auto* assetObj = asset.getDynamicObject()) {
                                 auto name = assetObj->getProperty("name").toString();
                                 auto assetUrl = assetObj->getProperty("browser_download_url").toString();
-                                if (name.endsWithIgnoreCase(".zip") &&
-                                    name.containsIgnoreCase("DirectPipe")) {
+                                // Platform-specific match (highest priority)
+                                if (name.containsIgnoreCase(platformTag) &&
+                                    name.containsIgnoreCase("DirectPipe") &&
+                                    name.endsWithIgnoreCase(pkgExt)) {
                                     downloadUrl = assetUrl;
                                     break;
                                 }
-                                if (name.endsWithIgnoreCase(".exe") &&
+                                // Fallback: legacy ZIP without platform tag
+                                if (fallbackZipUrl.isEmpty() &&
+                                    name.endsWithIgnoreCase(".zip") &&
                                     name.containsIgnoreCase("DirectPipe")) {
-                                    exeUrl = assetUrl;
+                                    fallbackZipUrl = assetUrl;
+                                }
+                                // Fallback: standalone exe
+                                if (fallbackExeUrl.isEmpty() &&
+                                    name.endsWithIgnoreCase(".exe") &&
+                                    name.containsIgnoreCase("DirectPipe")) {
+                                    fallbackExeUrl = assetUrl;
                                 }
                             }
                         }
-                        if (downloadUrl.isEmpty())
-                            downloadUrl = exeUrl;
+                        if (downloadUrl.isEmpty()) downloadUrl = fallbackZipUrl;
+                        if (downloadUrl.isEmpty()) downloadUrl = fallbackExeUrl;
                     }
 
                     juce::MessageManager::callAsync([this, alive, tagName, downloadUrl]() {

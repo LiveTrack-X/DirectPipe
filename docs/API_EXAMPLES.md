@@ -1124,7 +1124,7 @@ AutoHotkey로 커스텀 핫키:
 | `master_bypassed` | bool | 전체 체인 바이패스 여부 |
 | `muted` | bool | 패닉 뮤트 활성 여부 |
 | `output_muted` | bool | 메인 출력 뮤트 여부 |
-| `input_muted` | bool | 입력 뮤트 여부 |
+| `input_muted` | bool | 입력 뮤트 여부 (`muted`와 동일 — 독립 입력 뮤트 없음) |
 | `active_slot` | number | 활성 프리셋 슬롯 (0-4 = A-E) |
 | `slot_names` | array | 슬롯 이름 배열 (5개, 빈 문자열 = 이름 없음) |
 | `preset` | string | 현재 프리셋 이름 |

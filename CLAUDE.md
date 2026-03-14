@@ -31,9 +31,14 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 
 ## Build
 ```bash
+# cmake is NOT in PATH on this machine — use full path:
+# "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
+
+- **Portable test build**: Copy exe to `C:\Users\livet\Desktop\DirectPipe-v4-test\` (has `portable.flag` for isolation from v3)
+- **Stale build artifacts**: If HTTP API or other features behave unexpectedly after code changes, do a clean rebuild — incremental builds can silently link stale .obj files
 
 ## Architecture
 ```
@@ -64,12 +69,12 @@ MainComponent Split (v3→v4):
 ## Key Implementations
 
 ### v4 Architecture (v3에서 변경된 부분)
-- **ActionHandler**: Consolidated action routing from ActionDispatcher to AudioEngine/UI. `doPanicMute(bool)` consolidates panic mute logic (single implementation, was scattered in v3 MainComponent). Callback-based decoupling from MainComponent (`onDirty`, `onNotification`, `onPanicStateChanged`, etc.). Owns pre-mute state (`preMuteMonitorEnabled_`, `preMuteOutputMuted_`, `preMuteVstEnabled_`).
+- **ActionHandler**: Consolidated action routing from ActionDispatcher to AudioEngine/UI. `doPanicMute(bool)` consolidates panic mute logic (single implementation, was scattered in v3 MainComponent): saves pre-mute state (monitor, output, IPC), mutes everything, **stops active recording**. On unmute, restores previous state (recording does not auto-restart). **All action cases** in `handle()` check `engine_.isMuted()` to block during panic — PluginBypass, MasterBypass, InputGainAdjust, SetVolume, SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle, MonitorToggle, IpcToggle. Only PanicMute/InputMuteToggle bypass the check (they ARE the panic toggle). Callback-based decoupling from MainComponent (`onDirty`, `onNotification`, `onPanicStateChanged`, `onRecordingStopped`, etc.). Owns pre-mute state (`preMuteMonitorEnabled_`, `preMuteOutputMuted_`, `preMuteVstEnabled_`).
 - **ActionResult**: `ActionResult.h` — ok/fail pattern with `onError` callback. Replaces v3's bare bool/void returns for structured error handling.
 - **SettingsAutosaver**: Dirty-flag pattern with 1-second debounce timer (~30Hz tick). `markDirty()` sets flag, `tick()` counts down cooldown, `saveNow()` for immediate save. Callback-based decoupling (`onPostLoad`, `onShowWindow`, `onRestorePanicMute`, `onFlushLogs`). `loadFromFile()` wraps `triggerPreload()` in `callAsync` (audio device must be fully started before preload).
 - **StatusUpdater**: Periodic UI status updates at ~30Hz. Caches all status values (mute states, latency, CPU, format, gain) to avoid redundant repaints. Updates level meters, mute button colours, status bar labels, input gain slider sync, and broadcasts full state to WebSocket clients. Pointer-based UI binding via `setUI()`.
 - **PresetSlotBar**: A-E quick preset slot buttons. Slot naming with pipe delimiter (`A|게임`, max 8 chars). Right-click context menu (Rename/Copy/Delete/Export/Import). Callback-based (`onSlotSwitch`, `onDirty`, `onNotification`). Shared atomics `loadingSlot_`/`partialLoad_` by reference.
-- **UpdateChecker**: Separate class (was inline in v3 MainComponent). Background GitHub API polling for new releases. Semver comparison. Updates credit label text on newer version found. Click triggers update dialog with [Update Now] (Windows only) / [View on GitHub] (macOS/Linux) / [Later]. Uses `SafePointer` for async safety.
+- **UpdateChecker**: Separate class (was inline in v3 MainComponent). Background GitHub API polling for new releases. Semver comparison. Updates credit label text on newer version found. Click triggers update dialog with [Update Now] (Windows only) / [View on GitHub] (macOS/Linux) / [Later]. Uses `alive_` flag for async safety. **Platform-aware asset selection**: 1st pass matches platform tag (`Windows`+`.zip`, `macOS`+`.dmg`, `Linux`+`.tar.gz`), 2nd pass falls back to any `DirectPipe*.zip` (legacy releases), 3rd pass falls back to `DirectPipe*.exe`. See workspace `CLAUDE.md` Section 2 for full release asset naming rules.
 - **HotkeyTab / MidiTab / StreamDeckTab**: Each Controls sub-tab is a separate .h/.cpp file (was all inline in v3 ControlSettingsPanel). HotkeyTab: BindingRow drag-and-drop, key recording. MidiTab: device selector, Learn mode, 3-step param popup. StreamDeckTab: WS/HTTP server status. ControlSettingsPanel is now a slim tabbed container (~75 lines).
 - **PluginLoadHelper**: `PluginLoadHelper.h` — helper for cross-platform VST loading.
 - **Platform/ abstraction layer**: Header-only interfaces with per-OS implementations.
@@ -97,10 +102,10 @@ MainComponent Split (v3→v4):
 
 ### External Control
 - **Global hotkeys**: Windows: `RegisterHotKey` + message-only window. macOS: `CGEventTap` + `AXIsProcessTrustedWithOptions` auto-prompt (accessibility permission required). Linux: stub (not supported, use MIDI/WS/HTTP). `keyToString()` uses macOS symbols (⌃⌥⇧⌘) on Mac.
-- **Panic Mute**: Remembers pre-mute monitor enable state, restores on unmute. During panic mute, all buttons and external controls locked. Logic consolidated in `ActionHandler::doPanicMute()`.
+- **Panic Mute**: Remembers pre-mute state (monitor, output mute, IPC), restores on unmute. Stops active recording on engage (does not auto-restart). During panic mute, all actions and external controls locked — only PanicMute/unmute can change state. Logic consolidated in `ActionHandler::doPanicMute()`. `input_muted` state field mirrors `muted` (no independent input mute).
 - **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup. Port 8765. UDP discovery broadcast (port 8767). `broadcastToClients` thread join outside `clientsMutex_` lock.
 - **IPC Toggle**: `Action::IpcToggle` toggles IPC output. Default hotkey: Ctrl+Shift+I. WebSocket/HTTP/MIDI mappable.
-- **HTTP server**: GET-only REST API. CORS enabled. Port 8766. Proper HTTP status codes (404/405/400). Endpoints include recording toggle, plugin parameter control, IPC toggle.
+- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: volume/parameter values validated as numeric. Gain delta endpoint scales by 10× (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle.
 - **MIDI Learn cancel**: Cancel button in MidiTab. `stopLearn()` called on cancel.
 - **MIDI HTTP API test endpoints**: `/api/midi/cc/:ch/:num/:val` and `/api/midi/note/:ch/:num/:vel`.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow.
@@ -110,7 +115,7 @@ MainComponent Split (v3→v4):
 - **Auto-start**: Platform::AutoStart abstraction. Windows: Registry. macOS: LaunchAgent. Linux: XDG autostart. Toggle in tray menu + Controls > General tab.
 - **System tray**: Close -> tray (macOS/Windows) or minimize to taskbar (Linux, GNOME 42+ tray limitation). Right-click -> Show/Quit/auto-start toggle.
 - **Settings export/import**: Two tiers: `.dpbackup` (settings only) and `.dpfullbackup` (everything). **Cross-OS protection**: Backup files include `platform` field (windows/macos/linux). `getCurrentPlatform()`/`getBackupPlatform()`/`isPlatformCompatible()` block cross-OS restore. Legacy backups without platform field accepted.
-- **In-app auto-updater**: Background thread fetches latest release from GitHub API. Update Now (Windows): downloads ZIP/exe, batch script auto-restart. macOS/Linux: "View on GitHub" only (manual download). Post-update notification via `_updated.flag`.
+- **In-app auto-updater**: Background thread fetches latest release from GitHub API. **Platform-aware asset selection** — prefers platform-tagged asset (e.g. `DirectPipe-...-Windows.zip`), falls back to legacy naming. Update Now (Windows): downloads ZIP/exe, batch script auto-restart. macOS/Linux: "View on GitHub" only (manual download). Post-update notification via `_updated.flag`. **릴리스 asset 네이밍 필수**: Windows=`.zip`, macOS=`.dmg`, Linux=`.tar.gz` — macOS/Linux를 `.zip`으로 배포하면 v3 구 업데이터가 잘못된 바이너리를 다운로드함.
 - **NotificationBar**: Color-coded (red/orange/purple). Auto-fades 3-8 seconds.
 - **LogPanel**: Settings tab. Real-time log viewer. Maintenance: Full Backup/Restore, Clear Plugin Cache, Clear All Presets, Factory Reset.
 - **DirectPipeLogger**: Centralized logging with category tags: `[APP]`, `[AUDIO]`, `[VST]`, `[PRESET]`, `[ACTION]`, `[HOTKEY]`, `[MIDI]`, `[WS]`, `[HTTP]`, `[MONITOR]`, `[IPC]`, `[REC]`, `[CONTROL]`. High-frequency actions excluded.
