@@ -1,163 +1,180 @@
-# Feature Spec: Auto Mode (자동 프로세싱 모드)
+# Feature Spec: Built-in Processors (내장 프로세서)
 
-> **DirectPipe v5.0.0 로드맵** — 기획 문서 (Claude Code 핸드오프용)
+> **DirectPipe v5.0.0 구현 명세** — Claude Code 핸드오프용
 >
-> 이 문서는 DirectPipe에 "Auto Mode"를 추가하기 위한 설계 명세입니다.
-> VST 플러그인 없이 내장 프로세싱만으로 마이크 오디오를 처리하는 제로 설정 경로를 제공합니다.
+> 이 문서는 DirectPipe에 "내장 프로세서" (Filter, Noise Removal, Auto Gain)를 추가하기 위한 설계 명세입니다.
+> 내장 프로세서는 VST 플러그인과 동일하게 체인에 추가/제거/바이패스/순서 변경이 가능합니다.
 > 기존 코드베이스의 아키텍처(`CLAUDE.md` Key Implementations 섹션)와 스레드 안전 규칙을 준수해야 합니다.
 >
-> **의존성**: 이 기능은 `FEATURE_SAFETY_LIMITER.md`의 Safety Limiter가 선행 구현되어야 합니다.
-> Auto 모드의 AGC가 과도 증폭 시 Safety Limiter가 최종 보호 역할을 담당합니다.
+> **의존성**: Safety Limiter (`FEATURE_SAFETY_LIMITER.md`) 구현 완료 필요. (✅ 완료됨)
 
 ---
 
 ## 1. 목적 / Purpose
 
-VST 플러그인이 뭔지 모르거나, 플러그인 설치 없이 깨끗한 마이크 소리만 원하는 사용자를 위한 **제로 설정 내장 프로세싱 모드**.
+VST 플러그인 없이도 기본적인 마이크 처리가 가능하도록 **내장 오디오 프로세서 3종**을 제공.
 
 ### 핵심 컨셉
 
-- **Auto 버튼 하나**로 내장 노이즈 제거 + 자동 볼륨 조절 활성화
-- VST 플러그인 설치, 스캔, 체인 구성 **일체 불필요**
-- 디스코드의 "입력 감도 자동 조정 + 잡음 제거 + 자동 증폭 조절"에 해당하는 기능을 DirectPipe 안에서 구현
-- **기존 VST 체인과 공존** — Auto 모드와 VST 모드는 토글로 전환, 동시 동작 아님 (이중 처리 불가)
+- Filter, Noise Removal, Auto Gain을 **VST 플러그인처럼** 체인에 추가
+- 일반 VST와 동일한 UI (Edit/Bypass/Remove 버튼, 드래그 순서 변경)
+- VST 플러그인과 자유롭게 조합 가능
+- **[Auto] 버튼**: 3개를 한번에 추가하는 편의 기능
+- 프리셋 슬롯 A-E에 내장 프로세서 포함하여 자연스럽게 저장/복원
 
 ### 타겟 사용자
 
 | 사용자 | 시나리오 |
 |--------|---------|
-| VST를 모르는 사용자 | "설치했는데 뭘 해야 하지?" → Auto 누르면 끝 |
-| 빠른 설정이 필요한 사용자 | 플러그인 스캔/선택 없이 즉시 사용 |
-| 세팅 도우미가 세팅해주는 대상 | "일단 Auto 켜놓으세요" 한마디로 해결 |
-| VST 체인 구성 전 임시 사용 | 플러그인 고르는 동안 Auto로 임시 사용 |
+| VST를 모르는 사용자 | [Auto] 누르면 Filter+RNNoise+AGC 즉시 추가 |
+| VST와 조합하는 사용자 | RNNoise → ReaComp → ProQ 같은 혼합 체인 |
+| 빠른 설정이 필요한 사용자 | 플러그인 스캔 없이 내장 프로세서로 즉시 사용 |
 
 ### 디자인 원칙
 
-1. **제로 설정** — Auto 버튼 하나로 동작. 추가 설정 없이도 즉시 사용 가능
-2. **기존 UI 재활용** — VST 체인 에디터와 동일한 행 UI(Edit, Bypass) 사용. 새 UI 컴포넌트 최소화
-3. **크로스 플랫폼** — RNNoise(순수 C), Filter/AGC(순수 C++) 모두 플랫폼 의존성 없음. Windows/macOS/Linux 전부 동작
-4. **VST 체인과 충돌 없음** — Auto ON이면 VST 체인 비활성화. 이중 처리 불가능한 구조
-5. **RT-safe** — 오디오 콜백에서 힙 할당, 뮤텍스, I/O 없음
+1. **VST와 동일한 인터페이스** — AudioProcessor 상속, AudioProcessorGraph에 삽입
+2. **기존 UI 100% 재활용** — PluginChainEditor 그대로 사용. 별도 패널 없음
+3. **크로스 플랫폼** — RNNoise(순수 C), Filter/AGC(순수 C++) 플랫폼 의존성 없음
+4. **RT-safe** — 오디오 콜백에서 힙 할당, 뮤텍스, I/O 없음
+5. **프리셋 호환** — A-E 슬롯에 내장 프로세서 포함 저장/복원
 
 ---
 
-## 2. 신호 흐름 / Signal Flow
+## 2. 아키텍처 / Architecture
 
-### Auto OFF (기존 VST 모드)
+### 내장 프로세서 = AudioProcessor 서브클래스
 
-```
-Mic → Input Gain (수동) → VST Plugin Chain → Safety Limiter → 출력
-```
-
-### Auto ON
+각 내장 프로세서는 JUCE `AudioProcessor`를 상속하여 AudioProcessorGraph에 일반 VST와 동일하게 삽입.
 
 ```
-Auto ON:
-Mic → Input Gain (수동) → [Filter] → [RNNoise] → [AGC] → Safety Limiter → Recording/IPC/Monitor/Output
-                           on/off     on/off       on/off
+AudioProcessorGraph
+  ├── [Input Node]
+  ├── BuiltinFilter (AudioProcessor)      ← 내장
+  ├── BuiltinNoiseRemoval (AudioProcessor) ← 내장 (RNNoise)
+  ├── SomeVSTPlugin (AudioPluginInstance)   ← VST
+  ├── BuiltinAutoGain (AudioProcessor)     ← 내장
+  ├── AnotherVSTPlugin (AudioPluginInstance) ← VST
+  └── [Output Node]
 ```
 
-- **Input Gain**: Auto 모드에서도 수동 조절 가능. 대략적인 레벨을 잡는 용도
-- **Filter**: HPF(Low Cut) + LPF(High Cut) 통합. 불필요 주파수 제거. 개별 Bypass 가능
-- **RNNoise**: AI 노이즈 제거. 프리셋별 EQ + dry/wet. 개별 Bypass 가능
-- **AGC**: 자동 볼륨 조절 (느린 컴프레서 스타일). 개별 Bypass 가능
-- **Safety Limiter**: Auto/VST 모드 무관하게 항상 동작 (별도 Feature Spec 참조)
+### VSTChain PluginSlot 확장
 
-### 삽입 위치 (AudioEngine 오디오 콜백)
+```cpp
+struct PluginSlot {
+    juce::String name;
+    juce::String path;
+    juce::PluginDescription desc;
+    bool bypassed = false;
+    juce::AudioProcessorGraph::NodeID nodeId;
+    juce::AudioPluginInstance* instance = nullptr;  // VST용
+
+    // 내장 프로세서 지원 추가
+    enum class Type { VST, BuiltinFilter, BuiltinNoiseRemoval, BuiltinAutoGain };
+    Type type = Type::VST;
+    std::unique_ptr<juce::AudioProcessor> builtinProcessor;  // 내장용
+};
+```
+
+### 신호 흐름
 
 ```
-1. Audio driver callback
-2. Mute check (fast path)
-3. Input → workBuffer 복사
-4. Mono/Stereo 처리
-5. Input gain 적용 (수동)
-6. Input RMS 측정
-7. ★ Auto 모드 분기:
-     Auto ON  → Filter → RNNoise → AGC
-     Auto OFF → VST chain processBlock()
-8. Safety Limiter
-9. AudioRecorder 쓰기
-10. SharedMemWriter (IPC) 쓰기
-11. OutputRouter → Monitor (자체 볼륨)
-12. Output Volume + Main output 복사 (자체 볼륨 0-100%)
-13. Output RMS 측정
+Mic → Input Gain → AudioProcessorGraph (내장+VST 혼합 체인) → Safety Limiter → 출력
+                   ├── Filter (내장, 선택)
+                   ├── RNNoise (내장, 선택)
+                   ├── ReaComp (VST, 선택)
+                   ├── AutoGain (내장, 선택)
+                   └── ProQ (VST, 선택)
 ```
+
+AudioEngine 오디오 콜백은 변경 없음 — AudioProcessorGraph가 내부적으로 순서대로 처리.
 
 ---
 
-## 3. Auto 모드 진입/전환 / Mode Switching
+## 3. [Auto] 버튼 / Auto Button
 
 ### UI 위치
 
-**입력 게인 슬라이더 옆에 [Auto] 토글 버튼** 배치.
+**입력 게인 슬라이더 옆에 [Auto] 버튼** 배치.
 
 ```
 ┌─INPUT──────────────────────────────────┐
 │ 레벨미터 │ 게인 슬라이더  │ [Auto] 버튼  │
-│  (40px)  │ (0.0x~2.0x)   │              │
 └────────────────────────────────────────┘
 ```
 
-### 전환 동작
+### 동작
 
-**Auto ON:**
-1. VST 체인 비활성화 (processBlock 스킵)
-2. 프리셋 슬롯 A-E 비활성화 (회색 처리, 클릭 불가)
-3. VST 체인 에디터 영역이 Auto 프로세싱 패널로 교체
-4. Add Plugin / Scan 버튼 숨김
-5. 내장 프로세싱(Filter + RNNoise + AGC) 활성화
+[Auto] 클릭 시:
+1. 현재 체인이 비어있으면 → Filter + Noise Removal + Auto Gain 3개를 순서대로 추가
+2. 현재 체인에 이미 내장 프로세서가 있으면 → 없는 것만 추가 (중복 방지)
+3. 이미 3개 모두 있으면 → 아무 동작 안 함 (또는 알림)
 
-**Auto OFF:**
-1. 내장 프로세싱 비활성화
-2. VST 체인 복귀 (이전 상태 그대로)
-3. 프리셋 슬롯 A-E 복귀
-4. VST 체인 에디터 영역 복귀
+추가 순서: Filter → Noise Removal → Auto Gain (체인 앞쪽에 삽입)
 
-### 상태 저장
+### "Add Plugin" 메뉴 확장
 
-- Auto 모드 on/off 상태: `settings.dppreset`에 저장
-- Auto 모드 설정(Filter, RNNoise 프리셋, AGC 타겟 등): `settings.dppreset`에 저장
-- VST 체인은 Auto 모드 전환 시 건드리지 않음 (그대로 보존)
+```
+[+ Add Plugin]
+  ├── Built-in
+  │   ├── Filter (HPF + LPF)
+  │   ├── Noise Removal (RNNoise)
+  │   └── Auto Gain (LUFS AGC)
+  ├── VST3
+  │   └── (스캔된 플러그인 목록)
+  ├── VST2
+  │   └── (스캔된 플러그인 목록)
+  └── Add from file...
+```
 
 ---
 
-## 4. UI 설계 / UI Design
+## 4. 체인 에디터 표시 / Chain Editor Display
 
-### 4.1 Auto ON 상태의 체인 에디터 영역
-
-기존 PluginChainEditor의 행 UI를 재활용. Auto 모드 내장 프로세서를 VST 플러그인과 **동일한 형태**로 표시:
+내장 프로세서는 VST와 동일한 행 UI. 차이점은 Edit 클릭 시 네이티브 GUI 대신 DirectPipe 자체 설정 패널이 열림.
 
 ```
-Auto ON:
-┌─Auto 프로세싱────────────────────────────────┐
-│ 1. Filter                  [Edit][Bp]        │  ← Edit: HPF+LPF 설정 패널
-│ 2. Noise Removal           [Edit][Bp]        │  ← Edit: RNNoise 프리셋/강도 설정
-│ 3. Auto Gain               [Edit][Bp]        │  ← Edit: AGC 타겟 레벨 설정
-└──────────────────────────────────────────────┘
-┌─프리셋 슬롯──────────────────────────────────┐
-│ [A] [B] [C] [D] [E]                         │  ← 비활성화 (회색, 클릭 불가)
-└──────────────────────────────────────────────┘
+┌─플러그인 체인──────────────────────────────────┐
+│ 1. Filter (내장)           [Edit][Bp][X]      │
+│ 2. Noise Removal (내장)    [Edit][Bp][X]      │
+│ 3. ReaComp                 [Edit][Bp][X]      │  ← VST
+│ 4. Auto Gain (내장)        [Edit][Bp][X]      │
+│ 5. FabFilter ProQ          [Edit][Bp][X]      │  ← VST
+├────────────────────────────────────────────────┤
+│ Chain PDC: 512 samples (10.7ms @ 48kHz)        │
+│ [Safety Limiter ✓]                             │
+│ [+ Add Plugin]  [Scan...]  [Remove]            │
+└────────────────────────────────────────────────┘
 ```
 
-### VST 체인 에디터와의 차이점
+| 동작 | VST | 내장 프로세서 |
+|------|-----|-------------|
+| Edit 버튼 | 네이티브 플러그인 GUI | DirectPipe 자체 설정 패널 |
+| Bypass 버튼 | 동일 | 동일 |
+| Remove (X) 버튼 | 동일 | 동일 (삭제 가능) |
+| 드래그 순서 변경 | 동일 | 동일 |
+| 프리셋 저장/복원 | 동일 | 동일 (getStateInformation/setStateInformation) |
 
-| 요소 | VST 모드 | Auto 모드 |
-|------|---------|----------|
-| Remove (X) 버튼 | 있음 | **없음** — 내장 프로세서 삭제 불가 |
-| 드래그앤드롭 순서 변경 | 가능 | **불가** — Filter → RNNoise → AGC 순서 고정 |
-| Add Plugin / Scan 버튼 | 표시 | **숨김** |
-| Edit 버튼 | 플러그인 네이티브 GUI | **DirectPipe 자체 설정 패널** |
-| Bypass 버튼 | 개별 플러그인 bypass | 개별 프로세서 bypass (동일 동작) |
+### 내장 프로세서 이름 표시
 
-### 4.2 Filter Edit 패널
+체인 에디터에서 "(내장)" 접미사로 구분:
+- `Filter (내장)` 또는 아이콘으로 구분
+- VST 이름은 플러그인이 리포트하는 이름 그대로
 
-HPF(Low Cut)와 LPF(High Cut)를 하나의 패널에서 제어.
+---
+
+## 5. 내장 프로세서 설계 / Built-in Processor Design
+
+### 5.1 BuiltinFilter (HPF + LPF)
+
+**파일**: `host/Source/Audio/BuiltinFilter.h/cpp`
+
+`juce::AudioProcessor` 상속. Edit 패널에서 HPF/LPF 제어.
 
 ```
 ┌──────────────────────────────────────┐
 │ Filter                               │
 │                                      │
-│ Low Cut (HPF):  [✓ on/off]           │
+│ Low Cut (HPF):  [✓ on]               │
 │   [▼ 프리셋 드롭다운]                 │
 │     60Hz  — 극저음만 제거 (기본)       │
 │     80Hz  — 에어컨/환풍기 제거         │
@@ -165,15 +182,13 @@ HPF(Low Cut)와 LPF(High Cut)를 하나의 패널에서 제어.
 │     커스텀                            │
 │   커스텀: [████████░░] 20~300Hz       │
 │                                      │
-│ High Cut (LPF): [✓ on/off]           │
+│ High Cut (LPF): [□ off]              │
 │   [▼ 프리셋 드롭다운]                 │
-│     16kHz — 가벼운 고역 제거 (기본)     │
+│     16kHz — 가벼운 고역 제거           │
 │     12kHz — 표준 고역 제거             │
 │     8kHz  — 강한 고역 차단             │
 │     커스텀                            │
 │   커스텀: [████████░░] 4~20kHz        │
-│                                      │
-│ Status: Active                       │
 └──────────────────────────────────────┘
 ```
 
@@ -181,88 +196,89 @@ HPF(Low Cut)와 LPF(High Cut)를 하나의 패널에서 제어.
 
 | 파라미터 | 타입 | 기본값 | 범위 | 설명 |
 |---------|------|--------|------|------|
-| `hpf_enabled` | bool | true | on/off | HPF 활성화 |
+| `hpf_enabled` | bool | true | on/off | HPF 활성화 (기본 ON) |
 | `hpf_frequency` | float | 60.0 | 20~300 Hz | HPF 컷오프 주파수 |
-| `lpf_enabled` | bool | false | on/off | LPF 활성화 |
+| `lpf_enabled` | bool | false | on/off | LPF 활성화 (기본 OFF) |
 | `lpf_frequency` | float | 16000.0 | 4000~20000 Hz | LPF 컷오프 주파수 |
 
-**구현**: JUCE `IIRFilter` — 2차 버터워스. RT-safe, CPU 무시 가능.
+**구현**: JUCE `IIRFilter` — 2차 버터워스. RT-safe. `getLatencySamples()` = 0.
 
-### 4.3 Noise Removal (RNNoise) Edit 패널
+### 5.2 BuiltinNoiseRemoval (RNNoise)
 
-기술적인 억제 강도 대신 **사용 시나리오 기반 프리셋**으로 표시.
+**파일**: `host/Source/Audio/BuiltinNoiseRemoval.h/cpp`
+
+`juce::AudioProcessor` 상속. RNNoise 래퍼 + VAD 기반 노이즈 게이팅.
 
 ```
 ┌──────────────────────────────────────┐
 │ Noise Removal                        │
 │                                      │
-│ Mode:  [▼ 드롭다운]                   │
-│   ┌──────────────────────────────┐   │
-│   │ 🎙 토크/팟캐스트 (남성 저음)   │   │
-│   │ 🎤 보컬/노래 (여성 고음)      │   │
-│   │ 🎮 게이밍 (키보드/마우스)      │   │
-│   │ 💬 회의/통화 (일반)           │   │
-│   │ 🔧 커스텀                     │   │
-│   └──────────────────────────────┘   │
+│ Strength:  [▼ 드롭다운]              │
+│   약 (Light)      — 최소 게이팅       │
+│   중 (Standard)   — 표준 (기본)       │
+│   강 (Aggressive) — 강한 게이팅       │
 │                                      │
-│ [커스텀 선택 시]                       │
-│ Suppression: ████████░░ [슬라이더]    │
+│ [▶ 고급 설정]                         │
+│ ┌─고급 설정──────────────────────┐    │
+│ │ VAD Threshold:                │    │
+│ │ [0.60] ████████░░ 슬라이더     │    │
+│ └────────────────────────────────┘    │
 │                                      │
 │ Status: Active                       │
 └──────────────────────────────────────┘
 ```
 
-**프리셋 동작 (EQ + dry/wet 조합):**
+**프리셋 (VAD 기반 노이즈 게이팅):**
 
-| 프리셋 | Dry/Wet | 후처리 EQ | 설명 |
-|--------|---------|-----------|------|
-| 🎙 토크/팟캐스트 | 100% wet (풀 억제) | 없음 | 남성 음성에 RNNoise 오류 거의 없으므로 풀 억제 |
-| 🎤 보컬/노래 | 60-70% wet | 고역(2kHz+) 보존 부스트 | 여성 고음/웃음/노래에서 찢어지는 문제 완화 |
-| 🎮 게이밍 | 90% wet | 1-4kHz 대역 타겟 억제 | 키보드/마우스 소음 강한 억제, 음성 대역 보존 |
-| 💬 회의/통화 | 80% wet | 없음 | 범용 표준 설정 |
-| 🔧 커스텀 | 슬라이더 0-100% | 없음 | 사용자 직접 조절 |
+RNNoise는 항상 100% 처리 (dry/wet 믹싱 없음 — 위상 왜곡 방지).
 
-**억제 강도 구현 방식: 프리셋별 EQ + dry/wet 믹스**
-- RNNoise 출력(클린)과 원본(노이지)을 dry/wet 비율로 블렌딩
-- 프리셋별로 RNNoise 후단에 경량 EQ 필터 적용하여 주파수 대역 보정
-- 커스텀 모드에서는 dry/wet 슬라이더만 노출 (EQ 없음)
+| 프리셋 | VAD 임계값 | 설명 |
+|--------|-----------|------|
+| 약 (Light) | 0.35 | 게이팅 느슨. 잔여 노이즈 약간 남지만 음성 손실 최소 |
+| 중 (Standard) | 0.60 | 업계 표준 (werman VST 기본값). 대부분의 환경에 적합 |
+| 강 (Aggressive) | 0.85 | 강한 게이팅. 매우 깨끗하지만 작은 소리 잘릴 수 있음 |
 
 **파라미터:**
 
 | 파라미터 | 타입 | 기본값 | 범위 | 설명 |
 |---------|------|--------|------|------|
-| `rnn_preset` | enum | Talk | Talk/Vocal/Gaming/Meeting/Custom | 프리셋 선택 |
-| `rnn_wet` | float | 1.0 | 0.0~1.0 | 커스텀 모드 dry/wet (프리셋 시 자동 설정) |
+| `rnn_strength` | enum | Standard | Light/Standard/Aggressive | 노이즈 제거 강도 |
+| `rnn_vad_threshold` | float | 0.60 | 0.0~1.0 | VAD 임계값 (고급 설정에서 직접 조절) |
 
-**RNNoise 기술 참고:**
+**RNNoise 기술:**
+- 48kHz 고정. 다른 SR에서는 JUCE `LagrangeInterpolator`로 리샘플링
+- 480 프레임 단위 처리 → 내부 FIFO 버퍼 필요 (사전 할당, RT-safe)
+- Dual-mono (채널별 독립 처리, RNNoise 인스턴스 2개)
+- `getLatencySamples()` = FIFO에 의한 추가 레이턴시 리포트 (PDC 표시에 반영됨)
+- `rnnoise_create()`는 `prepareToPlay`에서만 호출 (힙 할당이므로 RT 콜백 금지)
+- `rnnoise_process_frame()` 반환값 = VAD 확률 → 게이팅에 사용
 
-- 라이브러리: RNNoise (BSD-3 라이선스, 순수 C, 직접 링크)
-- 참조 구현: [werman/noise-suppression-for-voice](https://github.com/werman/noise-suppression-for-voice)
-- **48kHz 고정 제한**: RNNoise 내부 모델이 48kHz로 학습됨
-- **리샘플링 전략 (방법 A)**: 48kHz가 아닌 샘플레이트에서는 JUCE `LagrangeInterpolator`로 입력 SR → 48kHz → RNNoise → 48kHz → 원래 SR 왕복 리샘플링
-  - CPU 비용: RNNoise 자체 연산의 1% 미만 (무시 가능)
-  - 레이턴시: 왕복 ~4 샘플 (44.1kHz 기준 ~0.09ms, 체감 불가)
-  - 품질: 음성 대역(100Hz~8kHz)에서 무손실
-  - 검증: werman/noise-suppression-for-voice VST 플러그인이 동일 방식 사용 중
-- **RNNoise의 알려진 한계**: 남성 음성 위주 학습 데이터로 인해 여성 고음역 + 고에너지(웃음, 노래)에서 음성을 노이즈로 오인하는 경우 있음. "보컬/노래" 프리셋에서 dry/wet 60-70% + 고역 보존 EQ로 완화
+**왜 dry/wet 믹싱을 사용하지 않는가:**
+- FIFO로 인한 원본/처리 신호 위상 불일치 → 빗살 필터(comb filtering) → 목소리 왜곡
+- 100% wet 사용으로 위상 문제 완전 회피
 
-### 4.4 Auto Gain (AGC) Edit 패널
+### 5.3 BuiltinAutoGain (LUFS AGC)
+
+**파일**: `host/Source/Audio/BuiltinAutoGain.h/cpp`
+
+`juce::AudioProcessor` 상속. LUFS 기반 비대칭 보정 AGC (Luveler Mode 2 스타일).
 
 ```
 ┌──────────────────────────────────────┐
 │ Auto Gain Control                    │
 │                                      │
-│ Target Level:                        │
-│ [-18 dBFS] ████████████░░░░ 슬라이더  │
+│ Target:                              │
+│ [-15 LUFS] ████████████░░░░ 슬라이더  │
 │            -24        -6             │
 │                                      │
-│ Current Gain: +3.2 dB                │  ← 실시간 표시
-│ Input Level: -24.5 dBFS              │  ← 실시간 표시
-│ Output Level: -18.1 dBFS             │  ← 실시간 표시
+│ Current: -14.2 LUFS                  │
+│ Gain: +3.2 dB                        │
 │                                      │
-│ [▶ 고급 설정]                         │  ← 접힌 상태 (기본)
+│ [▶ 고급 설정]                         │
 │ ┌─고급 설정──────────────────────┐    │
-│ │ Max Gain: [+18 dB] ██████░░   │    │  ← 숨겨진 상한선 설정
+│ │ Low Correct:  [50%] ██████░░  │    │
+│ │ High Correct: [75%] ████████░░│    │
+│ │ Max Gain: [+18 dB] ██████░░   │    │
 │ └────────────────────────────────┘    │
 │                                      │
 │ Status: Active                       │
@@ -273,557 +289,331 @@ HPF(Low Cut)와 LPF(High Cut)를 하나의 패널에서 제어.
 
 | 파라미터 | 타입 | 기본값 | 범위 | UI | 설명 |
 |---------|------|--------|------|-----|------|
-| `agc_target_dB` | float | -18.0 | -24.0 ~ -6.0 dBFS | 슬라이더 | 타겟 출력 레벨 |
-| `agc_max_gain_dB` | float | 18.0 | 6.0 ~ 30.0 dB | 고급 설정 (숨김) | 최대 게인 상한선 |
+| `agc_target_LUFS` | float | -15.0 | -24 ~ -6 LUFS | 슬라이더 | 타겟 라우드니스 |
+| `agc_low_correct` | float | 0.50 | 0.0 ~ 1.0 | 고급 설정 | 조용할 때 보정 비율 |
+| `agc_high_correct` | float | 0.75 | 0.0 ~ 1.0 | 고급 설정 | 클 때 보정 비율 |
+| `agc_max_gain_dB` | float | 18.0 | 6 ~ 30 dB | 고급 설정 | 최대 증폭 상한 |
 
-**AGC 알고리즘:**
+**LUFS 측정 (ITU-R BS.1770):**
+- K-weighting 프리필터 (sidechain — 측정용, 실제 오디오에 적용 안 함)
+- Short-term LUFS (3초 슬라이딩 윈도우)
+- `getLatencySamples()` = 0 (look-ahead 없음)
 
-| 항목 | 사양 |
-|------|------|
-| 방식 | 느린 컴프레서 스타일 (feed-forward) |
-| 윈도우 | 2-3초 RMS 윈도우 |
-| 반응 속도 | 느린 어택/릴리즈 (자연스러운 볼륨 변화) |
-| 타겟 | 사용자 설정 가능 (-24 ~ -6 dBFS, 기본 -18) |
-| 최대 게인 | 상한선 있음 (고급 설정, 기본 +18dB) |
-| Safety Limiter 관계 | AGC가 게인을 올려 클리핑 영역 진입 시 Safety Limiter가 잡아줌. AGC max gain 상한선으로 과도한 증폭 방지 |
-
-**AGC 동작 원리:**
-
+**비대칭 보정 (Luveler Mode 2):**
 ```
-매 프레임:
-  1. RMS 측정 (2-3초 슬라이딩 윈도우)
-  2. targetGain_dB = target_dB - measured_RMS_dB
-  3. targetGain_dB = clamp(targetGain_dB, 0, maxGain_dB)  // 줄이기만 하거나, 최대 maxGain까지 증폭
-  4. smoothedGain = envelope follow (느린 attack + 느린 release)
-  5. 오디오에 smoothedGain 적용
-```
-
-**엔벨로프 계수:**
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `kAttackMs` | 2000ms | 느린 어택 (2초) |
-| `kReleaseMs` | 3000ms | 느린 릴리즈 (3초) |
-
-`prepareToPlay`에서 샘플레이트 기반 계수 계산.
-
----
-
-## 5. 클래스 설계 / Class Design
-
-### 5.1 AutoModeProcessor
-
-Auto 모드 전체를 관리하는 최상위 클래스.
-
-**위치**: `host/Source/Audio/AutoModeProcessor.h/cpp`
-
-```
-class AutoModeProcessor
-{
-public:
-    AutoModeProcessor();
-
-    void prepareToPlay(double sampleRate, int samplesPerBlock);
-
-    // 오디오 콜백에서 호출 — RT-safe
-    void process(juce::AudioBuffer<float>& buffer);
-
-    // 모드 전환
-    void setEnabled(bool enabled);
-    bool isEnabled() const;
-
-    // 개별 프로세서 접근
-    AutoFilter& getFilter();
-    AutoNoiseRemoval& getNoiseRemoval();
-    AutoGainControl& getAGC();
-
-    // 설정 직렬화
-    void saveState(juce::var& obj) const;
-    void loadState(const juce::var& obj);
-
-private:
-    std::atomic<bool> enabled_ { false };
-    AutoFilter filter_;
-    AutoNoiseRemoval noiseRemoval_;
-    AutoGainControl agc_;
-};
-```
-
-### 5.2 AutoFilter (HPF + LPF)
-
-**위치**: `host/Source/Audio/AutoFilter.h/cpp`
-
-```
-class AutoFilter
-{
-public:
-    void prepareToPlay(double sampleRate);
-    void process(juce::AudioBuffer<float>& buffer);  // RT-safe
-
-    void setHPFEnabled(bool enabled);
-    void setHPFFrequency(float hz);       // 20~300 Hz
-    void setLPFEnabled(bool enabled);
-    void setLPFFrequency(float hz);       // 4000~20000 Hz
-    void setBypassed(bool bypassed);
-
-    // 상태 조회
-    bool isBypassed() const;
-    float getHPFFrequency() const;
-    float getLPFFrequency() const;
-
-    void saveState(juce::var& obj) const;
-    void loadState(const juce::var& obj);
-
-private:
-    std::atomic<bool> bypassed_ { false };
-    std::atomic<bool> hpfEnabled_ { true };
-    std::atomic<bool> lpfEnabled_ { false };
-    std::atomic<float> hpfFreq_ { 60.0f };
-    std::atomic<float> lpfFreq_ { 16000.0f };
-
-    // JUCE IIRFilter (2차 버터워스, 채널별)
-    juce::IIRFilter hpfL_, hpfR_;
-    juce::IIRFilter lpfL_, lpfR_;
-    double currentSampleRate_ = 48000.0;
-};
-```
-
-### 5.3 AutoNoiseRemoval (RNNoise 래퍼)
-
-**위치**: `host/Source/Audio/AutoNoiseRemoval.h/cpp`
-
-```
-class AutoNoiseRemoval
-{
-public:
-    AutoNoiseRemoval();
-    ~AutoNoiseRemoval();
-
-    void prepareToPlay(double sampleRate, int samplesPerBlock);
-    void process(juce::AudioBuffer<float>& buffer);  // RT-safe
-
-    void setPreset(NoisePreset preset);  // Talk, Vocal, Gaming, Meeting, Custom
-    void setCustomWet(float wet);         // 0.0~1.0 (커스텀 모드용)
-    void setBypassed(bool bypassed);
-
-    bool isBypassed() const;
-    NoisePreset getPreset() const;
-
-    void saveState(juce::var& obj) const;
-    void loadState(const juce::var& obj);
-
-    enum class NoisePreset { Talk, Vocal, Gaming, Meeting, Custom };
-
-private:
-    std::atomic<bool> bypassed_ { false };
-    std::atomic<int> preset_ { 0 };       // NoisePreset enum
-    std::atomic<float> customWet_ { 1.0f };
-
-    // RNNoise 인스턴스
-    DenoiseState* rnnState_ = nullptr;    // RNNoise C API
-
-    // 리샘플러 (48kHz 변환용)
-    juce::LagrangeInterpolator resamplerIn_;   // 입력SR → 48kHz
-    juce::LagrangeInterpolator resamplerOut_;  // 48kHz → 입력SR
-    double hostSampleRate_ = 48000.0;
-    bool needsResampling_ = false;
-
-    // 리샘플링 버퍼 (사전 할당)
-    std::vector<float> resampleInBuffer_;
-    std::vector<float> resampleOutBuffer_;
-    std::vector<float> rnnInputBuffer_;    // RNNoise 480 프레임 단위
-    std::vector<float> rnnOutputBuffer_;
-
-    // 프리셋별 EQ (후처리)
-    juce::IIRFilter presetEqL_, presetEqR_;
-
-    // dry/wet 믹싱
-    float currentWet_ = 1.0f;             // 프리셋에서 자동 설정
-
-    void updatePresetParameters();
-};
-```
-
-**RNNoise 통합 상세:**
-
-- RNNoise API: `rnnoise_create()`, `rnnoise_destroy()`, `rnnoise_process_frame(state, out, in)`
-- 프레임 크기: 고정 480 샘플 (10ms @ 48kHz)
-- 입력/출력: float[], 모노
-- 스테레오 처리: 채널별 독립 처리 (RNNoise 인스턴스 2개) 또는 모노 다운믹스 → 처리 → 양쪽 적용
-
-**리샘플링 흐름 (호스트 SR ≠ 48kHz 일 때):**
-
-```
-1. 호스트 버퍼 (hostSR, N samples)
-2. resamplerIn_: hostSR → 48kHz (출력 크기 = N * 48000 / hostSR)
-3. 480 프레임 단위로 rnnoise_process_frame() 호출
-4. resamplerOut_: 48kHz → hostSR
-5. dry/wet 믹싱
-6. 프리셋 EQ 적용
-```
-
-### 5.4 AutoGainControl (AGC)
-
-**위치**: `host/Source/Audio/AutoGainControl.h/cpp`
-
-```
-class AutoGainControl
-{
-public:
-    AutoGainControl();
-
-    void prepareToPlay(double sampleRate);
-    void process(juce::AudioBuffer<float>& buffer);  // RT-safe
-
-    void setTargetLevel(float dB);        // -24.0 ~ -6.0 dBFS
-    void setMaxGain(float dB);            // 6.0 ~ 30.0 dB (고급 설정)
-    void setBypassed(bool bypassed);
-
-    bool isBypassed() const;
-    float getTargetLevel() const;
-    float getCurrentGain() const;          // UI 피드백용 (dB)
-
-    void saveState(juce::var& obj) const;
-    void loadState(const juce::var& obj);
-
-private:
-    std::atomic<bool> bypassed_ { false };
-    std::atomic<float> targetdB_ { -18.0f };
-    std::atomic<float> maxGaindB_ { 18.0f };
-
-    // 엔벨로프 상태 (오디오 스레드 전용)
-    float currentGain_ = 1.0f;
-    float rmsAccumulator_ = 0.0f;
-    int rmsSampleCount_ = 0;
-    float smoothedRMS_ = 0.0f;
-
-    float attackCoeff_ = 0.0f;
-    float releaseCoeff_ = 0.0f;
-    double currentSampleRate_ = 48000.0;
-
-    std::atomic<float> currentGaindB_ { 0.0f };  // UI 피드백용
-};
+correction = target_LUFS - measured_LUFS
+if correction > 0:  // 조용함
+    gain = correction × lowCorrectRatio (0.50)
+else:               // 큼
+    gain = correction × highCorrectRatio (0.75)
+gain = clamp(gain, -maxGain, +maxGain)
 ```
 
 ---
 
-## 6. AudioEngine 통합 / Integration
+## 6. AudioProcessor 인터페이스 구현 / AudioProcessor Interface
 
-### AudioEngine.h 변경
+모든 내장 프로세서가 공통으로 구현해야 하는 JUCE AudioProcessor 메서드:
 
 ```cpp
-#include "AutoModeProcessor.h"
-
-class AudioEngine {
-    // ... 기존 멤버 ...
-    AutoModeProcessor autoMode_;
-
+class BuiltinFilter : public juce::AudioProcessor {
 public:
-    AutoModeProcessor& getAutoMode() { return autoMode_; }
+    // 필수 구현
+    void prepareToPlay(double sampleRate, int samplesPerBlock) override;
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void releaseResources() override;
+
+    // 에디터 (DirectPipe 자체 설정 패널)
+    bool hasEditor() const override { return true; }
+    juce::AudioProcessorEditor* createEditor() override;
+
+    // 상태 직렬화 (프리셋 저장/복원에 사용)
+    void getStateInformation(juce::MemoryBlock& destData) override;
+    void setStateInformation(const void* data, int sizeInBytes) override;
+
+    // 메타데이터
+    const juce::String getName() const override { return "Filter"; }
+    int getLatencySamples() const override { return 0; }
+
+    // 기타 필수 (기본 구현)
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    int getNumPrograms() const override { return 1; }
+    // ... etc
 };
 ```
 
-### AudioEngine.cpp 오디오 콜백 변경
+**getStateInformation / setStateInformation**:
+- JSON 직렬화로 파라미터 저장/복원
+- 프리셋 슬롯 A-E의 기존 메커니즘 (getStateInformation → base64) 그대로 활용
+- 내장 프로세서도 VST와 동일하게 슬롯에 저장됨
 
-기존 VST 체인 처리 부분에 Auto 모드 분기 추가:
+---
 
-```cpp
-// Step 5: Input gain (기존)
-// Step 6: Input RMS (기존)
+## 7. VSTChain 변경 / VSTChain Changes
 
-// Step 7: Auto/VST 분기
-if (autoMode_.isEnabled())
-    autoMode_.process(workBuffer);
-else
-    vstChain_.processBlock(workBuffer, midiBuffer);
-
-// Step 8: Safety Limiter
-safetyLimiter_.process(workBuffer);
-
-// Step 9-10: Recording + IPC (both get limiter-processed audio)
-recorder_.writeBlock(workBuffer, numSamples);
-if (ipcEnabled_.load(std::memory_order_acquire))
-    sharedMemWriter_.writeAudio(workBuffer, numSamples);
-
-// Step 11-12: Monitor + Main Output (each with own volume)
-outputRouter_.routeAudio(workBuffer, numSamples);
-// ... output volume + memcpy ...
-```
-
-### prepareToPlay 연결
+### PluginSlot 확장
 
 ```cpp
-autoMode_.prepareToPlay(sampleRate, samplesPerBlock);
+struct PluginSlot {
+    // ... 기존 필드 ...
+
+    enum class Type { VST, BuiltinFilter, BuiltinNoiseRemoval, BuiltinAutoGain };
+    Type type = Type::VST;
+
+    // VST: instance != nullptr, builtinProcessor == nullptr
+    // 내장: instance == nullptr, builtinProcessor != nullptr
+    std::unique_ptr<juce::AudioProcessor> builtinProcessor;
+
+    // 공통 접근자
+    juce::AudioProcessor* getProcessor() const {
+        return (type == Type::VST)
+            ? static_cast<juce::AudioProcessor*>(instance)
+            : builtinProcessor.get();
+    }
+};
 ```
 
-### 설정 저장/불러오기
+### 내장 프로세서 추가 메서드
 
-`settings.dppreset` JSON에 추가:
+```cpp
+// 내장 프로세서를 체인에 추가
+ActionResult addBuiltinProcessor(PluginSlot::Type type, int insertIndex = -1);
 
+// Auto 버튼: Filter + NoiseRemoval + AutoGain 한번에 추가
+ActionResult addAutoProcessors();
+```
+
+### 프리셋 직렬화
+
+기존 프리셋 저장 흐름:
+```
+각 PluginSlot → getStateInformation() → base64 인코딩 → JSON 저장
+```
+
+내장 프로세서도 동일:
 ```json
 {
-  "version": 5,
-  // ... 기존 필드 ...
-  "autoMode": {
-    "enabled": false,
-    "filter": {
+  "plugins": [
+    {
+      "type": "builtin_filter",
+      "name": "Filter",
       "bypassed": false,
-      "hpfEnabled": true,
-      "hpfFrequency": 60.0,
-      "lpfEnabled": false,
-      "lpfFrequency": 16000.0
+      "state": "base64_encoded_state..."
     },
-    "noiseRemoval": {
+    {
+      "type": "builtin_noise_removal",
+      "name": "Noise Removal",
       "bypassed": false,
-      "preset": "talk",
-      "customWet": 1.0
+      "state": "base64_encoded_state..."
     },
-    "agc": {
+    {
+      "type": "vst3",
+      "name": "ReaComp",
+      "path": "C:/VST3/ReaComp.vst3",
       "bypassed": false,
-      "targetdB": -18.0,
-      "maxGaindB": 18.0
+      "state": "base64_encoded_state..."
+    },
+    {
+      "type": "builtin_auto_gain",
+      "name": "Auto Gain",
+      "bypassed": false,
+      "state": "base64_encoded_state..."
     }
-  }
+  ]
 }
 ```
 
-기존 version 4 파일 로드 시 `autoMode` 키가 없으면 기본값 적용 (하위 호환).
-
 ---
 
-## 7. 외부 제어 연동 / External Control
+## 8. 외부 제어 연동 / External Control
 
-### 7.1 ActionDispatcher 액션 추가
+### StateBroadcaster
+
+기존 `plugins[]` 배열에 내장 프로세서도 포함됨 (type 필드 추가):
+```json
+{
+  "plugins": [
+    { "name": "Filter", "type": "builtin_filter", "bypass": false, "loaded": true, "latency_samples": 0 },
+    { "name": "Noise Removal", "type": "builtin_noise_removal", "bypass": false, "loaded": true, "latency_samples": 480 },
+    { "name": "ReaComp", "type": "vst3", "bypass": false, "loaded": true, "latency_samples": 0 }
+  ]
+}
+```
+
+### ActionDispatcher
 
 | 액션 | 파라미터 | 설명 |
 |------|---------|------|
-| `AutoModeToggle` | — | Auto 모드 on/off 토글 |
+| `AutoProcessorsAdd` | — | [Auto] 버튼 — Filter+RNNoise+AGC 추가 |
 
-> Filter/RNNoise/AGC 개별 bypass는 Auto 모드 내부 UI에서만 제어 (외부 제어 불필요).
-> 필요 시 추후 추가 가능.
+기존 `PluginBypass` 액션은 내장 프로세서에도 동일하게 동작 (인덱스 기반).
 
-### 7.2 StateBroadcaster 상태 추가
-
-```json
-{
-  "data": {
-    // ... 기존 필드 ...
-    "auto_mode": {
-      "enabled": true,
-      "filter_bypassed": false,
-      "noise_removal_bypassed": false,
-      "noise_removal_preset": "talk",
-      "agc_bypassed": false,
-      "agc_target_dB": -18.0,
-      "agc_current_gain_dB": 3.2
-    }
-  }
-}
-```
-
-### 7.3 HTTP API 엔드포인트 추가
+### HTTP API
 
 | 엔드포인트 | 설명 |
 |-----------|------|
-| `GET /api/auto/toggle` | Auto 모드 on/off 토글 |
+| `GET /api/auto/add` | Filter+RNNoise+AGC 체인에 추가 |
 
-### 7.4 핫키
-
-| 핫키 | 액션 |
-|------|------|
-| (없음 — 사용자가 Controls > Hotkeys에서 수동 추가) | Auto 모드 토글 |
-
-> **참고**: v4.0.0에서 기본 핫키를 최소화하는 방향으로 변경됨 (Panic Mute + Plugin 1 Bypass + 몇 개만 기본 등록).
-> Auto Mode 핫키는 사용자가 필요 시 수동 추가하도록 함.
-
-### 7.5 Stream Deck 연동 참고
-
-- Auto Mode ON 상태에서 Stream Deck Bypass Toggle 액션: VST 체인이 비활성이므로 동작하지 않아야 함. `ActionHandler`에서 Auto 모드 시 PluginBypass/MasterBypass를 차단하거나, 무시하고 알림 표시 필요
-- Auto Mode 상태는 AppState 브로드캐스트에 포함되어 Stream Deck Performance Monitor 등에서 표시 가능
+기존 `/api/plugins` 응답에 `type` 필드 추가.
 
 ---
 
-## 8. RNNoise 빌드 통합 / RNNoise Build Integration
+## 9. RNNoise 빌드 통합 / RNNoise Build Integration
 
-### CMake 설정
-
-RNNoise를 서브모듈 또는 FetchContent로 통합:
+### CMake — 소스 직접 포함 (권장)
 
 ```cmake
-# Option A: FetchContent
-FetchContent_Declare(
-  rnnoise
-  GIT_REPOSITORY https://github.com/xiph/rnnoise.git
-  GIT_TAG        master
-)
-FetchContent_MakeAvailable(rnnoise)
-
-# Option B: 소스 직접 포함
+# thirdparty/rnnoise/ 에 소스 직접 포함 (오프라인 빌드 보장, 버전 고정)
 add_library(rnnoise STATIC
-  thirdparty/rnnoise/src/denoise.c
-  thirdparty/rnnoise/src/rnn.c
-  thirdparty/rnnoise/src/rnn_data.c
-  thirdparty/rnnoise/src/pitch.c
-  thirdparty/rnnoise/src/celt_lpc.c
+    thirdparty/rnnoise/src/denoise.c
+    thirdparty/rnnoise/src/rnn.c
+    thirdparty/rnnoise/src/rnn_data.c
+    thirdparty/rnnoise/src/pitch.c
+    thirdparty/rnnoise/src/celt_lpc.c
 )
 target_include_directories(rnnoise PUBLIC thirdparty/rnnoise/include)
+target_link_libraries(DirectPipe PRIVATE rnnoise)
 ```
 
-### 라이선스
-
-- RNNoise: **BSD-3-Clause** — DirectPipe(GPL-3.0)와 호환. 재배포 가능.
-- 라이선스 고지를 LICENSE 파일 또는 About 다이얼로그에 추가 필요.
-
-### 크로스 플랫폼
-
-- 순수 C (libm만 의존) → Windows/macOS/Linux 전부 빌드 가능
-- 플랫폼 종속 API 없음
-- CMake에서 플랫폼별 조건부 컴파일 불필요
+- RNNoise: **BSD-3-Clause** — GPL-3.0 호환
+- 순수 C (libm만 의존) → Windows/macOS/Linux 전부 빌드
+- 라이선스 고지: `THIRD_PARTY.md` 또는 About 다이얼로그에 추가
 
 ---
 
-## 9. 로깅 / Logging
-
-기존 LOGRULE.md 규칙을 따름:
+## 10. 로깅 / Logging
 
 ```
-INF [AUDIO] Auto mode enabled
-INF [AUDIO] Auto mode disabled
-INF [AUDIO] Auto mode: noise removal preset changed to "Vocal"
-INF [AUDIO] Auto mode: AGC target changed to -16.0 dBFS
-INF [AUDIO] Auto mode: RNNoise resampling active (44100Hz → 48000Hz → 44100Hz)
-WRN [AUDIO] Auto mode: AGC at max gain (+18.0 dB) — consider increasing input gain
-AUD [AUDIO] Auto mode state: filter=ON(HPF:80Hz,LPF:OFF) noise=ON(talk,wet=1.0) agc=ON(target:-18dB,gain:+3.2dB)
+INF [VST] Built-in processor added: "Filter" at index 0
+INF [VST] Built-in processor added: "Noise Removal" at index 1
+INF [VST] Auto processors added: Filter + Noise Removal + Auto Gain
+INF [AUDIO] RNNoise resampling active (44100Hz → 48000Hz → 44100Hz)
+WRN [AUDIO] Auto Gain at max gain (+18.0 dB) — consider increasing input gain
 ```
+
+내장 프로세서는 기존 `[VST]` 카테고리로 로깅 (별도 카테고리 불필요).
 
 ---
 
-## 10. 테스트 / Tests
+## 11. 테스트 / Tests
 
-### Unit Tests (directpipe-host-tests)
+### Unit Tests
 
-`test_auto_mode.cpp`:
+`test_builtin_processors.cpp`:
 
 | 테스트 | 설명 |
 |--------|------|
-| `DefaultDisabled` | 기본값 Auto 모드 OFF |
-| `EnableDisableToggle` | ON/OFF 전환 시 상태 정확히 변경 |
 | `FilterHPF` | HPF 활성 시 저역 감쇠 확인 |
 | `FilterLPF` | LPF 활성 시 고역 감쇠 확인 |
-| `FilterBypass` | Filter bypass 시 신호 변경 없음 |
-| `AGCBelowTarget` | 입력 < 타겟 → 게인 증가 |
-| `AGCAboveTarget` | 입력 > 타겟 → 게인 감소 |
+| `FilterBypass` | bypass 시 신호 변경 없음 |
+| `FilterStateRoundtrip` | getStateInformation → setStateInformation 동일값 |
+| `NoiseRemovalVADGatingLight` | VAD 0.35에서 잔여 노이즈 통과 확인 |
+| `NoiseRemovalVADGatingAggressive` | VAD 0.85에서 조용한 구간 감쇠 확인 |
+| `NoiseRemovalBypass` | bypass 시 신호 변경 없음 |
+| `NoiseRemovalStateRoundtrip` | 상태 직렬화 왕복 확인 |
+| `AGCBelowTargetLUFS` | 입력 < 타겟 → Low Correct 비율로 게인 증가 |
+| `AGCAboveTargetLUFS` | 입력 > 타겟 → High Correct 비율로 게인 감소 |
 | `AGCMaxGainClamp` | 최대 게인 상한선 동작 확인 |
-| `AGCBypass` | AGC bypass 시 신호 변경 없음 |
-| `AGCSlowResponse` | 2-3초 윈도우 반응 속도 확인 |
-| `AutoModeVSTexclusive` | Auto ON 시 VST 체인 processBlock 스킵 확인 |
-| `SerializationRoundtrip` | saveState → loadState → 동일값 |
-| `LegacyPresetCompat` | autoMode 키 없는 JSON → 기본값 |
-| `ResamplerActivation` | 44.1kHz에서 리샘플러 활성화 확인 |
-| `ResamplerPassthrough` | 48kHz에서 리샘플러 비활성화 확인 |
-
-> **참고**: RNNoise 자체의 노이즈 제거 품질은 유닛 테스트로 검증하기 어려움.
-> pre-release dashboard의 수동 테스트로 커버.
+| `AGCBypass` | bypass 시 신호 변경 없음 |
+| `LUFSMeasurement` | K-weighting + 3초 윈도우 LUFS 측정 정확도 |
+| `AsymmetricCorrection` | Low/High Correct 비대칭 보정 확인 |
+| `ChainWithBuiltinAndVST` | 내장+VST 혼합 체인에서 순서대로 처리 확인 |
+| `PresetSaveLoadBuiltin` | 내장 프로세서 포함 프리셋 저장/복원 확인 |
+| `AutoButtonAddsThree` | Auto 버튼 클릭 → 3개 추가 확인 |
+| `ResamplerActivation` | 44.1kHz에서 RNNoise 리샘플러 활성화 확인 |
 
 ### Pre-Release Dashboard
 
-`tools/pre-release-dashboard.html`에 수동 테스트 항목 추가:
-
-- [ ] Auto 버튼 → 체인 에디터가 Auto 패널로 전환되는지
-- [ ] Auto ON → 프리셋 슬롯 A-E 비활성화(회색)되는지
-- [ ] Auto OFF → VST 체인 + 슬롯 복귀되는지
-- [ ] Filter Edit → HPF/LPF on/off 및 주파수 조절 동작
-- [ ] Noise Removal Edit → 프리셋 전환 동작
-- [ ] Noise Removal → "보컬/노래" 프리셋에서 여성 고음 찢어짐 완화 확인
-- [ ] AGC Edit → 타겟 레벨 슬라이더 동작, 실시간 게인 표시
-- [ ] AGC → 작게 말했다가 크게 말할 때 자연스러운 볼륨 변화
-- [ ] Auto 모드 설정이 앱 재시작 후 유지되는지
-- [ ] 44.1kHz 장치에서 Auto 모드 정상 동작 (리샘플링)
-- [ ] 48kHz 장치에서 Auto 모드 정상 동작 (리샘플링 없음)
-- [ ] 사용자 지정 핫키로 Auto 모드 토글 (Controls > Hotkeys에서 수동 추가 후)
-- [ ] /api/auto/toggle HTTP API 동작
+- [ ] [Auto] 버튼 → Filter + Noise Removal + Auto Gain 3개 추가되는지
+- [ ] 내장 프로세서 Edit → 자체 설정 패널 열리는지
+- [ ] 내장 프로세서 Bypass → 신호 통과 확인
+- [ ] 내장 프로세서 Remove → 체인에서 제거 확인
+- [ ] 내장 + VST 혼합 체인 → 순서대로 처리 확인
+- [ ] 드래그로 내장 프로세서 순서 변경 가능
+- [ ] 프리셋 슬롯에 내장 프로세서 포함 저장/복원
+- [ ] Noise Removal 약/중/강 프리셋 전환 동작
+- [ ] AGC 타겟 LUFS 슬라이더 동작, 실시간 게인 표시
+- [ ] 44.1kHz 장치에서 RNNoise 정상 동작 (리샘플링)
+- [ ] 48kHz 장치에서 RNNoise 정상 동작 (리샘플링 없음)
 
 ---
 
-## 11. 파일 변경 요약 / File Changes
+## 12. 파일 변경 요약 / File Changes
 
 ### 새 파일
 
 | 파일 | 설명 |
 |------|------|
-| `host/Source/Audio/AutoModeProcessor.h/cpp` | Auto 모드 최상위 프로세서 |
-| `host/Source/Audio/AutoFilter.h/cpp` | 내장 HPF + LPF |
-| `host/Source/Audio/AutoNoiseRemoval.h/cpp` | RNNoise 래퍼 + 리샘플러 + 프리셋 EQ |
-| `host/Source/Audio/AutoGainControl.h/cpp` | 내장 AGC |
-| `host/Source/UI/AutoModePanel.h/cpp` | Auto 모드 UI 패널 (체인 에디터 영역 교체) |
-| `host/Source/UI/FilterEditPanel.h/cpp` | Filter Edit 팝업 패널 |
-| `host/Source/UI/NoiseRemovalEditPanel.h/cpp` | RNNoise Edit 팝업 패널 |
-| `host/Source/UI/AGCEditPanel.h/cpp` | AGC Edit 팝업 패널 |
-| `tests/test_auto_mode.cpp` | 유닛 테스트 |
-| `thirdparty/rnnoise/` | RNNoise 소스 (또는 CMake FetchContent) |
+| `host/Source/Audio/BuiltinFilter.h/cpp` | 내장 HPF + LPF (AudioProcessor 상속) |
+| `host/Source/Audio/BuiltinNoiseRemoval.h/cpp` | RNNoise 래퍼 + VAD 게이팅 (AudioProcessor 상속) |
+| `host/Source/Audio/BuiltinAutoGain.h/cpp` | LUFS 기반 AGC (AudioProcessor 상속) |
+| `host/Source/UI/FilterEditPanel.h/cpp` | Filter Edit 패널 (AudioProcessorEditor 상속) |
+| `host/Source/UI/NoiseRemovalEditPanel.h/cpp` | Noise Removal Edit 패널 |
+| `host/Source/UI/AGCEditPanel.h/cpp` | AGC Edit 패널 |
+| `tests/test_builtin_processors.cpp` | 유닛 테스트 |
+| `thirdparty/rnnoise/` | RNNoise 소스 |
 
 ### 변경 파일
 
 | 파일 | 변경 내용 |
 |------|----------|
-| `host/Source/Audio/AudioEngine.h/cpp` | `AutoModeProcessor` 멤버 추가, 오디오 콜백 분기, prepareToPlay 연결 |
-| `host/Source/UI/MainComponent.h/cpp` | Auto 버튼 추가 (입력 게인 옆), Auto/VST 패널 전환 로직, 프리셋 슬롯 비활성화 |
-| `host/Source/UI/PluginChainEditor.h/cpp` | Auto 모드 시 숨김 처리 |
-| `host/Source/UI/PresetSlotBar.h/cpp` | Auto 모드 시 비활성화(회색) 처리 |
-| `host/Source/Control/ActionDispatcher.h` | `AutoModeToggle` 액션 추가 |
-| `host/Source/Control/ActionHandler.h/cpp` | AutoModeToggle 핸들링 |
-| `host/Source/Control/StateBroadcaster.cpp` | state JSON에 auto_mode 필드 추가 |
-| `host/Source/Control/HttpApiServer.cpp` | `/api/auto/toggle` 엔드포인트 추가 |
-| `host/Source/Control/WebSocketServer.cpp` | `auto_mode_toggle` 명령 추가 |
-| `host/Source/Control/ControlMapping.cpp` | AutoModeToggle 액션 매핑 추가 (기본 핫키 없음 — 사용자 수동 추가) |
+| `host/Source/Audio/VSTChain.h/cpp` | PluginSlot::Type 추가, addBuiltinProcessor(), addAutoProcessors() |
+| `host/Source/UI/PluginChainEditor.h/cpp` | "Add Plugin" 메뉴에 Built-in 서브메뉴 추가 |
+| `host/Source/UI/MainComponent.h/cpp` | [Auto] 버튼 추가, 클릭 시 addAutoProcessors() 호출 |
+| `host/Source/UI/PresetManager.cpp` | 내장 프로세서 타입 직렬화/역직렬화 |
+| `host/Source/Control/ActionDispatcher.h` | AutoProcessorsAdd 액션 추가 |
+| `host/Source/Control/ActionHandler.cpp` | AutoProcessorsAdd 핸들링 |
+| `host/Source/Control/HttpApiServer.cpp` | /api/auto/add 엔드포인트 |
+| `host/Source/Control/WebSocketServer.cpp` | auto_add 명령 |
+| `host/Source/Control/StateBroadcaster.cpp` | plugins[] 배열에 type 필드 추가 |
 | `CMakeLists.txt` | RNNoise 라이브러리 + 새 소스 파일 등록 |
-| `CLAUDE.md` | Key Implementations 섹션에 Auto 모드 컴포넌트 + 신호 흐름 분기 설명 추가 |
-| `docs/QUICKSTART.md` | "Auto 모드로 즉시 시작" 옵션 추가 |
-| `LICENSE` 또는 `THIRD_PARTY.md` | RNNoise BSD-3 라이선스 고지 추가 |
+| `CLAUDE.md` | Built-in Processors 설명 추가 |
 
 ---
 
-## 12. 구현 순서 / Implementation Order
+## 13. 구현 순서 / Implementation Order
 
 ```
 Phase 1 (기반):
   1. RNNoise 빌드 통합 (CMake + thirdparty/)
-  2. AutoFilter 구현 (HPF + LPF, IIRFilter)
-  3. AutoNoiseRemoval 구현 (RNNoise 래퍼 + 리샘플러)
-  4. AutoGainControl 구현 (느린 컴프레서 AGC)
-  5. AutoModeProcessor 통합 (Filter → RNNoise → AGC 체인)
-  6. AudioEngine 분기 로직
+  2. BuiltinFilter 구현 (AudioProcessor 상속, HPF+LPF)
+  3. BuiltinNoiseRemoval 구현 (RNNoise 래퍼 + FIFO + VAD 게이팅)
+  4. BuiltinAutoGain 구현 (LUFS 측정 + 비대칭 보정)
 
-Phase 2 (UI):
-  7. Auto 버튼 (입력 게인 슬라이더 옆)
-  8. AutoModePanel (체인 에디터 영역 교체)
-  9. FilterEditPanel, NoiseRemovalEditPanel, AGCEditPanel
-  10. 프리셋 슬롯 비활성화 처리
-  11. settings.dppreset 직렬화
+Phase 2 (체인 통합):
+  5. VSTChain PluginSlot 확장 (Type, builtinProcessor)
+  6. addBuiltinProcessor() / addAutoProcessors()
+  7. 프리셋 직렬화 (type 필드 추가, 하위 호환)
 
-Phase 3 (연동):
-  12. StateBroadcaster에 auto_mode 상태 추가
-  13. ActionDispatcher + ActionHandler (AutoModeToggle)
-  14. HTTP API + WebSocket 명령
-  15. 핫키 (Ctrl+Shift+A)
-  16. 테스트 작성
-  17. 문서 업데이트
+Phase 3 (UI):
+  8. FilterEditPanel, NoiseRemovalEditPanel, AGCEditPanel
+  9. "Add Plugin" 메뉴에 Built-in 서브메뉴
+  10. [Auto] 버튼 (MainComponent)
 
-Phase 4 (RNNoise 프리셋 튜닝):
-  18. 프리셋별 EQ 커브 실제 튜닝 (실기기 테스트)
-  19. dry/wet 비율 미세 조정
-  20. 여성 고음 테스트 (보컬/노래 프리셋 검증)
+Phase 4 (연동 + 테스트):
+  11. StateBroadcaster type 필드
+  12. ActionDispatcher + HTTP/WS
+  13. 테스트 작성
+  14. 문서 업데이트
+
+Phase 5 (튜닝):
+  15. VAD 임계값 프리셋 미세 조정 (실기기 테스트)
+  16. LUFS K-weighting 계수 검증
+  17. 다양한 마이크/환경 테스트
 ```
 
 ---
 
-## 13. 참고 사항 / Notes
+## 14. 참고 사항 / Notes
 
-- Auto 모드와 VST 체인은 **동시 동작하지 않음**. Auto ON이면 VST chain processBlock은 스킵됨. 이중 처리로 인한 음질 문제 원천 차단
-- Auto 모드는 **VST 체인을 건드리지 않음**. Auto OFF 시 이전 VST 체인 상태 그대로 복귀
-- RNNoise 480 프레임 단위 처리와 호스트 버퍼 크기 불일치 시 내부 FIFO 버퍼 필요 (예: 호스트 256 samples → 480까지 모은 후 처리 → 나머지 보관)
-- 패닉 뮤트 중에도 Auto 모드 설정 변경 가능 (패닉 뮤트 잠금 대상 아님)
-- Safety Limiter는 Auto/VST 모드 무관하게 항상 동작 — Auto 모드의 AGC가 과도하게 증폭해도 Safety Limiter가 최종 보호
-- `ScopedNoDenormals`는 AudioEngine 콜백 최상단에서 이미 적용됨 → Auto 프로세서 내부에서 별도 처리 불필요
-- Mono 모드에서도 workBuffer는 스테레오(채널 0 = 채널 1)로 처리됨 → RNNoise는 채널 0만 처리 후 채널 1에 복제, 또는 양 채널 독립 처리
-- RNNoise 프레임 크기(480)와 호스트 버퍼 크기의 불일치는 `AutoNoiseRemoval` 내부에서 FIFO로 해결. 외부 인터페이스는 임의 버퍼 크기를 받을 수 있어야 함
+- 내장 프로세서는 **일반 VST와 동일하게 AudioProcessorGraph에 삽입** — VSTChain의 processBlock, rebuildGraph 등 기존 코드를 최대한 재활용
+- **RNNoise FIFO 레이턴시**: 480 프레임 고정으로 ~5-10ms 추가 레이턴시 발생. `getLatencySamples()`로 리포트하여 Per-Plugin Latency Display에 자동 표시
+- **`rnnoise_create()`는 prepareToPlay에서만 호출** — 힙 할당이므로 RT 콜백 금지
+- **K-weighting 필터 계수**: 48kHz 기준 ITU-R BS.1770 정의. 다른 SR에서는 bilinear transform으로 재계산 필요
+- Safety Limiter는 AudioProcessorGraph 밖에서 동작 (이미 구현됨) — 내장 프로세서와 무관하게 항상 적용
+- `ScopedNoDenormals`는 AudioEngine 콜백 최상단에서 적용됨 → 내장 프로세서 내부에서 별도 처리 불필요
+- 내장 프로세서의 `getStateInformation/setStateInformation`은 JSON 직렬화 사용 (VST의 바이너리 상태와 달리 사람이 읽을 수 있음)
+- RNNoise 프레임 크기(480)와 호스트 버퍼 크기 불일치 → BuiltinNoiseRemoval 내부 FIFO로 해결
+- 내장 프로세서를 여러 개 추가하는 것은 허용 (예: Filter 2개) — 금지할 필요 없음
