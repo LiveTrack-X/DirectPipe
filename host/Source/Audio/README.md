@@ -60,6 +60,9 @@ LatencyMonitor.markCallbackEnd()
 | `PluginLoadHelper.h` | 크로스플랫폼 플러그인 인스턴스 생성 헬퍼 (header-only). macOS에서 AppKit 메인 스레드 디스패치 |
 | `SafetyLimiter.h/cpp` | RT-safe feed-forward limiter. Atomic params (enabled, ceiling). 0.1ms attack, 50ms release. GR feedback for UI |
 | `DeviceState.h` | 디바이스 연결 상태 열거형 (header-only). DeviceState enum + transition() + deviceStateToString() |
+| `BuiltinFilter.h/cpp` | 내장 HPF + LPF 필터 (AudioProcessor 상속). IIR 2차 버터워스. RT-safe. PDC 0 |
+| `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise 노이즈 제거 (AudioProcessor 상속). FIFO 480프레임, VAD 게이팅, dual-mono. PDC 480 samples |
+| `BuiltinAutoGain.h/cpp` | 내장 LUFS AGC (AudioProcessor 상속). ITU-R BS.1770 K-weighting, 비대칭 보정 (Luveler Mode 2). PDC 0 |
 
 ---
 
@@ -94,6 +97,12 @@ LatencyMonitor.markCallbackEnd()
 | PluginPreloadCache | `invalidateAll` | `[Message thread]` | non-blocking: `slotVersions_` bump + `cancelPreload_` |
 | SafetyLimiter | `process()` | `[RT audio]` | Atomics only, no alloc/mutex/logging |
 | SafetyLimiter | `set*/get*` | `[Any thread]` | Atomic reads/writes |
+| `BuiltinFilter` | `processBlock()` | `[RT audio]` | IIR 필터 적용. atomic freq 읽기, setCoefficients (스택 연산) |
+| `BuiltinFilter` | `setters` | `[Any thread]` | atomic 쓰기 |
+| `BuiltinNoiseRemoval` | `processBlock()` | `[RT audio]` | FIFO + rnnoise_process_frame. 힙 할당 없음 |
+| `BuiltinNoiseRemoval` | `prepareToPlay/release` | `[Message]` | rnnoise_create (malloc) / rnnoise_destroy |
+| `BuiltinAutoGain` | `processBlock()` | `[RT audio]` | K-weighting sidechain + 증분 LUFS + 게인 적용 |
+| `BuiltinAutoGain` | `prepareToPlay` | `[Message]` | 링버퍼 할당, K-weighting 계수 계산 |
 | PluginLoadHelper | `createPluginOnCorrectThread` | `[BG thread]` / `[Message thread]` | macOS: BG->메시지 스레드 디스패치. Windows/Linux: 호출 스레드에서 직접 |
 
 ---

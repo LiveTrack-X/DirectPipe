@@ -70,6 +70,12 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 | AudioRecorder | writeAudio | RT (audio) | SpinLock for writer lifecycle |
 | SafetyLimiter | process | RT (audio) | Atomics only, no alloc |
 | SafetyLimiter | setEnabled/setCeiling | Any | Atomic writes |
+| BuiltinFilter | processBlock | RT (audio) | IIR filters, atomics only |
+| BuiltinFilter | prepareToPlay | Message | Coefficient calculation |
+| BuiltinNoiseRemoval | processBlock | RT (audio) | RNNoise FIFO, no alloc |
+| BuiltinNoiseRemoval | prepareToPlay/releaseResources | Message | rnnoise_create/destroy |
+| BuiltinAutoGain | processBlock | RT (audio) | K-weighting sidechain, incremental LUFS |
+| BuiltinAutoGain | prepareToPlay | Message | Ring buffer allocation |
 | SettingsAutosaver | tick/saveNow | Message (30Hz) | Dirty-flag + debounce |
 
 ### Lock Hierarchy (이 순서로만 acquire)
@@ -261,7 +267,7 @@ MainComponent Split (v3→v4):
   - `Audio/` -> AudioEngine, VSTChain, OutputRouter, MonitorOutput, AudioRingBuffer, LatencyMonitor, AudioRecorder, PluginPreloadCache, PluginLoadHelper, **SafetyLimiter**, **DeviceState** (enum), **BuiltinFilter**, **BuiltinNoiseRemoval**, **BuiltinAutoGain**
   - `Control/` -> ActionDispatcher, **ActionHandler**, ControlManager, ControlMapping, **SettingsAutosaver**, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster, DirectPipeLogger (Log.h/cpp)
   - `IPC/` -> SharedMemWriter
-  - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel (slim tabbed container), **HotkeyTab**, **MidiTab**, **StreamDeckTab**, PluginChainEditor, PluginScanner, PresetManager, **PresetSlotBar**, LevelMeter, LogPanel, NotificationBar, DirectPipeLookAndFeel, SettingsExporter, **StatusUpdater**, **UpdateChecker**, DeviceSelector
+  - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel (slim tabbed container), **HotkeyTab**, **MidiTab**, **StreamDeckTab**, PluginChainEditor, PluginScanner, PresetManager, **PresetSlotBar**, LevelMeter, LogPanel, NotificationBar, DirectPipeLookAndFeel, SettingsExporter, **StatusUpdater**, **UpdateChecker**, DeviceSelector, **FilterEditPanel**, **NoiseRemovalEditPanel**, **AGCEditPanel**
   - `Platform/` -> PlatformAudio.h (inline), AutoStart.h, ProcessPriority.h, MultiInstanceLock.h
     - `Windows/` -> WindowsAutoStart, WindowsProcessPriority, WindowsMultiInstanceLock (Registry, Named Mutex, Win32)
     - `macOS/` -> MacAutoStart, MacProcessPriority, MacMultiInstanceLock (LaunchAgent, setpriority, InterProcessLock)
