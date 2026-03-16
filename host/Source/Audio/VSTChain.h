@@ -27,6 +27,10 @@
 
 #include <JuceHeader.h>
 #include "../Util/StrongIndex.h"
+#include "../ActionResult.h"
+#include "BuiltinFilter.h"
+#include "BuiltinNoiseRemoval.h"
+#include "BuiltinAutoGain.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -46,12 +50,25 @@ struct PluginLatencyInfo {
  * @brief Information about a loaded plugin in the chain.
  */
 struct PluginSlot {
+    /// Built-in processor type (VST for external plugins, others for built-in processors)
+    enum class Type { VST, BuiltinFilter, BuiltinNoiseRemoval, BuiltinAutoGain };
+
     juce::String name;
     juce::String path;           ///< fileOrIdentifier (may be shared for shell plugins)
     juce::PluginDescription desc; ///< Full description for accurate re-loading
     bool bypassed = false;
     juce::AudioProcessorGraph::NodeID nodeId;
-    juce::AudioPluginInstance* instance = nullptr;  // non-owning
+    juce::AudioPluginInstance* instance = nullptr;  // non-owning (VST plugins)
+
+    Type type = Type::VST;
+    juce::AudioProcessor* builtinProcessor = nullptr;  // non-owning (graph owns it), non-null for built-in types
+
+    /// Unified accessor -- returns whichever processor is active (built-in or VST)
+    juce::AudioProcessor* getProcessor() const {
+        if (type != Type::VST && builtinProcessor)
+            return builtinProcessor;
+        return instance;
+    }
 };
 
 /**
@@ -109,6 +126,22 @@ public:
      * @return Index of the added plugin, or -1 on failure.
      */
     int addPlugin(const juce::PluginDescription& desc);  // [Message thread — holds chainLock_]
+
+    /**
+     * @brief Add a built-in processor to the chain.
+     * @param type The built-in processor type (must not be VST).
+     * @param insertIndex Position to insert at (-1 = append to end).
+     * @return ActionResult ok/fail.
+     */
+    [[nodiscard]] ActionResult addBuiltinProcessor(PluginSlot::Type type, int insertIndex = -1);  // [Message thread — holds chainLock_]
+
+    /**
+     * @brief Add Filter + NoiseRemoval + AutoGain (Auto button).
+     *
+     * Inserts at the front of the chain. Skips types that are already present.
+     * @return ActionResult ok/fail.
+     */
+    [[nodiscard]] ActionResult addAutoProcessors();  // [Message thread — holds chainLock_]
 
     /**
      * @brief Remove a plugin from the chain.

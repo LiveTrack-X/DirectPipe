@@ -32,10 +32,10 @@
 namespace directpipe {
 
 namespace {
-    juce::String dumpPluginParams(const juce::AudioPluginInstance* inst, int maxParams = 50) {
-        if (!inst) return "(null)";
+    juce::String dumpPluginParams(const juce::AudioProcessor* proc, int maxParams = 50) {
+        if (!proc) return "(null)";
         try {
-            auto& params = inst->getParameters();
+            auto& params = proc->getParameters();
             juce::String s;
             int count = juce::jmin(params.size(), maxParams);
             for (int p = 0; p < count; ++p) {
@@ -58,8 +58,8 @@ namespace {
             s += "[" + juce::String(i) + "] " + chain[i].name;
             s += "(bypass=" + juce::String(chain[i].bypassed ? "Y" : "N");
             try {
-                if (chain[i].instance)
-                    s += ", params=" + juce::String(chain[i].instance->getParameters().size());
+                if (auto* proc = chain[i].getProcessor())
+                    s += ", params=" + juce::String(proc->getParameters().size());
             } catch (...) {
                 s += ", params=ERR";
             }
@@ -351,6 +351,122 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     return resultIdx;
 }
 
+// ─── Built-in Processor Support ─────────────────────────────────
+
+ActionResult VSTChain::addBuiltinProcessor(PluginSlot::Type type, int insertIndex)
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    if (type == PluginSlot::Type::VST)
+        return ActionResult::fail("Use addPlugin() for VST plugins");
+
+    // Prevent adding while async chain replacement is in progress
+    if (asyncLoading_.load())
+        return ActionResult::fail("Chain loading in progress");
+
+    // Create the processor
+    std::unique_ptr<juce::AudioProcessor> processor;
+    juce::String name;
+
+    switch (type) {
+        case PluginSlot::Type::BuiltinFilter:
+            processor = std::make_unique<BuiltinFilter>();
+            name = "Filter";
+            break;
+        case PluginSlot::Type::BuiltinNoiseRemoval:
+            processor = std::make_unique<BuiltinNoiseRemoval>();
+            name = "Noise Removal";
+            break;
+        case PluginSlot::Type::BuiltinAutoGain:
+            processor = std::make_unique<BuiltinAutoGain>();
+            name = "Auto Gain";
+            break;
+        default:
+            return ActionResult::fail("Invalid built-in processor type");
+    }
+
+    // Prepare the processor for the current audio settings
+    processor->setPlayConfigDetails(2, 2, currentSampleRate_, currentBlockSize_);
+    processor->prepareToPlay(currentSampleRate_, currentBlockSize_);
+
+    // Add to graph (mirrors addPlugin flow: addNode → create slot → rebuildGraph)
+    auto* rawPtr = processor.get();
+    auto node = graph_->addNode(std::move(processor));
+    if (!node)
+        return ActionResult::fail("Failed to add built-in processor to graph");
+
+    // Create plugin slot
+    PluginSlot slot;
+    slot.name = name;
+    slot.type = type;
+    slot.nodeId = node->nodeID;
+    slot.instance = nullptr;
+    slot.builtinProcessor = rawPtr;
+
+    int resultIdx;
+    juce::String auditOrder;
+    {
+        const juce::ScopedLock sl(chainLock_);
+
+        // Insert at the requested position, or append
+        if (insertIndex >= 0 && insertIndex <= static_cast<int>(chain_.size())) {
+            chain_.insert(chain_.begin() + insertIndex, slot);
+            resultIdx = insertIndex;
+        } else {
+            chain_.push_back(slot);
+            resultIdx = static_cast<int>(chain_.size()) - 1;
+        }
+
+        rebuildGraph();
+
+        if (Log::isAuditMode())
+            auditOrder = buildChainOrderStr(chain_);
+    }
+
+    juce::Logger::writeToLog("[VST] Built-in loaded: \"" + name + "\" at index " + juce::String(resultIdx));
+    if (auditOrder.isNotEmpty())
+        Log::audit("VST", auditOrder);
+    if (onChainChanged) onChainChanged();
+
+    return ActionResult::ok();
+}
+
+ActionResult VSTChain::addAutoProcessors()
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    // Check which built-in types are already in the chain
+    bool hasFilter = false, hasNR = false, hasAGC = false;
+    {
+        const juce::ScopedLock sl(chainLock_);
+        for (const auto& slot : chain_) {
+            if (slot.type == PluginSlot::Type::BuiltinFilter)      hasFilter = true;
+            if (slot.type == PluginSlot::Type::BuiltinNoiseRemoval) hasNR = true;
+            if (slot.type == PluginSlot::Type::BuiltinAutoGain)     hasAGC = true;
+        }
+    }
+
+    // Add missing ones at the front (Filter first, then NR, then AGC)
+    int insertPos = 0;
+
+    if (!hasFilter) {
+        auto r = addBuiltinProcessor(PluginSlot::Type::BuiltinFilter, insertPos);
+        if (!r) return r;
+        insertPos++;
+    }
+    if (!hasNR) {
+        auto r = addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemoval, insertPos);
+        if (!r) return r;
+        insertPos++;
+    }
+    if (!hasAGC) {
+        auto r = addBuiltinProcessor(PluginSlot::Type::BuiltinAutoGain, insertPos);
+        if (!r) return r;
+    }
+
+    return ActionResult::ok();
+}
+
 bool VSTChain::removePlugin(int index)
 {
     jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
@@ -514,8 +630,8 @@ std::vector<PluginLatencyInfo> VSTChain::getPluginLatencies() const
 
     for (const auto& slot : chain_) {
         PluginLatencyInfo info;
-        if (slot.instance != nullptr) {
-            info.latencySamples = slot.instance->getLatencySamples();
+        if (auto* proc = slot.getProcessor()) {
+            info.latencySamples = proc->getLatencySamples();
             if (sr > 0.0)
                 info.latencyMs = static_cast<float>(info.latencySamples) / static_cast<float>(sr) * 1000.0f;
         }
@@ -545,9 +661,9 @@ int VSTChain::getPluginParameterCount(int pluginIndex) const
     const juce::ScopedLock sl(chainLock_);
     if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
         return 0;
-    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
-    if (!inst) return 0;
-    return inst->getParameters().size();
+    auto* proc = chain_[static_cast<size_t>(pluginIndex)].getProcessor();
+    if (!proc) return 0;
+    return proc->getParameters().size();
 }
 
 juce::String VSTChain::getPluginParameterName(int pluginIndex, int paramIndex) const
@@ -555,9 +671,9 @@ juce::String VSTChain::getPluginParameterName(int pluginIndex, int paramIndex) c
     const juce::ScopedLock sl(chainLock_);
     if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
         return {};
-    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
-    if (!inst) return {};
-    auto& params = inst->getParameters();
+    auto* proc = chain_[static_cast<size_t>(pluginIndex)].getProcessor();
+    if (!proc) return {};
+    auto& params = proc->getParameters();
     if (paramIndex < 0 || paramIndex >= params.size()) return {};
     return params[paramIndex]->getName(64);
 }
@@ -567,9 +683,9 @@ void VSTChain::setPluginParameter(int pluginIndex, int paramIndex, float value)
     const juce::ScopedLock sl(chainLock_);
     if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
         return;
-    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
-    if (!inst) return;
-    auto& params = inst->getParameters();
+    auto* proc = chain_[static_cast<size_t>(pluginIndex)].getProcessor();
+    if (!proc) return;
+    auto& params = proc->getParameters();
     if (paramIndex < 0 || paramIndex >= params.size()) return;
     params[paramIndex]->setValue(value);
 }
@@ -579,16 +695,16 @@ float VSTChain::getPluginParameter(int pluginIndex, int paramIndex) const
     const juce::ScopedLock sl(chainLock_);
     if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
         return 0.0f;
-    auto* inst = chain_[static_cast<size_t>(pluginIndex)].instance;
-    if (!inst) return 0.0f;
-    auto& params = inst->getParameters();
+    auto* proc = chain_[static_cast<size_t>(pluginIndex)].getProcessor();
+    if (!proc) return 0.0f;
+    auto& params = proc->getParameters();
     if (paramIndex < 0 || paramIndex >= params.size()) return 0.0f;
     return params[paramIndex]->getValue();
 }
 
 void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 {
-    juce::AudioPluginInstance* pluginInstance = nullptr;
+    juce::AudioProcessor* processorForEditor = nullptr;
     juce::String pluginName;
 
     // First lock scope: validate index, check existing window, extract plugin data
@@ -609,14 +725,14 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
         }
 
         auto& slot = chain_[static_cast<size_t>(index)];
-        if (!slot.instance) return;
+        processorForEditor = slot.getProcessor();
+        if (!processorForEditor) return;
 
-        pluginInstance = slot.instance;
         pluginName = slot.name;
     }
     // Lock released — safe to create GUI without risk of deadlock from plugin callbacks
 
-    auto* editor = pluginInstance->createEditorIfNeeded();
+    auto* editor = processorForEditor->createEditorIfNeeded();
     if (!editor) return;
 
     auto window = std::make_unique<PluginEditorWindow>(pluginName);
@@ -627,7 +743,7 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
     window->setAlwaysOnTop(true);
     juce::Logger::writeToLog("[VST] Editor opened: \"" + pluginName + "\" [" + juce::String(index) + "]");
     if (Log::isAuditMode())
-        Log::audit("VST", "Editor params [" + juce::String(index) + "] \"" + pluginName + "\": " + dumpPluginParams(pluginInstance));
+        Log::audit("VST", "Editor params [" + juce::String(index) + "] \"" + pluginName + "\": " + dumpPluginParams(processorForEditor));
     auto aliveFlag = alive_;
     window->onClosed = [this, aliveFlag] {
         if (!aliveFlag->load()) return;
@@ -865,7 +981,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
                 if (Log::isAuditMode()) {
                     auditChainOrder = buildChainOrderStr(chain_);
                     for (size_t i = 0; i < chain_.size(); ++i)
-                        auditParams.add("[" + juce::String(i) + "] " + chain_[i].name + ": " + dumpPluginParams(chain_[i].instance));
+                        auditParams.add("[" + juce::String(i) + "] " + chain_[i].name + ": " + dumpPluginParams(chain_[i].getProcessor()));
                 }
             }
 
@@ -950,7 +1066,7 @@ void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
         if (Log::isAuditMode()) {
             auditChainOrder = buildChainOrderStr(chain_);
             for (size_t i = 0; i < chain_.size(); ++i)
-                auditParams.add("[" + juce::String(i) + "] " + chain_[i].name + ": " + dumpPluginParams(chain_[i].instance));
+                auditParams.add("[" + juce::String(i) + "] " + chain_[i].name + ": " + dumpPluginParams(chain_[i].getProcessor()));
         }
     }
 
