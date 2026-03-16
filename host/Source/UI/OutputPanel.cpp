@@ -56,6 +56,22 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorVolumeSlider_.onValueChange = [this] { onMonitorVolumeChanged(); };
     addAndMakeVisible(monitorVolumeSlider_);
 
+    outputVolumeLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
+    addAndMakeVisible(outputVolumeLabel_);
+
+    outputVolumeSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
+    outputVolumeSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
+    outputVolumeSlider_.setRange(0.0, 100.0, 1.0);
+    outputVolumeSlider_.setValue(100.0, juce::dontSendNotification);
+    outputVolumeSlider_.setTextValueSuffix(" %");
+    outputVolumeSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(kAccentColour));
+    outputVolumeSlider_.setColour(juce::Slider::trackColourId, juce::Colour(kAccentColour).withAlpha(0.4f));
+    outputVolumeSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(kSurfaceColour).brighter(0.1f));
+    outputVolumeSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(kTextColour));
+    outputVolumeSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    outputVolumeSlider_.onValueChange = [this] { onOutputVolumeChanged(); };
+    addAndMakeVisible(outputVolumeSlider_);
+
     monitorBufferLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
     addAndMakeVisible(monitorBufferLabel_);
 
@@ -164,6 +180,9 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorVolumeSlider_.setValue(
         static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0,
         juce::dontSendNotification);
+    outputVolumeSlider_.setValue(
+        static_cast<double>(router.getVolume(OutputRouter::Output::Main)) * 100.0,
+        juce::dontSendNotification);
     monitorEnableButton_.setToggleState(
         router.isEnabled(OutputRouter::Output::Monitor),
         juce::dontSendNotification);
@@ -218,6 +237,10 @@ void OutputPanel::resized()
 
     monitorVolumeLabel_.setBounds(x, y, labelW, rowH);
     monitorVolumeSlider_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
+    y += rowH + gap;
+
+    outputVolumeLabel_.setBounds(x, y, labelW, rowH);
+    outputVolumeSlider_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
     y += rowH + gap;
 
     monitorBufferLabel_.setBounds(x, y, labelW, rowH);
@@ -281,6 +304,10 @@ void OutputPanel::timerCallback()
     double actualVol = static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0;
     if (std::abs(monitorVolumeSlider_.getValue() - actualVol) > 0.5)
         monitorVolumeSlider_.setValue(actualVol, juce::dontSendNotification);
+
+    double actualOutVol = static_cast<double>(router.getVolume(OutputRouter::Output::Main)) * 100.0;
+    if (std::abs(outputVolumeSlider_.getValue() - actualOutVol) > 0.5)
+        outputVolumeSlider_.setValue(actualOutVol, juce::dontSendNotification);
 
     // Update monitor latency display (only when Active, using monitor's own SR)
     {
@@ -441,6 +468,13 @@ void OutputPanel::onMonitorVolumeChanged()
 {
     float volume = static_cast<float>(monitorVolumeSlider_.getValue()) / 100.0f;
     engine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, volume);
+    if (onSettingsChanged) onSettingsChanged();
+}
+
+void OutputPanel::onOutputVolumeChanged()
+{
+    float volume = static_cast<float>(outputVolumeSlider_.getValue()) / 100.0f;
+    engine_.getOutputRouter().setVolume(OutputRouter::Output::Main, volume);
     if (onSettingsChanged) onSettingsChanged();
 }
 

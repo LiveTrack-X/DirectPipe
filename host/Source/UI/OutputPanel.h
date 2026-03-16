@@ -70,6 +70,7 @@ private:
 
     void onMonitorDeviceSelected();
     void onMonitorVolumeChanged();
+    void onOutputVolumeChanged();
     void onMonitorBufferSizeChanged();
     void onMonitorEnableToggled();
     void refreshBufferSizeCombo();
@@ -88,6 +89,8 @@ private:
     juce::ComboBox monitorDeviceCombo_;
     juce::Slider monitorVolumeSlider_;
     juce::Label monitorVolumeLabel_{"", "Volume:"};
+    juce::Slider outputVolumeSlider_;
+    juce::Label outputVolumeLabel_{"", "Output Vol:"};
     juce::Label monitorBufferLabel_{"", "Buffer:"};
     juce::ComboBox monitorBufferCombo_;
     juce::Label monitorLatencyLabel_;

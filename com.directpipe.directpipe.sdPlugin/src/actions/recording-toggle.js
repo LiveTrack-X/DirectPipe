@@ -22,9 +22,12 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { createRecordingIcon } = require("../utils/icon-renderer");
 
 class RecordingToggleAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.recording-toggle";
+    _blinkTimer = null;
+    _blinkOn = true;
 
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
@@ -55,6 +58,19 @@ class RecordingToggleAction extends SingletonAction {
         }
     }
 
+    setDisconnectedState() {
+        for (const action of this.actions) {
+            action.setTitle("Disconnected");
+            if (typeof action.setState === "function") action.setState(0);
+        }
+    }
+
+    setConnectingState() {
+        for (const action of this.actions) {
+            action.setTitle("Connecting...");
+        }
+    }
+
     _updateDisplay(action, state) {
         if (!state?.data) return;
         const recording = state.data.recording === true;
@@ -67,8 +83,37 @@ class RecordingToggleAction extends SingletonAction {
             const secs = Math.floor(state.data.recording_seconds || 0);
             const mm = String(Math.floor(secs / 60)).padStart(2, "0");
             const ss = String(secs % 60).padStart(2, "0");
-            action.setTitle(`REC\n${mm}:${ss}`);
+            action.setTitle(`REC ${mm}:${ss}`);
+
+            // Start blink timer if not running
+            if (!this._blinkTimer) {
+                this._blinkOn = true;
+                this._blinkTimer = setInterval(() => {
+                    this._blinkOn = !this._blinkOn;
+                    const { getCurrentState } = require("../plugin");
+                    const s = getCurrentState();
+                    if (!s?.data?.recording) {
+                        clearInterval(this._blinkTimer);
+                        this._blinkTimer = null;
+                        return;
+                    }
+                    for (const a of this.actions) {
+                        const icon = createRecordingIcon(s.data.recording_seconds || 0, this._blinkOn);
+                        a.setImage(icon);
+                    }
+                }, 1000);
+            }
+
+            const icon = createRecordingIcon(secs, this._blinkOn);
+            action.setImage(icon);
         } else {
+            // Stop blink timer
+            if (this._blinkTimer) {
+                clearInterval(this._blinkTimer);
+                this._blinkTimer = null;
+            }
+            // Clear custom image (revert to manifest default)
+            action.setImage(undefined);
             action.setTitle("REC");
         }
     }

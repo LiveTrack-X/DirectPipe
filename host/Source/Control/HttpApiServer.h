@@ -29,6 +29,7 @@
 #include "ActionDispatcher.h"
 #include "StateBroadcaster.h"
 #include "MidiHandler.h"
+#include "../Audio/AudioEngine.h"
 
 #include <atomic>
 #include <chrono>
@@ -54,7 +55,7 @@ namespace directpipe {
 class HttpApiServer {
 public:
     HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
-                  MidiHandler* midiHandler = nullptr);
+                  AudioEngine& engine, MidiHandler* midiHandler = nullptr);
     ~HttpApiServer();
 
     /**
@@ -88,6 +89,7 @@ private:
 
     ActionDispatcher& dispatcher_;
     StateBroadcaster& broadcaster_;
+    AudioEngine& engine_;
     MidiHandler* midiHandler_ = nullptr;
 
     std::unique_ptr<juce::StreamingSocket> serverSocket_;

@@ -2,9 +2,9 @@
 
 ## Overview / 개요
 
-The DirectPipe Stream Deck plugin connects to the host via WebSocket and provides 7 button actions for controlling the VST host remotely.
+The DirectPipe Stream Deck plugin connects to the host via WebSocket and provides 10 actions for controlling the VST host remotely.
 
-DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여 7가지 버튼 액션으로 VST 호스트를 원격 제어한다.
+DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여 10가지 액션으로 VST 호스트를 원격 제어한다.
 
 | Action / 액션 | Description / 설명 |
 |---------------|-------------------|
@@ -15,6 +15,9 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 | **Monitor Toggle** | Toggle monitor output (headphones) on/off. / 모니터 출력(헤드폰) 켜기/끄기. |
 | **Recording Toggle** | Start/stop audio recording to WAV. Shows elapsed time. / 오디오 녹음 시작/중지. 경과 시간 표시. |
 | **IPC Toggle** | Toggle IPC output (DirectPipe Receiver) on/off. / IPC 출력(DirectPipe Receiver) 켜기/끄기. |
+| **Performance Monitor** | Display latency, CPU usage, XRun count. Button press resets XRun counter. / 레이턴시, CPU 사용률, XRun 카운트 표시. 버튼 누름으로 XRun 카운터 초기화. |
+| **Plugin Parameter** *(SD+)* | Control individual VST plugin parameters via SD+ dial. / SD+ 다이얼로 개별 VST 플러그인 파라미터 제어. |
+| **Preset Bar** *(SD+)* | Show current preset slot name on SD+ touchscreen, cycle presets with dial. / SD+ 터치스크린에 현재 프리셋 슬롯 이름 표시, 다이얼로 프리셋 순환. |
 
 ---
 
@@ -186,6 +189,59 @@ No settings required. / 설정 불필요.
 
 ---
 
+### Performance Monitor / 성능 모니터
+
+**UUID:** `com.directpipe.directpipe.performance-monitor`
+
+Supports both Keypad and SD+ Encoder (dial). / 키패드와 SD+ 인코더 (다이얼) 모두 지원.
+
+- **Keypad press** — Reset XRun counter / XRun 카운터 초기화
+- **Encoder dial press** — Reset XRun counter / XRun 카운터 초기화
+
+**Display:** Shows latency (ms), CPU usage (%), and XRun count. / 레이턴시 (ms), CPU 사용률 (%), XRun 카운트 표시.
+
+**Settings (Property Inspector):**
+- `displayMode` — `"all"` (default), `"latency"`, or `"cpu"` / 표시 모드 선택
+  - **All**: Shows latency, CPU, and XRun count together / 레이턴시 + CPU + XRun 모두 표시
+  - **Latency**: Shows latency (ms) only / 레이턴시만 표시
+  - **CPU**: Shows CPU usage (%) only / CPU 사용률만 표시
+
+---
+
+### Plugin Parameter / 플러그인 파라미터 *(SD+ only / SD+ 전용)*
+
+**UUID:** `com.directpipe.directpipe.plugin-parameter`
+
+SD+ Encoder only — requires Stream Deck+ hardware. / SD+ 인코더 전용 — Stream Deck+ 하드웨어 필요.
+
+- **Dial rotate** — Adjust selected plugin parameter value (0-100%) / 다이얼 회전 -> 파라미터 값 조절 (0-100%)
+- **Dial press** — Reset parameter to 50% (center) / 다이얼 누름 -> 파라미터를 50%로 초기화
+
+**Display (LCD):** Shows plugin name, parameter name, and current value. / 플러그인 이름, 파라미터 이름, 현재 값 표시.
+
+**Settings (Property Inspector):**
+- `pluginIndex` — Plugin to control (dynamic dropdown, populated from DirectPipe) / 제어할 플러그인 (동적 드롭다운, DirectPipe에서 로드)
+- `paramIndex` — Parameter to control (dynamic dropdown, populated after plugin selection) / 제어할 파라미터 (동적 드롭다운, 플러그인 선택 후 로드)
+
+> **Note**: Plugin and parameter dropdowns require DirectPipe to be running. The PI fetches the plugin list from `GET /api/plugins` and parameters from `GET /api/plugin/:idx/params`.
+>
+> **참고**: 플러그인 및 파라미터 드롭다운은 DirectPipe가 실행 중이어야 합니다. PI가 `GET /api/plugins`에서 플러그인 목록을, `GET /api/plugin/:idx/params`에서 파라미터 목록을 가져옵니다.
+
+---
+
+### Preset Bar / 프리셋 바 *(SD+ only / SD+ 전용)*
+
+**UUID:** `com.directpipe.directpipe.preset-bar`
+
+SD+ Encoder only — requires Stream Deck+ hardware. / SD+ 인코더 전용 — Stream Deck+ 하드웨어 필요.
+
+- **Dial rotate** — Cycle through preset slots A-E / 다이얼 회전 -> 프리셋 슬롯 A-E 순환
+- **Display (LCD)** — Shows current preset slot name (e.g., "A|게임") / 현재 프리셋 슬롯 이름 표시
+
+No settings required. / 설정 불필요.
+
+---
+
 ## 활용 예시 / Usage Scenarios
 
 Stream Deck에 DirectPipe 액션을 배치하면 방송 중 **물리 버튼으로 마이크를 완전 제어**할 수 있습니다.
@@ -268,10 +324,15 @@ com.directpipe.directpipe.sdPlugin/
       monitor-toggle.js       Monitor toggle SingletonAction / 모니터 토글 액션
       recording-toggle.js     Recording toggle SingletonAction / 녹음 토글 액션
       ipc-toggle.js           IPC toggle SingletonAction / IPC 토글 액션
+      performance-monitor.js  Performance monitor SingletonAction / 성능 모니터 액션
+      plugin-parameter.js     Plugin parameter SingletonAction (SD+) / 플러그인 파라미터 액션 (SD+)
+      preset-bar.js           Preset bar SingletonAction (SD+) / 프리셋 바 액션 (SD+)
     inspectors/
       bypass-pi.html          Bypass settings (sdpi-components v4) / Bypass 설정 UI
       volume-pi.html          Volume settings (target, mode, step) / 볼륨 설정 UI
       preset-pi.html          Preset settings (slot selector) / 프리셋 설정 UI
+      performance-pi.html     Performance monitor settings (display mode) / 성능 모니터 설정 UI
+      plugin-parameter-pi.html  Plugin parameter settings (plugin/param selector) / 플러그인 파라미터 설정 UI
   images/                     Button icons (PNG + @2x) / 버튼 아이콘
   icons-src/                  SVG icon sources / SVG 아이콘 원본
   scripts/

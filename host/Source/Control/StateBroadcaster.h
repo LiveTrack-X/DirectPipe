@@ -69,6 +69,8 @@ struct AppState {
     bool ipcEnabled = false;
     bool deviceLost = false;
     bool monitorLost = false;
+    float outputVolume = 1.0f;  // Main output volume (0.0-1.0)
+    int xrunCount = 0;
     std::array<std::string, 5> slotNames{};
 };
 
@@ -101,7 +103,7 @@ public:
      * @brief Update the state and notify all listeners.
      * @param updater Function that modifies the state.
      */
-    void updateState(std::function<void(AppState&)> updater);
+    void updateState(std::function<void(AppState&)> updater);  // [Any thread → listener notification on Message thread]
 
     /**
      * @brief Register a state change listener.
@@ -122,17 +124,20 @@ private:
     void notifyListeners();
     void notifyOnMessageThread();
 
-    mutable std::mutex stateMutex_;
-    AppState state_;
+    // ═══════════════════════════════════════════════════════════════════
+    // Thread Ownership — 변경 시 Control/README.md "Thread Model" 테이블도 업데이트할 것
+    // ═══════════════════════════════════════════════════════════════════
 
-    std::mutex listenerMutex_;
-    std::vector<StateListener*> listeners_;
+    mutable std::mutex stateMutex_;                       // [Protects state_]
+    AppState state_;                                      // [Protected by stateMutex_]
 
-    // Lifetime guard for callAsync lambdas
+    std::mutex listenerMutex_;                            // [Protects listeners_]
+    std::vector<StateListener*> listeners_;               // [Protected by listenerMutex_]
+
+    // [callAsync lifetime guard — shared_ptr captured by value in lambda, checked before accessing this]
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
-    // Throttle: skip broadcast when scalar state is unchanged
-    uint32_t lastBroadcastHash_ = 0;
+    uint32_t lastBroadcastHash_ = 0;                      // [Message thread only] Throttle: skip broadcast when scalar state is unchanged
 };
 
 } // namespace directpipe

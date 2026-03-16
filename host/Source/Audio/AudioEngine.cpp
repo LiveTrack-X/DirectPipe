@@ -24,6 +24,7 @@
 #include "AudioEngine.h"
 #include "../Control/Log.h"
 #include "../Platform/PlatformAudio.h"
+#include "../Util/ScopedGuard.h"
 #include <cmath>
 
 namespace directpipe {
@@ -126,10 +127,11 @@ void AudioEngine::shutdown()
     alive_->store(false);
     running_ = false;
     deviceManager_.removeChangeListener(this);
-    intentionalChange_ = true;
-    deviceManager_.removeAudioCallback(this);
-    deviceManager_.closeAudioDevice();
-    intentionalChange_ = false;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        deviceManager_.removeAudioCallback(this);
+        deviceManager_.closeAudioDevice();
+    }
     sharedMemWriter_.shutdown();
     ipcEnabled_.store(false, std::memory_order_relaxed);
     monitorOutput_.shutdown();
@@ -180,9 +182,11 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
         setup.inputChannels.setRange(0, numCh, true);
     }
 
-    intentionalChange_ = true;
-    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set input device '" + deviceName + "': " + result;
         Log::error("AUDIO", msg);
@@ -223,9 +227,11 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
         setup.outputChannels.setRange(0, 2, true);
     }
 
-    intentionalChange_ = true;
-    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set output device '" + deviceName + "': " + result;
         Log::error("AUDIO", msg);
@@ -259,9 +265,11 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
     setup.inputChannels.setRange(0, 2, true);
     setup.outputChannels.setRange(0, 2, true);
 
-    intentionalChange_ = true;
-    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set ASIO device '" + deviceName + "': " + result;
         Log::error("AUDIO", msg);
@@ -329,9 +337,11 @@ ActionResult AudioEngine::setBufferSize(int bufferSize)
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.bufferSize = bufferSize;
-    intentionalChange_ = true;
-    auto error = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String error;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        error = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
 
     auto* device = deviceManager_.getCurrentAudioDevice();
     if (!device) return ActionResult::fail("No audio device available");
@@ -355,9 +365,10 @@ ActionResult AudioEngine::setBufferSize(int bufferSize)
             // Try the best alternative if different from what we already got
             if (best != actual) {
                 setup.bufferSize = best;
-                intentionalChange_ = true;
-                deviceManager_.setAudioDeviceSetup(setup, true);
-                intentionalChange_ = false;
+                {
+                    AtomicGuard intentionalGuard(intentionalChange_);
+                    deviceManager_.setAudioDeviceSetup(setup, true);
+                }
                 // Re-fetch device pointer (setAudioDeviceSetup may replace it)
                 device = deviceManager_.getCurrentAudioDevice();
                 if (!device) return ActionResult::fail("No audio device after buffer fallback");
@@ -414,9 +425,11 @@ ActionResult AudioEngine::setSampleRate(double sampleRate)
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.sampleRate = sampleRate;
-    intentionalChange_ = true;
-    auto error = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String error;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        error = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
     if (error.isNotEmpty()) {
         auto msg = "setSampleRate failed (requested=" + juce::String(sampleRate) + "): " + error;
         Log::error("AUDIO", msg);
@@ -463,7 +476,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
             juce::AudioDeviceManager::AudioDeviceSetup cur;
             deviceManager_.getAudioDeviceSetup(cur);
             if (cur.inputDeviceName != preferredAsioDevice)
-                setAsioDevice(preferredAsioDevice);
+                (void)setAsioDevice(preferredAsioDevice);
         }
         return ActionResult::ok();
     }
@@ -485,7 +498,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
 
     // Set intentional flag BEFORE removing callback, because removeAudioCallback
     // synchronously calls audioDeviceStopped() which checks intentionalChange_.
-    intentionalChange_ = true;
+    intentionalChange_.store(true, std::memory_order_release);
     deviceManager_.removeAudioCallback(this);
 
     deviceManager_.setCurrentAudioDeviceType(typeName, true);
@@ -552,7 +565,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
                 if (!asioOpened) {
                     auto msg = juce::String("All ASIO devices failed — reverting to previous driver");
                     Log::error("AUDIO", msg);
-                    intentionalChange_ = false;
+                    intentionalChange_.store(false, std::memory_order_release);
                     deviceManager_.setCurrentAudioDeviceType(currentType, true);
                     deviceManager_.initialiseWithDefaultDevices(2, 2);
                     deviceManager_.addAudioCallback(this);
@@ -567,7 +580,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         if (result.isNotEmpty()) {
             auto msg = "Failed to switch to " + typeName + ": " + result;
             Log::error("AUDIO", msg);
-            intentionalChange_ = false;
+            intentionalChange_.store(false, std::memory_order_release);
             deviceManager_.setCurrentAudioDeviceType(currentType, true);
             deviceManager_.initialiseWithDefaultDevices(2, 2);
             deviceManager_.addAudioCallback(this);
@@ -605,7 +618,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         setup.outputChannels.setRange(0, 2, true);
         deviceManager_.setAudioDeviceSetup(setup, true);
     }
-    intentionalChange_ = false;
+    intentionalChange_.store(false, std::memory_order_release);
 
     // Update current SR/BS from actual device
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
@@ -800,9 +813,11 @@ ActionResult AudioEngine::setActiveInputChannels(int firstChannel, int numChanne
     setup.inputChannels.clear();
     setup.inputChannels.setRange(firstChannel, numChannels, true);
 
-    intentionalChange_ = true;
-    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set input channels (first=" + juce::String(firstChannel) + " num=" + juce::String(numChannels) + "): " + result;
         Log::error("AUDIO", msg);
@@ -821,9 +836,11 @@ ActionResult AudioEngine::setActiveOutputChannels(int firstChannel, int numChann
     setup.outputChannels.clear();
     setup.outputChannels.setRange(firstChannel, numChannels, true);
 
-    intentionalChange_ = true;
-    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set output channels (first=" + juce::String(firstChannel) + " num=" + juce::String(numChannels) + "): " + result;
         Log::error("AUDIO", msg);
@@ -859,6 +876,15 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     int numSamples,
     const juce::AudioIODeviceCallbackContext& /*context*/)
 {
+    // ═══ RT AUDIO CALLBACK ═══════════════════════════════════════════════
+    // RULES: 힙 할당 금지 | mutex 금지 | writeToLog 금지 | 예외 throw 금지
+    // Pre-allocated: workBuffer_, emptyMidi_ | Atomics: relaxed ordering
+    // ════════════════════════════════════════════════════════════════════
+
+    // RT thread only — must NOT be called from the message thread
+    jassert(!juce::MessageManager::getInstanceWithoutCreating()
+            || !juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     // Flush denormalized floats to zero — prevents 10-100x CPU spikes
     // when VST plugins process near-silence (reverb tails, compressor release, etc.)
     juce::ScopedNoDenormals noDenormals;
@@ -945,11 +971,24 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // 3. Route processed audio to monitor (separate WASAPI device)
     outputRouter_.routeAudio(buffer, numSamples);
 
-    // 4. Copy processed audio to main output (AudioSettings Output device)
+    // 4. Apply output volume & copy to main output (AudioSettings Output device)
+    float outVol = outputRouter_.getVolume(OutputRouter::Output::Main);
     for (int ch = 0; ch < numOutputChannels; ++ch) {
         if (ch < buffer.getNumChannels() && !outputMuted) {
-            std::memcpy(outputChannelData[ch], buffer.getReadPointer(ch),
-                        sizeof(float) * static_cast<size_t>(numSamples));
+            if (std::abs(outVol - 1.0f) < 0.001f) {
+                // Unity gain — direct copy (most common path)
+                std::memcpy(outputChannelData[ch], buffer.getReadPointer(ch),
+                            sizeof(float) * static_cast<size_t>(numSamples));
+            } else if (outVol > 0.001f) {
+                // Apply gain
+                const float* src = buffer.getReadPointer(ch);
+                for (int i = 0; i < numSamples; ++i)
+                    outputChannelData[ch][i] = src[i] * outVol;
+            } else {
+                // Volume ~0 — silence
+                std::memset(outputChannelData[ch], 0,
+                            sizeof(float) * static_cast<size_t>(numSamples));
+            }
         } else {
             std::memset(outputChannelData[ch], 0,
                         sizeof(float) * static_cast<size_t>(numSamples));
@@ -967,6 +1006,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     latencyMonitor_.markCallbackEnd();
 }
 
+// ─── Device Start/Reconnection Handler ──────────────────────────────
+// 이 콜백은 디바이스 스레드에서 호출됨 (Message 스레드 아님!)
+// intentionalChange_: true면 사용자 의도 변경, false면 JUCE 자동 폴백 가능
+// desiredInputDevice_/desiredOutputDevice_: 사용자가 원래 선택한 디바이스 보존
+// 폴백 감지: 실제 디바이스 ≠ desired → deviceLost_ 유지, 재연결 대기
+// ────────────────────────────────────────────────────────────────────
 void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
@@ -1023,15 +1068,16 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 bool outAvail = type->getDeviceNames(false).contains(desiredOut);
                 if (!inAvail && !outAvail) return;  // both lost, wait for checkReconnection
 
-                intentionalChange_ = true;
-                juce::AudioDeviceManager::AudioDeviceSetup s;
-                deviceManager_.getAudioDeviceSetup(s);
-                if (inAvail) s.inputDeviceName = desiredIn;
-                if (outAvail) s.outputDeviceName = desiredOut;
-                s.sampleRate = desiredSR;
-                s.bufferSize = desiredBS;
-                deviceManager_.setAudioDeviceSetup(s, true);
-                intentionalChange_ = false;
+                {
+                    AtomicGuard intentionalGuard(intentionalChange_);
+                    juce::AudioDeviceManager::AudioDeviceSetup s;
+                    deviceManager_.getAudioDeviceSetup(s);
+                    if (inAvail) s.inputDeviceName = desiredIn;
+                    if (outAvail) s.outputDeviceName = desiredOut;
+                    s.sampleRate = desiredSR;
+                    s.bufferSize = desiredBS;
+                    deviceManager_.setAudioDeviceSetup(s, true);
+                }
 
                 juce::String restored;
                 if (inAvail && !outAvail) restored = "Input";
@@ -1167,7 +1213,7 @@ void AudioEngine::audioDeviceStopped()
     // Mark device as lost ONLY for external events (USB unplug, driver error).
     // Intentional changes (setInputDevice, setBufferSize, etc.) set intentionalChange_
     // before calling setAudioDeviceSetup, so we skip setting deviceLost_ for those.
-    if (!intentionalChange_)
+    if (!intentionalChange_.load(std::memory_order_acquire))
         deviceLost_.store(true, std::memory_order_relaxed);
 
     Log::info("AUDIO", "Device stopped");
@@ -1190,8 +1236,16 @@ void AudioEngine::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
         attemptReconnection();
 }
 
+// ─── Dual-Mechanism Reconnection ────────────────────────────────────
+// 1차: ChangeListener on deviceManager_ (즉시 감지)
+// 2차: 3s 타이머 폴링 (ChangeListener 누락 시 폴백)
+// reconnectMissCount_: 5회 실패 후 현재 디바이스 수용 (무한 루프 방지)
+// WARNING: desiredInputDevice_/desiredOutputDevice_는 Message thread only
+// ────────────────────────────────────────────────────────────────────
 void AudioEngine::checkReconnection()
 {
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     // Main device reconnection
     if (deviceLost_.load(std::memory_order_relaxed)) {
         if (reconnectCooldown_ > 0) {
@@ -1240,7 +1294,7 @@ void AudioEngine::attemptReconnection()
 {
     if (!deviceLost_.load(std::memory_order_relaxed)) return;
     if (attemptingReconnection_) return;  // Re-entrancy guard
-    attemptingReconnection_ = true;
+    BoolGuard reconnectGuard(attemptingReconnection_);
 
     Log::info("AUDIO", "Reconnect attempt #" + juce::String(reconnectMissCount_ + 1)
         + " — desired in='" + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
@@ -1248,7 +1302,6 @@ void AudioEngine::attemptReconnection()
     auto* type = deviceManager_.getCurrentDeviceTypeObject();
     if (!type) {
         Log::error("AUDIO", "Reconnection failed: no device type available");
-        attemptingReconnection_ = false;
         return;
     }
 
@@ -1294,8 +1347,7 @@ void AudioEngine::attemptReconnection()
                 + juce::String(!inputOk ? " (input: " + desiredInputDevice_ + ")" : "")
                 + juce::String(!outputOk ? " (output: " + desiredOutputDevice_ + ")" : ""));
         }
-        attemptingReconnection_ = false;
-        return;
+        return;  // BoolGuard resets attemptingReconnection_ on scope exit
     }
     reconnectMissCount_ = 0;
 
@@ -1310,9 +1362,11 @@ void AudioEngine::attemptReconnection()
     setup.sampleRate = desiredSampleRate_;
     setup.bufferSize = desiredBufferSize_;
 
-    intentionalChange_ = true;
-    auto result = deviceManager_.setAudioDeviceSetup(setup, true);
-    intentionalChange_ = false;
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
     if (result.isEmpty()) {
         // Explicitly clear — audioDeviceAboutToStart may keep it true
         // due to ASIO device name mismatch (single device vs desired I/O names)
@@ -1333,7 +1387,7 @@ void AudioEngine::attemptReconnection()
     } else {
         Log::error("AUDIO", "Reconnection failed (in='" + setup.inputDeviceName + "' out='" + setup.outputDeviceName + "'): " + result);
     }
-    attemptingReconnection_ = false;
+    // BoolGuard resets attemptingReconnection_ on scope exit
 }
 
 // ─── Notification queue ─────────────────────────────────────────────────────

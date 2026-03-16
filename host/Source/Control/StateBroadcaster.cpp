@@ -62,6 +62,8 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.monitorLost);
     h = h * 31u + static_cast<uint32_t>(s.sampleRate);
     h = h * 31u + static_cast<uint32_t>(s.bufferSize);
+    hashFloat(s.outputVolume);
+    h = h * 31u + static_cast<uint32_t>(s.xrunCount);
     h = h * 31u + static_cast<uint32_t>(s.channelMode);
     h = h * 31u + static_cast<uint32_t>(s.plugins.size());
     for (const auto& p : s.plugins)
@@ -155,6 +157,7 @@ std::string StateBroadcaster::toJSON() const
     auto volumes = new juce::DynamicObject();
     volumes->setProperty("input", static_cast<double>(state.inputGain));
     volumes->setProperty("monitor", static_cast<double>(state.monitorVolume));
+    volumes->setProperty("output", static_cast<double>(state.outputVolume));
     data->setProperty("volumes", juce::var(volumes));
 
     // Status
@@ -177,6 +180,7 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("ipc_enabled", state.ipcEnabled);
     data->setProperty("device_lost", state.deviceLost);
     data->setProperty("monitor_lost", state.monitorLost);
+    data->setProperty("xrun_count", state.xrunCount);
 
     // Slot names
     juce::Array<juce::var> slotNamesArr;

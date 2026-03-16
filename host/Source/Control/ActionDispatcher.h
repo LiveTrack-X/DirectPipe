@@ -53,6 +53,7 @@ enum class Action {
     RecordingToggle,    ///< Toggle audio recording on/off
     SetPluginParameter, ///< Set plugin parameter (intParam=pluginIndex, intParam2=paramIndex, floatParam=value 0.0~1.0)
     IpcToggle,          ///< Toggle IPC output (Receiver VST) on/off
+    XRunReset,          ///< Reset xrun counter
 };
 
 /// Carries an action with its parameters
@@ -62,6 +63,11 @@ struct ActionEvent {
     float floatParam = 0.0f;
     std::string stringParam;
     int intParam2 = 0;      ///< Secondary int param (appended for backward compatibility)
+
+    bool operator==(const ActionEvent& o) const {
+        return action == o.action && intParam == o.intParam
+            && intParam2 == o.intParam2 && stringParam == o.stringParam;
+    }
 };
 
 /// Listener interface for action events
@@ -92,7 +98,7 @@ public:
      *
      * @param event The action to dispatch.
      */
-    void dispatch(const ActionEvent& event);
+    void dispatch(const ActionEvent& event);  // [Any thread → guarantees Message thread delivery]
 
     /**
      * @brief Register a listener for action events.
@@ -118,10 +124,10 @@ public:
 private:
     void dispatchOnMessageThread(const ActionEvent& event);
 
-    std::vector<ActionListener*> listeners_;
-    std::mutex listenerMutex_;
+    std::vector<ActionListener*> listeners_;                // [Protected by listenerMutex_]
+    std::mutex listenerMutex_;                              // [Protects listeners_]
 
-    // Lifetime guard for callAsync lambdas
+    // [callAsync lifetime guard — shared_ptr captured by value in lambda, checked before accessing this]
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
@@ -162,6 +168,7 @@ inline juce::String actionToDisplayName(const ActionEvent& event)
         case Action::MonitorToggle:   return "Monitor Toggle";
         case Action::RecordingToggle: return "Recording Toggle";
         case Action::IpcToggle:       return "IPC Toggle";
+        case Action::XRunReset:       return "XRun Reset";
         default:                      return "Unknown";
     }
 }
@@ -186,6 +193,7 @@ inline const char* actionToString(Action a)
         case Action::RecordingToggle:    return "RecordingToggle";
         case Action::SetPluginParameter: return "SetPluginParameter";
         case Action::IpcToggle:          return "IpcToggle";
+        case Action::XRunReset:          return "XRunReset";
         default:                         return "Unknown";
     }
 }

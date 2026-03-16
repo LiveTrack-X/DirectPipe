@@ -25,14 +25,16 @@
 
 namespace directpipe {
 
-ControlManager::ControlManager(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster)
+ControlManager::ControlManager(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
+                               AudioEngine& engine)
     : dispatcher_(dispatcher),
       broadcaster_(broadcaster),
+      engine_(engine),
       hotkeyHandler_(dispatcher),
       midiHandler_(dispatcher)
 {
     webSocketServer_ = std::make_unique<WebSocketServer>(dispatcher_, broadcaster_);
-    httpApiServer_ = std::make_unique<HttpApiServer>(dispatcher_, broadcaster_, &midiHandler_);
+    httpApiServer_ = std::make_unique<HttpApiServer>(dispatcher_, broadcaster_, engine_, &midiHandler_);
 }
 
 ControlManager::~ControlManager()

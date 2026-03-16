@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Plugin Parameter Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <input type="hidden" id="hiddenPluginIndex" setting="pluginIndex">
+    <input type="hidden" id="hiddenParamIndex" setting="paramIndex">
+    <input type="hidden" id="hiddenPluginName" setting="pluginName">
+    <input type="hidden" id="hiddenParamName" setting="paramName">
+
+    <sdpi-item label="Plugin">
+        <select id="pluginSelect" style="width:100%"></select>
+    </sdpi-item>
+    <sdpi-item label="Parameter">
+        <select id="paramSelect" style="width:100%"></select>
+    </sdpi-item>
+    <sdpi-item label="">
+        <button id="refreshBtn" style="width:100%">Refresh Plugin List</button>
+    </sdpi-item>
+    <sdpi-item label="">
+        <details>
+            <summary>Help</summary>
+            <p>Select a VST plugin and parameter to control with the SD+ dial. Requires DirectPipe to be running.</p>
+        </details>
+    </sdpi-item>
+
+    <script>
+    const PORTS = [8766, 8767, 8768, 8769, 8770, 8771];
+
+    async function findPort() {
+        for (const port of PORTS) {
+            try {
+                const r = await fetch("http://localhost:" + port + "/api/perf", { signal: AbortSignal.timeout(500) });
+                if (r.ok) return port;
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    let activePort = null;
+
+    function syncHidden(id, value, text) {
+        const el = document.getElementById(id);
+        if (el && el.value !== value) {
+            el.value = value;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        if (text !== undefined) {
+            // Map hiddenPluginIndex -> hiddenPluginName, hiddenParamIndex -> hiddenParamName
+            const nameId = id === "hiddenPluginIndex" ? "hiddenPluginName" : "hiddenParamName";
+            const ne = document.getElementById(nameId);
+            if (ne && ne.value !== text) {
+                ne.value = text;
+                ne.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+        }
+    }
+
+    async function loadPlugins() {
+        activePort = await findPort();
+        const sel = document.getElementById("pluginSelect");
+        sel.innerHTML = "";
+        if (!activePort) {
+            sel.innerHTML = '<option value="">DirectPipe not running</option>';
+            return;
+        }
+        try {
+            const res = await fetch("http://localhost:" + activePort + "/api/plugins");
+            const plugins = await res.json();
+            plugins.forEach(function(p) {
+                const opt = document.createElement("option");
+                opt.value = p.index;
+                opt.textContent = (p.index + 1) + " - " + (p.name || "(Empty)");
+                if (p.loaded) sel.appendChild(opt);
+            });
+            // Restore saved selection
+            const savedPlugin = document.getElementById("hiddenPluginIndex").value;
+            if (savedPlugin && sel.querySelector('option[value="' + savedPlugin + '"]')) {
+                sel.value = savedPlugin;
+            }
+            if (sel.options.length > 0) loadParams();
+        } catch (e) {
+            sel.innerHTML = '<option value="">Error loading plugins</option>';
+        }
+    }
+
+    async function loadParams() {
+        const pluginIndex = document.getElementById("pluginSelect").value;
+        const sel = document.getElementById("paramSelect");
+        sel.innerHTML = "";
+        if (!activePort || pluginIndex === "") return;
+        try {
+            const res = await fetch("http://localhost:" + activePort + "/api/plugin/" + pluginIndex + "/params");
+            const params = await res.json();
+            params.forEach(function(p) {
+                const opt = document.createElement("option");
+                opt.value = p.index;
+                opt.textContent = p.index + " - " + p.name + " (" + Math.round(p.value * 100) + "%)";
+                sel.appendChild(opt);
+            });
+            // Restore saved param selection
+            const savedParam = document.getElementById("hiddenParamIndex").value;
+            if (savedParam && sel.querySelector('option[value="' + savedParam + '"]')) {
+                sel.value = savedParam;
+            }
+            // Sync current selection to hidden inputs
+            if (sel.options.length > 0) {
+                syncHidden("hiddenParamIndex", sel.value, sel.options[sel.selectedIndex].textContent);
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="">Error loading params</option>';
+        }
+    }
+
+    document.getElementById("pluginSelect").addEventListener("change", function() {
+        const sel = this;
+        if (sel.options.length > 0 && sel.selectedIndex >= 0) {
+            syncHidden("hiddenPluginIndex", sel.value, sel.options[sel.selectedIndex].textContent);
+        }
+        loadParams();
+    });
+    document.getElementById("paramSelect").addEventListener("change", function() {
+        const sel = this;
+        if (sel.options.length > 0 && sel.selectedIndex >= 0) {
+            syncHidden("hiddenParamIndex", sel.value, sel.options[sel.selectedIndex].textContent);
+        }
+    });
+    document.getElementById("refreshBtn").addEventListener("click", loadPlugins);
+    loadPlugins();
+    </script>
+</body>
+</html>

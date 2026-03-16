@@ -220,8 +220,10 @@ static bool readExact(juce::StreamingSocket* client, uint8_t* buf, int count, in
 std::string WebSocketServer::readFrame(juce::StreamingSocket* client, uint8_t& opcodeOut)
 {
     uint8_t header[2];
-    if (!readExact(client, header, 2))
+    if (!readExact(client, header, 2)) {
+        opcodeOut = 0xFF;  // Sentinel: read error
         return {};
+    }
 
     opcodeOut = header[0] & 0x0F;
     bool masked = (header[1] & 0x80) != 0;
@@ -229,29 +231,31 @@ std::string WebSocketServer::readFrame(juce::StreamingSocket* client, uint8_t& o
 
     if (payloadLen == 126) {
         uint8_t ext[2];
-        if (!readExact(client, ext, 2)) return {};
+        if (!readExact(client, ext, 2)) { opcodeOut = 0xFF; return {}; }
         payloadLen = (static_cast<uint64_t>(ext[0]) << 8) | ext[1];
     } else if (payloadLen == 127) {
         uint8_t ext[8];
-        if (!readExact(client, ext, 8)) return {};
+        if (!readExact(client, ext, 8)) { opcodeOut = 0xFF; return {}; }
         payloadLen = 0;
         for (int i = 0; i < 8; ++i)
             payloadLen = (payloadLen << 8) | ext[i];
     }
 
     // Safety: reject frames > 1MB
-    if (payloadLen > 1024 * 1024) return {};
+    if (payloadLen > 1024 * 1024) { opcodeOut = 0xFF; return {}; }
 
     uint8_t mask[4] = {};
     if (masked) {
-        if (!readExact(client, mask, 4)) return {};
+        if (!readExact(client, mask, 4)) { opcodeOut = 0xFF; return {}; }
     }
 
     std::string payload(static_cast<size_t>(payloadLen), '\0');
     if (payloadLen > 0) {
         if (!readExact(client, reinterpret_cast<uint8_t*>(&payload[0]),
-                       static_cast<int>(payloadLen)))
+                       static_cast<int>(payloadLen))) {
+            opcodeOut = 0xFF;
             return {};
+        }
 
         // Unmask
         if (masked) {
@@ -363,9 +367,9 @@ void WebSocketServer::serverThread()
 
                     auto conn = std::make_unique<ClientConnection>();
                     conn->socket = std::unique_ptr<juce::StreamingSocket>(accepted);
-                    auto* socketPtr = conn->socket.get();
-                    conn->thread = std::thread([this, socketPtr] {
-                        clientThread(socketPtr);
+                    auto* connPtr = conn.get();
+                    conn->thread = std::thread([this, connPtr] {
+                        clientThread(connPtr);
                     });
 
                     std::lock_guard<std::mutex> lock(clientsMutex_);
@@ -379,9 +383,10 @@ void WebSocketServer::serverThread()
     }
 }
 
-void WebSocketServer::clientThread(juce::StreamingSocket* client)
+void WebSocketServer::clientThread(ClientConnection* conn)
 {
-    if (!client) return;
+    if (!conn || !conn->socket) return;
+    auto* client = conn->socket.get();
 
     // Perform RFC 6455 WebSocket handshake
     if (!performHandshake(client)) {
@@ -392,7 +397,10 @@ void WebSocketServer::clientThread(juce::StreamingSocket* client)
 
     // Send initial state as WebSocket text frame
     auto stateJson = broadcaster_.toJSON();
-    sendFrame(client, stateJson);
+    {
+        std::lock_guard<std::mutex> sl(conn->sendMutex);
+        sendFrame(client, stateJson);
+    }
     Log::audit("WS", "Initial state sent (" + juce::String(stateJson.size()) + " bytes)");
 
     // Read WebSocket frames
@@ -403,17 +411,19 @@ void WebSocketServer::clientThread(juce::StreamingSocket* client)
 
             if (opcode == 0x8) {
                 // Close frame — send close back and disconnect
+                std::lock_guard<std::mutex> sl(conn->sendMutex);
                 sendFrame(client, "", 0x8);
                 break;
             } else if (opcode == 0x9) {
                 // Ping — respond with pong
+                std::lock_guard<std::mutex> sl(conn->sendMutex);
                 sendFrame(client, payload, 0xA);
             } else if (opcode == 0x1) {
                 // Text frame — process as JSON action
                 if (!payload.empty()) {
                     processMessage(payload);
                 }
-            } else if (opcode == 0x0 && payload.empty()) {
+            } else if (opcode == 0xFF) {
                 // Read error or connection closed
                 break;
             }
@@ -482,6 +492,8 @@ void WebSocketServer::processMessage(const std::string& message)
         event.intParam = params ? static_cast<int>(params->getProperty("pluginIndex")) : 0;
         event.intParam2 = params ? static_cast<int>(params->getProperty("paramIndex")) : 0;
         event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : 0.0f;
+    } else if (actionStr == "xrun_reset") {
+        event.action = Action::XRunReset;
     } else {
         return;  // Unknown action
     }
@@ -491,6 +503,10 @@ void WebSocketServer::processMessage(const std::string& message)
 
 void WebSocketServer::broadcastToClients(const std::string& message)
 {
+    // WARNING: clientsMutex_ 내에서 sendFrame 호출 — 느린 클라이언트가 블로킹 가능
+    // WARNING: 죽은 클라이언트의 thread.join()은 반드시 clientsMutex_ 바깥에서 실행
+    // (교착 방지: clientThread가 clientsMutex_ 잡으려 할 수 있음)
+
     // Collect dead connections outside the lock to avoid blocking
     std::vector<std::unique_ptr<ClientConnection>> deadConns;
 
@@ -510,6 +526,7 @@ void WebSocketServer::broadcastToClients(const std::string& message)
 
         for (auto& conn : clients_) {
             if (conn->socket && conn->socket->isConnected()) {
+                std::lock_guard<std::mutex> sl(conn->sendMutex);
                 if (!sendFrame(conn->socket.get(), message)) {
                     // Write failed — close socket so next sweep removes it
                     conn->socket->close();

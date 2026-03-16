@@ -26,6 +26,7 @@
 #include "../Audio/AudioEngine.h"
 #include "../UI/PresetSlotBar.h"
 #include "../UI/PresetManager.h"
+#include "../Util/ScopedGuard.h"
 
 namespace directpipe {
 
@@ -143,10 +144,11 @@ void ActionHandler::handle(const ActionEvent& event)
             for (int i = 0; i < engine_.getVSTChain().getPluginCount(); ++i) {
                 if (!engine_.getVSTChain().isPluginBypassed(i)) { anyActive = true; break; }
             }
-            loadingSlot_ = true;
-            for (int i = 0; i < engine_.getVSTChain().getPluginCount(); ++i)
-                engine_.getVSTChain().setPluginBypassed(i, anyActive);
-            loadingSlot_ = false;
+            {
+                AtomicGuard loadGuard(loadingSlot_);
+                for (int i = 0; i < engine_.getVSTChain().getPluginCount(); ++i)
+                    engine_.getVSTChain().setPluginBypassed(i, anyActive);
+            }
             int activeSlot = presetMgr_.getActiveSlot();
             if (activeSlot >= 0 && !partialLoad_.load())
                 presetMgr_.saveSlot(activeSlot);
@@ -196,6 +198,10 @@ void ActionHandler::handle(const ActionEvent& event)
                 if (engine_.isMuted()) break;
                 engine_.setInputGain(event.floatParam);
                 if (onInputGainSync) onInputGainSync(event.floatParam);
+                if (onDirty) onDirty();
+            } else if (event.stringParam == "output") {
+                if (engine_.isMuted()) break;
+                engine_.getOutputRouter().setVolume(OutputRouter::Output::Main, event.floatParam);
                 if (onDirty) onDirty();
             }
             break;
@@ -252,6 +258,10 @@ void ActionHandler::handle(const ActionEvent& event)
             if (onDirty) onDirty();
             break;
         }
+
+        case Action::XRunReset:
+            engine_.requestXRunReset();
+            break;
 
         case Action::LoadPreset:
         case Action::SwitchPresetSlot:

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Performance Monitor Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Display">
+        <sdpi-select setting="displayMode">
+            <option value="all">All (Latency + CPU + XRun)</option>
+            <option value="latency">Latency Only</option>
+            <option value="cpu">CPU Only</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="">
+        <details>
+            <summary>Help</summary>
+            <p>Shows real-time audio performance. Press button to reset XRun counter.</p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

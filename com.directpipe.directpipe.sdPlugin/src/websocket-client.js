@@ -39,6 +39,7 @@ const PING_INTERVAL_MS = 15000;
  * WebSocket client that connects to the DirectPipe host application.
  *
  * Events emitted:
+ *   - "connecting"      — Connection attempt starting
  *   - "connected"       — Connection established
  *   - "disconnected"    — Connection lost
  *   - "state"           — State update received (payload: state object)
@@ -109,6 +110,7 @@ class DirectPipeClient extends EventEmitter {
         }
 
         this._intentionalClose = false;
+        this.emit("connecting");
         this._createConnection();
     }
 

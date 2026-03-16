@@ -205,6 +205,78 @@
         }
       ],
       "SupportedInMultiActions": true
+    },
+    {
+      "UUID": "com.directpipe.directpipe.performance-monitor",
+      "Name": "Performance Monitor",
+      "Tooltip": "Display latency, CPU usage, XRun count, and audio format.",
+      "Icon": "images/directpipe",
+      "Controllers": ["Keypad", "Encoder"],
+      "States": [
+        {
+          "Image": "images/directpipe",
+          "TitleAlignment": "middle",
+          "FontSize": 9,
+          "Title": "Perf"
+        }
+      ],
+      "SupportedInMultiActions": false,
+      "PropertyInspectorPath": "src/inspectors/performance-pi.html",
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Reset XRun count",
+          "Touch": "Show details"
+        }
+      }
+    },
+    {
+      "UUID": "com.directpipe.directpipe.plugin-param",
+      "Name": "Plugin Parameter",
+      "Tooltip": "Control a VST plugin parameter with the SD+ dial.",
+      "Icon": "images/bypass",
+      "Controllers": ["Encoder"],
+      "States": [
+        {
+          "Image": "images/bypass",
+          "TitleAlignment": "middle",
+          "FontSize": 9,
+          "Title": "Param"
+        }
+      ],
+      "SupportedInMultiActions": false,
+      "PropertyInspectorPath": "src/inspectors/plugin-param-pi.html",
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Adjust parameter",
+          "Push": "Reset to default"
+        }
+      }
+    },
+    {
+      "UUID": "com.directpipe.directpipe.preset-bar",
+      "Name": "Preset Bar (SD+)",
+      "Tooltip": "Touch to switch presets A-E. Shows current preset name on SD+ touchscreen.",
+      "Icon": "images/preset",
+      "Controllers": ["Encoder"],
+      "States": [
+        {
+          "Image": "images/preset-active",
+          "TitleAlignment": "middle",
+          "FontSize": 9,
+          "Title": "Preset"
+        }
+      ],
+      "SupportedInMultiActions": false,
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Cycle presets",
+          "Push": "Activate preset",
+          "Touch": "Select preset"
+        }
+      }
     }
   ]
 }

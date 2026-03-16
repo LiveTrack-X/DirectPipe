@@ -31,6 +31,9 @@ const { PresetSwitchAction } = require("./actions/preset-switch");
 const { MonitorToggleAction } = require("./actions/monitor-toggle");
 const { RecordingToggleAction } = require("./actions/recording-toggle");
 const { IpcToggleAction } = require("./actions/ipc-toggle");
+const { PerformanceMonitorAction } = require("./actions/performance-monitor");
+const { PluginParamAction } = require("./actions/plugin-param");
+const { PresetBarAction } = require("./actions/preset-bar");
 
 // ─── DirectPipe host connection ─────────────────────────────────────
 const DIRECTPIPE_WS_URL = "ws://localhost:8765";
@@ -45,8 +48,11 @@ const presetAction = new PresetSwitchAction();
 const monitorAction = new MonitorToggleAction();
 const recordingAction = new RecordingToggleAction();
 const ipcAction = new IpcToggleAction();
+const perfAction = new PerformanceMonitorAction();
+const pluginParamAction = new PluginParamAction();
+const presetBarAction = new PresetBarAction();
 
-const allActions = [bypassAction, panicAction, volumeAction, presetAction, monitorAction, recordingAction, ipcAction];
+const allActions = [bypassAction, panicAction, volumeAction, presetAction, monitorAction, recordingAction, ipcAction, perfAction, pluginParamAction, presetBarAction];
 
 // ─── DirectPipe state broadcasting ──────────────────────────────────
 function broadcastState(state) {
@@ -91,7 +97,20 @@ dpClient.on("connected", () => {
 
 dpClient.on("disconnected", () => {
     streamDeck.logger.info("Disconnected from DirectPipe host");
-    alertAll();
+    for (const action of allActions) {
+        if (typeof action.setDisconnectedState === "function") {
+            action.setDisconnectedState();
+        }
+    }
+});
+
+dpClient.on("connecting", () => {
+    streamDeck.logger.info("Connecting to DirectPipe host...");
+    for (const action of allActions) {
+        if (typeof action.setConnectingState === "function") {
+            action.setConnectingState();
+        }
+    }
 });
 
 // ─── Register actions & connect ─────────────────────────────────────
@@ -102,6 +121,9 @@ streamDeck.actions.registerAction(presetAction);
 streamDeck.actions.registerAction(monitorAction);
 streamDeck.actions.registerAction(recordingAction);
 streamDeck.actions.registerAction(ipcAction);
+streamDeck.actions.registerAction(perfAction);
+streamDeck.actions.registerAction(pluginParamAction);
+streamDeck.actions.registerAction(presetBarAction);
 
 streamDeck.connect();
 dpClient.connect();

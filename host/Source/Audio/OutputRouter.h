@@ -42,6 +42,7 @@ public:
     /// Output destination identifiers
     enum class Output {
         Monitor = 0,       ///< Local monitoring (headphones, separate WASAPI device)
+        Main,              ///< Main output volume control
         Count
     };
 
@@ -55,7 +56,7 @@ public:
      * @brief Route processed audio to all enabled outputs.
      * Called from the real-time audio thread. No allocations.
      */
-    void routeAudio(const juce::AudioBuffer<float>& buffer, int numSamples);
+    void routeAudio(const juce::AudioBuffer<float>& buffer, int numSamples);  // [RT thread — atomics only, no allocation]
 
     void setVolume(Output output, float volume);
     float getVolume(Output output) const;
@@ -81,17 +82,20 @@ private:
         std::atomic<float> level{0.0f};
     };
 
-    OutputState outputs_[kOutputCount];
+    // ═══════════════════════════════════════════════════════════════════
+    // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
+    // ═══════════════════════════════════════════════════════════════════
 
-    MonitorOutput* monitorOutput_ = nullptr;
+    OutputState outputs_[kOutputCount];                   // [Atomics: Message write, RT read]
 
-    // Temporary buffer for volume-scaled output (pre-allocated)
-    juce::AudioBuffer<float> scaledBuffer_;
+    MonitorOutput* monitorOutput_ = nullptr;              // [Message thread only — set once]
 
-    double sampleRate_ = 48000.0;
-    int bufferSize_ = 128;
-    uint32_t rmsDecimationCounter_ = 0;  ///< RMS decimation for monitor level (RT thread only)
-    std::atomic<bool> bufferTruncated_{false};   ///< RT-safe flag: numSamples exceeded scaledBuffer capacity
+    juce::AudioBuffer<float> scaledBuffer_;               // [RT thread only] Temporary buffer for volume-scaled output (pre-allocated)
+
+    double sampleRate_ = 48000.0;                         // [Message thread only]
+    int bufferSize_ = 128;                                // [Message thread only]
+    uint32_t rmsDecimationCounter_ = 0;                   // [RT thread only] RMS decimation for monitor level (no atomic needed)
+    std::atomic<bool> bufferTruncated_{false};             // [RT write, Message read] numSamples exceeded scaledBuffer capacity
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OutputRouter)
 };

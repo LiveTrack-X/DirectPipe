@@ -55,6 +55,19 @@ class PanicMuteAction extends SingletonAction {
         }
     }
 
+    setDisconnectedState() {
+        for (const action of this.actions) {
+            action.setTitle("Disconnected");
+            if (typeof action.setState === "function") action.setState(0);
+        }
+    }
+
+    setConnectingState() {
+        for (const action of this.actions) {
+            action.setTitle("Connecting...");
+        }
+    }
+
     _updateDisplay(action, state) {
         if (!state?.data) return;
         const isMuted = state.data.muted === true;

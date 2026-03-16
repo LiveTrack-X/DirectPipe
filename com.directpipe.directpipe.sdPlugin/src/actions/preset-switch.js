@@ -74,18 +74,46 @@ class PresetSwitchAction extends SingletonAction {
         }
     }
 
+    setDisconnectedState() {
+        for (const action of this.actions) {
+            action.setTitle("Disconnected");
+            if (typeof action.setState === "function") action.setState(0);
+        }
+    }
+
+    setConnectingState() {
+        for (const action of this.actions) {
+            action.setTitle("Connecting...");
+        }
+    }
+
     _updateDisplay(action, settings, state) {
         if (!state?.data) return;
         const activeSlot = state.data.active_slot;
+        const slotNames = state.data.slot_names || [];
 
         if (settings?.slotIndex !== undefined && settings.slotIndex !== "cycle") {
             const idx = Number(settings.slotIndex);
-            const label = SLOT_LABELS[idx] || `${idx + 1}`;
+            const slotLabel = SLOT_LABELS[idx] || "?";
+            const slotName = slotNames[idx] || "";
             const isActive = activeSlot === idx;
-            action.setTitle(isActive ? `[${label}]\nActive` : label);
+
+            let title;
+            if (slotName) {
+                title = isActive ? `▶ ${slotLabel}|${slotName}` : `${slotLabel}|${slotName}`;
+            } else {
+                title = isActive ? `▶ Slot ${slotLabel}` : `Slot ${slotLabel}`;
+            }
+            action.setTitle(title);
         } else {
+            // "cycle" mode — show the currently active slot
             const label = SLOT_LABELS[activeSlot] || "?";
-            action.setTitle(`Slot ${label}`);
+            const activeName = slotNames[activeSlot] || "";
+            if (activeName) {
+                action.setTitle(`${label}|${activeName}`);
+            } else {
+                action.setTitle(`Slot ${label}`);
+            }
         }
     }
 }

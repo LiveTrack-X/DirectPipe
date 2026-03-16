@@ -66,11 +66,17 @@ public:
     void onStateChanged(const AppState& state) override;
 
 private:
-    void serverThread();
-    void clientThread(juce::StreamingSocket* client);
-    void processMessage(const std::string& message);
-    void broadcastToClients(const std::string& message);
-    void sendDiscoveryBroadcast();
+    struct ClientConnection {
+        std::unique_ptr<juce::StreamingSocket> socket;
+        std::thread thread;
+        std::mutex sendMutex;  // [Protects concurrent writes to client socket]
+    };
+
+    void serverThread();                                   // [Server thread — accept loop, runs until running_==false]
+    void clientThread(ClientConnection* conn);              // [Per-client thread — read loop, one per connection]
+    void processMessage(const std::string& message);       // [Per-client thread → ActionDispatcher → Message thread]
+    void broadcastToClients(const std::string& message);   // [Broadcast thread — iterates clients_ under clientsMutex_]
+    void sendDiscoveryBroadcast();                         // [Server thread]
 
     // RFC 6455 WebSocket helpers
     static bool performHandshake(juce::StreamingSocket* client);
@@ -89,13 +95,9 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<int> clientCount_{0};
     int port_ = 8765;
-
-    struct ClientConnection {
-        std::unique_ptr<juce::StreamingSocket> socket;
-        std::thread thread;
-    };
+    // [Protects clients_. NEVER join threads inside this lock.]
     std::mutex clientsMutex_;
-    std::vector<std::unique_ptr<ClientConnection>> clients_;
+    std::vector<std::unique_ptr<ClientConnection>> clients_;  // [Protected by clientsMutex_]
 
     // Async broadcast: queue JSON on any thread, send from dedicated thread
     std::thread broadcastThread_;

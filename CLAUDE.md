@@ -8,6 +8,19 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 > **v4.0.0은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장한 알파 버전입니다.**
 > MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→233+개 확장.
 
+## Documentation Sync Rule (필수)
+
+코드를 수정할 때 아래 문서 동기화를 반드시 수행한다:
+
+1. **파일 추가/삭제/이름 변경** → 해당 모듈 `host/Source/{Module}/README.md`의 File List 업데이트
+2. **클래스/메서드 추가/삭제** → 해당 모듈 README.md + 이 파일의 Quick Reference 테이블 업데이트
+3. **스레드 모델 변경** (새 스레드, 락 추가, atomic 변경) → 해당 .h 어노테이션 + 모듈 README 스레드 모델 + 이 파일의 스레드/락 테이블 업데이트
+4. **새 Action 추가** → 이 파일 하단 "Maintenance Recipes" 체크리스트 따라 모든 파일 업데이트
+5. **새 Platform 추가** → 이 파일 하단 "Maintenance Recipes" 체크리스트 따라 모든 파일 업데이트
+6. **DANGER ZONE 관련 코드 수정** → README DANGER ZONES 항목 + .h/.cpp WARNING 주석 확인
+
+> 위 규칙을 따르지 않으면 문서와 코드가 불일치하여 이후 유지보수에서 오류가 발생한다.
+
 ## Core Principles
 1. Platform-abstracted audio: WASAPI/ASIO (Windows), CoreAudio (macOS), ALSA/JACK (Linux)
 2. VST2 + VST3 hosting with drag-and-drop chain editing (+ AU on macOS)
@@ -28,6 +41,68 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 - WebSocket: JUCE StreamingSocket + RFC 6455 (handshake, framing, custom SHA-1)
 - HTTP: JUCE StreamingSocket manual parsing
 - Stream Deck: @elgato/streamdeck SDK v2.0.1, SDKVersion 3, Node.js 20
+
+## Quick Reference
+
+### Thread Ownership Table
+
+| Class | Method/Area | Thread | Notes |
+|-------|------------|--------|-------|
+| AudioEngine | audioDeviceIOCallbackWithContext | RT (audio) | No alloc, no mutex, no logging |
+| AudioEngine | checkReconnection | Message (30Hz timer) | Timer callback |
+| AudioEngine | setInputDevice/setOutputDevice | Message | May restart device |
+| VSTChain | processBlock | RT (audio) | NO chainLock_ |
+| VSTChain | addPlugin/removePlugin/movePlugin | Message | Holds chainLock_ |
+| VSTChain | replaceChainAsync | Message → BG → callAsync → Message | alive_ guard + generation counter |
+| OutputRouter | routeAudio | RT (audio) | Atomics only |
+| MonitorOutput | audioDeviceIOCallbackWithContext | RT (monitor device) | Separate RT thread from main |
+| MonitorOutput | setMonitorDevice | Message | Device config change |
+| ActionDispatcher | dispatch | Any → Message | callAsync if off-thread |
+| StateBroadcaster | updateState | Any → Message | callAsync if off-thread |
+| WebSocketServer | serverThread/clientThread | Own threads | dispatch via ActionDispatcher |
+| HttpApiServer | serverThread | Own thread | dispatch via ActionDispatcher |
+| HotkeyHandler | WM_HOTKEY / CGEventTap | Platform message thread | dispatch via ActionDispatcher |
+| MidiHandler | handleIncomingMidiMessage | JUCE MIDI callback | dispatch OUTSIDE bindingsMutex_ |
+| StatusUpdater | tick | Message (30Hz) | Caches values for efficiency |
+| PluginPreloadCache | preloadAllSlots | BG thread | COM init on Windows, generation counter |
+| UpdateChecker | checkForUpdate | BG thread | alive_ flag guard |
+| SharedMemWriter | writeAudio | RT (audio) | Lock-free, pre-allocated buffers |
+| AudioRecorder | writeAudio | RT (audio) | SpinLock for writer lifecycle |
+| SettingsAutosaver | tick/saveNow | Message (30Hz) | Dirty-flag + debounce |
+
+### Lock Hierarchy (이 순서로만 acquire)
+
+```
+1. chainLock_ (VSTChain) — chain_ 벡터 + graph 노드 보호
+2. cacheMutex_ (PluginPreloadCache) — cache_ map 보호
+3. bindingsMutex_ (MidiHandler) — bindings_ 보호
+4. clientsMutex_ (WebSocketServer) — clients_ 벡터 보호
+   4a. sendMutex (WebSocketServer, per-connection) — 소켓 동시 쓰기 방지
+5. stateMutex_ (StateBroadcaster) — state_ 보호
+6. listenerMutex_ (ActionDispatcher/StateBroadcaster) — listeners_ 보호
+7. writeMutex_ (DirectPipeLogger) — 로그 쓰기 보호
+
+⛔ 금지: chainLock_ 내에서 writeToLog 호출 (교착 위험: chainLock_ → writeMutex_)
+⛔ 금지: clientsMutex_ 내에서 thread.join() (교착 위험)
+⛔ 금지: handlersMutex_ 내에서 thread.join() (교착 위험)
+```
+
+### Reusable Patterns
+
+| Pattern | Description | Used By |
+|---------|-------------|---------|
+| `alive_` flag | `shared_ptr<atomic<bool>>`, destructor에서 false 설정, callAsync 람다에서 값 캡처 | ActionDispatcher, StateBroadcaster, VSTChain, UpdateChecker, AudioEngine, MonitorOutput, PluginScanner |
+| SafePointer | JUCE Component 포인터, 삭제 시 null, callAsync에서 UI 안전 | MainComponent, PluginChainEditor |
+| copy-before-iterate | 리스너 벡터 복사 후 락 밖에서 순회 (재진입 안전) | ActionDispatcher, StateBroadcaster |
+| ActionResult | `[[nodiscard]]` ok()/fail(msg) 구조화 에러 처리. 반환값 무시 시 컴파일 경고 | AudioEngine 디바이스 메서드, MonitorOutput |
+| atomicWriteFile | `[[nodiscard]]` .tmp → .bak → rename (crash-safe 파일 저장). 반환값 무시 시 컴파일 경고 | PresetManager, SettingsAutosaver, SettingsExporter |
+| generation counter | uint32_t atomic 카운터, 오래된 콜백 폐기 | VSTChain asyncGeneration_, PluginPreloadCache preloadGeneration_ |
+| AtomicGuard/BoolGuard | RAII 스코프 가드 — 생성 시 true, 소멸 시 false. early return 안전 (`Util/ScopedGuard.h`) | AudioEngine intentionalChange_/attemptingReconnection_, ActionHandler loadingSlot_ |
+| PluginIndex/SlotIndex | 강타입 인덱스 래퍼 — 서로 다른 인덱스 타입 혼동 시 컴파일 에러 (`Util/StrongIndex.h`) | VSTChain movePlugin |
+| DeviceState enum | 디바이스 상태 머신 — 4개 atomic bool 대신 명시적 enum 상태. switch문 누락 경고 (`Audio/DeviceState.h`) | AudioEngine getDeviceState() |
+| ThreadOwned | 스레드 소유권 래퍼 — 디버그 빌드에서 잘못된 스레드 접근 감지 (`Util/ThreadOwned.h`) | (점진 적용 예정) |
+
+> **동기화 대상**: Audio/README.md, Control/README.md, UI/README.md, AudioEngine.h, VSTChain.h, WebSocketServer.h 등의 Thread Ownership 어노테이션
 
 ## Build
 ```bash
@@ -72,7 +147,7 @@ MainComponent Split (v3→v4):
 - **ActionHandler**: Consolidated action routing from ActionDispatcher to AudioEngine/UI. `doPanicMute(bool)` consolidates panic mute logic (single implementation, was scattered in v3 MainComponent): saves pre-mute state (monitor, output, IPC), mutes everything, **stops active recording**. On unmute, restores previous state (recording does not auto-restart). **All action cases** in `handle()` check `engine_.isMuted()` to block during panic — PluginBypass, MasterBypass, InputGainAdjust, SetVolume, SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle, MonitorToggle, IpcToggle. Only PanicMute/InputMuteToggle bypass the check (they ARE the panic toggle). Callback-based decoupling from MainComponent (`onDirty`, `onNotification`, `onPanicStateChanged`, `onRecordingStopped`, etc.). Owns pre-mute state (`preMuteMonitorEnabled_`, `preMuteOutputMuted_`, `preMuteVstEnabled_`).
 - **ActionResult**: `ActionResult.h` — ok/fail pattern with `onError` callback. Replaces v3's bare bool/void returns for structured error handling.
 - **SettingsAutosaver**: Dirty-flag pattern with 1-second debounce timer (~30Hz tick). `markDirty()` sets flag, `tick()` counts down cooldown, `saveNow()` for immediate save. Callback-based decoupling (`onPostLoad`, `onShowWindow`, `onRestorePanicMute`, `onFlushLogs`). `loadFromFile()` wraps `triggerPreload()` in `callAsync` (audio device must be fully started before preload).
-- **StatusUpdater**: Periodic UI status updates at ~30Hz. Caches all status values (mute states, latency, CPU, format, gain) to avoid redundant repaints. Updates level meters, mute button colours, status bar labels, input gain slider sync, and broadcasts full state to WebSocket clients. Pointer-based UI binding via `setUI()`.
+- **StatusUpdater**: Periodic UI status updates at ~30Hz. Caches all status values (mute states, latency, CPU, format, gain, outputVolume, xrunCount) to avoid redundant repaints. Updates level meters, mute button colours, status bar labels, input gain slider sync, and broadcasts full state to WebSocket clients. State broadcast includes `volumes.output` and `xrun_count` fields. Pointer-based UI binding via `setUI()`.
 - **PresetSlotBar**: A-E quick preset slot buttons. Slot naming with pipe delimiter (`A|게임`, max 8 chars). Right-click context menu (Rename/Copy/Delete/Export/Import). Callback-based (`onSlotSwitch`, `onDirty`, `onNotification`). Shared atomics `loadingSlot_`/`partialLoad_` by reference.
 - **UpdateChecker**: Separate class (was inline in v3 MainComponent). Background GitHub API polling for new releases. Semver comparison. Updates credit label text on newer version found. Click triggers update dialog with [Update Now] (Windows only) / [View on GitHub] (macOS/Linux) / [Later]. Uses `alive_` flag for async safety. **Platform-aware asset selection**: 1st pass matches platform tag (`Windows`+`.zip`, `macOS`+`.dmg`, `Linux`+`.tar.gz`), 2nd pass falls back to any `DirectPipe*.zip` (legacy releases), 3rd pass falls back to `DirectPipe*.exe`. See workspace `CLAUDE.md` Section 2 for full release asset naming rules.
 - **HotkeyTab / MidiTab / StreamDeckTab**: Each Controls sub-tab is a separate .h/.cpp file (was all inline in v3 ControlSettingsPanel). HotkeyTab: BindingRow drag-and-drop, key recording. MidiTab: device selector, Learn mode, 3-step param popup. StreamDeckTab: WS/HTTP server status. ControlSettingsPanel is now a slim tabbed container (~75 lines).
@@ -105,7 +180,7 @@ MainComponent Split (v3→v4):
 - **Panic Mute**: Remembers pre-mute state (monitor, output mute, IPC), restores on unmute. Stops active recording on engage (does not auto-restart). During panic mute, all actions and external controls locked — only PanicMute/unmute can change state. Logic consolidated in `ActionHandler::doPanicMute()`. `input_muted` state field mirrors `muted` (no independent input mute).
 - **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup. Port 8765. UDP discovery broadcast (port 8767). `broadcastToClients` thread join outside `clientsMutex_` lock.
 - **IPC Toggle**: `Action::IpcToggle` toggles IPC output. Default hotkey: Ctrl+Shift+I. WebSocket/HTTP/MIDI mappable.
-- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: volume/parameter values validated as numeric. Gain delta endpoint scales by 10× (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle.
+- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: volume/parameter values validated as numeric. Gain delta endpoint scales by 10× (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`).
 - **MIDI Learn cancel**: Cancel button in MidiTab. `stopLearn()` called on cancel.
 - **MIDI HTTP API test endpoints**: `/api/midi/cc/:ch/:num/:val` and `/api/midi/note/:ch/:num/:vel`.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow.
@@ -122,7 +197,7 @@ MainComponent Split (v3→v4):
 
 ### Receiver & Stream Deck
 - **Receiver VST plugin**: VST2/VST3/AU plugin for OBS and DAWs. Reads shared memory IPC. Configurable buffer size (5 presets). Formats: .dll (Win VST2), .vst3 (all), .vst (macOS VST2 bundle), .component (macOS AU), .so (Linux VST2).
-- **Stream Deck plugin**: SDKVersion 3, 7 SingletonAction subclasses, Property Inspector HTML (sdpi-components v4), event-driven reconnection, SVG icons + @2x. Pending message queue (cap 50). Packaged via `streamdeck pack` CLI.
+- **Stream Deck plugin**: SDKVersion 3, 10 SingletonAction subclasses (7 original + Performance Monitor, Plugin Parameter [SD+], Preset Bar [SD+]), Property Inspector HTML (sdpi-components v4), event-driven reconnection, SVG icons + @2x. Pending message queue (cap 50). Packaged via `streamdeck pack` CLI. Plugin Parameter and Preset Bar PI use `GET /api/plugins` and `GET /api/plugin/:idx/params` for dynamic dropdowns.
 
 ### Platform-Specific Notes
 - **CJK font rendering**: Platform-specific fonts — Windows: Bold Malgun Gothic. macOS: Apple SD Gothic Neo. Linux: Noto Sans CJK KR.
@@ -163,6 +238,11 @@ MainComponent Split (v3→v4):
 - **PluginPreloadCache `invalidateAll()`**: Non-blocking — bumps all `slotVersions_` + sets `cancelPreload_` + bumps `preloadGeneration_`. Does NOT join thread (COM STA deadlock). `cancelAndWait()` uses heap-allocated `shared_ptr` for join state.
 - **PluginPreloadCache `slotVersions_`**: Per-slot `atomic<uint32_t>` version counter. Bumped by `invalidateSlot`/`invalidateAll`. `preloadAllSlots` captures version at file-read time; cache store checks version match — discards stale data if slot was invalidated mid-preload.
 - **PluginPreloadCache `isCachedWithStructure`**: Compares cached plugin names/paths/order. `saveSlot` invalidates only on structure change (add/remove/replace/reorder), not on parameter-only saves.
+- **`[[nodiscard]]` policy**: `ActionResult`, `atomicWriteFile()`, `VSTChain::addPlugin/removePlugin/movePlugin`, `AudioRecorder::startRecording`, `SharedMemWriter::initialize`, `AudioEngine` device methods — all return values MUST be checked. Compiler warns on ignored return values.
+- **jassert thread contracts**: `processBlock`/`writeAudio`/`writeBlock` assert NOT message thread (RT only). `addPlugin`/`removePlugin`/`movePlugin`/`stopLearn`/`checkReconnection` assert IS message thread. Debug builds crash on violations.
+- **ScopedGuard for flag pairs**: Use `AtomicGuard` (for `std::atomic<bool>`) or `BoolGuard` (for plain `bool`) from `Util/ScopedGuard.h` instead of manual `flag = true` ... `flag = false` pairs. Guards cleanup on any exit path (return, exception). See `intentionalChange_` in AudioEngine, `attemptingReconnection_` in attemptReconnection, `loadingSlot_` in ActionHandler.
+- **Strong index types**: Use `PluginIndex`/`SlotIndex`/`MappingIndex` from `Util/StrongIndex.h` for function parameters that accept indices. Prevents accidental argument swapping (e.g., `movePlugin(from, to)` with swapped args).
+- **DeviceState enum**: Use `AudioEngine::getDeviceState()` for switch-based state handling instead of checking individual boolean flags. Compiler warns on missing cases. See `Audio/DeviceState.h`.
 - **Atomic file write pattern**: All preset/config saves use `atomicWriteFile()`: write .tmp → rename original to .bak → rename .tmp to target. Load functions use `loadFileWithBackupFallback()`: try main file → .bak → legacy .backup. See `host/Source/Util/AtomicFileIO.h`.
 - **Sample rate propagation**: Audio tab SR applies globally — VST chain, monitor output, IPC all follow main device SR.
 - **MonitorOutput shutdown()**: Resets `actualSampleRate_`/`actualBufferSize_` to 0. `monitorLost_` set by `audioDeviceError`/`audioDeviceStopped`, cleared ONLY by `audioDeviceAboutToStart`.
@@ -172,7 +252,7 @@ MainComponent Split (v3→v4):
 ## Modules
 - `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants). POSIX: shm_open + sem_open (macOS sem_trywait polling, Linux sem_timedwait). Windows: CreateFileMapping + CreateEvent.
 - `host/` -> JUCE app
-  - `Audio/` -> AudioEngine, VSTChain, OutputRouter, MonitorOutput, AudioRingBuffer, LatencyMonitor, AudioRecorder, PluginPreloadCache, PluginLoadHelper
+  - `Audio/` -> AudioEngine, VSTChain, OutputRouter, MonitorOutput, AudioRingBuffer, LatencyMonitor, AudioRecorder, PluginPreloadCache, PluginLoadHelper, **DeviceState** (enum)
   - `Control/` -> ActionDispatcher, **ActionHandler**, ControlManager, ControlMapping, **SettingsAutosaver**, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster, DirectPipeLogger (Log.h/cpp)
   - `IPC/` -> SharedMemWriter
   - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel (slim tabbed container), **HotkeyTab**, **MidiTab**, **StreamDeckTab**, PluginChainEditor, PluginScanner, PresetManager, **PresetSlotBar**, LevelMeter, LogPanel, NotificationBar, DirectPipeLookAndFeel, SettingsExporter, **StatusUpdater**, **UpdateChecker**, DeviceSelector
@@ -181,6 +261,9 @@ MainComponent Split (v3→v4):
     - `macOS/` -> MacAutoStart, MacProcessPriority, MacMultiInstanceLock (LaunchAgent, setpriority, InterProcessLock)
     - `Linux/` -> LinuxAutoStart, LinuxProcessPriority, LinuxMultiInstanceLock (XDG .desktop, setpriority, InterProcessLock)
   - `Util/AtomicFileIO.h` — Atomic file write + backup recovery (header-only)
+  - `Util/ScopedGuard.h` — AtomicGuard/BoolGuard RAII scope guards (header-only)
+  - `Util/StrongIndex.h` — PluginIndex/SlotIndex/MappingIndex strong types (header-only)
+  - `Util/ThreadOwned.h` — Thread ownership wrapper with debug assertions (header-only)
   - Root: MainComponent, Main, **ActionResult.h**
 - `plugins/receiver/` -> Receiver VST2/VST3/AU plugin for OBS and DAWs (shared memory IPC consumer, configurable buffer size)
 - `com.directpipe.directpipe.sdPlugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v3)
@@ -197,7 +280,7 @@ MainComponent Split (v3→v4):
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: SDKVersion 3 (SDK v2.0.1 npm), Version 3.9.10.0, 7 actions, 3 PI HTMLs, SVG-based icons + @2x, packaged via `streamdeck pack` CLI
+- Stream Deck: SDKVersion 3 (SDK v2.0.1 npm), Version 3.9.10.0, 10 actions (Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle, Recording Toggle, IPC Toggle, Performance Monitor, Plugin Parameter [SD+], Preset Bar [SD+]), 5 PI HTMLs, SVG-based icons + @2x, packaged via `streamdeck pack` CLI
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), managed by SettingsAutosaver
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
 - Credit label "Created by LiveTrack" at bottom-right. Shows "NEW vX.Y.Z" in orange.
@@ -224,3 +307,175 @@ If any step fails, help fix the issue first, then re-run that step.
 **v4 릴리스 시 주의**: GitHub Release에 반드시 `--prerelease` 플래그를 사용해야 합니다. 그래야 v3 사용자의 자동 업데이터가 v4를 감지하지 않습니다. stable이 확정된 후에만 latest로 전환.
 
 **문서 업데이트도 필수**: 코드 변경 시 README.md, docs/ 내 관련 문서, 이 CLAUDE.md도 현재 상태에 맞게 업데이트해야 합니다.
+
+## Common Bug Patterns
+
+코드 수정 시 자주 발생하는 버그 패턴과 진단 방법.
+
+### RT 스레드 위반
+- **증상**: 오디오 글리치, 드롭아웃, XRun 증가
+- **원인**: `audioDeviceIOCallbackWithContext` 내에서 heap 할당(`new`, `std::vector::push_back`), mutex 잠금, `writeToLog` 호출
+- **진단**: RT 콜백 코드 경로에서 allocation/lock 검색. `LatencyMonitor::getCpuUsagePercent()` 확인
+- **참조**: Audio/README.md DANGER ZONE 1
+
+### callAsync use-after-free
+- **증상**: 랜덤 크래시 (특히 앱 종료 시)
+- **원인**: BG 스레드의 callAsync 람다가 이미 파괴된 객체의 `this` 접근
+- **진단**: 해당 클래스에 `alive_` 플래그 있는지 확인. 소멸자에서 `alive_->store(false)` 호출되는지. 람다에서 `aliveFlag->load()` 체크 있는지
+- **참조**: Quick Reference > Reusable Patterns > `alive_` flag
+
+### Lock ordering 교착
+- **증상**: 앱 행 (UI 멈춤, 셧다운 안 됨)
+- **원인**: Lock Hierarchy 순서 위반 (예: `chainLock_` 안에서 `writeToLog` → `writeMutex_`)
+- **진단**: Quick Reference > Lock Hierarchy 확인. 새 lock 추가 시 순서 결정 필수
+- **참조**: CLAUDE.md Lock Hierarchy
+
+### 크로스스레드 non-atomic 접근
+- **증상**: 간헐적 잘못된 값, ARM(macOS)에서만 발생하는 버그
+- **원인**: 두 스레드에서 동시에 읽기/쓰기하는 변수가 `std::atomic<>` 아님
+- **진단**: 변수의 Thread Ownership 어노테이션 확인. `[RT write, Message read]` 패턴이면 반드시 atomic
+- **참조**: 각 .h 파일의 Thread Ownership 섹션
+
+### 프리셋 저장 데이터 손실
+- **증상**: 앱 재시작 시 설정/프리셋이 초기화됨
+- **원인**: `atomicWriteFile()` 대신 `replaceWithText()` 사용 → 전원 중단 시 파일 손상
+- **진단**: 저장 코드에서 `atomicWriteFile` 사용 확인. `.bak` 파일 존재 여부
+- **참조**: Util/README.md, Quick Reference > atomicWriteFile
+
+### WebSocket 클라이언트 끊김
+- **증상**: Stream Deck 연결이 간헐적으로 끊김
+- **원인**: clientThread 종료 시 소켓 미닫음 → broadcastToClients sweep 미감지 → 실패한 write
+- **진단**: clientThread에서 conn->socket->close() 호출 확인. sendFrame 반환값 확인
+- **참조**: Control/README.md DANGER ZONE 4, 4a
+
+### suspendProcessing 카운터 불균형
+- **증상**: 프리셋 로드 후 오디오가 영구 mute (1-2초가 아닌 영구)
+- **원인**: `rebuildGraph(suspend=true)` 호출 전에 `suspendProcessing(true)` 별도 호출 → 카운터 2로 증가, `rebuildGraph` 내부에서 1만 감소 → 카운터 1 유지 → 영구 suspend
+- **진단**: `replaceChainAsync`/`replaceChainWithPreloaded`에서 `suspendProcessing(true)` 호출 위치 확인. `rebuildGraph(true)` 직전에 호출되면 버그
+- **참조**: Audio/README.md DANGER ZONE 11
+
+### JUCE Timer 스레드 위반
+- **증상**: 앱 종료 시 크래시, 타이머 콜백이 이상한 시점에 호출
+- **원인**: `juce::Timer` 또는 `Timer` 파생 객체를 Message thread 아닌 곳에서 파괴 (`unique_ptr.reset()` 등)
+- **진단**: Timer 소유 객체의 소멸자/shutdown 코드에서 `isThisTheMessageThread()` 확인. `stopTimer()`는 안전, `reset()`은 위험
+- **참조**: Audio/README.md DANGER ZONE 14
+
+### SafePointer BG 스레드 생성
+- **증상**: 간헐적 크래시, Component 삭제 시 corruption
+- **원인**: `Component::SafePointer`를 BG 스레드에서 생성 → WeakReference 등록이 thread-safe 아님
+- **진단**: callAsync 람다에서 SafePointer 사용하는 코드 검색. BG 스레드의 `run()` 내부면 `alive_` 패턴으로 교체 필요
+- **참조**: Audio/README.md DANGER ZONE 15, Quick Reference > Reusable Patterns
+
+## Maintenance Recipes
+
+### 새 Action 추가하기
+
+1. `Control/ActionDispatcher.h` — `Action` enum에 새 값 추가
+2. `Control/ActionDispatcher.h` — `actionToString()` **AND** `actionToDisplayName()` 양쪽에 case 추가 (둘 다 같은 헤더 파일의 inline 함수)
+   - ⚠️ `actionToDisplayName()` 누락 시 HotkeyTab/MidiTab UI에서 "Unknown"으로 표시됨
+3. `Control/ActionHandler.cpp` — `handle()` switch에 새 case 추가
+   - `engine_.isMuted()` 체크 필요 여부 결정 (panic mute 중 차단할 액션인지)
+4. `Control/ControlMapping.cpp` — ⚠️ **`varToActionEvent()`의 상한 가드 업데이트 필수**
+   - `if (actionVal >= 0 && actionVal <= static_cast<int>(Action::마지막_Action))` — 새 enum이 마지막이면 이 값을 변경
+   - 이 상한을 업데이트하지 않으면 저장된 핫키/MIDI 바인딩이 **자동 폐기**되어 바인딩이 작동하지 않음
+5. `Control/StateBroadcaster.h` — `AppState`에 상태 필드 추가 (필요 시)
+   - 필드 추가 시 `quickStateHash()`에도 반드시 포함 (누락 시 해당 필드 변경이 브로드캐스트 안 됨)
+6. `Control/StateBroadcaster.cpp` — `toJSON()`에 새 필드 직렬화 추가
+7. `Control/HttpApiServer.cpp` — HTTP 엔드포인트 추가 (`processRequest` 내 분기)
+8. `Control/WebSocketServer.cpp` — WebSocket 메시지 파싱 추가 (`processMessage` 내 분기)
+9. `UI/StatusUpdater.cpp` — `AppState` 필드 매핑 확인 (새 필드가 AudioEngine에서 올바르게 복사되는지)
+10. **문서 업데이트**:
+    - `docs/CONTROL_API.md` — API 레퍼런스
+    - `docs/API_EXAMPLES.md` — 사용 예제
+    - `Control/README.md` — Data Flow의 액션 수 업데이트, DANGER ZONE 5의 차단 목록
+    - 이 파일의 Quick Reference Thread Table (스레드 모델 변경 시)
+
+### 새 Platform 추가하기
+
+1. `host/Source/Platform/{PlatformName}/` 디렉토리 생성
+2. 인터페이스 구현:
+   - `{Platform}AutoStart.cpp` — AutoStart.h 인터페이스 구현
+   - `{Platform}ProcessPriority.cpp` — ProcessPriority.h 구현
+   - `{Platform}MultiInstanceLock.cpp` — MultiInstanceLock.h 구현
+3. `host/Source/Platform/PlatformAudio.h` — `getDefaultSharedDeviceType()` 분기 추가
+4. `CMakeLists.txt` — 플랫폼 조건부 소스 파일 추가
+5. **문서 업데이트**:
+   - `Platform/README.md` — File Mapping 테이블 + 파일 목록
+   - `docs/PLATFORM_GUIDE.md` — 플랫폼 기능 비교표
+   - `docs/BUILDING.md` — 빌드 지침
+   - 이 파일의 Platform/ 모듈 설명
+
+### 새 Platform 기능 추가하기 (인터페이스 + OS별 구현)
+
+1. `host/Source/Platform/NewFeature.h` — 인터페이스 헤더 생성 (`namespace directpipe::Platform` 내 free function)
+   - 기존 `ProcessPriority.h` 또는 `AutoStart.h`를 템플릿으로 복사
+2. 각 OS 구현 생성:
+   - `Platform/Windows/WindowsNewFeature.cpp` — `#if defined(_WIN32)` 가드
+   - `Platform/macOS/MacNewFeature.cpp` — `#if defined(__APPLE__)` 가드
+   - `Platform/Linux/LinuxNewFeature.cpp` — `#if defined(__linux__)` 가드
+3. `CMakeLists.txt` — 새 `.cpp` 파일을 플랫폼별 조건 블록에 추가
+   - ⚠️ macOS: 시스템 프레임워크 필요 시 `target_link_libraries`에 추가 (예: `IOKit.framework`)
+4. **호출 지점 연결** — 새 기능을 실제로 호출하는 코드 추가
+   - 어떤 앱 수명주기 이벤트에서 호출할지 결정 (예: `audioDeviceAboutToStart` → inhibit, `audioDeviceStopped` → release)
+   - ⚠️ RT 오디오 콜백에서 호출 금지 — Message thread 또는 디바이스 콜백에서만
+   - 리소스 쌍 관리 (acquire/release, inhibit/release) — 앱 비정상 종료 시 자동 해제 보장 확인
+5. **문서 업데이트**:
+   - `Platform/README.md` — 아키텍처 트리 + 매핑 테이블에 새 행 추가
+   - `CLAUDE.md` — Key Implementations의 Platform/ 항목 + Modules 섹션
+   - `docs/PLATFORM_GUIDE.md` — 플랫폼별 기능 비교표 (해당 시)
+
+### 새 UI 탭 추가하기
+
+1. `host/Source/UI/{TabName}Tab.h/.cpp` 생성 (juce::Component 상속)
+2. `UI/ControlSettingsPanel.cpp` — 탭 추가 (`tabbedComponent_->addTab(...)`)
+   - 또는 `MainComponent.cpp` — `rightTabs_`에 추가 (최상위 탭인 경우)
+3. 콜백 연결: `onDirty`, `onNotification` 등
+4. `UI/SettingsExporter.cpp` — 탭 설정 직렬화/역직렬화 추가 (영속 상태 있는 경우)
+5. **문서 업데이트**:
+   - `UI/README.md` — File List + Component Hierarchy
+   - 이 파일의 Modules 섹션
+
+### 새 외부 제어 서버/핸들러 추가하기 (OSC, gRPC 등)
+
+백엔드(Control/ 서버) + 프론트엔드(UI/ 탭) 양쪽을 모두 구현해야 하는 경우.
+
+**백엔드 (Control/):**
+1. `Control/{Name}Handler.h/.cpp` 생성 — 서버 클래스 구현
+   - 기존 `WebSocketServer` 또는 `HttpApiServer`를 템플릿으로 참조
+   - 필수 인터페이스: `start(int port)`, `stop()`, `isRunning()`, `getPort()`
+   - `ActionDispatcher&` 참조 보유 — 수신된 메시지를 `dispatcher_.dispatch(event)`로 전달
+   - ⚠️ 서버 스레드에서 직접 UI 접근 금지 — ActionDispatcher가 Message thread 전달 보장
+   - ⚠️ `alive_` 플래그 패턴 적용 (callAsync 사용 시)
+2. `Control/ControlManager.h/.cpp` — 핸들러 등록
+   - 멤버 추가: `std::unique_ptr<{Name}Handler> {name}Handler_`
+   - `initialize()`에서 생성 + `start()`, `shutdown()`에서 `stop()`
+   - 접근자 추가: `{Name}Handler& get{Name}Handler()`
+3. `Control/ControlMapping.h/.cpp` — 설정 영속화
+   - `ServerConfig` 구조체에 `{name}Port`, `{name}Enabled` 필드 추가
+   - JSON 직렬화/역직렬화에 새 필드 추가
+4. `Control/Log.h` — 로그 카테고리 태그 추가 (예: `[OSC]`)
+
+**프론트엔드 (UI/):**
+5. `UI/{Name}Tab.h/.cpp` 생성 — `StreamDeckTab`을 템플릿으로 복사
+   - 서버 상태 표시 (포트, 연결 수, running 여부)
+   - Start/Stop 토글 버튼
+   - 내부 Timer (2Hz)로 상태 폴링
+6. `UI/ControlSettingsPanel.cpp` — 서브탭 추가
+   - `tabbedComponent_->addTab("{Name}", tabBg, {name}Tab_.get(), false)`
+
+**빌드 + 문서:**
+7. `CMakeLists.txt` — 4개 소스 파일 추가 (.h/.cpp × 2)
+   - ⚠️ 외부 라이브러리 필요 시 `target_link_libraries` 추가 (예: `juce::juce_osc`)
+8. **문서 업데이트**:
+   - `Control/README.md` — Data Flow, File List, Thread Model, DANGER ZONES (서버 스레드 join 규칙)
+   - `UI/README.md` — File List, Component Hierarchy, Thread Model
+   - 이 파일의 Quick Reference Thread Table + Modules 섹션
+   - `CLAUDE.md` DirectPipeLogger 카테고리 목록에 새 태그 추가
+   - `docs/CONTROL_API.md` — 프로토콜/엔드포인트 레퍼런스 (해당 시)
+
+### 새 Lock/Mutex 추가하기
+
+1. 헤더 파일에 선언 + Thread Ownership 어노테이션 추가
+2. **이 파일의 Lock Hierarchy에 추가** (순서 결정 필수)
+3. 해당 모듈 README의 Thread Model 테이블 업데이트
+4. DANGER ZONES에 교착 위험 경로 추가 (해당 시)

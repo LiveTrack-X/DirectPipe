@@ -83,6 +83,19 @@ class BypassToggleAction extends SingletonAction {
         }
     }
 
+    setDisconnectedState() {
+        for (const action of this.actions) {
+            action.setTitle("Disconnected");
+            if (typeof action.setState === "function") action.setState(0);
+        }
+    }
+
+    setConnectingState() {
+        for (const action of this.actions) {
+            action.setTitle("Connecting...");
+        }
+    }
+
     _updateDisplay(action, settings, state) {
         if (!state?.data) return;
         const pluginIndex = (Number(settings?.pluginNumber) || 1) - 1;

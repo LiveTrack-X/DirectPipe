@@ -167,6 +167,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     broadcaster_.updateState([&](AppState& s) {
         s.inputGain = engine_.getInputGain();
         s.monitorVolume = router.getVolume(OutputRouter::Output::Monitor);
+        s.outputVolume = router.getVolume(OutputRouter::Output::Main);
         s.muted = muted;
         s.outputMuted = engine_.isOutputMuted();
         s.inputMuted = muted;
@@ -193,6 +194,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.recording = engine_.getRecorder().isRecording();
         s.recordingSeconds = engine_.getRecorder().getRecordedSeconds();
         s.ipcEnabled = engine_.isIpcEnabled();
+        s.xrunCount = engine_.getRecentXRunCount();
         s.deviceLost = engine_.isDeviceLost();
         s.monitorLost = engine_.getMonitorOutput().isDeviceLost();
 

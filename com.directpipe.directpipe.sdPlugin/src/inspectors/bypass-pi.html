@@ -6,14 +6,69 @@
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
 </head>
 <body>
-    <sdpi-item label="Plugin #">
+    <sdpi-item label="Plugin">
+        <select id="pluginDropdown" style="width:100%"></select>
+    </sdpi-item>
+    <sdpi-item label="Manual #">
         <sdpi-textfield setting="pluginNumber" type="number" placeholder="1"></sdpi-textfield>
+    </sdpi-item>
+    <sdpi-item label="">
+        <button id="refreshBtn" style="width:100%; padding:4px">Refresh Plugin List</button>
     </sdpi-item>
     <sdpi-item label="">
         <details>
             <summary>Help</summary>
-            <p>Plugin number in the VST chain (1 = first). Long-press for master bypass.</p>
+            <p>Select a plugin from the dropdown, or enter the number manually. Long-press the button for master bypass.</p>
         </details>
     </sdpi-item>
+
+    <script>
+    var PORTS = [8766, 8767, 8768, 8769, 8770, 8771];
+
+    async function findPort() {
+        for (var i = 0; i < PORTS.length; i++) {
+            try {
+                var r = await fetch("http://localhost:" + PORTS[i] + "/api/perf", { signal: AbortSignal.timeout(500) });
+                if (r.ok) return PORTS[i];
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    async function loadPlugins() {
+        var sel = document.getElementById("pluginDropdown");
+        sel.innerHTML = '<option value="">Loading...</option>';
+        var port = await findPort();
+        if (!port) {
+            sel.innerHTML = '<option value="">DirectPipe not running</option>';
+            return;
+        }
+        try {
+            var res = await fetch("http://localhost:" + port + "/api/plugins");
+            var plugins = await res.json();
+            sel.innerHTML = "";
+            plugins.forEach(function(p) {
+                var opt = document.createElement("option");
+                opt.value = p.index + 1;
+                opt.textContent = (p.index + 1) + " - " + (p.name || "(Empty)");
+                sel.appendChild(opt);
+            });
+        } catch (e) {
+            sel.innerHTML = '<option value="">Error loading</option>';
+        }
+    }
+
+    document.getElementById("pluginDropdown").addEventListener("change", function() {
+        // Find the sdpi-textfield and update its value
+        var tf = document.querySelector('[setting="pluginNumber"]');
+        if (tf && this.value) {
+            tf.value = this.value;
+            tf.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+    });
+
+    document.getElementById("refreshBtn").addEventListener("click", loadPlugins);
+    loadPlugins();
+    </script>
 </body>
 </html>

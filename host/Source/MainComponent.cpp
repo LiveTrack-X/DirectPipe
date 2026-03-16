@@ -68,7 +68,7 @@ MainComponent::MainComponent(bool enableExternalControls)
         audioEngine_.setIpcAllowed(false);
 
     // Initialize external control system
-    controlManager_ = std::make_unique<ControlManager>(dispatcher_, broadcaster_);
+    controlManager_ = std::make_unique<ControlManager>(dispatcher_, broadcaster_, audioEngine_);
     controlManager_->initialize(enableExternalControls);
     dispatcher_.addListener(this);
 
@@ -163,7 +163,8 @@ MainComponent::MainComponent(bool enableExternalControls)
             presetManager_->invalidatePreloadCache();
             loadingSlot_ = false;
             markSettingsDirty();
-            presetSlotBar_->updateSlotButtonStates();
+            if (presetSlotBar_)
+                presetSlotBar_->updateSlotButtonStates();
             pluginChainEditor_->refreshList();
         };
         settingsPanel->onResetSettings = [this] {
@@ -177,10 +178,12 @@ MainComponent::MainComponent(bool enableExternalControls)
             presetManager_->invalidatePreloadCache();
             // Reload with factory defaults
             controlManager_->reloadConfig();
-            settingsAutosaver_->loadFromFile();
+            if (settingsAutosaver_)
+                settingsAutosaver_->loadFromFile();
             loadingSlot_ = false;
             refreshUI();
-            presetSlotBar_->updateSlotButtonStates();
+            if (presetSlotBar_)
+                presetSlotBar_->updateSlotButtonStates();
             pluginChainEditor_->refreshList();
         };
         settingsPanel->onSaveSettings = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {

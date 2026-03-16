@@ -27,6 +27,7 @@
 
 #include <JuceHeader.h>
 #include "../ActionResult.h"
+#include "DeviceState.h"
 #include "VSTChain.h"
 #include "OutputRouter.h"
 #include "LatencyMonitor.h"
@@ -72,7 +73,7 @@ public:
     AudioEngine();
     ~AudioEngine() override;
 
-    bool initialize();
+    [[nodiscard]] bool initialize();
     void shutdown();
 
     juce::AudioDeviceManager& getDeviceManager() { return deviceManager_; }
@@ -81,14 +82,14 @@ public:
     LatencyMonitor& getLatencyMonitor() { return latencyMonitor_; }
     AudioRecorder& getRecorder() { return recorder_; }
     // Device type (ASIO / Windows Audio)
-    ActionResult setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice = {});
+    [[nodiscard]] ActionResult setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice = {});
     juce::String getCurrentDeviceType() const;
     juce::StringArray getAvailableDeviceTypes();
 
     // Device selection
-    ActionResult setInputDevice(const juce::String& deviceName);
-    ActionResult setOutputDevice(const juce::String& deviceName);
-    ActionResult setAsioDevice(const juce::String& deviceName);
+    [[nodiscard]] ActionResult setInputDevice(const juce::String& deviceName);   // [Message thread only]
+    [[nodiscard]] ActionResult setOutputDevice(const juce::String& deviceName);  // [Message thread only]
+    [[nodiscard]] ActionResult setAsioDevice(const juce::String& deviceName);    // [Message thread only]
 
     /** @brief Get the desired device type (survives fallback, unlike getCurrentDeviceType). */
     juce::String getDesiredDeviceType() const { return desiredDeviceType_.isEmpty() ? getCurrentDeviceType() : desiredDeviceType_; }
@@ -102,8 +103,8 @@ public:
     juce::Array<double> getAvailableSampleRates() const;
     juce::Array<int> getAvailableBufferSizes() const;
 
-    ActionResult setBufferSize(int bufferSize);
-    ActionResult setSampleRate(double sampleRate);
+    [[nodiscard]] ActionResult setBufferSize(int bufferSize);    // [Message thread only]
+    [[nodiscard]] ActionResult setSampleRate(double sampleRate); // [Message thread only]
 
     /** @brief Pre-set SR/BS before device type switch (avoids intermediate restarts). */
     void presetAudioParams(double sampleRate, int bufferSize);
@@ -116,9 +117,9 @@ public:
     juce::StringArray getOutputChannelNames() const;
 
     /** @brief Set which input channels are active (stereo pair starting at firstChannel). */
-    ActionResult setActiveInputChannels(int firstChannel, int numChannels = 2);
+    [[nodiscard]] ActionResult setActiveInputChannels(int firstChannel, int numChannels = 2);
     /** @brief Set which output channels are active (stereo pair starting at firstChannel). */
-    ActionResult setActiveOutputChannels(int firstChannel, int numChannels = 2);
+    [[nodiscard]] ActionResult setActiveOutputChannels(int firstChannel, int numChannels = 2);
 
     /** @brief Get the first active input channel index. */
     int getActiveInputChannelOffset() const;
@@ -129,12 +130,12 @@ public:
     bool isMonitorEnabled() const { return outputRouter_.isEnabled(OutputRouter::Output::Monitor); }
 
     /** Set the monitor output WASAPI device (independent of main driver). */
-    ActionResult setMonitorDevice(const juce::String& deviceName);
+    [[nodiscard]] ActionResult setMonitorDevice(const juce::String& deviceName);
     juce::String getMonitorDeviceName() const { return monitorOutput_.getDeviceName(); }
     MonitorOutput& getMonitorOutput() { return monitorOutput_; }
 
     /** Set/get the monitor output buffer size (independent of main device). */
-    ActionResult setMonitorBufferSize(int bufferSize);
+    [[nodiscard]] ActionResult setMonitorBufferSize(int bufferSize);
     int getMonitorBufferSize() const { return monitorOutput_.getPreferredBufferSize(); }
 
     void setChannelMode(int channels);
@@ -175,9 +176,11 @@ public:
     int getRecentXRunCount() const;
     /** @brief Call from UI timer (~30Hz) to update the rolling xrun window. */
     void updateXRunTracking();
+    /** @brief Request xrun counter reset (safe from any thread — sets atomic flag). */
+    void requestXRunReset() { xrunResetRequested_.store(true, std::memory_order_release); }
 
     /** @brief Check and attempt device reconnection (call from message thread timer). */
-    void checkReconnection();
+    void checkReconnection();  // [Message thread only]
     /** @brief True if the audio device was lost (error/disconnect). */
     bool isDeviceLost() const { return deviceLost_.load(std::memory_order_relaxed); }
 
@@ -187,6 +190,33 @@ public:
     bool isOutputAutoMuted() const { return outputAutoMuted_.load(std::memory_order_relaxed); }
     /** @brief Clear auto-mute tracking (call when user manually controls output mute). */
     void clearOutputAutoMute() { outputAutoMuted_.store(false, std::memory_order_relaxed); }
+
+    /**
+     * @brief Get the current device state as an explicit enum.
+     *
+     * Computes DeviceState from the underlying atomic flags.
+     * Use this for switch-based state handling instead of checking
+     * individual boolean flags (compiler warns on missing cases).
+     *
+     * [Message thread only] — reads attemptingReconnection_ (non-atomic).
+     */
+    DeviceState getDeviceState() const
+    {
+        if (attemptingReconnection_)
+            return DeviceState::Reconnecting;
+        bool devLost = deviceLost_.load(std::memory_order_relaxed);
+        bool inLost = inputDeviceLost_.load(std::memory_order_relaxed);
+        bool outMuted = outputAutoMuted_.load(std::memory_order_relaxed);
+        if (devLost)
+            return DeviceState::BothLost;
+        if (inLost && outMuted)
+            return DeviceState::BothLost;
+        if (inLost)
+            return DeviceState::InputLost;
+        if (outMuted)
+            return DeviceState::OutputLost;
+        return DeviceState::Running;
+    }
 
     std::function<void(float)> onInputLevelChanged;
     std::function<void(float)> onOutputLevelChanged;
@@ -200,6 +230,7 @@ private:
     void pushNotification(const juce::String& msg, NotificationLevel level);
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void attemptReconnection();
+    // [RT thread only]
     void audioDeviceIOCallbackWithContext(
         const float* const* inputChannelData,
         int numInputChannels,
@@ -214,6 +245,11 @@ private:
 
     static float calculateRMS(const float* data, int numSamples);
 
+    // ═══════════════════════════════════════════════════════════════════
+    // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
+    // ═══════════════════════════════════════════════════════════════════
+
+    // ─── Subsystems (owned, thread-safe internally) ───
     juce::AudioDeviceManager deviceManager_;
     VSTChain vstChain_;
     OutputRouter outputRouter_;
@@ -221,64 +257,67 @@ private:
     MonitorOutput monitorOutput_;
     AudioRecorder recorder_;
     SharedMemWriter sharedMemWriter_;
-    std::atomic<bool> ipcEnabled_{false};
-    std::atomic<bool> ipcWasEnabled_{false};  // Remembers IPC state across device stop/start
-    bool ipcAllowed_ = true;  // false in audio-only multi-instance mode
 
-    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
-    std::atomic<bool> running_{false};
+    // ─── Cross-thread atomics ───
+    std::atomic<bool> ipcEnabled_{false};              // [Message write, RT read]
+    std::atomic<bool> ipcWasEnabled_{false};            // [Message thread only] Remembers IPC state across device stop/start
+    bool ipcAllowed_ = true;                            // [Message thread only] false in audio-only multi-instance mode
 
-    std::atomic<float> inputLevel_{0.0f};
-    std::atomic<float> outputLevel_{0.0f};
-    std::atomic<float> inputGain_{1.0f};
-    std::atomic<int> channelMode_{2};
-    std::atomic<bool> muted_{false};
-    std::atomic<bool> outputMuted_{false};
-    std::atomic<bool> outputNone_{false};   // "None" output device (persists)
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);  // [callAsync lifetime guard]
+    std::atomic<bool> running_{false};                  // [Message write, RT read]
 
-    std::atomic<double> currentSampleRate_{48000.0};
-    std::atomic<int> currentBufferSize_{480};
+    std::atomic<float> inputLevel_{0.0f};               // [RT write, Message read]
+    std::atomic<float> outputLevel_{0.0f};              // [RT write, Message read]
+    std::atomic<float> inputGain_{1.0f};                // [Message write, RT read]
+    std::atomic<int> channelMode_{2};                   // [Message write, RT read]
+    std::atomic<bool> muted_{false};                    // [Message write, RT read]
+    std::atomic<bool> outputMuted_{false};              // [Message write, RT read]
+    std::atomic<bool> outputNone_{false};               // [Message write, RT read] "None" output device (persists)
 
-    // Rolling 60-second xrun tracking (updated from message thread timer).
+    std::atomic<double> currentSampleRate_{48000.0};    // [Message write, RT read]
+    std::atomic<int> currentBufferSize_{480};            // [Message write, RT read]
+
+    // ─── XRun tracking (Message thread only, except atomics) ───
     // xrunResetRequested_ signals message-thread to reinitialize tracking state
     // (avoids data race between device thread and message thread).
-    std::atomic<int> recentXRuns_{0};
-    std::atomic<bool> xrunResetRequested_{false};
-    int lastDeviceXRunCount_ = 0;
-    int xrunHistory_[60] = {};
-    int xrunHistoryIdx_ = 0;
-    double xrunAccumulatorTime_ = 0.0;
+    std::atomic<int> recentXRuns_{0};                   // [Message write, UI read]
+    std::atomic<bool> xrunResetRequested_{false};       // [RT write, Message read]
+    int lastDeviceXRunCount_ = 0;                       // [Message thread only]
+    int xrunHistory_[60] = {};                          // [Message thread only]
+    int xrunHistoryIdx_ = 0;                            // [Message thread only]
+    double xrunAccumulatorTime_ = 0.0;                  // [Message thread only]
 
-    // Device reconnection tracking (all accessed from message thread only)
-    juce::String desiredInputDevice_;
-    juce::String desiredOutputDevice_;
-    juce::String desiredDeviceType_;  // Tracks intended driver type across fallbacks
-    juce::String lastAsioDevice_;     // Remembers last used ASIO device for type switches
-    std::map<juce::String, DriverTypeSnapshot> driverSnapshots_;  // Per-driver-type settings for restore on switch
-    bool desiredSRBSSet_ = false;  // true after user/settings explicitly set SR/BS
-    double desiredSampleRate_ = 48000.0;
-    int desiredBufferSize_ = 480;
-    std::atomic<bool> deviceLost_{false};
-    std::atomic<bool> inputDeviceLost_{false};   // Input specifically lost → zero input in audio callback
-    std::atomic<bool> outputAutoMuted_{false};   // Output auto-muted due to device loss
-    bool attemptingReconnection_ = false;  // Re-entrancy guard (message thread only)
-    std::atomic<bool> intentionalChange_{false};  // Guards audioDeviceStopped from setting deviceLost_ during intentional changes (written on message thread, read on device thread)
-    int reconnectCooldown_ = 0;  // Ticks before next reconnect attempt (30Hz timer)
-    int reconnectMissCount_ = 0;  // Consecutive failed reconnect attempts (message thread only)
-    static constexpr int kMaxReconnectMisses = 5;  // ~15s at 3s intervals
-    bool monitorWasLost_ = false;  // Edge detection for monitor disconnect notification (message thread only)
-    bool inputWasLost_ = false;    // Edge detection for input device loss notification (message thread only)
-    bool outputWasAutoMuted_ = false;  // Edge detection for output auto-mute notification (message thread only)
+    // ─── Device reconnection tracking (Message thread only, except atomics) ───
+    juce::String desiredInputDevice_;                   // [Message thread only]
+    juce::String desiredOutputDevice_;                  // [Message thread only]
+    juce::String desiredDeviceType_;                    // [Message thread only] Tracks intended driver type across fallbacks
+    juce::String lastAsioDevice_;                       // [Message thread only] Remembers last used ASIO device for type switches
+    std::map<juce::String, DriverTypeSnapshot> driverSnapshots_;  // [Message thread only] Per-driver-type settings for restore on switch
+    bool desiredSRBSSet_ = false;                       // [Message thread only] true after user/settings explicitly set SR/BS
+    double desiredSampleRate_ = 48000.0;                // [Message thread only]
+    int desiredBufferSize_ = 480;                       // [Message thread only]
+    std::atomic<bool> deviceLost_{false};               // [RT/Device write, Message read]
+    std::atomic<bool> inputDeviceLost_{false};          // [RT/Device write, Message read] Input specifically lost → zero input in audio callback
+    std::atomic<bool> outputAutoMuted_{false};          // [RT/Device write, Message read] Output auto-muted due to device loss
+    bool attemptingReconnection_ = false;               // [Message thread only] Re-entrancy guard
+    std::atomic<bool> intentionalChange_{false};        // [Message write, Device thread read] Guards audioDeviceStopped from setting deviceLost_ during intentional changes
+    int reconnectCooldown_ = 0;                         // [Message thread only] Ticks before next reconnect attempt (30Hz timer)
+    int reconnectMissCount_ = 0;                        // [Message thread only] Consecutive failed reconnect attempts
+    static constexpr int kMaxReconnectMisses = 5;       // ~15s at 3s intervals
+    bool monitorWasLost_ = false;                       // [Message thread only] Edge detection for monitor disconnect notification
+    bool inputWasLost_ = false;                         // [Message thread only] Edge detection for input device loss notification
+    bool outputWasAutoMuted_ = false;                   // [Message thread only] Edge detection for output auto-mute notification
 
-    juce::AudioBuffer<float> workBuffer_;
-    uint32_t rmsDecimationCounter_ = 0;  // RMS computed every 4th callback (RT thread only, no atomic needed)
+    // ─── RT thread only ───
+    juce::AudioBuffer<float> workBuffer_;               // [RT thread only]
+    uint32_t rmsDecimationCounter_ = 0;                 // [RT thread only] RMS computed every 4th callback (no atomic needed)
 
-    // Lock-free notification queue (device thread -> message thread)
+    // ─── Lock-free notification queue (RT write → Message read) ───
     static constexpr int kNotifQueueSize = 8;
     PendingNotification notifQueue_[kNotifQueueSize];
-    std::atomic<bool> notifReady_[kNotifQueueSize]{};  // per-slot ready flag
-    std::atomic<uint32_t> notifWriteIdx_{0};
-    std::atomic<uint32_t> notifReadIdx_{0};
+    std::atomic<bool> notifReady_[kNotifQueueSize]{};   // [RT write, Message read] per-slot ready flag
+    std::atomic<uint32_t> notifWriteIdx_{0};            // [RT write]
+    std::atomic<uint32_t> notifReadIdx_{0};             // [Message read]
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioEngine)
 };

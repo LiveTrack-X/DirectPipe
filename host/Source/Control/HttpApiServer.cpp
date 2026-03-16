@@ -43,8 +43,8 @@ static int safeAtoi(const std::string& s)
 }
 
 HttpApiServer::HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
-                             MidiHandler* midiHandler)
-    : dispatcher_(dispatcher), broadcaster_(broadcaster), midiHandler_(midiHandler)
+                             AudioEngine& engine, MidiHandler* midiHandler)
+    : dispatcher_(dispatcher), broadcaster_(broadcaster), engine_(engine), midiHandler_(midiHandler)
 {
 }
 
@@ -135,6 +135,10 @@ void HttpApiServer::serverThread()
                 for (auto& t : toJoin)
                     if (t.joinable()) t.join();
                 std::lock_guard<std::mutex> lock(handlersMutex_);
+                if (!running_.load()) {
+                    delete client;  // stop() already ran — clean up and exit
+                    break;
+                }
                 auto doneFlag = std::make_shared<std::atomic<bool>>(false);
                 handlerThreads_.push_back({
                     std::thread([this, client, aliveFlag, doneFlag]() {
@@ -230,9 +234,27 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     const auto& action = segments[1];
 
-    // GET /api/status
-    if (action == "status") {
+    // GET /api/status — full application state
+    if (action == "status" && segments.size() == 2) {
         return {200, broadcaster_.toJSON()};
+    }
+
+    // GET /api/perf — performance/latency data from LatencyMonitor
+    if (action == "perf" && segments.size() == 2) {
+        auto& monitor = engine_.getLatencyMonitor();
+        auto obj = new juce::DynamicObject();
+        obj->setProperty("latencyMs", monitor.getTotalLatencyVirtualMicMs());
+        obj->setProperty("cpuPercent", monitor.getCpuUsagePercent());
+        obj->setProperty("sampleRate", monitor.getSampleRate());
+        obj->setProperty("bufferSize", monitor.getBufferSize());
+        obj->setProperty("xrunCount", engine_.getRecentXRunCount());
+        return {200, juce::JSON::toString(juce::var(obj), true).toStdString()};
+    }
+
+    // GET /api/xrun/reset — reset xrun counter
+    if (action == "xrun" && segments.size() >= 3 && segments[2] == "reset") {
+        engine_.requestXRunReset();
+        return {200, R"({"ok": true, "action": "xrun_reset"})"};
     }
 
     // GET /api/bypass/:index/toggle
@@ -266,8 +288,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     // GET /api/volume/:target/:value
     if (action == "volume" && segments.size() >= 4) {
         const auto& target = segments[2];
-        if (target != "monitor" && target != "input")
-            return {400, "{\"error\": \"Unknown volume target, use monitor or input\"}"};
+        if (target != "monitor" && target != "input" && target != "output")
+            return {400, "{\"error\": \"Unknown volume target, use monitor, input, or output\"}"};
         // Validate numeric input — getFloatValue() silently returns 0.0 for non-numeric strings
         auto valueStr = juce::String(segments[3]);
         if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.") < 0)
@@ -332,6 +354,42 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         event.action = Action::MonitorToggle;
         dispatcher_.dispatch(event);
         return {200, R"({"ok": true, "action": "monitor_toggle"})"};
+    }
+
+    // GET /api/plugins — list loaded plugins with metadata
+    if (action == "plugins" && segments.size() == 2) {
+        auto& chain = engine_.getVSTChain();
+        juce::Array<juce::var> arr;
+        int count = chain.getPluginCount();
+        for (int i = 0; i < count; ++i) {
+            auto* slot = chain.getPluginSlot(i);
+            auto obj = new juce::DynamicObject();
+            obj->setProperty("index", i);
+            obj->setProperty("name", slot ? juce::String(slot->name) : "");
+            obj->setProperty("bypassed", slot ? slot->bypassed : false);
+            obj->setProperty("loaded", slot && slot->instance != nullptr);
+            obj->setProperty("parameterCount", chain.getPluginParameterCount(i));
+            arr.add(juce::var(obj));
+        }
+        return {200, juce::JSON::toString(juce::var(arr), true).toStdString()};
+    }
+
+    // GET /api/plugin/:idx/params — list parameter names for a plugin
+    if (action == "plugin" && segments.size() == 4 && segments[3] == "params") {
+        int pluginIndex = safeAtoi(segments[2]);
+        auto& chain = engine_.getVSTChain();
+        if (pluginIndex < 0 || chain.getPluginSlot(pluginIndex) == nullptr)
+            return {404, R"({"error": "Plugin not found"})"};
+        int paramCount = chain.getPluginParameterCount(pluginIndex);
+        juce::Array<juce::var> arr;
+        for (int p = 0; p < paramCount; ++p) {
+            auto obj = new juce::DynamicObject();
+            obj->setProperty("index", p);
+            obj->setProperty("name", chain.getPluginParameterName(pluginIndex, p));
+            obj->setProperty("value", static_cast<double>(chain.getPluginParameter(pluginIndex, p)));
+            arr.add(juce::var(obj));
+        }
+        return {200, juce::JSON::toString(juce::var(arr), true).toStdString()};
     }
 
     // GET /api/plugin/:pluginIndex/param/:paramIndex/:value

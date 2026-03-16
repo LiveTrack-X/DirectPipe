@@ -33,6 +33,7 @@
 #include "WebSocketServer.h"
 #include "HttpApiServer.h"
 #include "ControlMapping.h"
+#include "../Audio/AudioEngine.h"
 
 #include <memory>
 
@@ -48,7 +49,8 @@ namespace directpipe {
  */
 class ControlManager {
 public:
-    ControlManager(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster);
+    ControlManager(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
+                   AudioEngine& engine);
     ~ControlManager();
 
     /**
@@ -104,6 +106,7 @@ public:
 private:
     ActionDispatcher& dispatcher_;
     StateBroadcaster& broadcaster_;
+    AudioEngine& engine_;
 
     HotkeyHandler hotkeyHandler_;
     MidiHandler midiHandler_;

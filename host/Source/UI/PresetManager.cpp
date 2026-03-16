@@ -129,11 +129,13 @@ juce::String PresetManager::exportToJSON()
     }
     root->setProperty("plugins", plugins);
 
-    // Output settings (monitor only — main output uses AudioSettings)
+    // Output settings (monitor + main output volume)
     auto& router = engine_.getOutputRouter();
     auto outputs = std::make_unique<juce::DynamicObject>();
     outputs->setProperty("monitorVolume",
         static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)));
+    outputs->setProperty("outputVolume",
+        static_cast<double>(router.getVolume(OutputRouter::Output::Main)));
     outputs->setProperty("monitorEnabled",
         router.isEnabled(OutputRouter::Output::Monitor));
     outputs->setProperty("monitorDevice",
@@ -199,7 +201,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
                     else if (root->hasProperty("outputDevice"))
                         preferredDev = root->getProperty("outputDevice").toString();
                 }
-                engine_.setAudioDeviceType(deviceType, preferredDev);
+                (void)engine_.setAudioDeviceType(deviceType, preferredDev);
             } else {
                 juce::Logger::writeToLog("[PRESET] Skipping unavailable device type: " + deviceType);
             }
@@ -208,10 +210,10 @@ bool PresetManager::importFromJSON(const juce::String& json)
 
     // Audio settings (skip restart if device already has correct values)
     if (root->hasProperty("sampleRate")) {
-        engine_.setSampleRate(root->getProperty("sampleRate"));
+        (void)engine_.setSampleRate(root->getProperty("sampleRate"));
     }
     if (root->hasProperty("bufferSize")) {
-        engine_.setBufferSize(root->getProperty("bufferSize"));
+        (void)engine_.setBufferSize(root->getProperty("bufferSize"));
     }
     if (root->hasProperty("inputGain")) {
         engine_.setInputGain(static_cast<float>((double)root->getProperty("inputGain")));
@@ -224,7 +226,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
     if (root->hasProperty("inputDevice")) {
         juce::String inputDev = root->getProperty("inputDevice").toString();
         if (inputDev.isNotEmpty())
-            engine_.setInputDevice(inputDev);
+            (void)engine_.setInputDevice(inputDev);
     }
     // Restore output "None" mode first (before output device)
     bool outputNone = false;
@@ -235,7 +237,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
     if (!outputNone && root->hasProperty("outputDevice")) {
         juce::String outputDev = root->getProperty("outputDevice").toString();
         if (outputDev.isNotEmpty() && outputDev != "None")
-            engine_.setOutputDevice(outputDev);
+            (void)engine_.setOutputDevice(outputDev);
     }
 
     // VST Chain — load plugins (with fast-path for identical chain)
@@ -250,7 +252,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
     }
 
-    // Output settings (monitor only — main output uses AudioSettings)
+    // Output settings (monitor + main output volume)
     if (root->hasProperty("outputs")) {
         auto* outputs = root->getProperty("outputs").getDynamicObject();
         if (outputs) {
@@ -259,6 +261,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (outputs->hasProperty("monitorVolume"))
                 router.setVolume(OutputRouter::Output::Monitor,
                                  static_cast<float>((double)outputs->getProperty("monitorVolume")));
+            if (outputs->hasProperty("outputVolume"))
+                router.setVolume(OutputRouter::Output::Main,
+                                 static_cast<float>((double)outputs->getProperty("outputVolume")));
             if (outputs->hasProperty("monitorEnabled")) {
                 bool monEnabled = static_cast<bool>(outputs->getProperty("monitorEnabled"));
                 router.setEnabled(OutputRouter::Output::Monitor, monEnabled);
@@ -268,13 +273,13 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (outputs->hasProperty("monitorBufferSize")) {
                 int bs = static_cast<int>(outputs->getProperty("monitorBufferSize"));
                 if (bs > 0)
-                    engine_.setMonitorBufferSize(bs);
+                    (void)engine_.setMonitorBufferSize(bs);
             }
 
             if (outputs->hasProperty("monitorDevice")) {
                 juce::String monDevice = outputs->getProperty("monitorDevice").toString();
                 if (monDevice.isNotEmpty())
-                    engine_.setMonitorDevice(monDevice);
+                    (void)engine_.setMonitorDevice(monDevice);
             }
         }
     }
