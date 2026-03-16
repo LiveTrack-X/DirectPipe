@@ -58,7 +58,15 @@ bool RingBuffer::attachAsConsumer(void* memory)
 {
     if (!memory) return false;
 
-    header_ = static_cast<DirectPipeHeader*>(memory);
+    auto* h = static_cast<DirectPipeHeader*>(memory);
+
+    // Acquire fence: synchronize with producer's release store in initAsProducer
+    // so that all non-atomic header fields (version, buffer_frames, channels, sample_rate)
+    // are visible to us.
+    if (!h->producer_active.load(std::memory_order_acquire))
+        return false;
+
+    header_ = h;
 
     // Validate protocol version
     if (header_->version != PROTOCOL_VERSION) {

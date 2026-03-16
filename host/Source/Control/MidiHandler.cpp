@@ -51,12 +51,20 @@ void MidiHandler::initialize()
 
 void MidiHandler::shutdown()
 {
+    // Stop learn timer safely — stopTimer() is thread-safe, but destroying
+    // a Timer (reset) must happen on the message thread. Just stop it here;
+    // the destructor handles cleanup on the message thread.
+    if (learnTimer_)
+        learnTimer_->stopTimer();
+    learning_.store(false, std::memory_order_release);
+
     for (auto& input : openInputs_) {
         input->stop();
     }
     openInputs_.clear();
     {
         std::lock_guard<std::mutex> lock(bindingsMutex_);
+        learnCallback_ = nullptr;
         midiOutput_.reset();
     }
 }
@@ -142,6 +150,8 @@ void MidiHandler::startLearn(
 
 void MidiHandler::stopLearn()
 {
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     if (learnTimer_) {
         learnTimer_->stopTimer();
         learnTimer_.reset();
@@ -157,6 +167,12 @@ void MidiHandler::stopLearn()
 void MidiHandler::handleIncomingMidiMessage(
     juce::MidiInput* source, const juce::MidiMessage& message)
 {
+    // ─── MIDI Callback Thread ───────────────────────────────────────────
+    // 이 메서드는 JUCE MIDI callback 스레드에서 호출됨 (Message thread 아님!)
+    // WARNING: bindingsMutex_ 내에서 dispatch 금지 — 매칭 결과를 로컬 벡터에 수집 후
+    // 락 해제한 다음 ActionDispatcher를 통해 디스패치 (교착 방지)
+    // ────────────────────────────────────────────────────────────────────
+
     juce::String deviceName = source ? source->getName() : "";
 
     if (message.isController()) {

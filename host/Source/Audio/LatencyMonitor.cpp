@@ -22,30 +22,38 @@
  */
 
 #include "LatencyMonitor.h"
+
+// RT 오디오 스레드에서 atomic 연산이 lock-free여야 함 (mutex 사용 시 glitch)
+static_assert(std::atomic<double>::is_always_lock_free,
+    "std::atomic<double> must be lock-free for RT audio thread safety");
+static_assert(std::atomic<uint64_t>::is_always_lock_free,
+    "std::atomic<uint64_t> must be lock-free for RT audio thread safety");
 #include <chrono>
 
 namespace directpipe {
 
 void LatencyMonitor::reset(double sampleRate, int bufferSize)
 {
-    sampleRate_ = (sampleRate > 0.0) ? sampleRate : 48000.0;
-    bufferSize_ = (bufferSize > 0) ? bufferSize : 128;
+    double sr = (sampleRate > 0.0) ? sampleRate : 48000.0;
+    int bs = (bufferSize > 0) ? bufferSize : 128;
+    sampleRate_.store(sr, std::memory_order_relaxed);
+    bufferSize_.store(bs, std::memory_order_relaxed);
 
     // Calculate buffer latencies
-    double bufferMs = (static_cast<double>(bufferSize_) / sampleRate_) * 1000.0;
+    double bufferMs = (static_cast<double>(bs) / sr) * 1000.0;
     inputLatencyMs_.store(bufferMs, std::memory_order_relaxed);
     outputLatencyMs_.store(bufferMs, std::memory_order_relaxed);
     processingTimeMs_.store(0.0, std::memory_order_relaxed);
     cpuUsage_.store(0.0, std::memory_order_relaxed);
-    avgProcessingTime_ = 0.0;
+    avgProcessingTime_.store(0.0, std::memory_order_relaxed);
 }
 
 void LatencyMonitor::markCallbackStart()
 {
     auto now = std::chrono::high_resolution_clock::now();
-    callbackStartTicks_ = static_cast<uint64_t>(
+    callbackStartTicks_.store(static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
-            now.time_since_epoch()).count());
+            now.time_since_epoch()).count()), std::memory_order_relaxed);
 }
 
 void LatencyMonitor::markCallbackEnd()
@@ -56,18 +64,20 @@ void LatencyMonitor::markCallbackEnd()
             now.time_since_epoch()).count());
 
     // Calculate processing time
-    double processingNs = static_cast<double>(endTicks - callbackStartTicks_);
+    double processingNs = static_cast<double>(endTicks - callbackStartTicks_.load(std::memory_order_relaxed));
     double processingMs = processingNs / 1000000.0;
 
     // Exponential moving average for smooth display
-    avgProcessingTime_ = avgProcessingTime_ * (1.0 - kSmoothingFactor) +
-                          processingMs * kSmoothingFactor;
-    processingTimeMs_.store(avgProcessingTime_, std::memory_order_relaxed);
+    double avg = avgProcessingTime_.load(std::memory_order_relaxed);
+    avg = avg * (1.0 - kSmoothingFactor) + processingMs * kSmoothingFactor;
+    avgProcessingTime_.store(avg, std::memory_order_relaxed);
+    processingTimeMs_.store(avg, std::memory_order_relaxed);
 
     // Calculate CPU usage: processing time / callback period
-    double callbackPeriodMs = (static_cast<double>(bufferSize_) / sampleRate_) * 1000.0;
+    double callbackPeriodMs = (static_cast<double>(bufferSize_.load(std::memory_order_relaxed))
+                               / sampleRate_.load(std::memory_order_relaxed)) * 1000.0;
     if (callbackPeriodMs > 0.0) {
-        double usage = (avgProcessingTime_ / callbackPeriodMs) * 100.0;
+        double usage = (avg / callbackPeriodMs) * 100.0;
         cpuUsage_.store(usage, std::memory_order_relaxed);
     }
 }

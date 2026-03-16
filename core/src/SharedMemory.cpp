@@ -85,6 +85,7 @@ bool SharedMemory::create(const std::string& name, size_t size)
     }
 
     size_ = size;
+    isCreator_ = true;  // Mark as creator so close() can clean up properly
     return true;
 }
 
@@ -117,6 +118,7 @@ void SharedMemory::close()
         mapping_ = nullptr;
     }
     size_ = 0;
+    isCreator_ = false;
 }
 
 // ─── NamedEvent ─────────────────────────────────────────────────

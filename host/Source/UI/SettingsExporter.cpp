@@ -22,6 +22,7 @@
  */
 
 #include "SettingsExporter.h"
+#include "../Util/AtomicFileIO.h"
 
 namespace directpipe {
 
@@ -216,7 +217,7 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
                 if (slots->hasProperty(key)) {
                     auto slotJson = juce::JSON::toString(slots->getProperty(key), true);
                     auto slotFile = PresetManager::getSlotFile(i);
-                    slotFile.replaceWithText(slotJson);
+                    atomicWriteFile(slotFile, slotJson);
                 }
             }
         }
@@ -245,7 +246,7 @@ void SettingsExporter::showSaveDialog(const juce::String& defaultFilename,
         auto target = file.withFileExtension(extension);
         auto json = exporter();
         if (json.isNotEmpty())
-            target.replaceWithText(json);
+            atomicWriteFile(target, json);
     });
 }
 

@@ -43,6 +43,10 @@ dist/release-*/
 .claude/
 CLAUDE.md
 
+# AI maintenance guides (per-module, not for public repo)
+host/Source/*/README.md
+host/Source/README.md
+
 # Development plans
 DirectPipe-Development-Plan*.md
 docs/PRODUCT_SPEC.md

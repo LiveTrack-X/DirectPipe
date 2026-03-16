@@ -11,7 +11,7 @@ namespace directpipe {
  * Atomic file write: content → .tmp → rename original → .bak → rename .tmp → target.
  * On failure, original file is preserved. Returns true on success.
  */
-inline bool atomicWriteFile(const juce::File& targetFile, const juce::String& content)
+[[nodiscard]] inline bool atomicWriteFile(const juce::File& targetFile, const juce::String& content)
 {
     auto tmpFile = targetFile.getSiblingFile(targetFile.getFileName() + ".tmp");
     if (!tmpFile.replaceWithText(content))

@@ -120,7 +120,7 @@ void DeviceSelector::onDeviceSelected()
 {
     auto selectedText = deviceCombo_.getText();
     if (selectedText.isNotEmpty()) {
-        engine_.setInputDevice(selectedText);
+        (void)engine_.setInputDevice(selectedText);
     }
 }
 
@@ -129,7 +129,7 @@ void DeviceSelector::onSampleRateChanged()
     int id = sampleRateCombo_.getSelectedId();
     double rates[] = {44100.0, 48000.0, 96000.0};
     if (id >= 1 && id <= 3) {
-        engine_.setSampleRate(rates[id - 1]);
+        (void)engine_.setSampleRate(rates[id - 1]);
     }
 }
 
@@ -138,7 +138,7 @@ void DeviceSelector::onBufferSizeChanged()
     int id = bufferSizeCombo_.getSelectedId();
     int sizes[] = {64, 128, 256, 512};
     if (id >= 1 && id <= 4) {
-        engine_.setBufferSize(sizes[id - 1]);
+        (void)engine_.setBufferSize(sizes[id - 1]);
     }
 }
 

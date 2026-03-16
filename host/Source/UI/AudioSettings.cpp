@@ -433,7 +433,7 @@ void AudioSettings::onInputChannelChanged()
     int totalChannels = engine_.getInputChannelNames().size();
     if (totalChannels > 0 && firstChannel + numCh > totalChannels)
         return;
-    engine_.setActiveInputChannels(firstChannel, numCh);
+    (void)engine_.setActiveInputChannels(firstChannel, numCh);
 
     if (onSettingsChanged) onSettingsChanged();
 }
@@ -448,7 +448,7 @@ void AudioSettings::onOutputChannelChanged()
     int totalChannels = engine_.getOutputChannelNames().size();
     if (totalChannels > 0 && firstChannel + numCh > totalChannels)
         return;
-    engine_.setActiveOutputChannels(firstChannel, numCh);
+    (void)engine_.setActiveOutputChannels(firstChannel, numCh);
 
     if (onSettingsChanged) onSettingsChanged();
 }

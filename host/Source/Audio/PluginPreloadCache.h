@@ -70,12 +70,6 @@ public:
     bool isCached(int slotIndex, double currentSR, int currentBS);
 
     /**
-     * @brief Check if a slot is cached with matching SR/BS AND plugin count.
-     * @return true if cached with matching count, false otherwise (including not cached).
-     */
-    bool isCachedWithCount(int slotIndex, double currentSR, int currentBS, int expectedCount);
-
-    /**
      * @brief Check if cached slot matches given plugin structure (names+paths in order).
      * @return true if not cached OR matches structure. false if cached but structure differs.
      */
@@ -92,6 +86,7 @@ public:
      * @param knownPlugins Known plugin list for description lookup.
      * @param slotFileReader Function that reads a slot file and returns JSON string.
      */
+    // [BG thread — COM init on Windows, generation counter check]
     void preloadAllSlots(int exceptSlot, double sr, int bs,
                          juce::AudioPluginFormatManager& formatMgr,
                          const juce::KnownPluginList& knownPlugins,
@@ -119,13 +114,19 @@ public:
     static constexpr int kNumSlots = 5;
 
 private:
-    std::map<int, std::unique_ptr<CachedSlot>> cache_;
-    std::mutex cacheMutex_;
-    std::mutex threadMutex_;  ///< Protects preloadThread_ access
-    std::unique_ptr<std::thread> preloadThread_;
-    std::atomic<bool> cancelPreload_{false};
-    std::atomic<uint32_t> preloadGeneration_{0};  ///< Generation counter for superseding old preloads
-    std::array<std::atomic<uint32_t>, kNumSlots> slotVersions_{};  ///< Per-slot version counter (prevents stale preload store after invalidation)
+    // ═══════════════════════════════════════════════════════════════════
+    // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
+    // ═══════════════════════════════════════════════════════════════════
+
+    std::map<int, std::unique_ptr<CachedSlot>> cache_;    // [Protected by cacheMutex_]
+    std::mutex cacheMutex_;                               // [Protects cache_]
+    std::mutex threadMutex_;                              // [Protects preloadThread_ access]
+    std::unique_ptr<std::thread> preloadThread_;          // [Protected by threadMutex_]
+    std::atomic<bool> cancelPreload_{false};              // [Message write, BG read] Cancellation flag
+    std::atomic<uint32_t> preloadGeneration_{0};          // [Message write, BG read] Generation counter for superseding old preloads
+    // [Message write (invalidateSlot/invalidateAll), BG read (preloadAllSlots)]
+    // Per-slot version counter — prevents stale preload store after invalidation
+    std::array<std::atomic<uint32_t>, kNumSlots> slotVersions_{};
 };
 
 } // namespace directpipe

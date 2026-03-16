@@ -62,6 +62,13 @@ bool PluginPreloadCache::isCached(int slotIndex, double currentSR, int currentBS
     return it->second->sampleRate == currentSR && it->second->blockSize == currentBS;
 }
 
+// ─── Background Preload Thread ──────────────────────────────────────
+// BG 스레드에서 실행 — Message thread 아님
+// WARNING: Windows에서 COM STA 초기화 필수 (CoInitializeEx)
+// slotVersions_: 프리로드 시작 시 캡처, 완료 시 재확인 (중간에 invalidate되면 폐기)
+// preloadGeneration_: 전체 프리로드 세션 카운터 (새 요청이 이전 요청을 대체)
+// cancelPreload_: non-blocking 취소 플래그
+// ────────────────────────────────────────────────────────────────────
 void PluginPreloadCache::preloadAllSlots(
     int exceptSlot, double sr, int bs,
     juce::AudioPluginFormatManager& formatMgr,

@@ -26,10 +26,10 @@ namespace Platform {
 void setHighPriority()
 {
     // Elevate process priority (lower nice value = higher priority)
-    // -10 is a reasonable level that doesn't require root
+    // -20 is maximum priority for audio processing (may require root)
     errno = 0;
-    if (setpriority(PRIO_PROCESS, 0, -10) == -1 && errno != 0)
-        juce::Logger::writeToLog("[APP] macOS setpriority(-10) failed: errno=" + juce::String(errno));
+    if (setpriority(PRIO_PROCESS, 0, -20) == -1 && errno != 0)
+        juce::Logger::writeToLog("[APP] macOS setpriority(-20) failed: errno=" + juce::String(errno));
 
     // Set the current thread to user-interactive QoS for lowest latency
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);

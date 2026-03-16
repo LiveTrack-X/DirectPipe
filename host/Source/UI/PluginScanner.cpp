@@ -191,6 +191,7 @@ PluginScannerComponent::PluginScannerComponent(VSTChain& vstChain)
 
 PluginScannerComponent::~PluginScannerComponent()
 {
+    alive_->store(false);
     if (isThreadRunning()) {
         signalThreadShouldExit();
         waitForThreadToExit(5000);
@@ -349,14 +350,15 @@ void PluginScannerComponent::run()
             }
         }
 
-        auto safeThis = juce::Component::SafePointer<PluginScannerComponent>(this);
-        juce::MessageManager::callAsync([safeThis, attempt, badPluginCount] {
-            if (!safeThis) return;
+        auto aliveFlag = alive_;
+        auto* self = this;
+        juce::MessageManager::callAsync([aliveFlag, self, attempt, badPluginCount] {
+            if (!aliveFlag->load()) return;
             juce::String msg = "Scanning (attempt " + juce::String(attempt) + ")";
             if (badPluginCount > 0)
                 msg += " - skipped " + juce::String(badPluginCount) + " bad plugin(s)";
             msg += "...";
-            safeThis->progressLabel_.setText(msg, juce::dontSendNotification);
+            self->progressLabel_.setText(msg, juce::dontSendNotification);
         });
 
         juce::ChildProcess scanner;
@@ -391,12 +393,13 @@ void PluginScannerComponent::run()
         if (outputFile.existsAsFile()) {
             auto xmlStr = outputFile.loadFileAsString();
             if (xmlStr.isNotEmpty()) {
-                auto safeThis2 = juce::Component::SafePointer<PluginScannerComponent>(this);
-                juce::MessageManager::callAsync([safeThis2, xmlStr] {
-                    if (!safeThis2) return;
+                auto aliveFlag2 = alive_;
+                auto* self2 = this;
+                juce::MessageManager::callAsync([aliveFlag2, self2, xmlStr] {
+                    if (!aliveFlag2->load()) return;
                     if (auto parsed = juce::parseXML(xmlStr))
-                        safeThis2->scannedPlugins_.recreateFromXml(*parsed);
-                    safeThis2->refreshPluginList();
+                        self2->scannedPlugins_.recreateFromXml(*parsed);
+                    self2->refreshPluginList();
                 });
             }
         }
@@ -421,33 +424,33 @@ void PluginScannerComponent::run()
     if (outputFile.existsAsFile())
         finalXml = outputFile.loadFileAsString();
 
-    auto safeThis3 = juce::Component::SafePointer<PluginScannerComponent>(this);
-    juce::MessageManager::callAsync([safeThis3, finalXml, lastRunCrashed, startFailed, badPluginCount] {
-        if (!safeThis3) return;
-        auto* self = safeThis3.getComponent();
+    auto aliveFlag3 = alive_;
+    auto* self3 = this;
+    juce::MessageManager::callAsync([aliveFlag3, self3, finalXml, lastRunCrashed, startFailed, badPluginCount] {
+        if (!aliveFlag3->load()) return;
         if (finalXml.isNotEmpty()) {
             if (auto parsed = juce::parseXML(finalXml))
-                self->scannedPlugins_.recreateFromXml(*parsed);
+                self3->scannedPlugins_.recreateFromXml(*parsed);
         }
-        self->refreshPluginList();
-        self->saveCachedPlugins();
+        self3->refreshPluginList();
+        self3->saveCachedPlugins();
 
-        self->scanning_ = false;
-        self->scanButton_.setEnabled(true);
-        self->scanButton_.setButtonText("Scan for Plugins");
-        self->addDirButton_.setEnabled(true);
-        self->removeDirButton_.setEnabled(true);
-        self->clearCacheButton_.setEnabled(true);
+        self3->scanning_ = false;
+        self3->scanButton_.setEnabled(true);
+        self3->scanButton_.setButtonText("Scan for Plugins");
+        self3->addDirButton_.setEnabled(true);
+        self3->removeDirButton_.setEnabled(true);
+        self3->clearCacheButton_.setEnabled(true);
 
         juce::String statusText;
         if (startFailed) {
             statusText = "Error: Failed to launch scanner process";
         } else {
-            statusText = "Found " + juce::String(self->scannedPlugins_.getNumTypes()) + " plugins";
+            statusText = "Found " + juce::String(self3->scannedPlugins_.getNumTypes()) + " plugins";
             if (badPluginCount > 0)
                 statusText += " (skipped " + juce::String(badPluginCount) + " bad plugin(s))";
         }
-        self->progressLabel_.setText(statusText, juce::dontSendNotification);
+        self3->progressLabel_.setText(statusText, juce::dontSendNotification);
     });
 }
 

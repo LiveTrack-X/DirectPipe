@@ -29,15 +29,15 @@
 
 namespace directpipe {
 
-struct ActionResult {
+struct [[nodiscard]] ActionResult {
     bool success;
     juce::String message;
 
-    static ActionResult ok() { return {true, {}}; }
-    static ActionResult ok(const juce::String& msg) { return {true, msg}; }
-    static ActionResult fail(const juce::String& msg) { return {false, msg}; }
+    [[nodiscard]] static ActionResult ok() { return {true, {}}; }
+    [[nodiscard]] static ActionResult ok(const juce::String& msg) { return {true, msg}; }
+    [[nodiscard]] static ActionResult fail(const juce::String& msg) { return {false, msg}; }
 
-    explicit operator bool() const { return success; }
+    [[nodiscard]] explicit operator bool() const { return success; }
 };
 
 } // namespace directpipe

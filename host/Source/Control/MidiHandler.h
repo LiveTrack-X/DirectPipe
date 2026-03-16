@@ -127,7 +127,7 @@ public:
     /**
      * @brief Cancel MIDI Learn mode.
      */
-    void stopLearn();
+    void stopLearn();  // [Message thread only — resets learnTimer_]
 
     /**
      * @brief Check if currently in Learn mode.
@@ -168,16 +168,21 @@ private:
     void processCC(int cc, int channel, int value, const juce::String& deviceName);
     void processNote(int note, int channel, bool noteOn, const juce::String& deviceName);
 
+    // ═══════════════════════════════════════════════════════════════════
+    // Thread Ownership — 변경 시 Control/README.md "Thread Model" 테이블도 업데이트할 것
+    // ═══════════════════════════════════════════════════════════════════
+
     ActionDispatcher& dispatcher_;
+    // [Protects bindings_. NEVER hold across callbacks. Dispatch OUTSIDE lock.]
     mutable std::mutex bindingsMutex_;
-    std::vector<MidiBinding> bindings_;
+    std::vector<MidiBinding> bindings_;                   // [Protected by bindingsMutex_]
 
-    std::vector<std::unique_ptr<juce::MidiInput>> openInputs_;
-    std::unique_ptr<juce::MidiOutput> midiOutput_;  // For LED feedback
+    std::vector<std::unique_ptr<juce::MidiInput>> openInputs_;  // [Message thread only]
+    std::unique_ptr<juce::MidiOutput> midiOutput_;        // [Message thread only] For LED feedback
 
-    std::atomic<bool> learning_{false};
-    std::function<void(int, int, int, const juce::String&)> learnCallback_;  // guarded by bindingsMutex_
-    std::unique_ptr<juce::Timer> learnTimer_;
+    std::atomic<bool> learning_{false};                   // [Message write, MIDI callback read] Atomic guard for Learn mode
+    std::function<void(int, int, int, const juce::String&)> learnCallback_;  // [Protected by bindingsMutex_]
+    std::unique_ptr<juce::Timer> learnTimer_;             // [Message thread only]
 };
 
 } // namespace directpipe

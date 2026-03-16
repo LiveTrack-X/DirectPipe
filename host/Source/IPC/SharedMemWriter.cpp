@@ -107,6 +107,10 @@ void SharedMemWriter::shutdown()
 
 void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples)
 {
+    // RT thread only — must NOT be called from the message thread
+    jassert(!juce::MessageManager::getInstanceWithoutCreating()
+            || !juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     if (!connected_.load(std::memory_order_relaxed)) return;
     if (numSamples <= 0) return;
 

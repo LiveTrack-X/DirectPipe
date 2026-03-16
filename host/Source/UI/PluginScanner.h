@@ -24,6 +24,8 @@
 
 #include <JuceHeader.h>
 #include "../Audio/VSTChain.h"
+#include <memory>
+#include <atomic>
 
 namespace directpipe {
 
@@ -126,6 +128,9 @@ private:
     void tableColumnsChanged(juce::TableHeaderComponent*) override {}
     void tableColumnsResized(juce::TableHeaderComponent*) override {}
     void tableSortOrderChanged(juce::TableHeaderComponent*) override;
+
+    // Thread-safe destruction flag (shared_ptr captured by callAsync lambdas)
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
     static constexpr juce::uint32 kBgColour      = 0xFF1E1E2E;
     static constexpr juce::uint32 kSurfaceColour  = 0xFF2A2A40;

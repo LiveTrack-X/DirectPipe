@@ -52,9 +52,9 @@ public:
      * @param bufferFrames Ring buffer capacity in frames.
      * @return true if initialization succeeded.
      */
-    bool initialize(uint32_t sampleRate,
-                    uint32_t channels = DEFAULT_CHANNELS,
-                    uint32_t bufferFrames = DEFAULT_BUFFER_FRAMES);
+    [[nodiscard]] bool initialize(uint32_t sampleRate,
+                                  uint32_t channels = DEFAULT_CHANNELS,
+                                  uint32_t bufferFrames = DEFAULT_BUFFER_FRAMES);
 
     /**
      * @brief Shut down and release shared memory resources.
@@ -69,7 +69,7 @@ public:
      * @param buffer JUCE audio buffer with processed audio.
      * @param numSamples Number of samples to write.
      */
-    void writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples);
+    void writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples);  // [RT thread only — no alloc, no lock]
 
     /**
      * @brief Check if the shared memory is active and connected.

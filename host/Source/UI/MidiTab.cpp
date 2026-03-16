@@ -287,8 +287,15 @@ void MidiTab::onRescanClicked()
 
 void MidiTab::onLearnClicked(int mappingIndex)
 {
+    auto& handler = manager_.getMidiHandler();
+    const auto& bindings = handler.getBindings();
+
+    // Validate bounds BEFORE any UI mutation
+    if (mappingIndex < 0 || mappingIndex >= static_cast<int>(bindings.size()))
+        return;
+
     if (learningIndex_ >= 0) {
-        manager_.getMidiHandler().stopLearn();
+        handler.stopLearn();
     }
 
     learningIndex_ = mappingIndex;
@@ -303,12 +310,6 @@ void MidiTab::onLearnClicked(int mappingIndex)
                                                      juce::Colour(kWarningColour));
     }
 
-    auto& handler = manager_.getMidiHandler();
-    const auto& bindings = handler.getBindings();
-
-    if (mappingIndex < 0 || mappingIndex >= static_cast<int>(bindings.size()))
-        return;
-
     // Capture the action from the existing mapping
     ActionEvent targetAction = bindings[static_cast<size_t>(mappingIndex)].action;
 
@@ -317,8 +318,10 @@ void MidiTab::onLearnClicked(int mappingIndex)
                                             const juce::String& deviceName) {
             auto& h = manager.getMidiHandler();
 
-            // Remove old binding
-            if (mappingIndex < static_cast<int>(h.getBindings().size())) {
+            // Remove old binding (verify index still matches expected action to avoid stale index)
+            auto bindings = h.getBindings();
+            if (mappingIndex < static_cast<int>(bindings.size())
+                && bindings[static_cast<size_t>(mappingIndex)].action == targetAction) {
                 h.removeBinding(mappingIndex);
             }
 

@@ -93,26 +93,26 @@ public:
     /**
      * @brief Get current sample rate.
      */
-    double getSampleRate() const { return sampleRate_; }
+    double getSampleRate() const { return sampleRate_.load(std::memory_order_relaxed); }
 
     /**
      * @brief Get current buffer size.
      */
-    int getBufferSize() const { return bufferSize_; }
+    int getBufferSize() const { return bufferSize_.load(std::memory_order_relaxed); }
 
 private:
-    double sampleRate_ = 48000.0;
-    int bufferSize_ = 128;
+    std::atomic<double> sampleRate_{48000.0};       // [Message write, RT read]
+    std::atomic<int> bufferSize_{128};               // [Message write, RT read]
 
     // Timing (updated from RT thread)
-    uint64_t callbackStartTicks_ = 0;
+    std::atomic<uint64_t> callbackStartTicks_{0};    // [RT thread only, atomic for safety across reset()]
     std::atomic<double> inputLatencyMs_{0.0};
     std::atomic<double> processingTimeMs_{0.0};
     std::atomic<double> outputLatencyMs_{0.0};
     std::atomic<double> cpuUsage_{0.0};
 
     // Running average for smooth display
-    double avgProcessingTime_ = 0.0;
+    std::atomic<double> avgProcessingTime_{0.0};     // [Message write (reset), RT read+write]
     static constexpr double kSmoothingFactor = 0.1;
 };
 

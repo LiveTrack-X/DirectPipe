@@ -40,11 +40,11 @@ public:
     AudioRecorder();
     ~AudioRecorder();
 
-    bool startRecording(const juce::File& file, double sampleRate, int numChannels);
+    [[nodiscard]] bool startRecording(const juce::File& file, double sampleRate, int numChannels);
     void stopRecording();
 
     /** Write audio samples from the real-time callback. RT-safe. */
-    void writeBlock(const juce::AudioBuffer<float>& buffer, int numSamples);
+    void writeBlock(const juce::AudioBuffer<float>& buffer, int numSamples);  // [RT thread only — ThreadedWriter lock-free FIFO]
 
     bool isRecording() const { return recording_.load(std::memory_order_relaxed); }
     juce::File getRecordingFile() const;
