@@ -675,9 +675,23 @@ void MainComponent::timerCallback()
     // ── Status bar, mute indicators, level meters, broadcaster ──
     statusUpdater_->tick(presetManager_.get(), PresetSlotBar::kNumPresetSlots);
 
-    // Sync limiter toggle in chain editor with actual state (external control may change it)
-    if (pluginChainEditor_)
+    // Sync limiter toggle + per-plugin latency in chain editor
+    if (pluginChainEditor_) {
         pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
+
+        // Update per-plugin latency display (~2Hz is enough, use frame counter)
+        static int latencyPollCounter = 0;
+        if (++latencyPollCounter >= 15) {  // 30Hz / 15 = 2Hz
+            latencyPollCounter = 0;
+            auto latencies = audioEngine_.getVSTChain().getPluginLatencies();
+            std::vector<int> samples;
+            samples.reserve(latencies.size());
+            for (const auto& l : latencies) samples.push_back(l.latencySamples);
+            int totalPDC = audioEngine_.getVSTChain().getTotalChainPDC();
+            double sr = audioEngine_.getLatencyMonitor().getSampleRate();
+            pluginChainEditor_->updateLatencyDisplay(samples, totalPDC, sr);
+        }
+    }
 
     // Update recording state in OutputPanel (Monitor tab)
     if (outputPanelPtr_) {

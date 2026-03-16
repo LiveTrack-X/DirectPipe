@@ -166,6 +166,10 @@ void VSTChain::releaseResources()
 
 void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
 {
+    // RT thread only — must NOT be called from the message thread
+    jassert(!juce::MessageManager::getInstanceWithoutCreating()
+            || !juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     if (!prepared_.load(std::memory_order_acquire)) return;
 
     // Safety: clamp numSamples to buffer capacity
@@ -210,6 +214,8 @@ void VSTChain::scanForPlugins(const juce::StringArray& directoriesToScan)
 
 int VSTChain::addPlugin(const juce::PluginDescription& desc)
 {
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     // Prevent adding plugins while async chain replacement is in progress
     if (asyncLoading_.load()) {
         juce::Logger::writeToLog("[VST] Blocked addPlugin during async chain load: " + desc.name);
@@ -265,6 +271,8 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
 
 int VSTChain::addPlugin(const juce::String& pluginPath)
 {
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     // Prevent adding plugins while async chain replacement is in progress
     if (asyncLoading_.load()) {
         juce::Logger::writeToLog("[VST] Blocked addPlugin during async chain load: " + pluginPath);
@@ -345,6 +353,8 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
 
 bool VSTChain::removePlugin(int index)
 {
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
     // Close editor window BEFORE acquiring chainLock_ to avoid
     // GUI destruction under lock (plugin editors may trigger JUCE callbacks)
     closePluginEditor(index);
@@ -383,8 +393,13 @@ bool VSTChain::removePlugin(int index)
     return true;
 }
 
-bool VSTChain::movePlugin(int fromIndex, int toIndex)
+bool VSTChain::movePlugin(PluginIndex from, PluginIndex to)
 {
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    int fromIndex = from.value;
+    int toIndex = to.value;
+
     juce::String logMsg;
     juce::String auditOrder;
     {
@@ -486,6 +501,35 @@ int VSTChain::getPluginCount() const
 {
     const juce::ScopedLock sl(chainLock_);
     return static_cast<int>(chain_.size());
+}
+
+std::vector<PluginLatencyInfo> VSTChain::getPluginLatencies() const
+{
+    const juce::ScopedLock sl(chainLock_);
+    std::vector<PluginLatencyInfo> result;
+    result.reserve(chain_.size());
+
+    // Get sample rate from graph if available
+    double sr = graph_ ? graph_->getSampleRate() : 48000.0;
+
+    for (const auto& slot : chain_) {
+        PluginLatencyInfo info;
+        if (slot.instance != nullptr) {
+            info.latencySamples = slot.instance->getLatencySamples();
+            if (sr > 0.0)
+                info.latencyMs = static_cast<float>(info.latencySamples) / static_cast<float>(sr) * 1000.0f;
+        }
+        result.push_back(info);
+    }
+    return result;
+}
+
+int VSTChain::getTotalChainPDC() const
+{
+    const juce::ScopedLock sl(chainLock_);
+    if (graph_ != nullptr)
+        return graph_->getLatencySamples();
+    return 0;
 }
 
 const PluginSlot* VSTChain::getPluginSlot(int index) const
@@ -619,6 +663,12 @@ void VSTChain::closePluginEditor(int index)
         Log::audit("VST", auditMsg);
 }
 
+// ─── rebuildGraph: 그래프 연결 재구성 ─────────────────────────
+// suspend=true: 노드 추가/제거 시 (오디오 갭 발생 가능)
+// suspend=false: 바이패스 토글 시 (연결만 변경, 갭 없음)
+// 바이패스된 플러그인은 연결 그래프에서 건너뜀
+// WARNING: getConnections() 복사 후 제거 루프 실행 (이터레이터 안전)
+// ──────────────────────────────────────────────────────────────
 void VSTChain::rebuildGraph(bool suspend)
 {
     using UK = juce::AudioProcessorGraph::UpdateKind;
@@ -696,6 +746,15 @@ std::unique_ptr<juce::AudioPluginInstance> VSTChain::loadPlugin(
     }
 }
 
+// ─── replaceChainAsync: Background Plugin Loading ───────────────────────
+// Pattern: Keep-Old-Until-Ready
+//   1. 현재 체인은 계속 오디오 처리 (끊김 없음)
+//   2. BG 스레드에서 새 플러그인 로드 (DLL 로딩은 느림)
+//   3. callAsync로 Message 스레드에서 그래프 교체 (alive_ 가드)
+//   4. asyncGeneration_ 카운터로 오래된 로드 폐기 (새 요청이 이전 요청을 대체)
+// WARNING: Windows에서 COM STA 초기화 필수 (VST3 플러그인 팩토리)
+// WARNING: formatMgr 참조 캡처 — 호출자의 수명이 보장되어야 함
+// ────────────────────────────────────────────────────────────────────────
 void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
                                   std::function<void()> onComplete,
                                   std::function<void()> preWork)

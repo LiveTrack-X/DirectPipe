@@ -72,6 +72,9 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.plugins.size());
     for (const auto& p : s.plugins)
         h = h * 31u + (static_cast<uint32_t>(p.bypassed) | (static_cast<uint32_t>(p.loaded) << 1));
+    for (const auto& p : s.plugins)
+        h = h * 31u + static_cast<uint32_t>(p.latencySamples);
+    h = h * 31u + static_cast<uint32_t>(s.chainPDCSamples);
     for (const auto& n : s.slotNames)
         h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(n));
     return h;
@@ -153,6 +156,7 @@ std::string StateBroadcaster::toJSON() const
         plugin->setProperty("name", juce::String(p.name));
         plugin->setProperty("bypass", p.bypassed);
         plugin->setProperty("loaded", p.loaded);
+        plugin->setProperty("latency_samples", p.latencySamples);
         plugins.add(juce::var(plugin));
     }
     data->setProperty("plugins", plugins);
@@ -199,6 +203,10 @@ std::string StateBroadcaster::toJSON() const
     limiterJson->setProperty("gain_reduction_dB", static_cast<double>(state.limiterGainReduction));
     limiterJson->setProperty("is_limiting", state.limiterActive);
     data->setProperty("safety_limiter", juce::var(limiterJson));
+
+    // Chain PDC (plugin delay compensation)
+    data->setProperty("chain_pdc_samples", state.chainPDCSamples);
+    data->setProperty("chain_pdc_ms", static_cast<double>(state.chainPDCMs));
 
     root->setProperty("data", juce::var(data));
 

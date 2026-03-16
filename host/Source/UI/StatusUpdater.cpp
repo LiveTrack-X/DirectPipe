@@ -212,6 +212,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.monitorLost = engine_.getMonitorOutput().isDeviceLost();
 
         s.plugins.clear();
+        auto latencies = chain.getPluginLatencies();
         for (int i = 0; i < chain.getPluginCount(); ++i) {
             auto* slot = chain.getPluginSlot(i);
             if (slot) {
@@ -219,11 +220,18 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
                 ps.name = slot->name.toStdString();
                 ps.bypassed = slot->bypassed;
                 ps.loaded = slot->instance != nullptr;
+                ps.latencySamples = (static_cast<size_t>(i) < latencies.size())
+                    ? latencies[static_cast<size_t>(i)].latencySamples : 0;
                 s.plugins.push_back(ps);
                 if (!ps.bypassed && ps.loaded) s.masterBypassed = false;
             }
         }
         if (s.plugins.empty()) s.masterBypassed = false;
+
+        s.chainPDCSamples = chain.getTotalChainPDC();
+        double sr = monitor.getSampleRate();
+        s.chainPDCMs = (sr > 0.0 && s.chainPDCSamples > 0)
+            ? static_cast<float>(s.chainPDCSamples) / static_cast<float>(sr) * 1000.0f : 0.0f;
 
         if (pm) {
             for (int si = 0; si < numPresetSlots; ++si)

@@ -23,6 +23,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <vector>
 #include "../Audio/VSTChain.h"
 
 namespace directpipe {
@@ -71,6 +72,9 @@ public:
     /** @brief Update limiter button state (called from timer/external control). */
     void setLimiterState(bool enabled);
 
+    /** Update per-plugin latency and total chain PDC display. */
+    void updateLatencyDisplay(const std::vector<int>& perPluginSamples, int totalPDC, double sampleRate);
+
 private:
     bool loading_ = false;
     friend class PluginRowComponent;
@@ -85,9 +89,12 @@ private:
 
     juce::ListBox pluginList_{"VST Chain"};
     juce::ToggleButton limiterButton_{"Safety Limiter"};
+    juce::Label chainPDCLabel_;
     juce::TextButton addButton_{"+ Add Plugin"};
     juce::TextButton scanButton_{"Scan..."};
     juce::TextButton removeButton_{"Remove"};
+
+    std::vector<int> perPluginLatencies_;
 
     /**
      * @brief Custom row component with drag-and-drop, Edit/Bypass/Remove buttons.
@@ -110,12 +117,15 @@ private:
         void itemDragExit(const SourceDetails& details) override;
         void itemDropped(const SourceDetails& details) override;
 
+        void updateLatency(int samples);
+
     private:
         PluginChainEditor& owner_;
         int rowIndex_;
         bool dragOver_ = false;
 
         juce::Label nameLabel_;
+        juce::Label latencyLabel_;
         juce::TextButton editButton_{"Edit"};
         juce::ToggleButton bypassButton_{"Bypass"};
         juce::TextButton removeButton_{"X"};

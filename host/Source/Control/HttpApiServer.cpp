@@ -380,6 +380,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         auto& chain = engine_.getVSTChain();
         juce::Array<juce::var> arr;
         int count = chain.getPluginCount();
+        auto latencies = chain.getPluginLatencies();
         for (int i = 0; i < count; ++i) {
             auto* slot = chain.getPluginSlot(i);
             auto obj = new juce::DynamicObject();
@@ -388,6 +389,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
             obj->setProperty("bypassed", slot ? slot->bypassed : false);
             obj->setProperty("loaded", slot && slot->instance != nullptr);
             obj->setProperty("parameterCount", chain.getPluginParameterCount(i));
+            obj->setProperty("latencySamples",
+                (static_cast<size_t>(i) < latencies.size()) ? latencies[static_cast<size_t>(i)].latencySamples : 0);
             arr.add(juce::var(obj));
         }
         return {200, juce::JSON::toString(juce::var(arr), true).toStdString()};

@@ -40,6 +40,13 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
     nameLabel_.setColour(juce::Label::textColourId, juce::Colours::white);
     nameLabel_.setInterceptsMouseClicks(false, false);
 
+    latencyLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
+    latencyLabel_.setFont(juce::Font(10.0f));
+    latencyLabel_.setJustificationType(juce::Justification::centredRight);
+    latencyLabel_.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(latencyLabel_);
+    latencyLabel_.setVisible(false);
+
     editButton_.onClick = [this] {
         owner_.vstChain_.openPluginEditor(rowIndex_, &owner_);
     };
@@ -91,6 +98,8 @@ void PluginChainEditor::PluginRowComponent::resized()
     bounds.removeFromRight(gap);
     editButton_.setBounds(bounds.removeFromRight(40));
     bounds.removeFromRight(gap);
+    latencyLabel_.setBounds(bounds.removeFromRight(60));
+    bounds.removeFromRight(gap);
     nameLabel_.setBounds(bounds);
 }
 
@@ -111,6 +120,16 @@ void PluginChainEditor::PluginRowComponent::update(int newRowIndex)
             juce::String(rowIndex_ + 1) + ". " + slot->name,
             juce::dontSendNotification);
         bypassButton_.setToggleState(slot->bypassed, juce::dontSendNotification);
+    }
+}
+
+void PluginChainEditor::PluginRowComponent::updateLatency(int samples)
+{
+    if (samples > 0) {
+        latencyLabel_.setText(juce::String(samples) + "smp", juce::dontSendNotification);
+        latencyLabel_.setVisible(true);
+    } else {
+        latencyLabel_.setVisible(false);
     }
 }
 
@@ -177,6 +196,12 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     };
     addAndMakeVisible(limiterButton_);
 
+    chainPDCLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFFAA33));
+    chainPDCLabel_.setFont(juce::Font(11.0f));
+    chainPDCLabel_.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(chainPDCLabel_);
+    chainPDCLabel_.setVisible(false);
+
     addAndMakeVisible(addButton_);
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(removeButton_);
@@ -237,9 +262,11 @@ void PluginChainEditor::resized()
 {
     auto bounds = getLocalBounds();
 
-    // Bottom bar: limiter toggle + action buttons
+    // Bottom bar: limiter toggle + PDC label + action buttons
     auto buttonBar = bounds.removeFromBottom(30);
     auto limiterBar = bounds.removeFromBottom(26);
+    auto pdcBar = bounds.removeFromBottom(20);
+    chainPDCLabel_.setBounds(pdcBar);
     limiterButton_.setBounds(limiterBar);
 
     int gap = 4;
@@ -283,6 +310,11 @@ juce::Component* PluginChainEditor::refreshComponentForRow(
         delete existingComponentToUpdate;
         row = new PluginRowComponent(*this, rowNumber);
     }
+
+    if (rowNumber < static_cast<int>(perPluginLatencies_.size()))
+        row->updateLatency(perPluginLatencies_[static_cast<size_t>(rowNumber)]);
+    else
+        row->updateLatency(0);
 
     return row;
 }
@@ -419,6 +451,25 @@ void PluginChainEditor::removeSelectedPlugin()
             }
         });
     }
+}
+
+void PluginChainEditor::updateLatencyDisplay(const std::vector<int>& perPluginSamples,
+                                              int totalPDC, double sampleRate)
+{
+    perPluginLatencies_ = perPluginSamples;
+
+    if (totalPDC > 0 && sampleRate > 0.0) {
+        float ms = static_cast<float>(totalPDC) / static_cast<float>(sampleRate) * 1000.0f;
+        chainPDCLabel_.setText(
+            "Chain PDC: " + juce::String(totalPDC) + " samples ("
+            + juce::String(ms, 1) + "ms @ " + juce::String(static_cast<int>(sampleRate)) + "Hz)",
+            juce::dontSendNotification);
+        chainPDCLabel_.setVisible(true);
+    } else {
+        chainPDCLabel_.setVisible(false);
+    }
+
+    pluginList_.repaint();
 }
 
 void PluginChainEditor::refreshList()

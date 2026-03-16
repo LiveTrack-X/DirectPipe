@@ -45,6 +45,7 @@ struct AppState {
         std::string name;
         bool bypassed = false;
         bool loaded = false;
+        int latencySamples = 0;
     };
 
     std::vector<PluginState> plugins;
@@ -77,6 +78,9 @@ struct AppState {
     float limiterCeilingdB = -0.3f;
     float limiterGainReduction = 0.0f;
     bool limiterActive = false;
+
+    int chainPDCSamples = 0;
+    float chainPDCMs = 0.0f;
 
     std::array<std::string, 5> slotNames{};
 };

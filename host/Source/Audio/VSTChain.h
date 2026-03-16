@@ -26,12 +26,21 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../Util/StrongIndex.h"
 #include <vector>
 #include <memory>
 #include <functional>
 #include <thread>
 
 namespace directpipe {
+
+/**
+ * @brief Per-plugin latency information.
+ */
+struct PluginLatencyInfo {
+    int latencySamples = 0;
+    float latencyMs = 0.0f;
+};
 
 /**
  * @brief Information about a loaded plugin in the chain.
@@ -79,7 +88,7 @@ public:
      * @param buffer Audio buffer to process in-place.
      * @param numSamples Number of samples to process.
      */
-    void processBlock(juce::AudioBuffer<float>& buffer, int numSamples);
+    void processBlock(juce::AudioBuffer<float>& buffer, int numSamples);  // [RT thread — NO chainLock_, NO allocation]
 
     /**
      * @brief Scan system for available VST plugins.
@@ -92,29 +101,29 @@ public:
      * @param pluginPath Full path to the VST plugin file.
      * @return Index of the added plugin, or -1 on failure.
      */
-    int addPlugin(const juce::String& pluginPath);
+    int addPlugin(const juce::String& pluginPath);  // [Message thread — holds chainLock_]
 
     /**
      * @brief Add a plugin from a full PluginDescription (preferred).
      * @param desc Plugin description from scanner.
      * @return Index of the added plugin, or -1 on failure.
      */
-    int addPlugin(const juce::PluginDescription& desc);
+    int addPlugin(const juce::PluginDescription& desc);  // [Message thread — holds chainLock_]
 
     /**
      * @brief Remove a plugin from the chain.
      * @param index Position in the chain.
      * @return true if removed successfully.
      */
-    bool removePlugin(int index);
+    bool removePlugin(int index);  // [Message thread — holds chainLock_]
 
     /**
      * @brief Move a plugin to a new position in the chain.
-     * @param fromIndex Current position.
-     * @param toIndex Desired position.
+     * @param from Current position (PluginIndex for type safety).
+     * @param to Desired position (PluginIndex for type safety).
      * @return true if moved successfully.
      */
-    bool movePlugin(int fromIndex, int toIndex);
+    bool movePlugin(PluginIndex from, PluginIndex to);  // [Message thread — holds chainLock_]
 
     /**
      * @brief Toggle bypass for a plugin.
@@ -138,6 +147,12 @@ public:
      * @brief Get the number of plugins in the chain.
      */
     int getPluginCount() const;
+
+    /** Get per-plugin latency info. [Message thread — acquires chainLock_] */
+    std::vector<PluginLatencyInfo> getPluginLatencies() const;
+
+    /** Get total chain PDC from AudioProcessorGraph. [Message thread — acquires chainLock_] */
+    int getTotalChainPDC() const;
 
     /**
      * @brief Get plugin slot info at the given index.
@@ -199,6 +214,7 @@ public:
      * @param requests Plugins to load.
      * @param onComplete Called on message thread when loading finishes.
      */
+    // [Message → BG → callAsync → Message, alive_ guard + asyncGeneration_ counter]
     void replaceChainAsync(std::vector<PluginLoadRequest> requests,
                            std::function<void()> onComplete,
                            std::function<void()> preWork = nullptr);
@@ -253,39 +269,39 @@ private:
     std::unique_ptr<juce::AudioPluginInstance> loadPlugin(
         const juce::PluginDescription& desc, juce::String& error);
 
-    juce::AudioPluginFormatManager formatManager_;
-    juce::KnownPluginList knownPlugins_;
-    std::unique_ptr<juce::AudioProcessorGraph> graph_;
+    // ═══════════════════════════════════════════════════════════════════
+    // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
+    // ═══════════════════════════════════════════════════════════════════
+
+    juce::AudioPluginFormatManager formatManager_;       // [Message thread only]
+    juce::KnownPluginList knownPlugins_;                 // [Message thread only]
+    std::unique_ptr<juce::AudioProcessorGraph> graph_;   // [RT: processBlock, Message: node add/remove]
 
     // I/O nodes in the graph
-    juce::AudioProcessorGraph::NodeID inputNodeId_;
-    juce::AudioProcessorGraph::NodeID outputNodeId_;
+    juce::AudioProcessorGraph::NodeID inputNodeId_;      // [Protected by chainLock_]
+    juce::AudioProcessorGraph::NodeID outputNodeId_;     // [Protected by chainLock_]
 
-    // Ordered chain of plugin slots
-    std::vector<PluginSlot> chain_;
+    // ─── Protected by chainLock_ ───
+    std::vector<PluginSlot> chain_;                      // [Protected by chainLock_]
+    std::vector<std::unique_ptr<juce::DocumentWindow>> editorWindows_;  // [Protected by chainLock_]
 
-    // Editor windows (owned)
-    std::vector<std::unique_ptr<juce::DocumentWindow>> editorWindows_;
+    double currentSampleRate_ = 48000.0;                 // [Message thread only]
+    int currentBlockSize_ = 128;                         // [Message thread only]
+    std::atomic<bool> prepared_{false};                   // [Message write, RT read]
 
-    double currentSampleRate_ = 48000.0;
-    int currentBlockSize_ = 128;
-    std::atomic<bool> prepared_{false};
+    juce::MidiBuffer emptyMidi_;                         // [RT thread only] Pre-allocated (avoids per-callback allocation)
 
-    // Pre-allocated MidiBuffer for processBlock (avoids per-callback allocation)
-    juce::MidiBuffer emptyMidi_;
+    std::atomic<bool> chainDirty_{false};                // [Message write, RT read] Lock-free chain swap flag
 
-    // Atomic flag for lock-free chain swap between RT and non-RT threads
-    std::atomic<bool> chainDirty_{false};
-
-    // Mutex for chain modification (NOT used in processBlock)
+    // [Protected: chain_, editorWindows_, graph nodes. NEVER in processBlock. NEVER writeToLog inside.]
     mutable juce::CriticalSection chainLock_;
 
-    // Async loading state
-    std::atomic<bool> asyncLoading_{false};
-    std::unique_ptr<std::thread> loadThread_;
-    std::atomic<uint32_t> asyncGeneration_{0};  ///< Incremented per replaceChainAsync call
+    // ─── Async loading state ───
+    std::atomic<bool> asyncLoading_{false};               // [BG write, Message/UI read]
+    std::unique_ptr<std::thread> loadThread_;             // [Message thread only]
+    std::atomic<uint32_t> asyncGeneration_{0};            // [Message write, BG read] Incremented per replaceChainAsync call
 
-    // Lifetime guard for callAsync lambdas
+    // [callAsync lifetime guard — shared_ptr captured by value in lambda, checked before accessing this]
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VSTChain)
