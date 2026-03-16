@@ -87,6 +87,7 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/AudioRecorder.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/SafetyLimiter.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinFilter.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinNoiseRemoval.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/PluginPreloadCache.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/IPC/SharedMemWriter.cpp
     )

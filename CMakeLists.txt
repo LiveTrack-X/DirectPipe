@@ -57,6 +57,7 @@ if(DIRECTPIPE_BUILD_HOST OR DIRECTPIPE_BUILD_RECEIVER)
         thirdparty/rnnoise/src/rnn.c
         thirdparty/rnnoise/src/rnnoise_data.c
         thirdparty/rnnoise/src/rnnoise_tables.c
+        thirdparty/rnnoise/src/parse_lpcnet_weights.c
         thirdparty/rnnoise/src/x86/x86cpu.c
         thirdparty/rnnoise/src/x86/x86_dnn_map.c
     )
