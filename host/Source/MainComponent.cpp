@@ -259,6 +259,13 @@ MainComponent::MainComponent(bool enableExternalControls)
     presetManager_ = std::make_unique<PresetManager>(audioEngine_);
 
     // Auto-save chain to active slot when chain changes
+    // Safety Limiter toggle from chain editor UI
+    pluginChainEditor_->onLimiterToggled = [this](bool enabled) {
+        audioEngine_.getSafetyLimiter().setEnabled(enabled);
+        markSettingsDirty();
+    };
+    pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
+
     pluginChainEditor_->onChainModified = [this] {
         if (loadingSlot_ || partialLoad_) return;
         int slot = presetManager_->getActiveSlot();
@@ -667,6 +674,10 @@ void MainComponent::timerCallback()
 
     // ── Status bar, mute indicators, level meters, broadcaster ──
     statusUpdater_->tick(presetManager_.get(), PresetSlotBar::kNumPresetSlots);
+
+    // Sync limiter toggle in chain editor with actual state (external control may change it)
+    if (pluginChainEditor_)
+        pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
 
     // Update recording state in OutputPanel (Monitor tab)
     if (outputPanelPtr_) {

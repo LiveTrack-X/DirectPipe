@@ -257,6 +257,25 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         return {200, R"({"ok": true, "action": "xrun_reset"})"};
     }
 
+    // GET /api/limiter/toggle — toggle safety limiter on/off
+    if (action == "limiter" && segments.size() >= 3 && segments[2] == "toggle") {
+        dispatcher_.dispatch({Action::SafetyLimiterToggle});
+        return {200, R"({"ok": true, "action": "safety_limiter_toggle"})"};
+    }
+
+    // GET /api/limiter/ceiling/:value — set safety limiter ceiling (-6.0 ~ 0.0 dBFS)
+    if (action == "limiter" && segments.size() >= 4 && segments[2] == "ceiling") {
+        auto valueStr = juce::String(segments[3]);
+        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.-") < 0)
+            return {400, R"({"error": "value must be a number"})"};
+        float value = valueStr.getFloatValue();
+        if (value < -6.0f || value > 0.0f)
+            return {400, R"({"error": "ceiling must be -6.0 to 0.0 dBFS"})"};
+        dispatcher_.dispatch({Action::SetSafetyLimiterCeiling, 0, value});
+        return {200, R"({"ok": true, "action": "set_limiter_ceiling", "value": )" +
+               std::to_string(static_cast<double>(value)) + "}"};
+    }
+
     // GET /api/bypass/:index/toggle
     if (action == "bypass" && segments.size() >= 3) {
         if (segments[2] == "master") {

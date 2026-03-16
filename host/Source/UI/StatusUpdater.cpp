@@ -121,17 +121,23 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         }
     }
 
-    // ── CPU/XRun label ──
+    // ── CPU/XRun/LIM label ──
     {
         engine_.updateXRunTracking();
         double cpuPct = monitor.getCpuUsagePercent();
         int xruns = engine_.getRecentXRunCount();
-        if (std::abs(cpuPct - cachedCpuPercent_) > 0.1 || xruns != cachedXruns_) {
+        bool limActive = engine_.getSafetyLimiter().isLimiting();
+        if (std::abs(cpuPct - cachedCpuPercent_) > 0.1 || xruns != cachedXruns_ ||
+            limActive != cachedLimiterActive_) {
             cachedCpuPercent_ = cpuPct;
             cachedXruns_ = xruns;
+            cachedLimiterActive_ = limActive;
             juce::String cpuText = "CPU: " + juce::String(cpuPct, 1) + "%";
-            if (xruns > 0) {
+            if (xruns > 0)
                 cpuText += " | XRun: " + juce::String(xruns);
+            if (limActive)
+                cpuText += " | [LIM]";
+            if (xruns > 0 || limActive) {
                 cpuLabel_->setColour(juce::Label::textColourId, juce::Colour(0xFFFF6B6B));
             } else {
                 cpuLabel_->setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
@@ -195,6 +201,13 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.recordingSeconds = engine_.getRecorder().getRecordedSeconds();
         s.ipcEnabled = engine_.isIpcEnabled();
         s.xrunCount = engine_.getRecentXRunCount();
+
+        auto& limiter = engine_.getSafetyLimiter();
+        s.limiterEnabled = limiter.isEnabled();
+        s.limiterCeilingdB = limiter.getCeilingdB();
+        s.limiterGainReduction = limiter.getCurrentGainReduction();
+        s.limiterActive = limiter.isLimiting();
+
         s.deviceLost = engine_.isDeviceLost();
         s.monitorLost = engine_.getMonitorOutput().isDeviceLost();
 

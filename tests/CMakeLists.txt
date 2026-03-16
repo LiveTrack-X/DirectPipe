@@ -56,6 +56,8 @@ if(DIRECTPIPE_BUILD_HOST)
         # Slice 3: Control Handlers
         test_midi_handler.cpp
         test_action_handler.cpp
+        # Slice 5: Safety Limiter
+        test_safety_limiter.cpp
         # Slice 4: Platform
         test_platform.cpp
         # Host source files needed by tests
@@ -81,6 +83,7 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/MonitorOutput.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/LatencyMonitor.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/AudioRecorder.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Audio/SafetyLimiter.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/PluginPreloadCache.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/IPC/SharedMemWriter.cpp
     )

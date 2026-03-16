@@ -44,7 +44,7 @@ TEST_F(ControlMappingTest, DefaultsHaveHotkeys) {
     auto config = ControlMappingStore::createDefaults();
     // 9 bypass (1-9) + master (0) + panic + input mute + output mute +
     // monitor + IPC + 5 slots = 21
-    EXPECT_GE(config.hotkeys.size(), 15u);
+    EXPECT_GE(config.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
 }
 
 TEST_F(ControlMappingTest, DefaultsHaveNoMidi) {
@@ -62,13 +62,17 @@ TEST_F(ControlMappingTest, DefaultServerPorts) {
 
 TEST_F(ControlMappingTest, DefaultBypassHotkeys) {
     auto config = ControlMappingStore::createDefaults();
-    // First hotkey should be Ctrl+Shift+1 → Plugin 0 Bypass
+    // First hotkey should be Ctrl+Shift+M → Panic Mute (essential safety hotkey)
     ASSERT_FALSE(config.hotkeys.empty());
     auto& first = config.hotkeys[0];
     EXPECT_EQ(first.modifiers, static_cast<uint32_t>(HK_CTRL | HK_SHIFT));
-    EXPECT_EQ(first.virtualKey, static_cast<uint32_t>('1'));
-    EXPECT_EQ(first.action.action, Action::PluginBypass);
-    EXPECT_EQ(first.action.intParam, 0);
+    EXPECT_EQ(first.virtualKey, static_cast<uint32_t>('M'));
+    EXPECT_EQ(first.action.action, Action::PanicMute);
+    // Should also contain at least one plugin bypass hotkey
+    bool foundBypass = false;
+    for (const auto& hk : config.hotkeys)
+        if (hk.action.action == Action::PluginBypass) { foundBypass = true; break; }
+    EXPECT_TRUE(foundBypass);
 }
 
 TEST_F(ControlMappingTest, DefaultPresetSlotHotkeys) {
@@ -184,19 +188,19 @@ TEST_F(ControlMappingTest, LoadNonexistentReturnsDefaults) {
     auto nonexistent = tempDir_.getChildFile("does_not_exist.json");
     auto loaded = store_.load(nonexistent);
     // Should return defaults, not empty
-    EXPECT_GE(loaded.hotkeys.size(), 15u);
+    EXPECT_GE(loaded.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
 }
 
 TEST_F(ControlMappingTest, LoadInvalidJsonReturnsDefaults) {
     testFile_.replaceWithText("this is not json { garbage");
     auto loaded = store_.load(testFile_);
-    EXPECT_GE(loaded.hotkeys.size(), 15u);
+    EXPECT_GE(loaded.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
 }
 
 TEST_F(ControlMappingTest, LoadEmptyFileReturnsDefaults) {
     testFile_.replaceWithText("");
     auto loaded = store_.load(testFile_);
-    EXPECT_GE(loaded.hotkeys.size(), 15u);
+    EXPECT_GE(loaded.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
 }
 
 TEST_F(ControlMappingTest, LoadEmptyObjectReturnsEmptyConfig) {

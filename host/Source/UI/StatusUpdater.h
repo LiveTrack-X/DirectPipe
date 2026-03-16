@@ -77,6 +77,7 @@ private:
     int cachedSampleRate_ = 0;
     int cachedBufferSize_ = 0;
     int cachedChannelMode_ = 0;
+    bool cachedLimiterActive_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StatusUpdater)
 };

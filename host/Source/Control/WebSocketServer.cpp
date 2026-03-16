@@ -494,6 +494,11 @@ void WebSocketServer::processMessage(const std::string& message)
         event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : 0.0f;
     } else if (actionStr == "xrun_reset") {
         event.action = Action::XRunReset;
+    } else if (actionStr == "safety_limiter_toggle") {
+        event.action = Action::SafetyLimiterToggle;
+    } else if (actionStr == "set_safety_limiter_ceiling") {
+        event.action = Action::SetSafetyLimiterCeiling;
+        event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : -0.3f;
     } else {
         return;  // Unknown action
     }

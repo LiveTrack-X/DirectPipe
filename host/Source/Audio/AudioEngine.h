@@ -33,6 +33,7 @@
 #include "LatencyMonitor.h"
 #include "MonitorOutput.h"
 #include "AudioRecorder.h"
+#include "SafetyLimiter.h"
 #include "../IPC/SharedMemWriter.h"
 
 #include <atomic>
@@ -81,6 +82,7 @@ public:
     OutputRouter& getOutputRouter() { return outputRouter_; }
     LatencyMonitor& getLatencyMonitor() { return latencyMonitor_; }
     AudioRecorder& getRecorder() { return recorder_; }
+    SafetyLimiter& getSafetyLimiter() { return safetyLimiter_; }
     // Device type (ASIO / Windows Audio)
     [[nodiscard]] ActionResult setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice = {});
     juce::String getCurrentDeviceType() const;
@@ -256,6 +258,7 @@ private:
     LatencyMonitor latencyMonitor_;
     MonitorOutput monitorOutput_;
     AudioRecorder recorder_;
+    SafetyLimiter safetyLimiter_;
     SharedMemWriter sharedMemWriter_;
 
     // ─── Cross-thread atomics ───

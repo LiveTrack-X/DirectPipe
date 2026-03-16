@@ -960,6 +960,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     //    Each plugin's bypass flag is atomic — can be toggled from any thread
     vstChain_.processBlock(buffer, numSamples);
 
+    // 2.1. Safety Limiter — clip prevention for all output paths (RT-safe)
+    safetyLimiter_.process(buffer, numSamples);
+
     // 2.5. Write processed audio to recorder (lock-free)
     recorder_.writeBlock(buffer, numSamples);
 
@@ -1164,6 +1167,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     workBuffer_.clear();
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
+    safetyLimiter_.prepareToPlay(currentSampleRate_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     latencyMonitor_.reset(currentSampleRate_, currentBufferSize_);
 

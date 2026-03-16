@@ -64,6 +64,10 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.bufferSize);
     hashFloat(s.outputVolume);
     h = h * 31u + static_cast<uint32_t>(s.xrunCount);
+    h = h * 31u + static_cast<uint32_t>(s.limiterEnabled);
+    hashFloat(s.limiterCeilingdB);
+    hashFloat(s.limiterGainReduction);
+    h = h * 31u + static_cast<uint32_t>(s.limiterActive);
     h = h * 31u + static_cast<uint32_t>(s.channelMode);
     h = h * 31u + static_cast<uint32_t>(s.plugins.size());
     for (const auto& p : s.plugins)
@@ -187,6 +191,14 @@ std::string StateBroadcaster::toJSON() const
     for (const auto& name : state.slotNames)
         slotNamesArr.add(juce::String(name));
     data->setProperty("slot_names", slotNamesArr);
+
+    // Safety Limiter
+    auto limiterJson = new juce::DynamicObject();
+    limiterJson->setProperty("enabled", state.limiterEnabled);
+    limiterJson->setProperty("ceiling_dB", static_cast<double>(state.limiterCeilingdB));
+    limiterJson->setProperty("gain_reduction_dB", static_cast<double>(state.limiterGainReduction));
+    limiterJson->setProperty("is_limiting", state.limiterActive);
+    data->setProperty("safety_limiter", juce::var(limiterJson));
 
     root->setProperty("data", juce::var(data));
 

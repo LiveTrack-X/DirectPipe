@@ -156,6 +156,13 @@ juce::String PresetManager::exportToJSON()
     // Audit mode
     root->setProperty("auditMode", Log::isAuditMode());
 
+    // Safety Limiter
+    auto limiterObj = new juce::DynamicObject();
+    auto& limiter = engine_.getSafetyLimiter();
+    limiterObj->setProperty("enabled", limiter.isEnabled());
+    limiterObj->setProperty("ceiling_dB", static_cast<double>(limiter.getCeilingdB()));
+    root->setProperty("safetyLimiter", juce::var(limiterObj));
+
     return juce::JSON::toString(juce::var(root.release()), true);
 }
 
@@ -299,6 +306,15 @@ bool PresetManager::importFromJSON(const juce::String& json)
     // Audit mode
     if (root->hasProperty("auditMode"))
         Log::setAuditMode(static_cast<bool>(root->getProperty("auditMode")));
+
+    // Safety Limiter (v4.1.0+ — missing key = defaults)
+    if (auto* limiterObj = root->getProperty("safetyLimiter").getDynamicObject()) {
+        auto& limiter = engine_.getSafetyLimiter();
+        if (limiterObj->hasProperty("enabled"))
+            limiter.setEnabled(static_cast<bool>(limiterObj->getProperty("enabled")));
+        if (limiterObj->hasProperty("ceiling_dB"))
+            limiter.setCeiling(static_cast<float>(static_cast<double>(limiterObj->getProperty("ceiling_dB"))));
+    }
 
     return true;
 }

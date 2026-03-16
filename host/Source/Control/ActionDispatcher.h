@@ -54,6 +54,8 @@ enum class Action {
     SetPluginParameter, ///< Set plugin parameter (intParam=pluginIndex, intParam2=paramIndex, floatParam=value 0.0~1.0)
     IpcToggle,          ///< Toggle IPC output (Receiver VST) on/off
     XRunReset,          ///< Reset xrun counter
+    SafetyLimiterToggle,       ///< Toggle safety limiter on/off
+    SetSafetyLimiterCeiling,   ///< Set safety limiter ceiling (floatParam = dB, -6.0~0.0)
 };
 
 /// Carries an action with its parameters
@@ -169,6 +171,8 @@ inline juce::String actionToDisplayName(const ActionEvent& event)
         case Action::RecordingToggle: return "Recording Toggle";
         case Action::IpcToggle:       return "IPC Toggle";
         case Action::XRunReset:       return "XRun Reset";
+        case Action::SafetyLimiterToggle:      return "Safety Limiter Toggle";
+        case Action::SetSafetyLimiterCeiling:  return "Set Limiter Ceiling";
         default:                      return "Unknown";
     }
 }
@@ -194,6 +198,8 @@ inline const char* actionToString(Action a)
         case Action::SetPluginParameter: return "SetPluginParameter";
         case Action::IpcToggle:          return "IpcToggle";
         case Action::XRunReset:          return "XRunReset";
+        case Action::SafetyLimiterToggle:      return "SafetyLimiterToggle";
+        case Action::SetSafetyLimiterCeiling:  return "SetSafetyLimiterCeiling";
         default:                         return "Unknown";
     }
 }

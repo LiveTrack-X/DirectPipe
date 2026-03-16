@@ -71,6 +71,13 @@ struct AppState {
     bool monitorLost = false;
     float outputVolume = 1.0f;  // Main output volume (0.0-1.0)
     int xrunCount = 0;
+
+    // Safety Limiter
+    bool limiterEnabled = true;
+    float limiterCeilingdB = -0.3f;
+    float limiterGainReduction = 0.0f;
+    bool limiterActive = false;
+
     std::array<std::string, 5> slotNames{};
 };
 

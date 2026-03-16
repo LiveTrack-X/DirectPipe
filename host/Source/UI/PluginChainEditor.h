@@ -65,6 +65,12 @@ public:
     /** @brief Called when chain content changes (add/remove/reorder/bypass). */
     std::function<void()> onChainModified;
 
+    /** @brief Called when limiter toggle is clicked. Wired by MainComponent. */
+    std::function<void(bool)> onLimiterToggled;
+
+    /** @brief Update limiter button state (called from timer/external control). */
+    void setLimiterState(bool enabled);
+
 private:
     bool loading_ = false;
     friend class PluginRowComponent;
@@ -78,6 +84,7 @@ private:
     VSTChain& vstChain_;
 
     juce::ListBox pluginList_{"VST Chain"};
+    juce::ToggleButton limiterButton_{"Safety Limiter"};
     juce::TextButton addButton_{"+ Add Plugin"};
     juce::TextButton scanButton_{"Scan..."};
     juce::TextButton removeButton_{"Remove"};

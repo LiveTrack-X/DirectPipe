@@ -271,6 +271,19 @@ void ActionHandler::handle(const ActionEvent& event)
             engine_.requestXRunReset();
             break;
 
+        case Action::SafetyLimiterToggle: {
+            auto& limiter = engine_.getSafetyLimiter();
+            limiter.setEnabled(!limiter.isEnabled());
+            if (onDirty) onDirty();
+            break;
+        }
+
+        case Action::SetSafetyLimiterCeiling: {
+            engine_.getSafetyLimiter().setCeiling(event.floatParam);
+            if (onDirty) onDirty();
+            break;
+        }
+
         case Action::LoadPreset:
         case Action::SwitchPresetSlot:
         case Action::NextPreset:

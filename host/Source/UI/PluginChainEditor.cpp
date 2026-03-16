@@ -154,7 +154,7 @@ void PluginChainEditor::PluginRowComponent::itemDropped(const SourceDetails& det
 
     int fromIndex = static_cast<int>(details.description);
     if (fromIndex != rowIndex_) {
-        owner_.vstChain_.movePlugin(fromIndex, rowIndex_);
+        owner_.vstChain_.movePlugin(PluginIndex{fromIndex}, PluginIndex{rowIndex_});
         owner_.pluginList_.selectRow(rowIndex_);
     }
 }
@@ -168,6 +168,14 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     pluginList_.setModel(this);
     pluginList_.setRowHeight(32);
     pluginList_.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF2A2A40));
+
+    // Safety Limiter toggle — above the action buttons
+    limiterButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xFFE0E0E0));
+    limiterButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(0xFFFF6B6B));
+    limiterButton_.onClick = [this] {
+        if (onLimiterToggled) onLimiterToggled(limiterButton_.getToggleState());
+    };
+    addAndMakeVisible(limiterButton_);
 
     addAndMakeVisible(addButton_);
     addAndMakeVisible(scanButton_);
@@ -209,6 +217,12 @@ void PluginChainEditor::showLoadingState()
     repaint();
 }
 
+void PluginChainEditor::setLimiterState(bool enabled)
+{
+    if (limiterButton_.getToggleState() != enabled)
+        limiterButton_.setToggleState(enabled, juce::dontSendNotification);
+}
+
 void PluginChainEditor::hideLoadingState()
 {
     loading_ = false;
@@ -223,8 +237,11 @@ void PluginChainEditor::resized()
 {
     auto bounds = getLocalBounds();
 
-    // Bottom bar with buttons (evenly distributed)
+    // Bottom bar: limiter toggle + action buttons
     auto buttonBar = bounds.removeFromBottom(30);
+    auto limiterBar = bounds.removeFromBottom(26);
+    limiterButton_.setBounds(limiterBar);
+
     int gap = 4;
     int btnW = (buttonBar.getWidth() - gap * 2) / 3;
     int lastW = buttonBar.getWidth() - (btnW + gap) * 2;
