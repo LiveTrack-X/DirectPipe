@@ -50,6 +50,8 @@ private:
     juce::Slider highCorrSlider_;
     juce::Label maxGainLabel_;
     juce::Slider maxGainSlider_;
+    juce::Label freezeLabel_;
+    juce::Slider freezeSlider_;
 
     void timerCallback() override;
     void syncFromProcessor();

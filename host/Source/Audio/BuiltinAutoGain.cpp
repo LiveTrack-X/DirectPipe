@@ -27,7 +27,7 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     currentSR_ = sampleRate;
 
     // Pre-allocate LUFS ring buffer (3-second window)
-    lufsWindowSize_ = static_cast<int>(sampleRate * 3.0);
+    lufsWindowSize_ = static_cast<int>(sampleRate * 1.5);  // 1.5s window (was 3s) -- faster response
     lufsRingBuf_.assign(static_cast<size_t>(lufsWindowSize_), 0.0f);
     lufsWritePos_ = 0;
     lufsSampleCount_ = 0;
@@ -49,10 +49,10 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     // Envelope follower coefficients:
     //   coeff = 1 - exp(-1 / (time_seconds * sampleRate))
     // We compute per-sample coefficients from time constants.
-    // attack = 2s, release = 3s
+    // attack = 500ms, release = 300ms -- tight leveling
     if (sampleRate > 0.0) {
-        attackCoeff_  = 1.0f - std::exp(-1.0f / (2.0f * static_cast<float>(sampleRate)));
-        releaseCoeff_ = 1.0f - std::exp(-1.0f / (3.0f * static_cast<float>(sampleRate)));
+        attackCoeff_  = 1.0f - std::exp(-1.0f / (0.5f * static_cast<float>(sampleRate)));   // 500ms boost
+        releaseCoeff_ = 1.0f - std::exp(-1.0f / (0.7f * static_cast<float>(sampleRate)));  // 700ms cut
     }
 
     // Reset UI feedback
@@ -140,12 +140,43 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const float hiCorr  = highCorrect_.load(std::memory_order_relaxed);
     const float maxGain = maxGaindB_.load(std::memory_order_relaxed);
 
-    float correction = target - measuredLUFS;
+    const float freeze  = freezeLevel_.load(std::memory_order_relaxed);
+
+    // ═══ Mode 2 AGC: always aim for target, Correction % = response speed ═══
+    // Low Correct %  → controls boost speed (higher = faster response to quiet parts)
+    // High Correct % → controls cut speed (higher = faster response to loud parts)
+    // Both reach target eventually -- percentage affects how quickly, not how much.
+
+    float correction = target - measuredLUFS;  // full correction to reach target
     float gaindB;
-    if (correction > 0.0f)
-        gaindB = correction * lowCorr;   // boosting (quieter than target)
-    else
-        gaindB = correction * hiCorr;    // cutting (louder than target)
+
+    if (correction > 0.0f) {
+        // Boosting (quiet) -- Linear Low (Mode 2) + Freeze Gate
+        // Use per-block RMS (instant) instead of 3s LUFS (slow) for freeze decision.
+        // This reacts to breaths/keyboard sounds within one block (~2.7ms).
+        float blockRMS = 0.0f;
+        for (int ch = 0; ch < numChannels; ++ch)
+            for (int i = 0; i < numSamples; ++i) {
+                float s = buffer.getSample(ch, i);
+                blockRMS += s * s;
+            }
+        blockRMS = (numSamples * numChannels > 0)
+            ? std::sqrt(blockRMS / static_cast<float>(numSamples * numChannels))
+            : 0.0f;
+        float blockdBFS = (blockRMS > 1.0e-7f)
+            ? 20.0f * std::log10(blockRMS)
+            : -120.0f;
+
+        if (freeze > -65.0f && blockdBFS < freeze) {
+            // Block level below freeze threshold -- don't boost (silence/noise)
+            gaindB = 0.0f;
+        } else {
+            gaindB = correction;
+        }
+    } else {
+        // Cutting (loud) -- direct correction to bring back to target
+        gaindB = correction;  // full correction (negative = cutting)
+    }
 
     gaindB = juce::jlimit(-maxGain, maxGain, gaindB);
 
@@ -156,9 +187,12 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // Per-sample loop with direction-dependent coefficient selection.
     float gain = currentGainLinear_;
 
-    // Per-sample smoothing across the block
+    // Per-sample smoothing — Correction % scales the speed
+    // Higher % = faster convergence to target, Lower % = slower, more gentle
     for (int i = 0; i < numSamples; ++i) {
-        const float c = (targetGainLinear > gain) ? attackCoeff_ : releaseCoeff_;
+        float baseCoeff = (targetGainLinear > gain) ? attackCoeff_ : releaseCoeff_;
+        float speedScale = (targetGainLinear > gain) ? lowCorr : hiCorr;
+        float c = baseCoeff * speedScale;
         gain += c * (targetGainLinear - gain);
     }
 
@@ -265,6 +299,11 @@ void BuiltinAutoGain::setMaxGaindB(float dB)
     maxGaindB_.store(juce::jlimit(0.0f, 40.0f, dB), std::memory_order_relaxed);
 }
 
+void BuiltinAutoGain::setFreezeLevel(float lufs)
+{
+    freezeLevel_.store(juce::jlimit(-60.0f, 0.0f, lufs), std::memory_order_relaxed);
+}
+
 // ─── State persistence (JSON) ──────────────────────────────────
 
 void BuiltinAutoGain::getStateInformation(juce::MemoryBlock& destData)
@@ -274,6 +313,7 @@ void BuiltinAutoGain::getStateInformation(juce::MemoryBlock& destData)
     obj->setProperty("lowCorrect", static_cast<double>(getLowCorrect()));
     obj->setProperty("highCorrect", static_cast<double>(getHighCorrect()));
     obj->setProperty("maxGaindB", static_cast<double>(getMaxGaindB()));
+    obj->setProperty("freezeLevel", static_cast<double>(getFreezeLevel()));
 
     auto json = juce::JSON::toString(juce::var(obj.release()));
     destData.replaceWith(json.toRawUTF8(), json.getNumBytesAsUTF8());
@@ -292,6 +332,8 @@ void BuiltinAutoGain::setStateInformation(const void* data, int sizeInBytes)
             setHighCorrect(static_cast<float>(static_cast<double>(obj->getProperty("highCorrect"))));
         if (obj->hasProperty("maxGaindB"))
             setMaxGaindB(static_cast<float>(static_cast<double>(obj->getProperty("maxGaindB"))));
+        if (obj->hasProperty("freezeLevel"))
+            setFreezeLevel(static_cast<float>(static_cast<double>(obj->getProperty("freezeLevel"))));
     }
 }
 

@@ -57,53 +57,6 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorVolumeSlider_.onValueChange = [this] { onMonitorVolumeChanged(); };
     addAndMakeVisible(monitorVolumeSlider_);
 
-    outputVolumeLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(outputVolumeLabel_);
-
-    outputVolumeSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
-    outputVolumeSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
-    outputVolumeSlider_.setRange(0.0, 100.0, 1.0);
-    outputVolumeSlider_.setValue(100.0, juce::dontSendNotification);
-    outputVolumeSlider_.setTextValueSuffix(" %");
-    outputVolumeSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(kAccentColour));
-    outputVolumeSlider_.setColour(juce::Slider::trackColourId, juce::Colour(kAccentColour).withAlpha(0.4f));
-    outputVolumeSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(kSurfaceColour).brighter(0.1f));
-    outputVolumeSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(kTextColour));
-    outputVolumeSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    outputVolumeSlider_.onValueChange = [this] { onOutputVolumeChanged(); };
-    addAndMakeVisible(outputVolumeSlider_);
-
-    // ── Safety Limiter section ──
-    limiterHeaderLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
-    limiterHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(limiterHeaderLabel_);
-
-    limiterEnableBtn_.setToggleState(engine_.getSafetyLimiter().isEnabled(), juce::dontSendNotification);
-    limiterEnableBtn_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
-    limiterEnableBtn_.setColour(juce::ToggleButton::tickColourId, juce::Colour(0xFFFF6B6B));
-    limiterEnableBtn_.onClick = [this] { onLimiterEnableChanged(); };
-    addAndMakeVisible(limiterEnableBtn_);
-
-    limiterCeilingLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
-    addAndMakeVisible(limiterCeilingLabel_);
-
-    limiterCeilingSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
-    limiterCeilingSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 55, 20);
-    limiterCeilingSlider_.setRange(-6.0, 0.0, 0.1);
-    limiterCeilingSlider_.setValue(static_cast<double>(engine_.getSafetyLimiter().getCeilingdB()), juce::dontSendNotification);
-    limiterCeilingSlider_.setTextValueSuffix(" dBFS");
-    limiterCeilingSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(0xFFFF6B6B));
-    limiterCeilingSlider_.setColour(juce::Slider::trackColourId, juce::Colour(0xFFFF6B6B).withAlpha(0.4f));
-    limiterCeilingSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(kSurfaceColour).brighter(0.1f));
-    limiterCeilingSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(kTextColour));
-    limiterCeilingSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    limiterCeilingSlider_.onValueChange = [this] { onLimiterCeilingChanged(); };
-    addAndMakeVisible(limiterCeilingSlider_);
-
-    limiterGRLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF6B6B));
-    limiterGRLabel_.setFont(juce::Font(11.0f));
-    addAndMakeVisible(limiterGRLabel_);
-
     monitorBufferLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
     addAndMakeVisible(monitorBufferLabel_);
 
@@ -212,9 +165,6 @@ OutputPanel::OutputPanel(AudioEngine& engine)
     monitorVolumeSlider_.setValue(
         static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0,
         juce::dontSendNotification);
-    outputVolumeSlider_.setValue(
-        static_cast<double>(router.getVolume(OutputRouter::Output::Main)) * 100.0,
-        juce::dontSendNotification);
     monitorEnableButton_.setToggleState(
         router.isEnabled(OutputRouter::Output::Monitor),
         juce::dontSendNotification);
@@ -246,9 +196,6 @@ void OutputPanel::paint(juce::Graphics& g)
     if (separatorY2_ > 0)
         g.drawHorizontalLine(separatorY2_, static_cast<float>(bounds.getX()),
                              static_cast<float>(bounds.getRight()));
-    if (separatorY3_ > 0)
-        g.drawHorizontalLine(separatorY3_, static_cast<float>(bounds.getX()),
-                             static_cast<float>(bounds.getRight()));
 }
 
 void OutputPanel::resized()
@@ -274,10 +221,6 @@ void OutputPanel::resized()
     monitorVolumeSlider_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
     y += rowH + gap;
 
-    outputVolumeLabel_.setBounds(x, y, labelW, rowH);
-    outputVolumeSlider_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
-    y += rowH + gap;
-
     monitorBufferLabel_.setBounds(x, y, labelW, rowH);
     monitorBufferCombo_.setBounds(x + labelW + gap, y, w - labelW - gap, rowH);
     y += rowH + 2;
@@ -293,18 +236,6 @@ void OutputPanel::resized()
 
     separatorY1_ = y - 4;
 
-    // ── Safety Limiter ──
-    limiterHeaderLabel_.setBounds(x, y, w, rowH);
-    y += rowH;
-    limiterEnableBtn_.setBounds(x, y, 80, rowH);
-    limiterCeilingLabel_.setBounds(x + 85, y, 50, rowH);
-    limiterCeilingSlider_.setBounds(x + 135, y, w - 135, rowH);
-    y += rowH + gap;
-    limiterGRLabel_.setBounds(x, y, w, rowH);
-    y += rowH + gap;
-
-    separatorY2_ = y - 4;
-
     // ── VST Receiver ──
     ipcHeaderLabel_.setBounds(x, y, w, rowH);
     y += rowH + gap;
@@ -315,7 +246,7 @@ void OutputPanel::resized()
     ipcInfoLabel_.setBounds(x, y, w, 18);
     y += 24;
 
-    separatorY3_ = y - 4;
+    separatorY2_ = y - 4;
 
     // ── Recording ──
     recordingTitleLabel_.setBounds(x, y, w, rowH);
@@ -351,27 +282,6 @@ void OutputPanel::timerCallback()
     double actualVol = static_cast<double>(router.getVolume(OutputRouter::Output::Monitor)) * 100.0;
     if (std::abs(monitorVolumeSlider_.getValue() - actualVol) > 0.5)
         monitorVolumeSlider_.setValue(actualVol, juce::dontSendNotification);
-
-    double actualOutVol = static_cast<double>(router.getVolume(OutputRouter::Output::Main)) * 100.0;
-    if (std::abs(outputVolumeSlider_.getValue() - actualOutVol) > 0.5)
-        outputVolumeSlider_.setValue(actualOutVol, juce::dontSendNotification);
-
-    // Safety Limiter GR display + sync
-    {
-        auto& limiter = engine_.getSafetyLimiter();
-        float gr = limiter.getCurrentGainReduction();
-        if (gr < -0.1f)
-            limiterGRLabel_.setText("GR: " + juce::String(gr, 1) + " dB", juce::dontSendNotification);
-        else
-            limiterGRLabel_.setText("", juce::dontSendNotification);
-
-        if (limiterEnableBtn_.getToggleState() != limiter.isEnabled())
-            limiterEnableBtn_.setToggleState(limiter.isEnabled(), juce::dontSendNotification);
-
-        double actualCeiling = static_cast<double>(limiter.getCeilingdB());
-        if (std::abs(limiterCeilingSlider_.getValue() - actualCeiling) > 0.05)
-            limiterCeilingSlider_.setValue(actualCeiling, juce::dontSendNotification);
-    }
 
     // Update monitor latency display (only when Active, using monitor's own SR)
     {
@@ -532,25 +442,6 @@ void OutputPanel::onMonitorVolumeChanged()
 {
     float volume = static_cast<float>(monitorVolumeSlider_.getValue()) / 100.0f;
     engine_.getOutputRouter().setVolume(OutputRouter::Output::Monitor, volume);
-    if (onSettingsChanged) onSettingsChanged();
-}
-
-void OutputPanel::onOutputVolumeChanged()
-{
-    float volume = static_cast<float>(outputVolumeSlider_.getValue()) / 100.0f;
-    engine_.getOutputRouter().setVolume(OutputRouter::Output::Main, volume);
-    if (onSettingsChanged) onSettingsChanged();
-}
-
-void OutputPanel::onLimiterEnableChanged()
-{
-    engine_.getSafetyLimiter().setEnabled(limiterEnableBtn_.getToggleState());
-    if (onSettingsChanged) onSettingsChanged();
-}
-
-void OutputPanel::onLimiterCeilingChanged()
-{
-    engine_.getSafetyLimiter().setCeiling(static_cast<float>(limiterCeilingSlider_.getValue()));
     if (onSettingsChanged) onSettingsChanged();
 }
 

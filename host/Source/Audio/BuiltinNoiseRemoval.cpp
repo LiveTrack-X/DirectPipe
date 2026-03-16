@@ -28,7 +28,7 @@ BuiltinNoiseRemoval::~BuiltinNoiseRemoval()
 
 // ─── AudioProcessor lifecycle ───────────────────────────────────
 
-void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
+void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     hostSampleRate_ = sampleRate;
 
@@ -38,14 +38,20 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int /*samplesPerBlock
 
     // I5: Log when noise removal is inactive due to non-48kHz sample rate
     if (needsResampling_.load(std::memory_order_relaxed)) {
-        juce::Logger::writeToLog("[AUDIO] BuiltinNoiseRemoval: sample rate "
-            + juce::String(sampleRate) + "Hz -- noise removal inactive (requires 48kHz, resampling TODO)");
+        juce::Logger::writeToLog("WRN [AUDIO] BuiltinNoiseRemoval: sample rate "
+            + juce::String(sampleRate) + "Hz -- noise removal INACTIVE (requires 48kHz)");
     }
 
     // Create RNNoise denoise states
     destroyRNNoise();
     rnnL_ = rnnoise_create(nullptr);
     rnnR_ = rnnoise_create(nullptr);
+
+    juce::Logger::writeToLog("[AUDIO] BuiltinNoiseRemoval: prepareToPlay SR="
+        + juce::String(sampleRate) + " BS=" + juce::String(samplesPerBlock)
+        + " rnnL=" + juce::String(rnnL_ != nullptr ? "OK" : "NULL")
+        + " rnnR=" + juce::String(rnnR_ != nullptr ? "OK" : "NULL")
+        + " needsResampling=" + juce::String(needsResampling_.load() ? "YES" : "NO"));
 
     // Allocate FIFO buffers (pre-allocated, zero-filled)
     inputFifoL_.assign(kFifoCapacity, 0.0f);
@@ -61,9 +67,19 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int /*samplesPerBlock
     outputFifoReadR_  = 0;
     outputFifoWriteR_ = 0;
 
-    // Reset VAD gate gains
-    gateGainL_ = 1.0f;
-    gateGainR_ = 1.0f;
+    // Start with gate CLOSED -- prevents initial noise burst before RNNoise stabilizes
+    gateGainL_ = 0.0f;
+    gateGainR_ = 0.0f;
+
+    // Warm up RNNoise with silent frames so it learns the noise floor faster
+    {
+        float silent[kRNNFrameSize] = {};
+        float dummy[kRNNFrameSize];
+        for (int i = 0; i < 5; ++i) {  // 5 frames = ~50ms warmup
+            if (rnnL_) rnnoise_process_frame(rnnL_, dummy, silent);
+            if (rnnR_) rnnoise_process_frame(rnnR_, dummy, silent);
+        }
+    }
 
     // I2: Use base class setLatencySamples for proper AudioProcessor latency reporting
     setLatencySamples(kRNNFrameSize);  // 480 samples FIFO delay
@@ -118,81 +134,43 @@ void BuiltinNoiseRemoval::processChannel(
     float& gateGain)
 {
     const float threshold = vadThreshold_.load(std::memory_order_relaxed);
-
-    // Smoothing coefficient for ~5 ms gate transition at 48 kHz.
-    // At 48 kHz, 5 ms = 240 samples.  Per-sample exponential:
-    //   coeff = exp(-1 / 240) ~ 0.9958
-    // We apply this per-sample inside the 480-sample frame loop.
     constexpr float kGateSmooth = 0.9958f;
+    constexpr float kScale = 32767.0f;
+    constexpr float kInvScale = 1.0f / 32767.0f;
 
-    int samplesRead = 0;   // how many output samples we have written so far
-    int samplesIn   = 0;   // how many input samples we have consumed so far
+    // ══ PASS 1: Copy ALL input into inputFifo, process frames as they complete ══
+    // CRITICAL: in and out may alias (JUCE in-place). Read all input first.
+    for (int i = 0; i < numSamples; ++i) {
+        inputFifo[static_cast<size_t>(inputFifoWrite)] = in[i];
+        ++inputFifoWrite;
 
-    while (samplesRead < numSamples) {
-        // 1. Feed input samples into the input FIFO
-        while (samplesIn < numSamples && inputFifoWrite < kRNNFrameSize) {
-            inputFifo[static_cast<size_t>(inputFifoWrite)] = in[samplesIn];
-            ++inputFifoWrite;
-            ++samplesIn;
-        }
-
-        // 2. If we have a full RNNoise frame, process it
         if (inputFifoWrite >= kRNNFrameSize) {
-            // C1: Bounds check -- prevent output FIFO overflow for large buffer sizes
-            if (outputFifoWrite + kRNNFrameSize > kFifoCapacity) {
-                // Zero remaining output samples to prevent unprocessed input leaking through
-                while (samplesRead < numSamples) {
-                    out[samplesRead] = 0.0f;
-                    ++samplesRead;
-                }
-                break;
-            }
-
-            // C2: Use stack-allocated scratch buffers (480 * 4 = 1920 bytes each -- safe)
             float rnnIn[kRNNFrameSize];
             float rnnOut[kRNNFrameSize];
 
-            // Copy from FIFO to scratch input (RNNoise may read/write in place)
-            for (int i = 0; i < kRNNFrameSize; ++i)
-                rnnIn[i] = inputFifo[static_cast<size_t>(i)];
+            for (int j = 0; j < kRNNFrameSize; ++j)
+                rnnIn[j] = inputFifo[static_cast<size_t>(j)] * kScale;
 
-            // Process through RNNoise -- returns VAD probability [0..1]
             float vad = rnnoise_process_frame(rnn, rnnOut, rnnIn);
 
-            // VAD-based noise gating with smooth transition
             float targetGate = (vad >= threshold) ? 1.0f : 0.0f;
-            for (int i = 0; i < kRNNFrameSize; ++i) {
+            for (int j = 0; j < kRNNFrameSize; ++j) {
                 gateGain = kGateSmooth * gateGain + (1.0f - kGateSmooth) * targetGate;
-                rnnOut[i] *= gateGain;
+                outputFifo[static_cast<size_t>(outputFifoWrite % kFifoCapacity)] = rnnOut[j] * kInvScale * gateGain;
+                ++outputFifoWrite;
             }
 
-            // Store processed frame into output FIFO
-            for (int i = 0; i < kRNNFrameSize; ++i)
-                outputFifo[static_cast<size_t>(outputFifoWrite + i)] = rnnOut[i];
-            outputFifoWrite += kRNNFrameSize;
-
-            // Reset input FIFO for next frame
             inputFifoWrite = 0;
         }
+    }
 
-        // 3. Drain output FIFO into the host output buffer
-        while (samplesRead < numSamples && outputFifoRead < outputFifoWrite) {
-            out[samplesRead] = outputFifo[static_cast<size_t>(outputFifoRead)];
+    // ══ PASS 2: Write output from ring buffer ══
+    for (int i = 0; i < numSamples; ++i) {
+        if (outputFifoRead < outputFifoWrite) {
+            out[i] = outputFifo[static_cast<size_t>(outputFifoRead % kFifoCapacity)];
             ++outputFifoRead;
-            ++samplesRead;
-        }
-
-        // If output FIFO is fully drained, reset positions
-        if (outputFifoRead >= outputFifoWrite) {
-            outputFifoRead  = 0;
-            outputFifoWrite = 0;
-        }
-
-        // If we have consumed all input but still need more output samples
-        // (initial latency period), output silence
-        if (samplesIn >= numSamples && samplesRead < numSamples) {
-            out[samplesRead] = 0.0f;
-            ++samplesRead;
+        } else {
+            out[i] = 0.0f;  // latency fill period
         }
     }
 }
@@ -206,9 +184,9 @@ void BuiltinNoiseRemoval::setStrength(int strength)
 
     float threshold;
     switch (strength) {
-        case 0:  threshold = 0.35f; break;  // Light
-        case 2:  threshold = 0.85f; break;  // Aggressive
-        default: threshold = 0.60f; break;  // Standard
+        case 0:  threshold = 0.50f; break;  // Light (was 0.35)
+        case 2:  threshold = 0.90f; break;  // Aggressive (was 0.85)
+        default: threshold = 0.70f; break;  // Standard (was 0.60)
     }
     vadThreshold_.store(threshold, std::memory_order_relaxed);
 }

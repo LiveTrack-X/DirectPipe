@@ -35,6 +35,14 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    // Accept mono or stereo (DirectPipe can run in either mode)
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override {
+        auto in = layouts.getMainInputChannelSet();
+        auto out = layouts.getMainOutputChannelSet();
+        if (in != out) return false;
+        return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
+    }
+
     // Required stubs
     double getTailLengthSeconds() const override { return 0.0; }
     bool acceptsMidi() const override { return false; }

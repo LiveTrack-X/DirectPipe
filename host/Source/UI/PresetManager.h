@@ -84,7 +84,7 @@ public:
 
     // ─── Quick Preset Slots (A..E) ───
 
-    static constexpr int kNumSlots = 5;
+    static constexpr int kNumSlots = 6;  // A-E (0-4) + Auto (5)
 
     /**
      * @brief Save current state to a quick slot (chain only).
@@ -143,9 +143,12 @@ public:
     void setActiveSlot(int slotIndex) { activeSlot_ = slotIndex; }
 
     /**
-     * @brief Get slot label character ('A'..'E').
+     * @brief Get slot label character ('A'..'E', '*' for Auto slot 5).
      */
-    static char slotLabel(int slotIndex) { return 'A' + static_cast<char>(slotIndex); }
+    static char slotLabel(int slotIndex) {
+        if (slotIndex == 5) return '*';  // Auto slot
+        return 'A' + static_cast<char>(slotIndex);
+    }
 
     /**
      * @brief Get user-defined slot name (empty if not set).

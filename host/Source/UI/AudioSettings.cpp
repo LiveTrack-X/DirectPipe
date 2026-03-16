@@ -111,6 +111,21 @@ AudioSettings::AudioSettings(AudioEngine& engine)
     addAndMakeVisible(channelModeDescLabel_);
     updateChannelModeDescription();
 
+    // ── Output Volume ──
+    styleLabel(outputVolumeLabel_);
+    outputVolumeSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
+    outputVolumeSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
+    outputVolumeSlider_.setRange(0.0, 100.0, 1.0);
+    outputVolumeSlider_.setValue(100.0, juce::dontSendNotification);
+    outputVolumeSlider_.setTextValueSuffix(" %");
+    outputVolumeSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(kAccentColour));
+    outputVolumeSlider_.setColour(juce::Slider::trackColourId, juce::Colour(kAccentColour).withAlpha(0.4f));
+    outputVolumeSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(kSurfaceColour).brighter(0.1f));
+    outputVolumeSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(kTextColour));
+    outputVolumeSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    outputVolumeSlider_.onValueChange = [this] { onOutputVolumeChanged(); };
+    addAndMakeVisible(outputVolumeSlider_);
+
     // ── Latency display ──
     latencyTitleLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
     latencyTitleLabel_.setFont(juce::Font(13.0f));
@@ -237,6 +252,12 @@ void AudioSettings::resized()
                                     bounds.getWidth() - labelW - gap, 18);
     y += 22;
 
+    // Output Volume
+    outputVolumeLabel_.setBounds(bounds.getX(), y, labelW, rowH);
+    outputVolumeSlider_.setBounds(bounds.getX() + labelW + gap, y,
+                                  bounds.getWidth() - labelW - gap, rowH);
+    y += rowH + gap;
+
     // Latency display
     latencyTitleLabel_.setBounds(bounds.getX(), y, labelW, rowH);
     latencyValueLabel_.setBounds(bounds.getX() + labelW + gap, y,
@@ -279,6 +300,11 @@ void AudioSettings::refreshFromEngine()
     updateChannelModeDescription();
     updateLatencyDisplay();
 
+    // Output volume sync
+    outputVolumeSlider_.setValue(
+        static_cast<double>(engine_.getOutputRouter().getVolume(OutputRouter::Output::Main)) * 100.0,
+        juce::dontSendNotification);
+
     // Update ASIO-specific visibility
     bool asio = isAsioMode();
     asioControlBtn_.setVisible(asio);
@@ -298,6 +324,11 @@ void AudioSettings::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
     rebuildSampleRateList();
     rebuildBufferSizeList();
     updateLatencyDisplay();
+
+    // Sync output volume (may have changed via external control)
+    double actualOutVol = static_cast<double>(engine_.getOutputRouter().getVolume(OutputRouter::Output::Main)) * 100.0;
+    if (std::abs(outputVolumeSlider_.getValue() - actualOutVol) > 0.5)
+        outputVolumeSlider_.setValue(actualOutVol, juce::dontSendNotification);
 }
 
 void AudioSettings::mouseDown(const juce::MouseEvent& event)
@@ -489,6 +520,13 @@ void AudioSettings::onChannelModeChanged()
     engine_.setChannelMode(channels);
     updateChannelModeDescription();
 
+    if (onSettingsChanged) onSettingsChanged();
+}
+
+void AudioSettings::onOutputVolumeChanged()
+{
+    float volume = static_cast<float>(outputVolumeSlider_.getValue()) / 100.0f;
+    engine_.getOutputRouter().setVolume(OutputRouter::Output::Main, volume);
     if (onSettingsChanged) onSettingsChanged();
 }
 

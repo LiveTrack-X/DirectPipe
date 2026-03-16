@@ -111,7 +111,7 @@ public:
      */
     void joinPreloadThread();
 
-    static constexpr int kNumSlots = 5;
+    static constexpr int kNumSlots = 6;  // A-E (0-4) + Auto (5)
 
 private:
     // ═══════════════════════════════════════════════════════════════════

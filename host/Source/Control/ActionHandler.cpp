@@ -285,10 +285,15 @@ void ActionHandler::handle(const ActionEvent& event)
         }
 
         case Action::AutoProcessorsAdd: {
-            auto r = engine_.getVSTChain().addAutoProcessors();
-            if (!r)
-                juce::Logger::writeToLog("[ACTION] Auto processors failed: " + r.message);
-            if (onDirty) onDirty();
+            if (onAutoPresetSwitch) {
+                onAutoPresetSwitch();
+            } else {
+                // Fallback: legacy behavior (should not happen if callback is wired)
+                auto r = engine_.getVSTChain().addAutoProcessors();
+                if (!r)
+                    juce::Logger::writeToLog("[ACTION] Auto processors failed: " + r.message);
+                if (onDirty) onDirty();
+            }
             break;
         }
 

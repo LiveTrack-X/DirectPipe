@@ -38,24 +38,14 @@ PresetSlotBar::PresetSlotBar(PresetManager& presetManager, AudioEngine& engine,
       partialLoad_(partialLoad)
 {
     for (int i = 0; i < kNumPresetSlots; ++i) {
-        juce::String label;
-        if (i == kAutoSlotIndex)
-            label = "Auto";
-        else
-            label = presetManager_.getSlotDisplayName(i);
+        juce::String label = presetManager_.getSlotDisplayName(i);
 
         slotButtons_[static_cast<size_t>(i)] = std::make_unique<juce::TextButton>(label);
         auto* btn = slotButtons_[static_cast<size_t>(i)].get();
         btn->setClickingTogglesState(false);
 
-        if (i == kAutoSlotIndex) {
-            // Auto slot: distinct green-tinted color
-            btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A4035));
-            btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF4CAF50));
-        } else {
-            btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A2A40));
-            btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF7B6FFF));
-        }
+        btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A2A40));
+        btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF7B6FFF));
         btn->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
         btn->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
         btn->onClick = [this, i] { onSlotClicked(i); };
@@ -108,12 +98,10 @@ void PresetSlotBar::handlePresetAction(const ActionEvent& event)
 
         case Action::NextPreset:
         case Action::PreviousPreset: {
-            // Cycle only through slots 0-4 (A-E), skip Auto slot
-            constexpr int kCycleCount = kAutoSlotIndex;  // 0..4
             int currentSlot = presetManager_.getActiveSlot();
             int direction = (event.action == Action::NextPreset) ? 1 : -1;
-            int start = (currentSlot < 0 || currentSlot >= kCycleCount) ? 0 : currentSlot;
-            int nextSlot = (start + direction + kCycleCount) % kCycleCount;
+            int start = (currentSlot < 0 || currentSlot >= kNumPresetSlots) ? 0 : currentSlot;
+            int nextSlot = (start + direction + kNumPresetSlots) % kNumPresetSlots;
             if (loadingSlot_) {
                 pendingSlot_ = nextSlot;
             } else {
@@ -144,58 +132,40 @@ void PresetSlotBar::mouseDown(const juce::MouseEvent& event)
     }
     if (sourceSlot < 0) return;
 
-    bool isAuto = (sourceSlot == kAutoSlotIndex);
-    bool occupied = isAuto || presetManager_.isSlotOccupied(sourceSlot);
-    auto slotChar = isAuto ? juce::String("Auto") : juce::String::charToString(PresetManager::slotLabel(sourceSlot));
+    bool occupied = presetManager_.isSlotOccupied(sourceSlot);
+    auto slotChar = juce::String::charToString(PresetManager::slotLabel(sourceSlot));
 
     juce::PopupMenu menu;
 
-    // Rename (only for occupied non-Auto slots)
-    if (occupied && !isAuto)
+    // Rename (only for occupied slots)
+    if (occupied)
         menu.addItem(200, "Rename " + slotChar + "...");
 
-    // Reset Auto slot
-    if (isAuto)
-        menu.addItem(400, "Reset Auto");
-
-    // Copy/Export/Import/Delete only for regular slots (0-4), not Auto
-    if (!isAuto) {
-        // Copy submenu (occupied only)
-        if (occupied) {
-            juce::PopupMenu copyMenu;
-            for (int i = 0; i < kAutoSlotIndex; ++i) {
-                if (i == sourceSlot) continue;
-                copyMenu.addItem(i + 1, "-> " + juce::String::charToString(PresetManager::slotLabel(i)));
-            }
-            menu.addSubMenu("Copy " + slotChar, copyMenu);
+    // Copy submenu (occupied only)
+    if (occupied) {
+        juce::PopupMenu copyMenu;
+        for (int i = 0; i < kNumPresetSlots; ++i) {
+            if (i == sourceSlot) continue;
+            copyMenu.addItem(i + 1, "-> " + juce::String::charToString(PresetManager::slotLabel(i)));
         }
+        menu.addSubMenu("Copy " + slotChar, copyMenu);
+    }
 
-        // Export/Import
-        if (occupied)
-            menu.addItem(300, "Export " + slotChar + "...");
-        menu.addItem(301, "Import to " + slotChar + "...");
+    // Export/Import
+    if (occupied)
+        menu.addItem(300, "Export " + slotChar + "...");
+    menu.addItem(301, "Import to " + slotChar + "...");
 
-        // Delete (occupied only)
-        if (occupied) {
-            menu.addSeparator();
-            menu.addItem(100, "Delete " + slotChar);
-        }
+    // Delete (occupied only)
+    if (occupied) {
+        menu.addSeparator();
+        menu.addItem(100, "Delete " + slotChar);
     }
 
     auto safeThis = juce::Component::SafePointer<PresetSlotBar>(this);
     menu.showMenuAsync(juce::PopupMenu::Options(),
         [safeThis, sourceSlot, slotChar](int result) {
             if (!safeThis || result == 0) return;
-
-            if (result == 400) {
-                // Reset Auto slot
-                safeThis->resetAutoSlot();
-                safeThis->updateSlotButtonStates();
-                if (safeThis->onNotification)
-                    safeThis->onNotification("Auto slot reset", NotificationLevel::Info);
-                if (safeThis->onSettingsDirty) safeThis->onSettingsDirty();
-                return;
-            }
 
             if (result == 200) {
                 // Rename
@@ -301,15 +271,46 @@ void PresetSlotBar::mouseDown(const juce::MouseEvent& event)
         });
 }
 
+// ─── Auto Slot Support ───────────────────────────────────────────────────────
+
+void PresetSlotBar::deselectAllSlots()
+{
+    for (int i = 0; i < kNumPresetSlots; ++i) {
+        auto* btn = slotButtons_[static_cast<size_t>(i)].get();
+        btn->setToggleState(false, juce::dontSendNotification);
+        btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A2A40));
+        btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF2A2A40));
+    }
+}
+
+void PresetSlotBar::setActiveSlot(int slotIndex)
+{
+    if (slotIndex == kAutoSlotIndex || slotIndex < 0 || slotIndex >= kNumPresetSlots) {
+        // Auto slot or invalid → deselect all A-E buttons
+        deselectAllSlots();
+    } else {
+        // Normal A-E slot → highlight the active one
+        for (int i = 0; i < kNumPresetSlots; ++i) {
+            auto* btn = slotButtons_[static_cast<size_t>(i)].get();
+            bool isTarget = (i == slotIndex);
+            btn->setToggleState(isTarget, juce::dontSendNotification);
+            btn->setColour(juce::TextButton::buttonColourId,
+                           juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
+            btn->setColour(juce::TextButton::buttonOnColourId,
+                           juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
+        }
+    }
+}
+
 // ─── Slot Click ──────────────────────────────────────────────────────────────
 
 void PresetSlotBar::onSlotClicked(int slotIndex)
 {
     if (loadingSlot_) return;
 
-    // Same slot click = just save current state (except Auto slot)
+    // Same slot click = just save current state
     if (presetManager_.getActiveSlot() == slotIndex) {
-        if (slotIndex != kAutoSlotIndex && !partialLoad_.load())
+        if (!partialLoad_.load())
             presetManager_.saveSlot(slotIndex);
         updateSlotButtonStates();
         return;
@@ -317,21 +318,13 @@ void PresetSlotBar::onSlotClicked(int slotIndex)
 
     // Save current slot first (captures plugin internal state)
     // Skip save if previous load was partial (preserve original slot file)
-    // Skip save for Auto slot (it has no persistent file)
     int currentSlot = presetManager_.getActiveSlot();
-    if (currentSlot >= 0 && currentSlot != kAutoSlotIndex && !partialLoad_.load())
+    if (currentSlot >= 0 && !partialLoad_.load())
         presetManager_.saveSlot(currentSlot);
     partialLoad_ = false;
 
-    // Auto slot: clear chain and add auto processors
-    if (slotIndex == kAutoSlotIndex) {
-        resetAutoSlot();
-        presetManager_.setActiveSlot(kAutoSlotIndex);
-        if (onRefreshUI) onRefreshUI();
-        if (onSettingsDirty) onSettingsDirty();
-    }
-    // Slot has data → async load
-    else if (presetManager_.isSlotOccupied(slotIndex)) {
+    // Slot has data -> async load
+    if (presetManager_.isSlotOccupied(slotIndex)) {
         loadingSlot_ = true;
         setSlotButtonsEnabled(false);
         chainEditor_.showLoadingState();
@@ -367,20 +360,12 @@ void PresetSlotBar::onSlotClicked(int slotIndex)
     for (int i = 0; i < kNumPresetSlots; ++i) {
         auto* btn = slotButtons_[static_cast<size_t>(i)].get();
         bool isTarget = (i == slotIndex);
-        bool isAutoBtn = (i == kAutoSlotIndex);
         btn->setToggleState(isTarget, juce::dontSendNotification);
 
-        if (isAutoBtn) {
-            btn->setColour(juce::TextButton::buttonColourId,
-                           juce::Colour(isTarget ? 0xFF4CAF50 : 0xFF2A4035));
-            btn->setColour(juce::TextButton::buttonOnColourId,
-                           juce::Colour(isTarget ? 0xFF4CAF50 : 0xFF2A4035));
-        } else {
-            btn->setColour(juce::TextButton::buttonColourId,
-                           juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
-            btn->setColour(juce::TextButton::buttonOnColourId,
-                           juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
-        }
+        btn->setColour(juce::TextButton::buttonColourId,
+                       juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
+        btn->setColour(juce::TextButton::buttonOnColourId,
+                       juce::Colour(isTarget ? 0xFF7B6FFF : 0xFF2A2A40));
     }
 }
 
@@ -392,21 +377,11 @@ void PresetSlotBar::updateSlotButtonStates()
     for (int i = 0; i < kNumPresetSlots; ++i) {
         auto* btn = slotButtons_[static_cast<size_t>(i)].get();
         bool isActive = (i == active);
-        bool isAutoBtn = (i == kAutoSlotIndex);
 
-        if (isAutoBtn)
-            btn->setButtonText("Auto");
-        else
-            btn->setButtonText(presetManager_.getSlotDisplayName(i));
-
+        btn->setButtonText(presetManager_.getSlotDisplayName(i));
         btn->setToggleState(isActive, juce::dontSendNotification);
 
-        if (isAutoBtn) {
-            btn->setColour(juce::TextButton::buttonColourId,
-                           juce::Colour(isActive ? 0xFF4CAF50 : 0xFF2A4035));
-            btn->setColour(juce::TextButton::buttonOnColourId,
-                           juce::Colour(isActive ? 0xFF4CAF50 : 0xFF2A4035));
-        } else if (isActive) {
+        if (isActive) {
             btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF7B6FFF));
             btn->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFF7B6FFF));
         } else {
@@ -426,19 +401,6 @@ void PresetSlotBar::setSlotButtonsEnabled(bool enabled)
         btn->setEnabled(enabled);
         btn->setAlpha(enabled ? 1.0f : 0.5f);
     }
-}
-
-void PresetSlotBar::resetAutoSlot()
-{
-    loadingSlot_ = true;
-    auto& chain = audioEngine_.getVSTChain();
-    while (chain.getPluginCount() > 0)
-        chain.removePlugin(chain.getPluginCount() - 1);
-    auto result = chain.addAutoProcessors();
-    if (!result)
-        juce::Logger::writeToLog("[PRESET] Auto processors failed: " + result.message);
-    loadingSlot_ = false;
-    chainEditor_.refreshList();
 }
 
 } // namespace directpipe

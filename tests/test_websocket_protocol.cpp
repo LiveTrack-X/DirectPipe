@@ -525,7 +525,7 @@ TEST_F(StateSerializationTest, StateJsonIncludesSlotNames) {
     ASSERT_TRUE(data->hasProperty("slot_names"));
     auto* names = data->getProperty("slot_names").getArray();
     ASSERT_NE(names, nullptr);
-    EXPECT_EQ(names->size(), 5);
+    EXPECT_EQ(names->size(), 6);  // A-E + Auto
 }
 
 TEST_F(StateSerializationTest, StateJsonIncludesRecordingFields) {

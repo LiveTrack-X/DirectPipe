@@ -40,13 +40,6 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
     nameLabel_.setColour(juce::Label::textColourId, juce::Colours::white);
     nameLabel_.setInterceptsMouseClicks(false, false);
 
-    latencyLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
-    latencyLabel_.setFont(juce::Font(10.0f));
-    latencyLabel_.setJustificationType(juce::Justification::centredRight);
-    latencyLabel_.setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(latencyLabel_);
-    latencyLabel_.setVisible(false);
-
     editButton_.onClick = [this] {
         owner_.vstChain_.openPluginEditor(rowIndex_, &owner_);
     };
@@ -98,8 +91,6 @@ void PluginChainEditor::PluginRowComponent::resized()
     bounds.removeFromRight(gap);
     editButton_.setBounds(bounds.removeFromRight(40));
     bounds.removeFromRight(gap);
-    latencyLabel_.setBounds(bounds.removeFromRight(60));
-    bounds.removeFromRight(gap);
     nameLabel_.setBounds(bounds);
 }
 
@@ -121,16 +112,6 @@ void PluginChainEditor::PluginRowComponent::update(int newRowIndex)
             displayName += " (Built-in)";
         nameLabel_.setText(displayName, juce::dontSendNotification);
         bypassButton_.setToggleState(slot->bypassed, juce::dontSendNotification);
-    }
-}
-
-void PluginChainEditor::PluginRowComponent::updateLatency(int samples)
-{
-    if (samples > 0) {
-        latencyLabel_.setText(juce::String(samples) + "smp", juce::dontSendNotification);
-        latencyLabel_.setVisible(true);
-    } else {
-        latencyLabel_.setVisible(false);
     }
 }
 
@@ -197,11 +178,22 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     };
     addAndMakeVisible(limiterButton_);
 
-    chainPDCLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFFAA33));
-    chainPDCLabel_.setFont(juce::Font(11.0f));
-    chainPDCLabel_.setJustificationType(juce::Justification::centredLeft);
-    addAndMakeVisible(chainPDCLabel_);
-    chainPDCLabel_.setVisible(false);
+    // Limiter ceiling slider — next to toggle
+    limiterCeilingSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
+    limiterCeilingSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 55, 20);
+    limiterCeilingSlider_.setRange(-6.0, 0.0, 0.1);
+    limiterCeilingSlider_.setValue(-0.3, juce::dontSendNotification);
+    limiterCeilingSlider_.setTextValueSuffix(" dBFS");
+    limiterCeilingSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(0xFFFF6B6B));
+    limiterCeilingSlider_.setColour(juce::Slider::trackColourId, juce::Colour(0xFFFF6B6B).withAlpha(0.4f));
+    limiterCeilingSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(0xFF2A2A40).brighter(0.1f));
+    limiterCeilingSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xFFE0E0E0));
+    limiterCeilingSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    limiterCeilingSlider_.onValueChange = [this] {
+        if (onLimiterCeilingChanged)
+            onLimiterCeilingChanged(static_cast<float>(limiterCeilingSlider_.getValue()));
+    };
+    addAndMakeVisible(limiterCeilingSlider_);
 
     addAndMakeVisible(addButton_);
     addAndMakeVisible(scanButton_);
@@ -249,6 +241,12 @@ void PluginChainEditor::setLimiterState(bool enabled)
         limiterButton_.setToggleState(enabled, juce::dontSendNotification);
 }
 
+void PluginChainEditor::setLimiterCeiling(float dB)
+{
+    if (std::abs(static_cast<float>(limiterCeilingSlider_.getValue()) - dB) > 0.05f)
+        limiterCeilingSlider_.setValue(static_cast<double>(dB), juce::dontSendNotification);
+}
+
 void PluginChainEditor::hideLoadingState()
 {
     loading_ = false;
@@ -263,12 +261,13 @@ void PluginChainEditor::resized()
 {
     auto bounds = getLocalBounds();
 
-    // Bottom bar: limiter toggle + PDC label + action buttons
+    // Bottom bar: limiter toggle + ceiling slider + action buttons
     auto buttonBar = bounds.removeFromBottom(30);
     auto limiterBar = bounds.removeFromBottom(26);
-    auto pdcBar = bounds.removeFromBottom(20);
-    chainPDCLabel_.setBounds(pdcBar);
-    limiterButton_.setBounds(limiterBar);
+    int toggleW = 120;
+    limiterButton_.setBounds(limiterBar.getX(), limiterBar.getY(), toggleW, limiterBar.getHeight());
+    limiterCeilingSlider_.setBounds(limiterBar.getX() + toggleW, limiterBar.getY(),
+                                    limiterBar.getWidth() - toggleW, limiterBar.getHeight());
 
     int gap = 4;
     int btnW = (buttonBar.getWidth() - gap * 2) / 3;
@@ -311,11 +310,6 @@ juce::Component* PluginChainEditor::refreshComponentForRow(
         delete existingComponentToUpdate;
         row = new PluginRowComponent(*this, rowNumber);
     }
-
-    if (rowNumber < static_cast<int>(perPluginLatencies_.size()))
-        row->updateLatency(perPluginLatencies_[static_cast<size_t>(rowNumber)]);
-    else
-        row->updateLatency(0);
 
     return row;
 }
@@ -472,25 +466,6 @@ void PluginChainEditor::removeSelectedPlugin()
             }
         });
     }
-}
-
-void PluginChainEditor::updateLatencyDisplay(const std::vector<int>& perPluginSamples,
-                                              int totalPDC, double sampleRate)
-{
-    perPluginLatencies_ = perPluginSamples;
-
-    if (totalPDC > 0 && sampleRate > 0.0) {
-        float ms = static_cast<float>(totalPDC) / static_cast<float>(sampleRate) * 1000.0f;
-        chainPDCLabel_.setText(
-            "Chain PDC: " + juce::String(totalPDC) + " samples ("
-            + juce::String(ms, 1) + "ms @ " + juce::String(static_cast<int>(sampleRate)) + "Hz)",
-            juce::dontSendNotification);
-        chainPDCLabel_.setVisible(true);
-    } else {
-        chainPDCLabel_.setVisible(false);
-    }
-
-    pluginList_.repaint();
 }
 
 void PluginChainEditor::refreshList()

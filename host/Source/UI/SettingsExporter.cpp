@@ -160,7 +160,7 @@ juce::String SettingsExporter::exportFullBackup(PresetManager& presetManager,
     if (controlParsed.isObject())
         root->setProperty("controlConfig", controlParsed);
 
-    // Preset slots (A-E)
+    // Preset slots (A-E + Auto)
     auto slots = std::make_unique<juce::DynamicObject>();
     for (int i = 0; i < PresetManager::kNumSlots; ++i) {
         char label = PresetManager::slotLabel(i);

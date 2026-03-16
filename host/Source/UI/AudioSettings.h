@@ -81,6 +81,7 @@ private:
     void onSampleRateChanged();
     void onBufferSizeChanged();
     void onChannelModeChanged();
+    void onOutputVolumeChanged();
 
     // Helpers
     void rebuildDeviceLists();
@@ -127,6 +128,10 @@ private:
     juce::ToggleButton monoButton_{"Mono"};
     juce::ToggleButton stereoButton_{"Stereo"};
     juce::Label channelModeDescLabel_{"", ""};
+
+    // Output volume
+    juce::Label outputVolumeLabel_{"", "Output Vol:"};
+    juce::Slider outputVolumeSlider_;
 
     // Latency display
     juce::Label latencyTitleLabel_{"", "Round-trip Latency:"};

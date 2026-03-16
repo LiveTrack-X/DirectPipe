@@ -190,10 +190,10 @@ bool PresetManager::importFromJSON(const juce::String& json)
     int version = root->getProperty("version");
     if (version < 1) return false;
 
-    // Restore active slot (clamp to valid range, allow Auto slot index = kNumSlots)
+    // Restore active slot (clamp to valid range: -1 to kNumSlots-1, i.e. -1 to 5)
     if (root->hasProperty("activeSlot")) {
         int slot = static_cast<int>(root->getProperty("activeSlot"));
-        activeSlot_ = juce::jlimit(-1, kNumSlots, slot);
+        activeSlot_ = juce::jlimit(-1, kNumSlots - 1, slot);
     }
 
     // Pre-set SR/BS before device type switch so the new driver opens with
@@ -605,6 +605,11 @@ juce::File PresetManager::getSlotFile(int slotIndex)
 {
     auto dir = ControlMappingStore::getConfigDirectory().getChildFile("Slots");
     dir.createDirectory();
+
+    // Auto slot (index 5) uses a special filename
+    if (slotIndex == 5) {
+        return dir.getChildFile("slot_Auto.dppreset");
+    }
 
     auto newFile = dir.getChildFile("slot_" + juce::String::charToString(slotLabel(slotIndex)) + ".dppreset");
 
@@ -1091,6 +1096,8 @@ void PresetManager::setSlotName(int slotIndex, const juce::String& name)
 juce::String PresetManager::getSlotDisplayName(int slotIndex) const
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return {};
+    // Auto slot (index 5) always displays as "Auto"
+    if (slotIndex == 5) return "Auto";
     auto label = juce::String::charToString(slotLabel(slotIndex));
     auto name = slotNames_[static_cast<size_t>(slotIndex)];
     if (name.isEmpty()) return label;

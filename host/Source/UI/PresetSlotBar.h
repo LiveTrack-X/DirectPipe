@@ -58,17 +58,16 @@ public:
     std::function<void()> onRefreshUI;
     std::function<void(const juce::String&, NotificationLevel)> onNotification;
 
-    static constexpr int kNumPresetSlots = 6;
+    static constexpr int kNumPresetSlots = 5;
+
+    /** Auto preset slot index (not a visible button — used by MainComponent's Auto button). */
     static constexpr int kAutoSlotIndex = 5;
 
-    /** @brief Check if a slot index is in the Next/Previous cycling rotation (0-4 only). */
-    bool isInRotation(int idx) const { return idx >= 0 && idx < kAutoSlotIndex; }
+    /** Deselect all A-E buttons (used when Auto slot is active). */
+    void deselectAllSlots();
 
-    /** @brief Check if a slot is renameable (Auto slot is not). */
-    bool isRenameable(int idx) const { return idx >= 0 && idx < kAutoSlotIndex; }
-
-    /** @brief Reset the Auto slot: clear chain and add auto processors. */
-    void resetAutoSlot();
+    /** Update visual state of the active slot, including handling Auto slot (index 5). */
+    void setActiveSlot(int slotIndex);
 
 private:
     static constexpr int kSlotBtnGap = 4;

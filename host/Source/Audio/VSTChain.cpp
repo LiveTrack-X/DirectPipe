@@ -829,10 +829,16 @@ void VSTChain::rebuildGraph(bool suspend)
         auto& slot = chain_[i];
         if (slot.bypassed) continue;  // skip bypassed plugins in connection graph
         for (int ch = 0; ch < 2; ++ch) {
-            graph_->addConnection({
+            bool ok = graph_->addConnection({
                 {prevNodeId, ch},
                 {slot.nodeId, ch}
             }, UK::async);
+            if (!ok) {
+                juce::String msg = "WRN [VST] Connection FAILED: node " + juce::String(prevNodeId.uid)
+                    + " ch" + juce::String(ch) + " -> node " + juce::String(slot.nodeId.uid)
+                    + " ch" + juce::String(ch) + " (\"" + slot.name + "\")";
+                juce::Logger::writeToLog(msg);
+            }
         }
         prevNodeId = slot.nodeId;
     }

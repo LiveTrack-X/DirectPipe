@@ -62,6 +62,9 @@ public:
     std::function<void(bool enabled)> onIpcStateChanged;
     std::function<void(const juce::String&, NotificationLevel)> onNotification;
 
+    /** Trigger Auto preset switch (routed to MainComponent's Auto button handler). */
+    std::function<void()> onAutoPresetSwitch;
+
     /** Get recording folder (from OutputPanel). */
     std::function<juce::File()> getRecordingFolder;
 

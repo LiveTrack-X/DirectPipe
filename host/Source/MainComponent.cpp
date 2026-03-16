@@ -116,13 +116,80 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     addAndMakeVisible(inputGainSlider_);
 
-    // ── Auto Button ──
+    // ── Auto Button (switches to Auto preset slot, index 5) ──
     autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A4035));
     autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     autoProcessorBtn_.onClick = [this] {
-        (void)audioEngine_.getVSTChain().addAutoProcessors();
+        if (loadingSlot_) return;
+
+        int autoIdx = PresetSlotBar::kAutoSlotIndex;
+
+        // Already on Auto slot — just save current state
+        if (presetManager_ && presetManager_->getActiveSlot() == autoIdx) {
+            if (!partialLoad_.load())
+                presetManager_->saveSlot(autoIdx);
+            return;
+        }
+
+        // Save current A-E slot first
+        if (presetManager_) {
+            int currentSlot = presetManager_->getActiveSlot();
+            if (currentSlot >= 0 && !partialLoad_.load())
+                presetManager_->saveSlot(currentSlot);
+        }
+        partialLoad_ = false;
+
+        // If Auto preset file doesn't exist yet, create default (3 built-in processors)
+        auto autoFile = PresetManager::getSlotFile(autoIdx);
+        if (!autoFile.existsAsFile()) {
+            loadingSlot_ = true;
+            // Clear chain and add auto processors
+            auto& chain = audioEngine_.getVSTChain();
+            while (chain.getPluginCount() > 0)
+                chain.removePlugin(chain.getPluginCount() - 1);
+            (void)chain.addAutoProcessors();
+            presetManager_->setActiveSlot(autoIdx);
+            presetManager_->saveSlot(autoIdx);
+            loadingSlot_ = false;
+
+            // Deselect A-E, highlight Auto button
+            if (presetSlotBar_)
+                presetSlotBar_->setActiveSlot(autoIdx);
+            updateAutoButtonVisual();
+            pluginChainEditor_->refreshList();
+            markSettingsDirty();
+        } else {
+            // Load existing Auto preset (same flow as A-E slot switch)
+            loadingSlot_ = true;
+            if (presetSlotBar_) {
+                presetSlotBar_->setSlotButtonsEnabled(false);
+                presetSlotBar_->setActiveSlot(autoIdx);
+            }
+            pluginChainEditor_->showLoadingState();
+            updateAutoButtonVisual();
+
+            auto safeThis = juce::Component::SafePointer<MainComponent>(this);
+            presetManager_->loadSlotAsync(autoIdx,
+                [safeThis](bool ok) {
+                    if (!safeThis) return;
+                    safeThis->loadingSlot_ = false;
+                    safeThis->partialLoad_ = !ok;
+                    if (safeThis->presetSlotBar_)
+                        safeThis->presetSlotBar_->setSlotButtonsEnabled(true);
+                    if (safeThis->pluginChainEditor_)
+                        safeThis->pluginChainEditor_->hideLoadingState();
+                    safeThis->refreshUI();
+                    if (safeThis->presetSlotBar_)
+                        safeThis->presetSlotBar_->updateSlotButtonStates();
+                    safeThis->updateAutoButtonVisual();
+                    if (ok) safeThis->markSettingsDirty();
+                });
+        }
     };
+    // Right-click context menu for Auto button (Reset to defaults)
+    autoProcessorBtn_.setTriggeredOnMouseDown(false);
+    autoProcessorBtn_.addMouseListener(this, false);
     addAndMakeVisible(autoProcessorBtn_);
 
     // ── Output Panel ──
@@ -273,7 +340,12 @@ MainComponent::MainComponent(bool enableExternalControls)
         audioEngine_.getSafetyLimiter().setEnabled(enabled);
         markSettingsDirty();
     };
+    pluginChainEditor_->onLimiterCeilingChanged = [this](float dB) {
+        audioEngine_.getSafetyLimiter().setCeiling(dB);
+        markSettingsDirty();
+    };
     pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
+    pluginChainEditor_->setLimiterCeiling(audioEngine_.getSafetyLimiter().getCeilingdB());
 
     pluginChainEditor_->onChainModified = [this] {
         if (loadingSlot_ || partialLoad_) return;
@@ -373,6 +445,11 @@ MainComponent::MainComponent(bool enableExternalControls)
     actionHandler_->onRecordingStopped = [this](const juce::File& file) {
         if (outputPanelPtr_)
             outputPanelPtr_->setLastRecordedFile(file);
+    };
+    actionHandler_->onAutoPresetSwitch = [this] {
+        // Trigger the Auto button's onClick handler (same behavior for HTTP/WS/MIDI)
+        if (autoProcessorBtn_.onClick)
+            autoProcessorBtn_.onClick();
     };
 
     // ── Settings Autosaver (dirty-flag + debounce + save/load) ──
@@ -488,6 +565,7 @@ MainComponent::MainComponent(bool enableExternalControls)
         presetManager_->setActiveSlot(0);
     }
     presetSlotBar_->updateSlotButtonStates();
+    updateAutoButtonVisual();
 
     // Update checker: set callbacks and start
     updateChecker_.onUpdateAvailable = [safeThis = juce::Component::SafePointer<MainComponent>(this)](
@@ -585,11 +663,12 @@ void MainComponent::resized()
 
     // Input gain row: [Gain:] [slider] [Auto]
     {
-        int autoBtnW = 44;
-        int gap = 4;
+        int autoBtnW = 56;
+        int autoBtnH = 28;
+        int gap = 6;
         inputGainLabel_.setBounds(cx, y, 40, 24);
         inputGainSlider_.setBounds(cx + 44, y, cw - 44 - autoBtnW - gap, 24);
-        autoProcessorBtn_.setBounds(cx + cw - autoBtnW, y, autoBtnW, 24);
+        autoProcessorBtn_.setBounds(cx + cw - autoBtnW, y - 2, autoBtnW, autoBtnH);
     }
     y += 30;
 
@@ -614,8 +693,8 @@ void MainComponent::resized()
     presetSlotBar_->setBounds(cx, y, cw, 26);
     y += 30;
 
-    // Bottom controls: OUT/MON/VST indicators (24px) + gap (4px) + PANIC MUTE (28px) = 56px
-    int bottomControlsH = 24 + 4 + 28;
+    // Bottom controls: OUT/MON/VST indicators (30px) + gap (4px) + PANIC MUTE (32px) = 66px
+    int bottomControlsH = 30 + 4 + 32;
     int bottomY = bounds.getBottom() - kStatusBarHeight - bottomControlsH;
 
     // Plugin chain fills remaining space between preset slots and bottom controls
@@ -627,13 +706,13 @@ void MainComponent::resized()
         int gap = 4;
         int indicatorW = (cw - gap * 2) / 3;
         int lastW = cw - (indicatorW + gap) * 2;
-        outputMuteBtn_.setBounds(cx, bottomY, indicatorW, 24);
-        monitorMuteBtn_.setBounds(cx + indicatorW + gap, bottomY, indicatorW, 24);
-        vstMuteBtn_.setBounds(cx + (indicatorW + gap) * 2, bottomY, lastW, 24);
+        outputMuteBtn_.setBounds(cx, bottomY, indicatorW, 30);
+        monitorMuteBtn_.setBounds(cx + indicatorW + gap, bottomY, indicatorW, 30);
+        vstMuteBtn_.setBounds(cx + (indicatorW + gap) * 2, bottomY, lastW, 30);
     }
 
-    // PANIC MUTE button (below indicators: 24px height + 4px gap)
-    panicMuteBtn_.setBounds(cx, bottomY + 24 + 4, cw, 28);
+    // PANIC MUTE button (below indicators: 30px height + 4px gap)
+    panicMuteBtn_.setBounds(cx, bottomY + 30 + 4, cw, 32);
 
     // ═══ Right Column: Tabbed Panel + Output Meter ═══
     int rx = bounds.getX() + halfW + 10;
@@ -659,6 +738,47 @@ void MainComponent::resized()
     portableLabel_.setBounds(5 + infoW, statusY, 100, 24);
     creditLink_.setBounds(getWidth() - creditW, statusY, creditW - 5, 24);
     notificationBar_.setBounds(0, statusY - 3, getWidth(), kStatusBarHeight);
+}
+
+// ─── Auto button right-click menu ───────────────────────────────────────────
+
+void MainComponent::mouseDown(const juce::MouseEvent& e)
+{
+    // Right-click on Auto button shows context menu
+    if (e.mods.isPopupMenu() && e.eventComponent == &autoProcessorBtn_) {
+        juce::PopupMenu menu;
+        menu.addItem(1, "Reset Auto to Defaults");
+
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&autoProcessorBtn_),
+            [this](int result) {
+                if (result == 1) {
+                    // Reset: clear chain, add default processors, save
+                    auto& chain = audioEngine_.getVSTChain();
+
+                    // Remove all plugins from chain
+                    while (chain.getPluginCount() > 0)
+                        (void)chain.removePlugin(0);
+
+                    // Add default built-in processors
+                    (void)chain.addAutoProcessors();
+
+                    // Save to Auto slot
+                    int autoIdx = PresetSlotBar::kAutoSlotIndex;
+                    if (presetManager_) {
+                        presetManager_->setActiveSlot(autoIdx);
+                        presetManager_->saveSlot(autoIdx);
+                    }
+
+                    if (pluginChainEditor_)
+                        pluginChainEditor_->refreshList();
+                    updateAutoButtonVisual();
+                    markSettingsDirty();
+                }
+            });
+        return;
+    }
+
+    juce::Component::mouseDown(e);
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────────────
@@ -689,22 +809,13 @@ void MainComponent::timerCallback()
     // ── Status bar, mute indicators, level meters, broadcaster ──
     statusUpdater_->tick(presetManager_.get(), PresetManager::kNumSlots);
 
-    // Sync limiter toggle + per-plugin latency in chain editor
+    // Sync Auto button visual (active/inactive)
+    updateAutoButtonVisual();
+
+    // Sync limiter toggle + ceiling in chain editor
     if (pluginChainEditor_) {
         pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
-
-        // Update per-plugin latency display (~2Hz is enough, use frame counter)
-        static int latencyPollCounter = 0;
-        if (++latencyPollCounter >= 15) {  // 30Hz / 15 = 2Hz
-            latencyPollCounter = 0;
-            auto latencies = audioEngine_.getVSTChain().getPluginLatencies();
-            std::vector<int> samples;
-            samples.reserve(latencies.size());
-            for (const auto& l : latencies) samples.push_back(l.latencySamples);
-            int totalPDC = audioEngine_.getVSTChain().getTotalChainPDC();
-            double sr = audioEngine_.getLatencyMonitor().getSampleRate();
-            pluginChainEditor_->updateLatencyDisplay(samples, totalPDC, sr);
-        }
+        pluginChainEditor_->setLimiterCeiling(audioEngine_.getSafetyLimiter().getCeilingdB());
     }
 
     // Update recording state in OutputPanel (Monitor tab)
@@ -751,6 +862,18 @@ void MainComponent::refreshUI()
     // IPC toggle state (Output tab = index 1)
     if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
         outPanel->setIpcToggleState(audioEngine_.isIpcEnabled());
+
+    // Auto button visual state
+    updateAutoButtonVisual();
+}
+
+// ─── Auto Button Visual ───────────────────────────────────────────────────
+
+void MainComponent::updateAutoButtonVisual()
+{
+    bool autoActive = (presetManager_ && presetManager_->getActiveSlot() == PresetSlotBar::kAutoSlotIndex);
+    autoProcessorBtn_.setColour(juce::TextButton::buttonColourId,
+        juce::Colour(autoActive ? 0xFF4CAF50 : 0xFF2A4035));
 }
 
 // ─── Notification ─────────────────────────────────────────────────────────

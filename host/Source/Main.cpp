@@ -410,8 +410,12 @@ private:
                 tooltip += app_.enableExternalControls_ ? " (Portable)" : " (Portable/Audio Only)";
             }
 
-            char slotChar = 'A' + static_cast<char>(juce::jlimit(0, 4, snapshot.activeSlot));
-            tooltip += " [Slot " + juce::String::charToString(slotChar) + "]";
+            if (snapshot.activeSlot == 5)
+                tooltip += " [Auto]";
+            else {
+                char slotChar = 'A' + static_cast<char>(juce::jlimit(0, 4, snapshot.activeSlot));
+                tooltip += " [Slot " + juce::String::charToString(slotChar) + "]";
+            }
             tooltip += " | CPU " + juce::String(snapshot.cpuPercent, 1) + "%";
             tooltip += " | " + juce::String(snapshot.latencyMs, 1) + "ms";
 

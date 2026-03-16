@@ -73,9 +73,12 @@ public:
     /** @brief Get the preset manager (for session logging). */
     PresetManager* getPresetManager() { return presetManager_.get(); }
 
+    void mouseDown(const juce::MouseEvent& e) override;
+
 private:
     void timerCallback() override;
     void markSettingsDirty();
+    void updateAutoButtonVisual();
 
     // Audio engine (core)
     AudioEngine audioEngine_;
@@ -104,7 +107,7 @@ private:
     juce::Slider inputGainSlider_;
     juce::Label inputGainLabel_{"", "Gain:"};
 
-    // Auto button (adds built-in auto processors to chain)
+    // Auto button (switches to Auto preset slot 5 — contains built-in processors)
     juce::TextButton autoProcessorBtn_{"Auto"};
 
     // Preset buttons

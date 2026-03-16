@@ -70,11 +70,8 @@ private:
 
     void onMonitorDeviceSelected();
     void onMonitorVolumeChanged();
-    void onOutputVolumeChanged();
     void onMonitorBufferSizeChanged();
     void onMonitorEnableToggled();
-    void onLimiterEnableChanged();
-    void onLimiterCeilingChanged();
     void refreshBufferSizeCombo();
 
     /** Save recording folder to config file. */
@@ -91,15 +88,6 @@ private:
     juce::ComboBox monitorDeviceCombo_;
     juce::Slider monitorVolumeSlider_;
     juce::Label monitorVolumeLabel_{"", "Volume:"};
-    juce::Slider outputVolumeSlider_;
-    juce::Label outputVolumeLabel_{"", "Output Vol:"};
-
-    // ── Safety Limiter section ──
-    juce::Label limiterHeaderLabel_{"", "Safety Limiter"};
-    juce::ToggleButton limiterEnableBtn_{"Enable"};
-    juce::Slider limiterCeilingSlider_;
-    juce::Label limiterCeilingLabel_{"", "Ceiling:"};
-    juce::Label limiterGRLabel_;
 
     juce::Label monitorBufferLabel_{"", "Buffer:"};
     juce::ComboBox monitorBufferCombo_;
@@ -126,7 +114,6 @@ private:
     // Separator line positions (set in resized, drawn in paint)
     int separatorY1_ = 0;
     int separatorY2_ = 0;
-    int separatorY3_ = 0;
 
     static constexpr juce::uint32 kBgColour       = 0xFF1E1E2E;
     static constexpr juce::uint32 kSurfaceColour   = 0xFF2A2A40;

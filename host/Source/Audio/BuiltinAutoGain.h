@@ -45,6 +45,13 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override {
+        auto in = layouts.getMainInputChannelSet();
+        auto out = layouts.getMainOutputChannelSet();
+        if (in != out) return false;
+        return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
+    }
+
     // Required stubs (NOT const -- JUCE 7)
     double getTailLengthSeconds() const override { return 0.0; }
     bool acceptsMidi() const override { return false; }
@@ -69,6 +76,9 @@ public:
     void setMaxGaindB(float dB);
     float getMaxGaindB() const { return maxGaindB_.load(std::memory_order_relaxed); }
 
+    void setFreezeLevel(float lufs);
+    float getFreezeLevel() const { return freezeLevel_.load(std::memory_order_relaxed); }
+
     // -- UI feedback (read from any thread, written from RT thread) --
     float getCurrentLUFS() const { return currentLUFS_.load(std::memory_order_relaxed); }
     float getCurrentGaindB() const { return currentGaindB_.load(std::memory_order_relaxed); }
@@ -76,9 +86,10 @@ public:
 private:
     // -- Parameters (atomic, any thread) --
     std::atomic<float> targetLUFS_{ -15.0f };
-    std::atomic<float> lowCorrect_{ 0.50f };    // boost correction factor
+    std::atomic<float> lowCorrect_{ 0.75f };    // boost correction factor
     std::atomic<float> highCorrect_{ 0.75f };   // cut correction factor
     std::atomic<float> maxGaindB_{ 18.0f };
+    std::atomic<float> freezeLevel_{ -45.0f };  // dBFS -- per-block RMS below this = don't boost (silence/breath/keyboard)
 
     // -- K-weighting filters (sidechain -- measurement only, RT thread) --
     juce::IIRFilter kStage1L_, kStage1R_;  // High shelf (+4dB at ~1681Hz)

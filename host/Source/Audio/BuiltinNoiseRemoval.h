@@ -48,6 +48,13 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override {
+        auto in = layouts.getMainInputChannelSet();
+        auto out = layouts.getMainOutputChannelSet();
+        if (in != out) return false;
+        return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
+    }
+
     // Required stubs (NOT const -- JUCE 7)
     double getTailLengthSeconds() const override { return 0.0; }
     bool acceptsMidi() const override { return false; }
@@ -79,7 +86,7 @@ public:
 private:
     // -- Parameters --
     std::atomic<int>   strength_{ 1 };       // 0=Light, 1=Standard, 2=Aggressive
-    std::atomic<float> vadThreshold_{ 0.60f };
+    std::atomic<float> vadThreshold_{ 0.70f };  // raised from 0.60 to better reject transients
 
     // -- RNNoise instances (created in prepareToPlay, destroyed in releaseResources) --
     DenoiseState* rnnL_ = nullptr;

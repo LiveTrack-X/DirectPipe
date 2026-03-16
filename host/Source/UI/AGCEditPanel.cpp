@@ -18,7 +18,7 @@ namespace AGCColors {
 AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     : AudioProcessorEditor(processor), processor_(processor)
 {
-    setSize(300, 250);
+    setSize(300, 280);
 
     // -- Target LUFS --
     targetLabel_.setText("Target LUFS:", juce::dontSendNotification);
@@ -119,6 +119,24 @@ AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     };
     addAndMakeVisible(maxGainSlider_);
 
+    // -- Freeze Level slider (-60 to -10 LUFS) --
+    freezeLabel_.setText("Freeze Level:", juce::dontSendNotification);
+    freezeLabel_.setColour(juce::Label::textColourId, juce::Colour(AGCColors::kDim));
+    addAndMakeVisible(freezeLabel_);
+
+    freezeSlider_.setRange(-60.0, -10.0, 1.0);
+    freezeSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 55, 20);
+    freezeSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(AGCColors::kAccent));
+    freezeSlider_.setColour(juce::Slider::trackColourId, juce::Colour(AGCColors::kSurface));
+    freezeSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(AGCColors::kText));
+    freezeSlider_.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(AGCColors::kSurface));
+    freezeSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    freezeSlider_.setTextValueSuffix(" LUFS");
+    freezeSlider_.onValueChange = [this] {
+        processor_.setFreezeLevel(static_cast<float>(freezeSlider_.getValue()));
+    };
+    addAndMakeVisible(freezeSlider_);
+
     // Sync initial state
     syncFromProcessor();
     advancedToggle_.setToggleState(false, juce::dontSendNotification);
@@ -182,6 +200,12 @@ void AGCEditPanel::resized()
     auto maxRow = area.removeFromTop(rowH);
     maxGainLabel_.setBounds(maxRow.removeFromLeft(labelW));
     maxGainSlider_.setBounds(maxRow);
+    area.removeFromTop(2);
+
+    // Freeze Level row
+    auto freezeRow = area.removeFromTop(rowH);
+    freezeLabel_.setBounds(freezeRow.removeFromLeft(labelW));
+    freezeSlider_.setBounds(freezeRow);
 }
 
 void AGCEditPanel::timerCallback()
@@ -207,6 +231,7 @@ void AGCEditPanel::syncFromProcessor()
     lowCorrSlider_.setValue(processor_.getLowCorrect() * 100.0, juce::dontSendNotification);
     highCorrSlider_.setValue(processor_.getHighCorrect() * 100.0, juce::dontSendNotification);
     maxGainSlider_.setValue(processor_.getMaxGaindB(), juce::dontSendNotification);
+    freezeSlider_.setValue(processor_.getFreezeLevel(), juce::dontSendNotification);
 }
 
 void AGCEditPanel::updateAdvancedVisibility()
@@ -218,6 +243,8 @@ void AGCEditPanel::updateAdvancedVisibility()
     highCorrSlider_.setVisible(show);
     maxGainLabel_.setVisible(show);
     maxGainSlider_.setVisible(show);
+    freezeLabel_.setVisible(show);
+    freezeSlider_.setVisible(show);
 }
 
 } // namespace directpipe

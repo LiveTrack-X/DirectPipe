@@ -92,8 +92,14 @@ void pluginChain(const juce::StringArray& pluginNames, int activeSlot, const juc
             + " (" + juce::String(pluginNames.size()) + " plugins)");
     }
 
-    char slotLabel = static_cast<char>('A' + juce::jlimit(0, 4, activeSlot));
-    info("PRESET", "Active slot: " + juce::String::charToString(slotLabel)
+    juce::String slotStr;
+    if (activeSlot == 5)
+        slotStr = "Auto";
+    else {
+        char slotLabel = static_cast<char>('A' + juce::jlimit(0, 4, activeSlot));
+        slotStr = juce::String::charToString(slotLabel);
+    }
+    info("PRESET", "Active slot: " + slotStr
         + (presetName.isNotEmpty() ? " | Preset: " + presetName : ""));
 }
 
