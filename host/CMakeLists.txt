@@ -40,6 +40,8 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/AudioRecorder.cpp
     Source/Audio/SafetyLimiter.h
     Source/Audio/SafetyLimiter.cpp
+    Source/Audio/BuiltinFilter.h
+    Source/Audio/BuiltinFilter.cpp
     # DeviceSelector removed — merged into AudioSettings
     Source/UI/PluginChainEditor.h
     Source/UI/PluginChainEditor.cpp
