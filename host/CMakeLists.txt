@@ -42,6 +42,8 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/SafetyLimiter.cpp
     Source/Audio/BuiltinFilter.h
     Source/Audio/BuiltinFilter.cpp
+    Source/Audio/BuiltinAutoGain.h
+    Source/Audio/BuiltinAutoGain.cpp
     Source/Audio/BuiltinNoiseRemoval.h
     Source/Audio/BuiltinNoiseRemoval.cpp
     # DeviceSelector removed — merged into AudioSettings
