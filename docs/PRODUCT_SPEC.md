@@ -173,17 +173,16 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | Release | 50ms |
 | Ceiling 범위 | -6.0 ~ 0.0 dBFS (기본값: -0.3 dBFS) |
 | 파라미터 | `enabled` (atomic, 기본 true), `ceilingdB` (atomic) |
-| UI | OutputPanel: enable 토글 + ceiling 슬라이더 + GR 표시. PluginChainEditor: Safety Limiter 토글 버튼. 상태 바 [LIM] 표시 |
+| UI | PluginChainEditor: ceiling 슬라이더 (Add Plugin 위) + Safety Limiter 토글 버튼. 상태 바 [LIM] 표시 |
 | GR 피드백 | atomic으로 UI에 전달 |
 
-#### 4.1.9 Per-Plugin Latency (PDC) 표시
+#### 4.1.9 Plugin Latency Data (PDC)
 | 항목 | 상세 |
 |------|------|
 | 소스 | `VSTChain::getPluginLatencies()` + `getTotalChainPDC()` — chainLock_ 하에서 각 플러그인의 PDC 조회 |
-| UI | PluginChainEditor: 플러그인별 "{N}smp" 라벨 (0일 때 숨김) + 체인 전체 PDC 요약 |
-| 갱신 | MainComponent 타이머에서 2Hz 폴링 |
+| UI | Per-plugin latency display와 chain PDC summary는 UX 피드백으로 UI에서 제거됨 |
 | 보상 | AudioProcessorGraph가 PDC 보상을 자동 처리 |
-| 상태 전파 | StateBroadcaster: `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms` |
+| 상태 전파 | StateBroadcaster: `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms` (API에서 여전히 사용 가능) |
 
 #### 4.1.10 Built-in Processors
 VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 프로세서 3종.
@@ -191,10 +190,10 @@ VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 
 | 프로세서 | 클래스 | 상세 |
 |---------|--------|------|
 | **Filter** | `BuiltinFilter` | HPF (20-300Hz) + LPF (4k-20kHz). IIR 필터, atomic 파라미터 |
-| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거. 480-frame FIFO (~10ms 레이턴시), VAD 게이팅, 48kHz 고정, 듀얼 모노 |
-| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC. ITU-R BS.1770 K-weighting 사이드체인, Luveler Mode 2 비대칭 보정. 점진적 LUFS 측정 |
+| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거. 480-frame FIFO (~10ms 레이턴시), VAD 게이팅, 48kHz 고정, 듀얼 모노. 32767 스케일링 (int16 범위) 필수, 2-pass FIFO (in-place 안전), 링 버퍼 출력, 게이트 초기 닫힘, 5프레임 워밍업. VAD 임계값: Light 0.50, Standard 0.70, Aggressive 0.90 |
+| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC. ITU-R BS.1770 K-weighting 사이드체인, 비대칭 보정. Attack 500ms, Release 700ms, LUFS 윈도우 1.5s, Max Gain 기본 24 dB. Freeze Level: per-block RMS 게이트 (LUFS 아님), 기본 -45 dBFS. Correction % = 엔벨로프 속도 (게인 양이 아님) |
 
-**[Auto] 버튼**: 체인 에디터에서 클릭 시 Filter + Noise Removal + Auto Gain 3개를 한 번에 추가.
+**[Auto] 버튼**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치). 클릭 시 Auto 슬롯 로드 (첫 사용 시 Filter + Noise Removal + Auto Gain 기본 체인 생성). 우클릭 → Reset to Defaults.
 
 **Auto 프리셋 슬롯**: 6번째 프리셋 슬롯 (인덱스 5). 이름 변경 불가, Next/Previous 사이클에서 제외. Reset 시 Filter + NoiseRemoval + AutoGain 기본값 복원.
 
@@ -631,6 +630,7 @@ rebuildGraph(bool suspend = true)
 | 버퍼 크기 ComboBox | 장치에서 동적 팝업 |
 | Mono/Stereo 토글 버튼 | 채널 모드 전환 |
 | 레이턴시 라벨 | "-- ms" 또는 "10.5 ms" 실시간 표시 |
+| 출력 볼륨 슬라이더 | Output Volume (0.0~1.0) — Audio 탭에서 출력 볼륨 조절 |
 | ASIO Control Panel 버튼 | ASIO 모드에서만 표시 (Windows only). 드라이버 설정 패널 열기 |
 
 #### 4.6.3 Output 탭 (OutputPanel)

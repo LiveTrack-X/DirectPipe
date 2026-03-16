@@ -86,7 +86,7 @@ public:
 private:
     // -- Parameters (atomic, any thread) --
     std::atomic<float> targetLUFS_{ -15.0f };
-    std::atomic<float> lowCorrect_{ 0.75f };    // boost correction factor
+    std::atomic<float> lowCorrect_{ 0.50f };    // boost correction factor
     std::atomic<float> highCorrect_{ 0.75f };   // cut correction factor
     std::atomic<float> maxGaindB_{ 24.0f };
     std::atomic<float> freezeLevel_{ -45.0f };  // dBFS -- per-block RMS below this = don't boost (silence/breath/keyboard)

@@ -127,10 +127,12 @@ Send Discord via VB-Cable, OBS via DirectPipe Receiver — **independently contr
 ### Auto 모드 (내장 프로세서) / Auto Mode (Built-in Processors)
 
 VST 플러그인 없이 즉시 사용하려면 입력 게인 슬라이더 옆의 **[Auto]** 버튼을 클릭하세요.
-Filter(노이즈 필터) + Noise Removal(AI 노이즈 제거) + Auto Gain(자동 볼륨) 3개가 자동으로 추가됩니다.
+[Auto]는 특수 프리셋 슬롯(A-E와 별도)으로, 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인이 생성됩니다.
+이후에는 마지막으로 저장된 Auto 슬롯 상태를 로드합니다. 우클릭 → Reset to Defaults로 기본값 복원 가능.
 
-Click the **[Auto]** button next to the input gain slider to instantly add built-in processors without any VST plugins:
-Filter (noise filter) + Noise Removal (AI noise removal) + Auto Gain (automatic volume) — all 3 added at once.
+Click the **[Auto]** button next to the input gain slider to use built-in processors without any VST plugins.
+[Auto] is a special preset slot (separate from A-E). First click creates a default chain with Filter + Noise Removal + Auto Gain.
+After that, it loads the last saved Auto slot state. Right-click → Reset to Defaults to restore defaults.
 
 ---
 

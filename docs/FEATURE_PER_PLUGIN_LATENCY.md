@@ -1,5 +1,8 @@
 # Feature Spec: Per-Plugin Latency Display (플러그인별 레이턴시 표시)
 
+> **상태: UI에서 제거됨** — UX 피드백에 따라 per-plugin latency display와 chain PDC summary가 UI에서 제거되었습니다.
+> 백엔드 데이터(`VSTChain::getPluginLatencies()`, `getTotalChainPDC()`)와 API 브로드캐스트(`plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms`)는 유지됩니다.
+>
 > **DirectPipe v4.1.0 구현 명세** — Claude Code 핸드오프용
 >
 > 이 문서는 DirectPipe에 "Per-Plugin Latency Display" 기능을 추가하기 위한 설계 명세입니다.

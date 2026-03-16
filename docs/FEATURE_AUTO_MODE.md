@@ -176,8 +176,7 @@ bool isInRotation(int slotIndex) { return slotIndex < kAutoSlotIndex; }
 │ 4. Auto Gain (내장)        [Edit][Bp][X]      │
 │ 5. FabFilter ProQ          [Edit][Bp][X]      │  ← VST
 ├────────────────────────────────────────────────┤
-│ Chain PDC: 512 samples (10.7ms @ 48kHz)        │
-│ [Safety Limiter ✓]                             │
+│ [Safety Limiter ✓] [Ceiling: -0.3 dB]         │
 │ [+ Add Plugin]  [Scan...]  [Remove]            │
 └────────────────────────────────────────────────┘
 ```
@@ -257,7 +256,7 @@ bool isInRotation(int slotIndex) { return slotIndex < kAutoSlotIndex; }
 │ [▶ 고급 설정]                         │
 │ ┌─고급 설정──────────────────────┐    │
 │ │ VAD Threshold:                │    │
-│ │ [0.60] ████████░░ 슬라이더     │    │
+│ │ [0.70] ████████░░ 슬라이더     │    │
 │ └────────────────────────────────┘    │
 │                                      │
 │ Status: Active                       │
@@ -270,22 +269,25 @@ RNNoise는 항상 100% 처리 (dry/wet 믹싱 없음 — 위상 왜곡 방지).
 
 | 프리셋 | VAD 임계값 | 설명 |
 |--------|-----------|------|
-| 약 (Light) | 0.35 | 게이팅 느슨. 잔여 노이즈 약간 남지만 음성 손실 최소 |
-| 중 (Standard) | 0.60 | 업계 표준 (werman VST 기본값). 대부분의 환경에 적합 |
-| 강 (Aggressive) | 0.85 | 강한 게이팅. 매우 깨끗하지만 작은 소리 잘릴 수 있음 |
+| 약 (Light) | 0.50 | 게이팅 느슨. 잔여 노이즈 약간 남지만 음성 손실 최소 |
+| 중 (Standard) | 0.70 | 대부분의 환경에 적합 |
+| 강 (Aggressive) | 0.90 | 강한 게이팅. 매우 깨끗하지만 작은 소리 잘릴 수 있음 |
 
 **파라미터:**
 
 | 파라미터 | 타입 | 기본값 | 범위 | 설명 |
 |---------|------|--------|------|------|
 | `rnn_strength` | enum | Standard | Light/Standard/Aggressive | 노이즈 제거 강도 |
-| `rnn_vad_threshold` | float | 0.60 | 0.0~1.0 | VAD 임계값 (고급 설정에서 직접 조절) |
+| `rnn_vad_threshold` | float | 0.70 | 0.0~1.0 | VAD 임계값 (고급 설정에서 직접 조절) |
 
 **RNNoise 기술:**
 - 48kHz 고정. 다른 SR에서는 JUCE `LagrangeInterpolator`로 리샘플링
 - 480 프레임 단위 처리 → 내부 FIFO 버퍼 필요 (사전 할당, RT-safe)
+- **32767 스케일링 필수**: RNNoise는 int16 범위 입력을 기대 — float 입력에 32767.0f를 곱하고, 출력을 32767.0f로 나누어야 함
+- **2-pass FIFO**: in-place 안전을 위해 입력 FIFO와 출력 링 버퍼를 분리
+- **게이트 초기 닫힘**: 시작 시 게이트가 닫힌 상태. 5프레임 워밍업 후 VAD 활성화
 - Dual-mono (채널별 독립 처리, RNNoise 인스턴스 2개)
-- `getLatencySamples()` = FIFO에 의한 추가 레이턴시 리포트 (PDC 표시에 반영됨)
+- `getLatencySamples()` = FIFO에 의한 추가 레이턴시 리포트
 - `rnnoise_create()`는 `prepareToPlay`에서만 호출 (힙 할당이므로 RT 콜백 금지)
 - `rnnoise_process_frame()` 반환값 = VAD 확률 → 게이팅에 사용
 
@@ -314,7 +316,7 @@ RNNoise는 항상 100% 처리 (dry/wet 믹싱 없음 — 위상 왜곡 방지).
 │ ┌─고급 설정──────────────────────┐    │
 │ │ Low Correct:  [50%] ██████░░  │    │
 │ │ High Correct: [75%] ████████░░│    │
-│ │ Max Gain: [+18 dB] ██████░░   │    │
+│ │ Max Gain: [+24 dB] ██████░░   │    │
 │ └────────────────────────────────┘    │
 │                                      │
 │ Status: Active                       │
@@ -326,23 +328,29 @@ RNNoise는 항상 100% 처리 (dry/wet 믹싱 없음 — 위상 왜곡 방지).
 | 파라미터 | 타입 | 기본값 | 범위 | UI | 설명 |
 |---------|------|--------|------|-----|------|
 | `agc_target_LUFS` | float | -15.0 | -24 ~ -6 LUFS | 슬라이더 | 타겟 라우드니스 |
-| `agc_low_correct` | float | 0.50 | 0.0 ~ 1.0 | 고급 설정 | 조용할 때 보정 비율 |
-| `agc_high_correct` | float | 0.75 | 0.0 ~ 1.0 | 고급 설정 | 클 때 보정 비율 |
-| `agc_max_gain_dB` | float | 18.0 | 6 ~ 30 dB | 고급 설정 | 최대 증폭 상한 |
+| `agc_low_correct` | float | 0.50 | 0.0 ~ 1.0 | 고급 설정 | 조용할 때 엔벨로프 속도 (게인 양이 아님) |
+| `agc_high_correct` | float | 0.75 | 0.0 ~ 1.0 | 고급 설정 | 클 때 엔벨로프 속도 (게인 양이 아님) |
+| `agc_max_gain_dB` | float | 24.0 | 6 ~ 30 dB | 고급 설정 | 최대 증폭 상한 |
 
 **LUFS 측정 (ITU-R BS.1770):**
 - K-weighting 프리필터 (sidechain — 측정용, 실제 오디오에 적용 안 함)
-- Short-term LUFS (3초 슬라이딩 윈도우)
+- LUFS 윈도우: 1.5초 슬라이딩 윈도우
+- Attack: 500ms, Release: 700ms
 - `getLatencySamples()` = 0 (look-ahead 없음)
 
-**비대칭 보정 (Luveler Mode 2):**
+**Freeze Level (무음 감지):**
+- Per-block RMS 게이트 (LUFS가 아닌 RMS 사용)
+- 기본 -45 dBFS — 이 레벨 이하일 때 AGC 게인 조정을 동결
+- 무음 구간에서의 과도한 게인 증폭 방지
+
+**비대칭 보정:**
 ```
 correction = target_LUFS - measured_LUFS
 if correction > 0:  // 조용함
-    gain = correction × lowCorrectRatio (0.50)
+    gain = correction × lowCorrectRatio (0.50)  ← 엔벨로프 속도 (게인 양 아님)
 else:               // 큼
-    gain = correction × highCorrectRatio (0.75)
-gain = clamp(gain, -maxGain, +maxGain)
+    gain = correction × highCorrectRatio (0.75)  ← 엔벨로프 속도 (게인 양 아님)
+gain = clamp(gain, -maxGain, +maxGain)  // maxGain 기본 24 dB
 ```
 
 ---
@@ -526,7 +534,7 @@ INF [VST] Built-in processor added: "Filter" at index 0
 INF [VST] Built-in processor added: "Noise Removal" at index 1
 INF [VST] Auto processors added: Filter + Noise Removal + Auto Gain
 INF [AUDIO] RNNoise resampling active (44100Hz → 48000Hz → 44100Hz)
-WRN [AUDIO] Auto Gain at max gain (+18.0 dB) — consider increasing input gain
+WRN [AUDIO] Auto Gain at max gain (+24.0 dB) — consider increasing input gain
 ```
 
 내장 프로세서는 기존 `[VST]` 카테고리로 로깅 (별도 카테고리 불필요).
@@ -545,8 +553,8 @@ WRN [AUDIO] Auto Gain at max gain (+18.0 dB) — consider increasing input gain
 | `FilterLPF` | LPF 활성 시 고역 감쇠 확인 |
 | `FilterBypass` | bypass 시 신호 변경 없음 |
 | `FilterStateRoundtrip` | getStateInformation → setStateInformation 동일값 |
-| `NoiseRemovalVADGatingLight` | VAD 0.35에서 잔여 노이즈 통과 확인 |
-| `NoiseRemovalVADGatingAggressive` | VAD 0.85에서 조용한 구간 감쇠 확인 |
+| `NoiseRemovalVADGatingLight` | VAD 0.50에서 잔여 노이즈 통과 확인 |
+| `NoiseRemovalVADGatingAggressive` | VAD 0.90에서 조용한 구간 감쇠 확인 |
 | `NoiseRemovalBypass` | bypass 시 신호 변경 없음 |
 | `NoiseRemovalStateRoundtrip` | 상태 직렬화 왕복 확인 |
 | `AGCBelowTargetLUFS` | 입력 < 타겟 → Low Correct 비율로 게인 증가 |
@@ -645,7 +653,7 @@ Phase 5 (튜닝):
 ## 14. 참고 사항 / Notes
 
 - 내장 프로세서는 **일반 VST와 동일하게 AudioProcessorGraph에 삽입** — VSTChain의 processBlock, rebuildGraph 등 기존 코드를 최대한 재활용
-- **RNNoise FIFO 레이턴시**: 480 프레임 고정으로 ~5-10ms 추가 레이턴시 발생. `getLatencySamples()`로 리포트하여 Per-Plugin Latency Display에 자동 표시
+- **RNNoise FIFO 레이턴시**: 480 프레임 고정으로 ~5-10ms 추가 레이턴시 발생. `getLatencySamples()`로 리포트 (PDC 보상에 사용됨)
 - **`rnnoise_create()`는 prepareToPlay에서만 호출** — 힙 할당이므로 RT 콜백 금지
 - **K-weighting 필터 계수**: 48kHz 기준 ITU-R BS.1770 정의. 다른 SR에서는 bilinear transform으로 재계산 필요
 - Safety Limiter는 AudioProcessorGraph 밖에서 동작 (이미 구현됨) — 내장 프로세서와 무관하게 항상 적용
