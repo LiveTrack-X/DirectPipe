@@ -101,10 +101,11 @@ GPL v3 (오픈소스)
 4. 입력 게인 적용 (변경 시에만)
 5. RMS 레벨 계산 (4회 콜백마다 1회 = ~23Hz @48kHz/512)
 6. VST 체인 processBlock() 통과
-7. AudioRecorder에 lock-free 쓰기 (녹음 중일 때)
-8. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시)
-9. OutputRouter → 모니터 출력 (별도 WASAPI 장치)
-10. 메인 출력: outputChannelData에 직접 memcpy
+7. Safety Limiter 적용 (feed-forward, 0.1ms attack / 50ms release)
+8. AudioRecorder에 lock-free 쓰기 (녹음 중일 때)
+9. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시)
+10. OutputRouter → 모니터 출력 (별도 WASAPI 장치)
+11. 메인 출력: outputChannelData에 직접 memcpy
 11. 출력 RMS 레벨 계산 (데시메이션)
 ```
 
@@ -163,6 +164,40 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | `cpuUsage_` | 콜백 시간 대비 처리 비율 (%) |
 | 스무딩 | 지수 이동 평균, `kSmoothingFactor = 0.1` |
 
+#### 4.1.8 Safety Limiter
+| 항목 | 상세 |
+|------|------|
+| 타입 | 피드포워드 리미터 (look-ahead 없음, PDC 기여 없음) |
+| 위치 | VST 체인 이후, Recording/IPC/Monitor/Output 이전 |
+| Attack | 0.1ms |
+| Release | 50ms |
+| Ceiling 범위 | -6.0 ~ 0.0 dBFS (기본값: -0.3 dBFS) |
+| 파라미터 | `enabled` (atomic, 기본 true), `ceilingdB` (atomic) |
+| UI | OutputPanel: enable 토글 + ceiling 슬라이더 + GR 표시. PluginChainEditor: Safety Limiter 토글 버튼. 상태 바 [LIM] 표시 |
+| GR 피드백 | atomic으로 UI에 전달 |
+
+#### 4.1.9 Per-Plugin Latency (PDC) 표시
+| 항목 | 상세 |
+|------|------|
+| 소스 | `VSTChain::getPluginLatencies()` + `getTotalChainPDC()` — chainLock_ 하에서 각 플러그인의 PDC 조회 |
+| UI | PluginChainEditor: 플러그인별 "{N}smp" 라벨 (0일 때 숨김) + 체인 전체 PDC 요약 |
+| 갱신 | MainComponent 타이머에서 2Hz 폴링 |
+| 보상 | AudioProcessorGraph가 PDC 보상을 자동 처리 |
+| 상태 전파 | StateBroadcaster: `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms` |
+
+#### 4.1.10 Built-in Processors
+VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 프로세서 3종.
+
+| 프로세서 | 클래스 | 상세 |
+|---------|--------|------|
+| **Filter** | `BuiltinFilter` | HPF (20-300Hz) + LPF (4k-20kHz). IIR 필터, atomic 파라미터 |
+| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거. 480-frame FIFO (~10ms 레이턴시), VAD 게이팅, 48kHz 고정, 듀얼 모노 |
+| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC. ITU-R BS.1770 K-weighting 사이드체인, Luveler Mode 2 비대칭 보정. 점진적 LUFS 측정 |
+
+**[Auto] 버튼**: 체인 에디터에서 클릭 시 Filter + Noise Removal + Auto Gain 3개를 한 번에 추가.
+
+**Auto 프리셋 슬롯**: 6번째 프리셋 슬롯 (인덱스 5). 이름 변경 불가, Next/Previous 사이클에서 제외. Reset 시 Filter + NoiseRemoval + AutoGain 기본값 복원.
+
 ---
 
 ### 4.2 VST 호스팅
@@ -200,10 +235,10 @@ AudioProcessorGraph:
 - `chainLock_` 내부에서 절대 로그 쓰기 금지 (DirectPipeLogger `writeMutex_`와 데드락 방지)
 - `onChainChanged` 콜백은 lock 범위 밖에서 호출
 
-#### 4.2.4 프리셋 슬롯 (A-E)
+#### 4.2.4 프리셋 슬롯 (A-E + Auto)
 | 항목 | 상세 |
 |------|------|
-| 슬롯 수 | 5개 (A=0, B=1, C=2, D=3, E=4) |
+| 슬롯 수 | 5개 사용자 슬롯 (A=0, B=1, C=2, D=3, E=4) + 1개 Auto 슬롯 (인덱스 5, 이름 변경 불가, Next/Previous 사이클 제외, Reset 시 Filter+NoiseRemoval+AutoGain 기본값 복원) |
 | 저장 내용 | VST 체인만 — 플러그인 이름, 경로, PluginDescription, 바이패스 상태, 내부 상태(base64 인코딩) |
 | 저장 위치 | 앱 데이터 디렉토리 `Slots/slot_A.dppreset` ~ `slot_E.dppreset` (Windows: `%AppData%/DirectPipe/`, macOS/Linux: see platform paths above) |
 | 전환 속도 | 캐시 히트: 10-50ms, DLL 로딩: 200-500ms |
@@ -380,7 +415,7 @@ rebuildGraph(bool suspend = true)
 | 빌드 | Rollup → `bin/plugin.js` |
 | 패키징 | `streamdeck pack` CLI |
 
-**액션 (7개, 모두 SingletonAction):**
+**액션 (10개, 모두 SingletonAction):**
 
 | # | 액션 | UUID | 컨트롤러 | 상태수 | Property Inspector |
 |---|------|------|---------|--------|-------------------|
@@ -391,6 +426,9 @@ rebuildGraph(bool suspend = true)
 | 5 | Panic Mute | `...panic-mute` | Keypad | 2 (MUTE/MUTED) | 없음 |
 | 6 | Recording Toggle | `...recording-toggle` | Keypad | 2 (REC/REC) | 없음 |
 | 7 | IPC Toggle | `...ipc-toggle` | Keypad | 2 (ON/OFF) | 없음 |
+| 8 | Performance Monitor | `...performance-monitor` | Keypad + Encoder | 1 | performance-pi.html |
+| 9 | Plugin Parameter | `...plugin-parameter` | Encoder (SD+) | 1 | plugin-parameter-pi.html |
+| 10 | Preset Bar | `...preset-bar` | Encoder (SD+) | 1 | 없음 |
 
 **Bypass Toggle 상세:**
 - 숏프레스: 개별 플러그인 바이패스 (`plugin_bypass`)
@@ -502,7 +540,7 @@ rebuildGraph(bool suspend = true)
 {
   "type": "state",
   "data": {
-    "plugins": [{"name": "Plugin 1", "bypass": false, "loaded": true}],
+    "plugins": [{"name": "Plugin 1", "bypass": false, "loaded": true, "type": "vst", "latency_samples": 128}],
     "volumes": {"input": 1.0, "monitor": 1.0},
     "master_bypassed": false,
     "muted": false,
@@ -523,7 +561,10 @@ rebuildGraph(bool suspend = true)
     "recording_seconds": 0.0,
     "ipc_enabled": true,
     "device_lost": false,
-    "monitor_lost": false
+    "monitor_lost": false,
+    "chain_pdc_samples": 128,
+    "chain_pdc_ms": 2.67,
+    "safety_limiter": {"enabled": true, "ceiling_db": -0.3, "gain_reduction_db": 0.0}
   }
 }
 ```
@@ -1125,12 +1166,12 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인
-│   ├── manifest.json               → SDKVersion 3, 7 액션, v4.0.0.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션, v4.0.0.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉
-│       └── actions/                → 7개 SingletonAction 클래스
+│       └── actions/                → 10개 SingletonAction 클래스
 │
 ├── tests/                          → Google Test (core + host, 110+ tests)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html

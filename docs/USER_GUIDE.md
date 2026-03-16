@@ -919,7 +919,7 @@ Control individual VST plugin parameters directly via MIDI CC.
 
 Elgato Marketplace에서 무료 설치 / Free install from Elgato Marketplace: **[DirectPipe Stream Deck Plugin](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)**
 
-7가지 액션 / 7 actions: Bypass Toggle, Volume Control (SD+ 다이얼 / dial), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle
+10가지 액션 / 10 actions: Bypass Toggle, Volume Control (SD+ 다이얼 / dial), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle, Performance Monitor, Plugin Parameter (SD+), Preset Bar (SD+)
 
 자세한 내용 / Details: [Stream Deck Guide](STREAMDECK_GUIDE.md)
 

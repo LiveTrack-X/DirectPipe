@@ -47,6 +47,13 @@ sudo dnf install alsa-lib-devel jack-audio-connection-kit-devel \
 - **ASIO SDK** (Windows only) — For ASIO driver support. Place in `thirdparty/asiosdk/`. / ASIO 드라이버 지원용.
 - **VST2 SDK** (all platforms) — Place VST2 interface headers in `thirdparty/VST2_SDK/pluginterfaces/vst2.x/` (`aeffect.h`, `aeffectx.h`). **Not included in this repository** — Steinberg prohibits redistribution of VST2 headers. You must obtain them separately if you have a valid VST2 license agreement. Without VST2 SDK, the build succeeds with VST3-only support. / Steinberg이 VST2 헤더 재배포를 금지하므로 저장소에 미포함. 유효한 VST2 라이선스 계약이 있는 경우 직접 배치. VST2 SDK 없이도 빌드 가능 (VST3만 지원).
 
+### RNNoise (Noise Suppression) / 노이즈 제거
+
+- Included in `thirdparty/rnnoise/` (BSD-3-Clause, vendored source) / `thirdparty/rnnoise/`에 포함 (BSD-3-Clause, 벤더링)
+- Built automatically by CMake as a static library / CMake에서 정적 라이브러리로 자동 빌드
+- No external download or SDK setup required / 외부 다운로드 불필요
+- Pure C — no platform-specific dependencies / 순수 C — 플랫폼 의존성 없음
+
 ### Auto-fetched Dependencies / 자동 다운로드 의존성
 
 Downloaded automatically by CMake FetchContent: / CMake FetchContent로 자동 다운로드:

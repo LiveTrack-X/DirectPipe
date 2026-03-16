@@ -97,8 +97,8 @@ DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
 </td>
 <td>
   <b>🎛 Stream Deck Plugin — <a href="https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3">Elgato Marketplace에서 무료 설치</a></b><br>
-  Bypass · Volume (SD+ 다이얼) · Preset · Monitor · Panic Mute · Recording · VST Output — 7가지 액션으로 Stream Deck에서 DirectPipe를 완전 제어<br>
-  <sub>Free on Elgato Marketplace — 7 actions to fully control DirectPipe from your Stream Deck</sub>
+  Bypass · Volume (SD+ 다이얼) · Preset · Monitor · Panic Mute · Recording · VST Output · Performance Monitor · Plugin Parameter (SD+) · Preset Bar (SD+) — 10가지 액션으로 Stream Deck에서 DirectPipe를 완전 제어<br>
+  <sub>Free on Elgato Marketplace — 10 actions to fully control DirectPipe from your Stream Deck</sub>
 </td>
 </tr>
 </table>
@@ -108,11 +108,11 @@ DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
 ## 동작 원리 / How It Works
 
 ```
-Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
-                                                                      │
-                 ┌────────────────────────────────────────────────────┼────────────────────┐
-                 │                                                    │                    │
-           Main Output                                         Monitor Output        VST Output
+Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─→ Safety Limiter ─┐
+                                                                                          │
+                 ┌────────────────────────────────────────────────────────────────────────┼────────────────────┐
+                 │                                                                        │                    │
+           Main Output                                                             Monitor Output        VST Output
      (Audio tab Output device)                             (Output tab, separate   (DirectPipe Receiver)
      예: Virtual Cable → Discord/Zoom                          별도 장치 → Headphones)   → Shared Memory
                  │                                                                      │
@@ -143,6 +143,9 @@ External Control:
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
+- **Safety Limiter** — VST 체인 이후 전역 피드포워드 리미터. 기본 ceiling -0.3 dBFS, 예기치 않은 클리핑 방지 — Global feed-forward limiter after VST chain. Default ceiling -0.3 dBFS, prevents unexpected clipping
+- **Per-Plugin Latency Display** — 체인 에디터에서 각 플러그인의 PDC(Plugin Delay Compensation) 표시 + 체인 전체 PDC 요약 — Each plugin's reported PDC shown in chain editor, with total chain PDC summary
+- **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) insertable alongside VST plugins. [Auto] button adds all 3 at once
 
 ### 외부 제어 / External Control
 
@@ -163,7 +166,7 @@ External Control:
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push
 - **HTTP REST API** (port 8766) — curl이나 브라우저에서 원샷 GET 커맨드 — One-shot GET commands from curl or browser
 - **UDP Discovery** (port 8767) — Stream Deck 자동 연결용 디스커버리 브로드캐스트 — Auto-discovery broadcast for instant Stream Deck connection
-- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 7가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, IPC Toggle — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
+- **[Stream Deck 플러그인](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — 10가지 액션: Bypass, Volume (SD+ 다이얼), Preset, Monitor, Panic Mute, Recording, IPC Toggle, Performance Monitor, Plugin Parameter (SD+ 다이얼), Preset Bar (SD+) — [Elgato Marketplace에서 무료 설치](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)
 
 ### VST 출력 (DirectPipe Receiver) / VST Output (DirectPipe Receiver)
 
