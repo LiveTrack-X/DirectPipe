@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2025 LiveTrack
 #include "BuiltinFilter.h"
+#include "../UI/FilterEditPanel.h"
 
 namespace directpipe {
+
+juce::AudioProcessorEditor* BuiltinFilter::createEditor()
+{
+    return new FilterEditPanel(*this);
+}
 
 BuiltinFilter::BuiltinFilter()
     : AudioProcessor(BusesProperties()

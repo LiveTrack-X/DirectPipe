@@ -37,8 +37,8 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override;
 
-    bool hasEditor() const override { return false; }
-    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return true; }
+    juce::AudioProcessorEditor* createEditor() override;
 
     const juce::String getName() const override { return "AutoGain"; }
 

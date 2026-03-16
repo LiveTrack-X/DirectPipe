@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2025 LiveTrack
 #include "BuiltinAutoGain.h"
+#include "../UI/AGCEditPanel.h"
 #include <cmath>
 
 namespace directpipe {
+
+juce::AudioProcessorEditor* BuiltinAutoGain::createEditor()
+{
+    return new AGCEditPanel(*this);
+}
 
 // ─── Construction ──────────────────────────────────────────────
 

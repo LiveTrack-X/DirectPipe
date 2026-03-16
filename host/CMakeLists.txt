@@ -81,6 +81,12 @@ target_sources(DirectPipe PRIVATE
     Source/UI/StatusUpdater.cpp
     Source/UI/UpdateChecker.h
     Source/UI/UpdateChecker.cpp
+    Source/UI/FilterEditPanel.h
+    Source/UI/FilterEditPanel.cpp
+    Source/UI/NoiseRemovalEditPanel.h
+    Source/UI/NoiseRemovalEditPanel.cpp
+    Source/UI/AGCEditPanel.h
+    Source/UI/AGCEditPanel.cpp
     Source/Control/ActionHandler.h
     Source/Control/ActionHandler.cpp
     Source/Control/SettingsAutosaver.h

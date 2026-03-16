@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2025 LiveTrack
 #include "BuiltinNoiseRemoval.h"
+#include "../UI/NoiseRemovalEditPanel.h"
 
 namespace directpipe {
+
+juce::AudioProcessorEditor* BuiltinNoiseRemoval::createEditor()
+{
+    return new NoiseRemovalEditPanel(*this);
+}
 
 // ─── Construction / Destruction ─────────────────────────────────
 
@@ -190,6 +196,11 @@ void BuiltinNoiseRemoval::setStrength(int strength)
         default: threshold = 0.60f; break;  // Standard
     }
     vadThreshold_.store(threshold, std::memory_order_relaxed);
+}
+
+void BuiltinNoiseRemoval::setVADThreshold(float threshold)
+{
+    vadThreshold_.store(juce::jlimit(0.0f, 1.0f, threshold), std::memory_order_relaxed);
 }
 
 // ─── State persistence (JSON) ───────────────────────────────────

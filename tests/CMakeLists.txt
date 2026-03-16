@@ -90,6 +90,9 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinAutoGain.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinNoiseRemoval.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/PluginPreloadCache.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/FilterEditPanel.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/NoiseRemovalEditPanel.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/AGCEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/IPC/SharedMemWriter.cpp
     )
 

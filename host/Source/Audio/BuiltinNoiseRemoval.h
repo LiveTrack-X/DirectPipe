@@ -40,8 +40,8 @@ public:
     void releaseResources() override;
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override;
 
-    bool hasEditor() const override { return false; }
-    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return true; }
+    juce::AudioProcessorEditor* createEditor() override;
 
     const juce::String getName() const override { return "NoiseRemoval"; }
 
@@ -68,8 +68,11 @@ public:
     /** Current strength preset index. */
     int getStrength() const { return strength_.load(std::memory_order_relaxed); }
 
-    /** Current VAD threshold (derived from strength). */
+    /** Current VAD threshold (derived from strength, or set manually). */
     float getVadThreshold() const { return vadThreshold_.load(std::memory_order_relaxed); }
+
+    /** Set VAD threshold directly (advanced override, 0.0-1.0). */
+    void setVADThreshold(float threshold);
 
 private:
     // -- Parameters --
