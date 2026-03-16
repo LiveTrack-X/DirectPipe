@@ -155,7 +155,14 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
             std::memset(outputChannelData[ch] + read, 0,
                         static_cast<size_t>(numSamples - read) * sizeof(float));
         }
+        // Track underruns for drift diagnostics
+        underrunCount_.fetch_add(1, std::memory_order_relaxed);
     }
+    // TODO: Add full drift compensation here — when ring buffer fill level
+    // consistently drifts high (monitor clock faster than main), skip excess frames.
+    // When it drifts low (monitor clock slower), throttle reads like the Receiver does.
+    // For now, high-fill is handled by writeAudio's droppedFrames_ overflow tracking,
+    // and low-fill is handled by zero-padding above + underrunCount_ monitoring.
 }
 
 void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)

@@ -74,7 +74,7 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     // Try reconnect periodically if not connected
-    if (!connected_.load(std::memory_order_relaxed)) {
+    if (!connected_.load(std::memory_order_acquire)) {
         ++reconnectCounter_;
         if (reconnectCounter_ >= kReconnectInterval) {
             reconnectCounter_ = 0;
@@ -122,6 +122,17 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             excess -= (std::min)(actualRead, excess);
         }
         available = ringBuffer_.availableRead();
+    }
+
+    // ── Clock drift compensation: throttle reads when buffer is running low ──
+    uint32_t lowThreshold = getLowFillThreshold();
+    if (blocksSinceConnect_ > kDriftCheckWarmup && available > 0 && available < lowThreshold) {
+        // Buffer running low — host clock is slightly slower than DAW clock.
+        // Reduce read amount to leave a buffer cushion, preventing hard underrun.
+        // The unread portion of the output buffer gets zero-padded (existing behavior),
+        // creating micro-gaps instead of hard clicks.
+        uint32_t cushionRead = (std::min)(available, static_cast<uint32_t>(numSamples) / 2);
+        available = cushionRead;
     }
 
     // ── Read whatever is available (partial read OK — pad rest with silence) ──
@@ -297,6 +308,14 @@ uint32_t DirectPipeReceiverProcessor::getHighFillThreshold() const
     int idx = param ? static_cast<int>(param->load()) : 1;
     if (idx < 0 || idx >= kNumBufferPresets) idx = 1;
     return kBufferPresets[idx][1];
+}
+
+uint32_t DirectPipeReceiverProcessor::getLowFillThreshold() const
+{
+    auto* param = apvts_.getRawParameterValue("buffer");
+    int idx = param ? static_cast<int>(param->load()) : 1;
+    if (idx < 0 || idx >= kNumBufferPresets) idx = 1;
+    return kBufferPresets[idx][2];
 }
 
 void DirectPipeReceiverProcessor::disconnect()

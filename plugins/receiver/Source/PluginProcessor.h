@@ -66,20 +66,21 @@ private:
     int blocksSinceConnect_ = 0;
     static constexpr int kDriftCheckWarmup = 50;  // ignore first N blocks
 
-    // Buffer presets: { targetFill, highThreshold }
+    // Buffer presets: { targetFill, highThreshold, lowThreshold }
     // Index matches "buffer" AudioParameterChoice
     static constexpr int kNumBufferPresets = 5;
-    static constexpr uint32_t kBufferPresets[kNumBufferPresets][2] = {
-        {  256,   768 },  // 0: Ultra Low  (256 samples)
-        {  512,  1536 },  // 1: Low        (512 samples)
-        { 1024,  3072 },  // 2: Medium     (1024 samples)
-        { 2048,  6144 },  // 3: High       (2048 samples)
-        { 4096, 12288 },  // 4: Safe       (4096 samples)
+    static constexpr uint32_t kBufferPresets[kNumBufferPresets][3] = {
+        {  256,   768,   64 },  // 0: Ultra Low  (256 samples)
+        {  512,  1536,  128 },  // 1: Low        (512 samples)
+        { 1024,  3072,  256 },  // 2: Medium     (1024 samples)
+        { 2048,  6144,  512 },  // 3: High       (2048 samples)
+        { 4096, 12288, 1024 },  // 4: Safe       (4096 samples)
     };
 public:
     uint32_t getTargetFillFrames() const;
 private:
     uint32_t getHighFillThreshold() const;
+    uint32_t getLowFillThreshold() const;
 
     juce::AudioProcessorValueTreeState apvts_;
 
