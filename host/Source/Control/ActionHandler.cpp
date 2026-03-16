@@ -234,7 +234,15 @@ void ActionHandler::handle(const ActionEvent& event)
                 auto dir = getRecordingFolder ? getRecordingFolder()
                     : juce::File::getSpecialLocation(
                         juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
-                dir.createDirectory();
+                auto createResult = dir.createDirectory();
+                if (createResult.failed()) {
+                    juce::Logger::writeToLog("[REC] Failed to create recording folder: "
+                        + dir.getFullPathName() + " — " + createResult.getErrorMessage());
+                    if (onNotification) onNotification(
+                        "Recording failed - cannot create folder: " + dir.getFullPathName(),
+                        NotificationLevel::Error);
+                    break;
+                }
                 auto file = dir.getChildFile("DirectPipe_" + timestamp + ".wav");
                 if (!recorder.startRecording(file, sr, 2))
                     if (onNotification) onNotification("Recording failed - check folder permissions",
