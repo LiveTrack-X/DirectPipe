@@ -175,10 +175,9 @@ ControlConfig ControlMappingStore::createDefaults()
 {
     ControlConfig config;
 
-    // Default hotkeys — minimal set to demonstrate the hotkey system
-    // Users can add more via Controls > Hotkeys tab.
-    // (Previous versions registered 19 hotkeys by default, causing conflicts
-    //  with browsers and other apps. Now only essential ones are pre-configured.)
+    // Default hotkeys — curated set avoiding common browser/app conflicts.
+    // Avoided: Ctrl+Shift+I (DevTools), Ctrl+Shift+N (Chrome incognito),
+    //          Ctrl+Shift+O (Chrome bookmarks). Users can add more via Controls > Hotkeys.
 
     // Panic mute: Ctrl+Shift+M — essential safety hotkey
     {
@@ -190,13 +189,54 @@ ControlConfig ControlMappingStore::createDefaults()
         config.hotkeys.push_back(hk);
     }
 
-    // Plugin 1 bypass: Ctrl+Shift+1 — example hotkey to show the system
+    // Master bypass: Ctrl+Shift+0
     {
         HotkeyMapping hk;
         hk.modifiers = HK_CTRL | HK_SHIFT;
-        hk.virtualKey = '1';
-        hk.action = {Action::PluginBypass, 0, 0.0f, "Plugin 1 Bypass"};
-        hk.displayName = "Ctrl+Shift+1";
+        hk.virtualKey = '0';
+        hk.action = {Action::MasterBypass, 0, 0.0f, "Master Bypass"};
+        hk.displayName = "Ctrl+Shift+0";
+        config.hotkeys.push_back(hk);
+    }
+
+    // Plugin 1-3 bypass: Ctrl+Shift+1~3 (most users have 1-3 plugins)
+    for (int i = 1; i <= 3; ++i) {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = '0' + static_cast<uint32_t>(i);
+        hk.action = {Action::PluginBypass, i - 1, 0.0f, "Plugin " + std::to_string(i) + " Bypass"};
+        hk.displayName = "Ctrl+Shift+" + std::to_string(i);
+        config.hotkeys.push_back(hk);
+    }
+
+    // Input mute toggle: Ctrl+Shift+F6 (was N, conflicted with Chrome incognito)
+    {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = 0x75;  // VK_F6
+        hk.action = {Action::InputMuteToggle, 0, 0.0f, "Input Mute Toggle"};
+        hk.displayName = "Ctrl+Shift+F6";
+        config.hotkeys.push_back(hk);
+    }
+
+    // Monitor toggle: Ctrl+Shift+H (low conflict risk)
+    {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = 'H';
+        hk.action = {Action::MonitorToggle, 0, 0.0f, ""};
+        hk.displayName = "Ctrl+Shift+H";
+        config.hotkeys.push_back(hk);
+    }
+
+    // Preset slots A-E: Ctrl+Shift+F1..F5 (F-keys rarely conflict)
+    for (int i = 0; i < 5; ++i) {
+        HotkeyMapping hk;
+        hk.modifiers = HK_CTRL | HK_SHIFT;
+        hk.virtualKey = 0x70 + static_cast<uint32_t>(i);  // VK_F1=0x70
+        std::string label(1, 'A' + static_cast<char>(i));
+        hk.action = {Action::SwitchPresetSlot, i, 0.0f, "Preset Slot " + label};
+        hk.displayName = "Ctrl+Shift+F" + std::to_string(i + 1);
         config.hotkeys.push_back(hk);
     }
 

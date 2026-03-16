@@ -25,6 +25,7 @@
 
 #include <JuceHeader.h>
 #include "../Control/ControlManager.h"
+#include "../Audio/VSTChain.h"
 
 namespace directpipe {
 
@@ -43,7 +44,7 @@ public:
      * @brief Construct the Hotkey tab.
      * @param manager Reference to the control manager.
      */
-    explicit HotkeyTab(ControlManager& manager);
+    explicit HotkeyTab(ControlManager& manager, VSTChain* vstChain = nullptr);
     ~HotkeyTab() override;
 
     void paint(juce::Graphics& g) override;
@@ -70,6 +71,7 @@ private:
     juce::PopupMenu buildActionMenu();
 
     ControlManager& manager_;
+    VSTChain* vstChain_ = nullptr;
 
     // Header label
     juce::Label headerLabel_{"", "Keyboard Shortcuts"};

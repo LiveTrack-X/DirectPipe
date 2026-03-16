@@ -29,7 +29,7 @@ ControlSettingsPanel::ControlSettingsPanel(ControlManager& manager, VSTChain* vs
     : manager_(manager)
 {
     // Create tab content components
-    hotkeyTab_     = std::make_unique<HotkeyTab>(manager_);
+    hotkeyTab_     = std::make_unique<HotkeyTab>(manager_, vstChain);
     midiTab_       = std::make_unique<MidiTab>(manager_, vstChain);
     streamDeckTab_ = std::make_unique<StreamDeckTab>(manager_);
 

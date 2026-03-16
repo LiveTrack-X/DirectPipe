@@ -175,8 +175,8 @@ void HotkeyTab::BindingRow::itemDropped(const SourceDetails& details)
 //  HotkeyTab implementation
 // =============================================================================
 
-HotkeyTab::HotkeyTab(ControlManager& manager)
-    : manager_(manager)
+HotkeyTab::HotkeyTab(ControlManager& manager, VSTChain* vstChain)
+    : manager_(manager), vstChain_(vstChain)
 {
     headerLabel_.setFont(juce::Font(14.0f, juce::Font::bold));
     headerLabel_.setColour(juce::Label::textColourId, juce::Colour(kTextColour));
@@ -348,10 +348,22 @@ juce::PopupMenu HotkeyTab::buildActionMenu()
 {
     juce::PopupMenu menu;
 
-    // Plugin bypass (1-16, freely selectable)
+    // Plugin bypass (dynamic — shows loaded plugin names, min 8 slots)
     juce::PopupMenu bypassMenu;
-    for (int i = 1; i <= 16; ++i) {
-        bypassMenu.addItem(100 + i, "Plugin " + juce::String(i) + " Bypass");
+    int pluginCount = vstChain_ ? vstChain_->getPluginCount() : 0;
+    int menuCount = juce::jmax(8, pluginCount);  // at least 8 slots shown
+    for (int i = 1; i <= menuCount; ++i) {
+        juce::String label;
+        if (vstChain_ && i <= pluginCount) {
+            auto* slot = vstChain_->getPluginSlot(i - 1);
+            if (slot && !juce::String(slot->name).isEmpty())
+                label = "Plugin " + juce::String(i) + " (" + juce::String(slot->name) + ") Bypass";
+            else
+                label = "Plugin " + juce::String(i) + " Bypass";
+        } else {
+            label = "Plugin " + juce::String(i) + " Bypass";
+        }
+        bypassMenu.addItem(100 + i, label);
     }
     menu.addSubMenu("Plugin Bypass", bypassMenu);
 
