@@ -34,7 +34,13 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int /*samplesPerBlock
 
     // TODO: When sampleRate != 48000, set up LagrangeInterpolator resampling.
     //       For now we only handle 48 kHz natively.
-    needsResampling_ = (sampleRate != 48000.0);
+    needsResampling_.store(sampleRate != 48000.0, std::memory_order_relaxed);
+
+    // I5: Log when noise removal is inactive due to non-48kHz sample rate
+    if (needsResampling_.load(std::memory_order_relaxed)) {
+        juce::Logger::writeToLog("[AUDIO] BuiltinNoiseRemoval: sample rate "
+            + juce::String(sampleRate) + "Hz -- noise removal inactive (requires 48kHz, resampling TODO)");
+    }
 
     // Create RNNoise denoise states
     destroyRNNoise();
@@ -55,17 +61,12 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int /*samplesPerBlock
     outputFifoReadR_  = 0;
     outputFifoWriteR_ = 0;
 
-    // Scratch buffers for a single RNNoise frame
-    rnnInputBuf_.assign(kRNNFrameSize, 0.0f);
-    rnnOutputBuf_.assign(kRNNFrameSize, 0.0f);
-
     // Reset VAD gate gains
     gateGainL_ = 1.0f;
     gateGainR_ = 1.0f;
 
-    // Latency = one RNNoise frame (we must accumulate 480 samples before
-    // we can produce output)
-    latencySamples_ = kRNNFrameSize;
+    // I2: Use base class setLatencySamples for proper AudioProcessor latency reporting
+    setLatencySamples(kRNNFrameSize);  // 480 samples FIFO delay
 }
 
 void BuiltinNoiseRemoval::releaseResources()
@@ -79,7 +80,7 @@ void BuiltinNoiseRemoval::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 {
     // If RNNoise was not created (should not happen) or resampling is needed
     // but not yet implemented, pass audio through unchanged.
-    if (rnnL_ == nullptr || needsResampling_)
+    if (rnnL_ == nullptr || needsResampling_.load(std::memory_order_relaxed))
         return;
 
     const int numSamples  = buffer.getNumSamples();
@@ -137,23 +138,31 @@ void BuiltinNoiseRemoval::processChannel(
 
         // 2. If we have a full RNNoise frame, process it
         if (inputFifoWrite >= kRNNFrameSize) {
+            // C1: Bounds check -- prevent output FIFO overflow for large buffer sizes
+            if (outputFifoWrite + kRNNFrameSize > kFifoCapacity)
+                break;  // output FIFO full -- drop frame to prevent overflow
+
+            // C2: Use stack-allocated scratch buffers (480 * 4 = 1920 bytes each -- safe)
+            float rnnIn[kRNNFrameSize];
+            float rnnOut[kRNNFrameSize];
+
             // Copy from FIFO to scratch input (RNNoise may read/write in place)
             for (int i = 0; i < kRNNFrameSize; ++i)
-                rnnInputBuf_[static_cast<size_t>(i)] = inputFifo[static_cast<size_t>(i)];
+                rnnIn[i] = inputFifo[static_cast<size_t>(i)];
 
             // Process through RNNoise -- returns VAD probability [0..1]
-            float vad = rnnoise_process_frame(rnn, rnnOutputBuf_.data(), rnnInputBuf_.data());
+            float vad = rnnoise_process_frame(rnn, rnnOut, rnnIn);
 
             // VAD-based noise gating with smooth transition
             float targetGate = (vad >= threshold) ? 1.0f : 0.0f;
             for (int i = 0; i < kRNNFrameSize; ++i) {
                 gateGain = kGateSmooth * gateGain + (1.0f - kGateSmooth) * targetGate;
-                rnnOutputBuf_[static_cast<size_t>(i)] *= gateGain;
+                rnnOut[i] *= gateGain;
             }
 
             // Store processed frame into output FIFO
             for (int i = 0; i < kRNNFrameSize; ++i)
-                outputFifo[static_cast<size_t>(outputFifoWrite + i)] = rnnOutputBuf_[static_cast<size_t>(i)];
+                outputFifo[static_cast<size_t>(outputFifoWrite + i)] = rnnOut[i];
             outputFifoWrite += kRNNFrameSize;
 
             // Reset input FIFO for next frame
@@ -222,7 +231,9 @@ void BuiltinNoiseRemoval::setStateInformation(const void* data, int sizeInBytes)
     if (auto* obj = parsed.getDynamicObject()) {
         if (obj->hasProperty("strength"))
             setStrength(static_cast<int>(obj->getProperty("strength")));
-        // vadThreshold is derived from strength, no need to load separately
+        // I7: Restore custom VAD threshold (may differ from strength-derived default)
+        if (obj->hasProperty("vadThreshold"))
+            setVADThreshold(static_cast<float>(static_cast<double>(obj->getProperty("vadThreshold"))));
     }
 }
 

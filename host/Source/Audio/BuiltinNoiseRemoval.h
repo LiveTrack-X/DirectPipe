@@ -58,8 +58,6 @@ public:
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int, const juce::String&) override {}
 
-    int getLatencySamples() const { return latencySamples_; }
-
     // -- Parameter accessors (atomic, any thread) --
 
     /** Set strength preset: 0=Light, 1=Standard, 2=Aggressive. */
@@ -73,6 +71,10 @@ public:
 
     /** Set VAD threshold directly (advanced override, 0.0-1.0). */
     void setVADThreshold(float threshold);
+
+    // I5: Status accessors for UI (e.g., edit panel can show resampling warning)
+    bool isActive() const { return !needsResampling_.load(std::memory_order_relaxed); }
+    bool needsResampling() const { return needsResampling_.load(std::memory_order_relaxed); }
 
 private:
     // -- Parameters --
@@ -105,11 +107,9 @@ private:
     int outputFifoReadR_  = 0;
     int outputFifoWriteR_ = 0;
 
-    int latencySamples_ = kRNNFrameSize;
-
     // -- Resampling (TODO) --
     double hostSampleRate_ = 48000.0;
-    bool   needsResampling_ = false;
+    std::atomic<bool> needsResampling_{false};  // I5: atomic -- set in prepareToPlay (msg), read in processBlock (RT)
     // juce::LagrangeInterpolator resamplerInL_, resamplerInR_;
     // juce::LagrangeInterpolator resamplerOutL_, resamplerOutR_;
     // std::vector<float> resampleBuf_;
@@ -117,10 +117,6 @@ private:
     // -- VAD gating (per-channel smooth gain) --
     float gateGainL_ = 1.0f;
     float gateGainR_ = 1.0f;
-
-    // -- Scratch buffer for RNNoise I/O --
-    std::vector<float> rnnInputBuf_;
-    std::vector<float> rnnOutputBuf_;
 
     // -- Internal helpers --
     void destroyRNNoise();

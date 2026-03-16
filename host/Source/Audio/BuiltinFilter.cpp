@@ -32,6 +32,7 @@ void BuiltinFilter::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
 void BuiltinFilter::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     // Check if frequencies changed (atomic read)
+    // Note: IIRCoefficients::makeHighPass/makeLowPass are RT-safe (stack-only, no heap alloc)
     float hpfF = hpfFreq_.load(std::memory_order_relaxed);
     float lpfF = lpfFreq_.load(std::memory_order_relaxed);
     if (hpfF != lastHPFFreq_ || lpfF != lastLPFFreq_)

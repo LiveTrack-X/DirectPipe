@@ -393,7 +393,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
             obj->setProperty("index", i);
             obj->setProperty("name", slot ? juce::String(slot->name) : "");
             obj->setProperty("bypassed", slot ? slot->bypassed : false);
-            obj->setProperty("loaded", slot && slot->instance != nullptr);
+            obj->setProperty("loaded", slot && slot->getProcessor() != nullptr);
             obj->setProperty("parameterCount", chain.getPluginParameterCount(i));
             obj->setProperty("latencySamples",
                 (static_cast<size_t>(i) < latencies.size()) ? latencies[static_cast<size_t>(i)].latencySamples : 0);

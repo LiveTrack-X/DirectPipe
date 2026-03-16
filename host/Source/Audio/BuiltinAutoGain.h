@@ -89,6 +89,7 @@ private:
     int lufsWritePos_ = 0;
     int lufsSampleCount_ = 0;          // number of valid samples in ring buffer
     int lufsWindowSize_ = 0;           // 3 * sampleRate
+    double runningSquareSum_ = 0.0;    // I1: incremental sum for O(1) LUFS calculation
 
     // -- Gain state (RT thread only) --
     float currentGainLinear_ = 1.0f;

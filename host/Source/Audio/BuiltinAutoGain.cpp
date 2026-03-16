@@ -31,6 +31,7 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     lufsRingBuf_.assign(static_cast<size_t>(lufsWindowSize_), 0.0f);
     lufsWritePos_ = 0;
     lufsSampleCount_ = 0;
+    runningSquareSum_ = 0.0;  // I1: reset running sum
 
     // Pre-allocate scratch buffer for K-weighting measurement
     kWeightScratch_.setSize(2, samplesPerBlock);
@@ -96,10 +97,17 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const float* kL = kWeightScratch_.getReadPointer(0);
     const float* kR = (numChannels > 1) ? kWeightScratch_.getReadPointer(1) : nullptr;
 
+    // I1: Incremental ring buffer update with running sum (O(blockSize) instead of O(144k))
     for (int i = 0; i < numSamples; ++i) {
         float sq = kL[i] * kL[i];
         if (kR != nullptr)
             sq = (sq + kR[i] * kR[i]) * 0.5f;  // average L+R squared
+
+        double newVal = static_cast<double>(sq);
+        // Subtract old value from running sum before overwriting
+        double oldVal = static_cast<double>(lufsRingBuf_[static_cast<size_t>(lufsWritePos_)]);
+        runningSquareSum_ -= oldVal;
+        runningSquareSum_ += newVal;
 
         lufsRingBuf_[static_cast<size_t>(lufsWritePos_)] = sq;
         lufsWritePos_++;
@@ -113,14 +121,9 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float measuredLUFS = -60.0f;
 
     if (lufsSampleCount_ > 0) {
-        // Sum all valid samples in ring buffer
-        double sum = 0.0;
-        const int count = lufsSampleCount_;
-        const float* ringData = lufsRingBuf_.data();
-        for (int i = 0; i < count; ++i)
-            sum += static_cast<double>(ringData[i]);
-
-        double meanSquare = sum / static_cast<double>(count);
+        // I1: Use running sum instead of scanning all 144k samples
+        double safeSum = std::max(runningSquareSum_, 0.0);  // handle floating-point drift
+        double meanSquare = safeSum / static_cast<double>(lufsSampleCount_);
 
         // LUFS = -0.691 + 10 * log10(meanSquare)
         // Clamp meanSquare to avoid log10(0)

@@ -219,7 +219,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
                 AppState::PluginState ps;
                 ps.name = slot->name.toStdString();
                 ps.bypassed = slot->bypassed;
-                ps.loaded = slot->instance != nullptr;
+                ps.loaded = (slot->getProcessor() != nullptr);
                 ps.latencySamples = (static_cast<size_t>(i) < latencies.size())
                     ? latencies[static_cast<size_t>(i)].latencySamples : 0;
                 // Map slot type to string
