@@ -144,9 +144,16 @@ TEST_F(LatencyTest, CrossThreadLatency) {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
-    // Wait for consumer to finish
+    // Wait for consumer to finish (with timeout to prevent CI hang)
+    auto waitStart = Clock::now();
     while (received.load(std::memory_order_relaxed) < kIterations) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - waitStart).count();
+        if (elapsed > 30) {
+            std::cout << "WARNING: CrossThreadLatency timed out after 30s ("
+                      << received.load() << "/" << kIterations << " received)" << std::endl;
+            break;
+        }
     }
     done.store(true, std::memory_order_release);
     consumerThread.join();

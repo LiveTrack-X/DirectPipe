@@ -82,7 +82,10 @@ TEST_F(SettingsExporterTest, DpfullbackupRoundtrip) {
 }
 
 TEST_F(SettingsExporterTest, CrossPlatformReject) {
-    auto json = makeBackupJSON("macos");
+    // Use a platform that is NOT the current one
+    auto current = SettingsExporter::getCurrentPlatform();
+    juce::String other = (current == "macos") ? "windows" : "macos";
+    auto json = makeBackupJSON(other);
     EXPECT_FALSE(SettingsExporter::isPlatformCompatible(json));
 }
 
