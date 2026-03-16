@@ -69,10 +69,10 @@ private:
     double currentSampleRate_ = 48000.0;
 
     // Track last applied frequencies to detect changes
-    float lastHPFFreq_ = 0.0f;
-    float lastLPFFreq_ = 0.0f;
+    float lastHPFFreq_ = 0.0f;   // [RT thread only] -- tracks last applied frequency
+    float lastLPFFreq_ = 0.0f;   // [RT thread only]
 
-    void updateFilterCoeffs();
+    void updateFilterCoeffs();  // [RT thread] -- IIRCoefficients is stack-only, no heap alloc
 };
 
 } // namespace directpipe

@@ -284,10 +284,13 @@ void ActionHandler::handle(const ActionEvent& event)
             break;
         }
 
-        case Action::AutoProcessorsAdd:
-            engine_.getVSTChain().addAutoProcessors();
+        case Action::AutoProcessorsAdd: {
+            auto r = engine_.getVSTChain().addAutoProcessors();
+            if (!r)
+                juce::Logger::writeToLog("[ACTION] Auto processors failed: " + r.message);
             if (onDirty) onDirty();
             break;
+        }
 
         case Action::LoadPreset:
         case Action::SwitchPresetSlot:

@@ -79,6 +79,7 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.chainPDCSamples);
     for (const auto& n : s.slotNames)
         h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(n));
+    h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(s.currentPreset));
     return h;
 }
 

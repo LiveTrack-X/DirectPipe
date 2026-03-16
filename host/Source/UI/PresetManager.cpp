@@ -1081,7 +1081,7 @@ void PresetManager::setSlotName(int slotIndex, const juce::String& name)
                 obj->removeProperty("name");
             else
                 obj->setProperty("name", name.trim());
-            file.replaceWithText(juce::JSON::toString(juce::var(obj), true));
+            (void)atomicWriteFile(file, juce::JSON::toString(juce::var(obj), true));
         }
     }
     juce::Logger::writeToLog("[PRESET] Renamed slot " + juce::String::charToString(slotLabel(slotIndex))

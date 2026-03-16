@@ -62,10 +62,16 @@ NoiseRemovalEditPanel::NoiseRemovalEditPanel(BuiltinNoiseRemoval& processor)
     };
     addAndMakeVisible(vadSlider_);
 
+    // -- Status warning label (non-48kHz) --
+    statusLabel_.setFont(juce::Font(11.0f));
+    statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF8800));
+    addAndMakeVisible(statusLabel_);
+
     // Sync from processor and hide advanced by default
     syncFromProcessor();
     advancedToggle_.setToggleState(false, juce::dontSendNotification);
     updateAdvancedVisibility();
+    updateStatusWarning();
 }
 
 void NoiseRemovalEditPanel::paint(juce::Graphics& g)
@@ -77,6 +83,12 @@ void NoiseRemovalEditPanel::resized()
 {
     auto area = getLocalBounds().reduced(10);
     const int rowH = 28;
+
+    // Status warning (only takes space when visible)
+    if (statusLabel_.isVisible()) {
+        statusLabel_.setBounds(area.removeFromTop(18));
+        area.removeFromTop(4);
+    }
 
     // Strength row
     auto strengthRow = area.removeFromTop(rowH);
@@ -110,6 +122,16 @@ void NoiseRemovalEditPanel::updateAdvancedVisibility()
     bool show = advancedToggle_.getToggleState();
     vadLabel_.setVisible(show);
     vadSlider_.setVisible(show);
+}
+
+void NoiseRemovalEditPanel::updateStatusWarning()
+{
+    if (processor_.needsResampling()) {
+        statusLabel_.setText("Inactive: requires 48 kHz sample rate", juce::dontSendNotification);
+        statusLabel_.setVisible(true);
+    } else {
+        statusLabel_.setVisible(false);
+    }
 }
 
 } // namespace directpipe

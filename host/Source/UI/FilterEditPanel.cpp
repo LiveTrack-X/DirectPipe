@@ -38,9 +38,9 @@ FilterEditPanel::FilterEditPanel(BuiltinFilter& processor)
     hpfPreset_.onChange = [this] {
         int sel = hpfPreset_.getSelectedId();
         switch (sel) {
-            case 1: filter_.setHPFFrequency(60.0f);  break;
-            case 2: filter_.setHPFFrequency(80.0f);  break;
-            case 3: filter_.setHPFFrequency(120.0f); break;
+            case 1: filter_.setHPFFrequency(60.0f);  hpfSlider_.setValue(60.0, juce::dontSendNotification); break;
+            case 2: filter_.setHPFFrequency(80.0f);  hpfSlider_.setValue(80.0, juce::dontSendNotification); break;
+            case 3: filter_.setHPFFrequency(120.0f); hpfSlider_.setValue(120.0, juce::dontSendNotification); break;
             case 4: // Custom -- use slider value
                 filter_.setHPFFrequency(static_cast<float>(hpfSlider_.getValue()));
                 break;
@@ -89,9 +89,9 @@ FilterEditPanel::FilterEditPanel(BuiltinFilter& processor)
     lpfPreset_.onChange = [this] {
         int sel = lpfPreset_.getSelectedId();
         switch (sel) {
-            case 1: filter_.setLPFFrequency(16000.0f); break;
-            case 2: filter_.setLPFFrequency(12000.0f); break;
-            case 3: filter_.setLPFFrequency(8000.0f);  break;
+            case 1: filter_.setLPFFrequency(16000.0f); lpfSlider_.setValue(16000.0, juce::dontSendNotification); break;
+            case 2: filter_.setLPFFrequency(12000.0f); lpfSlider_.setValue(12000.0, juce::dontSendNotification); break;
+            case 3: filter_.setLPFFrequency(8000.0f);  lpfSlider_.setValue(8000.0, juce::dontSendNotification); break;
             case 4: // Custom -- use slider value
                 filter_.setLPFFrequency(static_cast<float>(lpfSlider_.getValue()));
                 break;

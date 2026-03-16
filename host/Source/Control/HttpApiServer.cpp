@@ -330,13 +330,13 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                floatToString(value) + "}"};
     }
 
-    // GET /api/preset/:index
+    // GET /api/preset/:index (0-4 = A-E, 5 = Auto)
     if (action == "preset" && segments.size() >= 3) {
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
         int index = safeAtoi(segments[2]);
-        if (index < 0 || index > 4)
-            return {400, "{\"error\": \"Preset index out of range 0-4\"}"};
+        if (index < 0 || index > 5)
+            return {400, "{\"error\": \"Preset index out of range 0-5 (0-4=A-E, 5=Auto)\"}"};
         dispatcher_.loadPreset(index);
         return {200, R"({"ok": true, "action": "load_preset", "index": )" +
                std::to_string(index) + "}"};
@@ -346,19 +346,22 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     // InputGainAdjust handler applies *0.1f (designed for hotkey steps ±1),
     // so scale by 10 to get correct gain change.
     if (action == "gain" && segments.size() >= 3) {
-        float delta = juce::String(segments[2]).getFloatValue();
+        auto valueStr = juce::String(segments[2]);
+        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.-") < 0)
+            return {400, R"({"error": "delta must be a number"})"};
+        float delta = valueStr.getFloatValue();
         dispatcher_.inputGainAdjust(delta * 10.0f);
         return {200, R"({"ok": true, "action": "input_gain", "delta": )" +
                floatToString(delta) + "}"};
     }
 
-    // GET /api/slot/:index
+    // GET /api/slot/:index (0-4 = A-E, 5 = Auto)
     if (action == "slot" && segments.size() >= 3) {
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
         int index = safeAtoi(segments[2]);
-        if (index < 0 || index > 4)
-            return {400, "{\"error\": \"Slot index out of range 0-4\"}"};
+        if (index < 0 || index > 5)
+            return {400, "{\"error\": \"Slot index out of range 0-5 (0-4=A-E, 5=Auto)\"}"};
         ActionEvent event;
         event.action = Action::SwitchPresetSlot;
         event.intParam = index;

@@ -363,12 +363,16 @@ void PluginChainEditor::showAddPluginMenu()
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addButton_),
         [safeThis, types](int result) {
             if (!safeThis) return;
-            if (result == 901)
-                (void)safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinFilter);
-            else if (result == 902)
-                (void)safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemoval);
-            else if (result == 903)
-                (void)safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinAutoGain);
+            if (result == 901) {
+                auto r = safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinFilter);
+                if (!r) juce::Logger::writeToLog("[VST] Failed to add Filter: " + r.message);
+            } else if (result == 902) {
+                auto r = safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemoval);
+                if (!r) juce::Logger::writeToLog("[VST] Failed to add Noise Removal: " + r.message);
+            } else if (result == 903) {
+                auto r = safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinAutoGain);
+                if (!r) juce::Logger::writeToLog("[VST] Failed to add Auto Gain: " + r.message);
+            }
             else if (result == 1) {
                 safeThis->addPluginFromFile();
             } else if (result == 2) {

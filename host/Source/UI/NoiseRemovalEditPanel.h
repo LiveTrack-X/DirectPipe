@@ -33,6 +33,9 @@ private:
     juce::Label strengthLabel_;
     juce::ComboBox strengthCombo_;
 
+    // -- Status warning (shown when sample rate != 48kHz) --
+    juce::Label statusLabel_;
+
     // -- Advanced section --
     juce::ToggleButton advancedToggle_{"Advanced"};
     juce::Label vadLabel_;
@@ -40,6 +43,7 @@ private:
 
     void syncFromProcessor();
     void updateAdvancedVisibility();
+    void updateStatusWarning();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NoiseRemovalEditPanel)
 };

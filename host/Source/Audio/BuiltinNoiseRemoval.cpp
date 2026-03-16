@@ -139,8 +139,14 @@ void BuiltinNoiseRemoval::processChannel(
         // 2. If we have a full RNNoise frame, process it
         if (inputFifoWrite >= kRNNFrameSize) {
             // C1: Bounds check -- prevent output FIFO overflow for large buffer sizes
-            if (outputFifoWrite + kRNNFrameSize > kFifoCapacity)
-                break;  // output FIFO full -- drop frame to prevent overflow
+            if (outputFifoWrite + kRNNFrameSize > kFifoCapacity) {
+                // Zero remaining output samples to prevent unprocessed input leaking through
+                while (samplesRead < numSamples) {
+                    out[samplesRead] = 0.0f;
+                    ++samplesRead;
+                }
+                break;
+            }
 
             // C2: Use stack-allocated scratch buffers (480 * 4 = 1920 bytes each -- safe)
             float rnnIn[kRNNFrameSize];
