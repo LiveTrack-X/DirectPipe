@@ -124,6 +124,7 @@ if(DIRECTPIPE_BUILD_HOST)
 
     target_link_libraries(directpipe-host-tests PRIVATE
         directpipe-core
+        rnnoise
         GTest::gtest
         GTest::gtest_main
         juce::juce_audio_basics

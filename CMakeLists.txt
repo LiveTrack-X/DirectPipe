@@ -46,6 +46,31 @@ FetchContent_Declare(
 if(DIRECTPIPE_BUILD_HOST OR DIRECTPIPE_BUILD_RECEIVER)
     FetchContent_MakeAvailable(JUCE)
 
+    # ─── RNNoise (noise suppression, BSD-3) ───
+    add_library(rnnoise STATIC
+        thirdparty/rnnoise/src/denoise.c
+        thirdparty/rnnoise/src/celt_lpc.c
+        thirdparty/rnnoise/src/kiss_fft.c
+        thirdparty/rnnoise/src/nnet.c
+        thirdparty/rnnoise/src/nnet_default.c
+        thirdparty/rnnoise/src/pitch.c
+        thirdparty/rnnoise/src/rnn.c
+        thirdparty/rnnoise/src/rnnoise_data.c
+        thirdparty/rnnoise/src/rnnoise_tables.c
+        thirdparty/rnnoise/src/x86/x86cpu.c
+        thirdparty/rnnoise/src/x86/x86_dnn_map.c
+    )
+    target_include_directories(rnnoise PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rnnoise/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rnnoise/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rnnoise/src/x86
+    )
+    if(MSVC)
+        target_compile_options(rnnoise PRIVATE /W0)
+    else()
+        target_compile_options(rnnoise PRIVATE -w)
+    endif()
+
     # VST2 SDK (interface headers for VST2 plugin hosting + Receiver VST2 format)
     set(VST2_SDK_PATH "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/VST2_SDK")
     if(EXISTS "${VST2_SDK_PATH}/pluginterfaces/vst2.x/aeffect.h")

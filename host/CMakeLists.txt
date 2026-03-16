@@ -192,6 +192,7 @@ endif()
 target_link_libraries(DirectPipe PRIVATE
     DirectPipeBinaryData
     directpipe-core
+    rnnoise
     juce::juce_audio_basics
     juce::juce_audio_devices
     juce::juce_audio_formats
