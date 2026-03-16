@@ -221,6 +221,30 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
 
 ---
 
+#### `safety_limiter_toggle` — Toggle Safety Limiter / 안전 리미터 토글
+
+```json
+{ "type": "action", "action": "safety_limiter_toggle", "params": {} }
+```
+
+Toggles the safety limiter on/off. Not blocked by panic mute. / 안전 리미터 켜기/끄기 토글. 패닉 뮤트에 의해 차단되지 않음.
+
+---
+
+#### `set_safety_limiter_ceiling` — Set Safety Limiter Ceiling / 안전 리미터 실링 설정
+
+```json
+{ "type": "action", "action": "set_safety_limiter_ceiling", "params": { "value": -0.5 } }
+```
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `value` | number | Yes | Ceiling in dBFS (-6.0 to 0.0) / 실링 값 (dBFS) |
+
+Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
+
+---
+
 ### State Object / 상태 객체
 
 ```json
@@ -228,8 +252,8 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
   "type": "state",
   "data": {
     "plugins": [
-      { "name": "ReaComp", "bypass": false, "loaded": true },
-      { "name": "ReaEQ", "bypass": true, "loaded": true }
+      { "name": "ReaComp", "bypass": false, "loaded": true, "latency_samples": 0 },
+      { "name": "ReaEQ", "bypass": true, "loaded": true, "latency_samples": 0 }
     ],
     "volumes": { "input": 1.0, "monitor": 0.6, "output": 1.0 },
     "master_bypassed": false,
@@ -250,6 +274,14 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
     "recording": false,
     "recording_seconds": 0.0,
     "ipc_enabled": false,
+    "safety_limiter": {
+      "enabled": true,
+      "ceiling_dB": -0.3,
+      "gain_reduction_dB": 0.0,
+      "is_limiting": false
+    },
+    "chain_pdc_samples": 0,
+    "chain_pdc_ms": 0.0,
     "device_lost": false,
     "monitor_lost": false
   }
@@ -262,6 +294,7 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
 | `plugins[].name` | string | Plugin name / 플러그인 이름 |
 | `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
 | `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
+| `plugins[].latency_samples` | number | Plugin-reported latency in samples / 플러그인 보고 레이턴시 (샘플) |
 | `volumes.input` | number | Input gain multiplier (0.0-2.0) / 입력 게인 배수 |
 | `volumes.monitor` | number | Monitor volume (0.0-1.0) / 모니터 볼륨 |
 | `volumes.output` | number | Output volume (0.0-1.0) / 출력 볼륨 |
@@ -284,6 +317,13 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
 | `recording` | boolean | Audio recording active / 오디오 녹음 중 |
 | `recording_seconds` | number | Recording elapsed time in seconds / 녹음 경과 시간 (초) |
 | `ipc_enabled` | boolean | IPC output (DirectPipe Receiver) enabled / IPC 출력 (DirectPipe Receiver) 활성화 |
+| `safety_limiter` | object | Safety limiter state / 안전 리미터 상태 |
+| `safety_limiter.enabled` | boolean | Limiter enabled / 리미터 활성화 |
+| `safety_limiter.ceiling_dB` | number | Ceiling in dBFS (-6.0 to 0.0) / 실링 (dBFS) |
+| `safety_limiter.gain_reduction_dB` | number | Current gain reduction in dB / 현재 게인 리덕션 (dB) |
+| `safety_limiter.is_limiting` | boolean | Currently limiting / 현재 리미팅 중 |
+| `chain_pdc_samples` | number | Total plugin chain PDC in samples / 플러그인 체인 총 PDC (샘플) |
+| `chain_pdc_ms` | number | Total plugin chain PDC in ms / 플러그인 체인 총 PDC (ms) |
 | `device_lost` | boolean | Audio device disconnected / 오디오 장치 연결 끊김 |
 | `monitor_lost` | boolean | Monitor device disconnected / 모니터 장치 연결 끊김 |
 
@@ -314,6 +354,8 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/plugins` | List loaded plugins: `[{index, name, bypassed, loaded, parameterCount}]` / 로드된 플러그인 목록 |
 | `GET /api/plugin/:idx/params` | List plugin parameters: `[{index, name, value}]` / 플러그인 파라미터 목록 |
 | `GET /api/perf` | Performance stats: `{latencyMs, cpuPercent, sampleRate, bufferSize, xrunCount}` / 성능 통계 |
+| `GET /api/limiter/toggle` | Toggle safety limiter on/off / 안전 리미터 토글 |
+| `GET /api/limiter/ceiling/:value` | Set limiter ceiling (-6.0 to 0.0 dBFS) / 리미터 실링 설정 |
 | `GET /api/midi/cc/:channel/:number/:value` | Inject MIDI CC for testing (ch 1-16, cc 0-127, val 0-127) / MIDI CC 테스트 주입 |
 | `GET /api/midi/note/:channel/:number/:velocity` | Inject MIDI Note for testing (ch 1-16, note 0-127, vel 0-127) / MIDI Note 테스트 주입 |
 

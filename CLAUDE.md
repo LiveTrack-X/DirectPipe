@@ -68,6 +68,8 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 | UpdateChecker | checkForUpdate | BG thread | alive_ flag guard |
 | SharedMemWriter | writeAudio | RT (audio) | Lock-free, pre-allocated buffers |
 | AudioRecorder | writeAudio | RT (audio) | SpinLock for writer lifecycle |
+| SafetyLimiter | process | RT (audio) | Atomics only, no alloc |
+| SafetyLimiter | setEnabled/setCeiling | Any | Atomic writes |
 | SettingsAutosaver | tick/saveNow | Message (30Hz) | Dirty-flag + debounce |
 
 ### Lock Hierarchy (이 순서로만 acquire)
@@ -144,7 +146,7 @@ MainComponent Split (v3→v4):
 ## Key Implementations
 
 ### v4 Architecture (v3에서 변경된 부분)
-- **ActionHandler**: Consolidated action routing from ActionDispatcher to AudioEngine/UI. `doPanicMute(bool)` consolidates panic mute logic (single implementation, was scattered in v3 MainComponent): saves pre-mute state (monitor, output, IPC), mutes everything, **stops active recording**. On unmute, restores previous state (recording does not auto-restart). **All action cases** in `handle()` check `engine_.isMuted()` to block during panic — PluginBypass, MasterBypass, InputGainAdjust, SetVolume, SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle, MonitorToggle, IpcToggle. Only PanicMute/InputMuteToggle/XRunReset bypass the check (they ARE the panic toggle or safe to run anytime). Callback-based decoupling from MainComponent (`onDirty`, `onNotification`, `onPanicStateChanged`, `onRecordingStopped`, etc.). Owns pre-mute state (`preMuteMonitorEnabled_`, `preMuteOutputMuted_`, `preMuteVstEnabled_`).
+- **ActionHandler**: Consolidated action routing from ActionDispatcher to AudioEngine/UI. `doPanicMute(bool)` consolidates panic mute logic (single implementation, was scattered in v3 MainComponent): saves pre-mute state (monitor, output, IPC), mutes everything, **stops active recording**. On unmute, restores previous state (recording does not auto-restart). **All action cases** in `handle()` check `engine_.isMuted()` to block during panic — PluginBypass, MasterBypass, InputGainAdjust, SetVolume, SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle, MonitorToggle, IpcToggle. Only PanicMute/InputMuteToggle/XRunReset/SafetyLimiterToggle/SetSafetyLimiterCeiling bypass the check (they ARE the panic toggle or safe to run anytime). Callback-based decoupling from MainComponent (`onDirty`, `onNotification`, `onPanicStateChanged`, `onRecordingStopped`, etc.). Owns pre-mute state (`preMuteMonitorEnabled_`, `preMuteOutputMuted_`, `preMuteVstEnabled_`).
 - **ActionResult**: `ActionResult.h` — ok/fail pattern with `onError` callback. Replaces v3's bare bool/void returns for structured error handling.
 - **SettingsAutosaver**: Dirty-flag pattern with 1-second debounce timer (~30Hz tick). `markDirty()` sets flag, `tick()` counts down cooldown, `saveNow()` for immediate save. Callback-based decoupling (`onPostLoad`, `onShowWindow`, `onRestorePanicMute`, `onFlushLogs`). `loadFromFile()` wraps `triggerPreload()` in `callAsync` (audio device must be fully started before preload).
 - **StatusUpdater**: Periodic UI status updates at ~30Hz. Caches all status values (mute states, latency, CPU, format, gain, outputVolume, xrunCount) to avoid redundant repaints. Updates level meters, mute button colours, status bar labels, input gain slider sync, and broadcasts full state to WebSocket clients. State broadcast includes `volumes.output` and `xrun_count` fields. Pointer-based UI binding via `setUI()`.
@@ -168,6 +170,8 @@ MainComponent Split (v3→v4):
 - **Output "None" mode**: `setOutputNone(bool)` / `isOutputNone()` — `outputNone_` atomic flag mutes output and locks OUT button. Cleared on driver type switch. `DriverTypeSnapshot` saves/restores per driver type.
 - **Monitor output**: Separate shared-mode AudioDeviceManager (WASAPI/CoreAudio/ALSA) + lock-free AudioRingBuffer for headphone monitoring. Independent of main driver type. Status indicator (Active/SampleRateMismatch/Error/No device). Auto-reconnection via `monitorLost_` atomic + 3s timer polling.
 - **XRun monitoring**: Rolling 60-second window. `xrunResetRequested_` atomic flag pattern. Status bar shows count with red highlight.
+- **Safety Limiter**: `SafetyLimiter.h/cpp` — RT-safe feed-forward limiter (0.1ms attack, 50ms release). Inserted after VSTChain, before Recording/IPC/Monitor/Output. Atomic params: `enabled` (default true), `ceilingdB` (-0.3 dBFS default, range -6.0~0.0). GR feedback via atomic for UI. No look-ahead, no PDC contribution. OutputPanel UI: enable toggle + ceiling slider + GR display. PluginChainEditor: Safety Limiter toggle button. Status bar [LIM] indicator.
+- **Per-Plugin Latency Display**: `VSTChain::getPluginLatencies()` + `getTotalChainPDC()` query plugin PDC values under chainLock_. PluginChainEditor shows per-row "{N}smp" label (hidden when 0) + chain total PDC summary. 2Hz polling from MainComponent timer. State broadcast includes `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms`.
 
 ### Preset & Plugin
 - **Quick Preset Slots (A-E)**: Chain-only. Plugin state via getStateInformation/base64. Async loading (replaceChainAsync with `alive_` flag). **Keep-Old-Until-Ready**: old chain continues during background loading. `partialLoad_` prevents auto-save after incomplete loads. `loadingSlot_` prevents concurrent switches. **Slot naming**: `.dppreset` JSON `"name"` field, displayed as `A|게임`. Right-click → Rename/Copy/Delete/Export/Import.
@@ -181,7 +185,7 @@ MainComponent Split (v3→v4):
 - **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup. Port 8765. UDP discovery broadcast (port 8767). `broadcastToClients` thread join outside `clientsMutex_` lock.
 - **IPC Toggle**: `Action::IpcToggle` toggles IPC output. WebSocket/HTTP/MIDI mappable.
 - **Default hotkeys**: Minimal set for new installs — Panic Mute (Ctrl+Shift+M) + Plugin 1 Bypass (Ctrl+Shift+1) only. Users add more via Controls > Hotkeys tab. Existing users keep their saved config (createDefaults() only runs on first launch).
-- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: volume/parameter values validated as numeric. Gain delta endpoint scales by 10× (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`).
+- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: volume/parameter values validated as numeric. Gain delta endpoint scales by 10× (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`), safety limiter toggle/ceiling (`/api/limiter/toggle`, `/api/limiter/ceiling/:value`).
 - **MIDI Learn cancel**: Cancel button in MidiTab. `stopLearn()` called on cancel.
 - **MIDI HTTP API test endpoints**: `/api/midi/cc/:ch/:num/:val` and `/api/midi/note/:ch/:num/:vel`.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow.
@@ -253,7 +257,7 @@ MainComponent Split (v3→v4):
 ## Modules
 - `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants). POSIX: shm_open + sem_open (macOS sem_trywait polling, Linux sem_timedwait). Windows: CreateFileMapping + CreateEvent.
 - `host/` -> JUCE app
-  - `Audio/` -> AudioEngine, VSTChain, OutputRouter, MonitorOutput, AudioRingBuffer, LatencyMonitor, AudioRecorder, PluginPreloadCache, PluginLoadHelper, **DeviceState** (enum)
+  - `Audio/` -> AudioEngine, VSTChain, OutputRouter, MonitorOutput, AudioRingBuffer, LatencyMonitor, AudioRecorder, PluginPreloadCache, PluginLoadHelper, **SafetyLimiter**, **DeviceState** (enum)
   - `Control/` -> ActionDispatcher, **ActionHandler**, ControlManager, ControlMapping, **SettingsAutosaver**, WebSocketServer, HttpApiServer, HotkeyHandler, MidiHandler, StateBroadcaster, DirectPipeLogger (Log.h/cpp)
   - `IPC/` -> SharedMemWriter
   - `UI/` -> AudioSettings, OutputPanel, ControlSettingsPanel (slim tabbed container), **HotkeyTab**, **MidiTab**, **StreamDeckTab**, PluginChainEditor, PluginScanner, PresetManager, **PresetSlotBar**, LevelMeter, LogPanel, NotificationBar, DirectPipeLookAndFeel, SettingsExporter, **StatusUpdater**, **UpdateChecker**, DeviceSelector
@@ -291,6 +295,7 @@ MainComponent Split (v3→v4):
 - Portable mode: `portable.flag` next to exe -> config stored in `./config/`
 - **Multi-instance external control priority**: Platform::MultiInstanceLock abstraction. `acquireExternalControlPriority()` returns 1/0/-1.
 - **LogPanel Quit button**: Red "Quit" button in Settings tab.
+- Safety Limiter: default enabled, ceiling -0.3 dBFS. Settings persist in dppreset. Actions: SafetyLimiterToggle, SetSafetyLimiterCeiling (no panic mute guard).
 - **v3 핫픽스 동기화**: v3에서 긴급 버그를 수정하면 반드시 이 v4에도 동기화해야 합니다. 단, v3 전용 코드(version ceiling 등)는 동기화 제외. 상세 절차는 `../HOTFIX_RELEASE_GUIDE.md` Phase 10 참조.
 
 ## Pre-Release Workflow (MANDATORY)
