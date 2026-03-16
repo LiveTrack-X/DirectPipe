@@ -222,6 +222,13 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
                 ps.loaded = slot->instance != nullptr;
                 ps.latencySamples = (static_cast<size_t>(i) < latencies.size())
                     ? latencies[static_cast<size_t>(i)].latencySamples : 0;
+                // Map slot type to string
+                switch (slot->type) {
+                    case PluginSlot::Type::BuiltinFilter: ps.type = "builtin_filter"; break;
+                    case PluginSlot::Type::BuiltinNoiseRemoval: ps.type = "builtin_noise_removal"; break;
+                    case PluginSlot::Type::BuiltinAutoGain: ps.type = "builtin_auto_gain"; break;
+                    default: ps.type = "vst"; break;
+                }
                 s.plugins.push_back(ps);
                 if (!ps.bypassed && ps.loaded) s.masterBypassed = false;
             }

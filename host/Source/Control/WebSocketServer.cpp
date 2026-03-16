@@ -499,6 +499,8 @@ void WebSocketServer::processMessage(const std::string& message)
     } else if (actionStr == "set_safety_limiter_ceiling") {
         event.action = Action::SetSafetyLimiterCeiling;
         event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : -0.3f;
+    } else if (actionStr == "auto_processors_add") {
+        event.action = Action::AutoProcessorsAdd;
     } else {
         return;  // Unknown action
     }

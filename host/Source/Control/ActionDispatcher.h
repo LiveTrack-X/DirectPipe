@@ -56,6 +56,7 @@ enum class Action {
     XRunReset,          ///< Reset xrun counter
     SafetyLimiterToggle,       ///< Toggle safety limiter on/off
     SetSafetyLimiterCeiling,   ///< Set safety limiter ceiling (floatParam = dB, -6.0~0.0)
+    AutoProcessorsAdd,         ///< Add Filter+NoiseRemoval+AutoGain to chain
 };
 
 /// Carries an action with its parameters
@@ -173,6 +174,7 @@ inline juce::String actionToDisplayName(const ActionEvent& event)
         case Action::XRunReset:       return "XRun Reset";
         case Action::SafetyLimiterToggle:      return "Safety Limiter Toggle";
         case Action::SetSafetyLimiterCeiling:  return "Set Limiter Ceiling";
+        case Action::AutoProcessorsAdd:        return "Auto Processors Add";
         default:                      return "Unknown";
     }
 }
@@ -200,6 +202,7 @@ inline const char* actionToString(Action a)
         case Action::XRunReset:          return "XRunReset";
         case Action::SafetyLimiterToggle:      return "SafetyLimiterToggle";
         case Action::SetSafetyLimiterCeiling:  return "SetSafetyLimiterCeiling";
+        case Action::AutoProcessorsAdd:        return "AutoProcessorsAdd";
         default:                         return "Unknown";
     }
 }

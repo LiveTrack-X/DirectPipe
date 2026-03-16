@@ -221,6 +221,16 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
 
 ---
 
+#### `auto_processors_add` — Add Auto Processors / 자동 프로세서 추가
+
+```json
+{ "type": "action", "action": "auto_processors_add", "params": {} }
+```
+
+Adds built-in Filter + NoiseRemoval + AutoGain processors to the chain. Already-present types are skipped. Not blocked by panic mute. / 내장 Filter + NoiseRemoval + AutoGain 프로세서를 체인에 추가. 이미 있는 타입은 스킵. 패닉 뮤트에 의해 차단되지 않음.
+
+---
+
 #### `safety_limiter_toggle` — Toggle Safety Limiter / 안전 리미터 토글
 
 ```json
@@ -252,8 +262,8 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
   "type": "state",
   "data": {
     "plugins": [
-      { "name": "ReaComp", "bypass": false, "loaded": true, "latency_samples": 0 },
-      { "name": "ReaEQ", "bypass": true, "loaded": true, "latency_samples": 0 }
+      { "name": "ReaComp", "bypass": false, "loaded": true, "latency_samples": 0, "type": "vst" },
+      { "name": "ReaEQ", "bypass": true, "loaded": true, "latency_samples": 0, "type": "vst" }
     ],
     "volumes": { "input": 1.0, "monitor": 0.6, "output": 1.0 },
     "master_bypassed": false,
@@ -295,6 +305,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
 | `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
 | `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
 | `plugins[].latency_samples` | number | Plugin-reported latency in samples / 플러그인 보고 레이턴시 (샘플) |
+| `plugins[].type` | string | Plugin type: `"vst"`, `"builtin_filter"`, `"builtin_noise_removal"`, `"builtin_auto_gain"` / 플러그인 타입 |
 | `volumes.input` | number | Input gain multiplier (0.0-2.0) / 입력 게인 배수 |
 | `volumes.monitor` | number | Monitor volume (0.0-1.0) / 모니터 볼륨 |
 | `volumes.output` | number | Output volume (0.0-1.0) / 출력 볼륨 |
@@ -356,6 +367,7 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/perf` | Performance stats: `{latencyMs, cpuPercent, sampleRate, bufferSize, xrunCount}` / 성능 통계 |
 | `GET /api/limiter/toggle` | Toggle safety limiter on/off / 안전 리미터 토글 |
 | `GET /api/limiter/ceiling/:value` | Set limiter ceiling (-6.0 to 0.0 dBFS) / 리미터 실링 설정 |
+| `GET /api/auto/add` | Add built-in Filter+NoiseRemoval+AutoGain processors / 내장 프로세서 자동 추가 |
 | `GET /api/midi/cc/:channel/:number/:value` | Inject MIDI CC for testing (ch 1-16, cc 0-127, val 0-127) / MIDI CC 테스트 주입 |
 | `GET /api/midi/note/:channel/:number/:velocity` | Inject MIDI Note for testing (ch 1-16, note 0-127, vel 0-127) / MIDI Note 테스트 주입 |
 
@@ -412,6 +424,9 @@ curl http://127.0.0.1:8766/api/plugin/0/params
 
 # Get performance stats / 성능 통계 조회
 curl http://127.0.0.1:8766/api/perf
+
+# Add auto processors (Filter+NoiseRemoval+AutoGain) / 자동 프로세서 추가
+curl http://127.0.0.1:8766/api/auto/add
 
 # Inject MIDI CC for testing (Ch1, CC#7, Value=127) / MIDI CC 테스트 주입
 curl http://127.0.0.1:8766/api/midi/cc/1/7/127

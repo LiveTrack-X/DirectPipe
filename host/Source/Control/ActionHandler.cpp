@@ -284,6 +284,11 @@ void ActionHandler::handle(const ActionEvent& event)
             break;
         }
 
+        case Action::AutoProcessorsAdd:
+            engine_.getVSTChain().addAutoProcessors();
+            if (onDirty) onDirty();
+            break;
+
         case Action::LoadPreset:
         case Action::SwitchPresetSlot:
         case Action::NextPreset:

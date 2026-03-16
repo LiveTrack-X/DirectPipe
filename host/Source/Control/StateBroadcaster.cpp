@@ -74,6 +74,8 @@ static uint32_t quickStateHash(const AppState& s)
         h = h * 31u + (static_cast<uint32_t>(p.bypassed) | (static_cast<uint32_t>(p.loaded) << 1));
     for (const auto& p : s.plugins)
         h = h * 31u + static_cast<uint32_t>(p.latencySamples);
+    for (const auto& p : s.plugins)
+        h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(p.type));
     h = h * 31u + static_cast<uint32_t>(s.chainPDCSamples);
     for (const auto& n : s.slotNames)
         h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(n));
@@ -157,6 +159,7 @@ std::string StateBroadcaster::toJSON() const
         plugin->setProperty("bypass", p.bypassed);
         plugin->setProperty("loaded", p.loaded);
         plugin->setProperty("latency_samples", p.latencySamples);
+        plugin->setProperty("type", juce::String(p.type));
         plugins.add(juce::var(plugin));
     }
     data->setProperty("plugins", plugins);

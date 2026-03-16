@@ -276,6 +276,12 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                std::to_string(static_cast<double>(value)) + "}"};
     }
 
+    // GET /api/auto/add -- add Filter+NoiseRemoval+AutoGain processors
+    if (action == "auto" && segments.size() >= 3 && segments[2] == "add") {
+        dispatcher_.dispatch({Action::AutoProcessorsAdd});
+        return {200, R"({"ok": true, "action": "auto_processors_add"})"};
+    }
+
     // GET /api/bypass/:index/toggle
     if (action == "bypass" && segments.size() >= 3) {
         if (segments[2] == "master") {

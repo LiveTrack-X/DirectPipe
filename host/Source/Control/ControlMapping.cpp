@@ -264,7 +264,7 @@ ActionEvent ControlMappingStore::varToActionEvent(const juce::var& v)
     ActionEvent event;
     if (auto* obj = v.getDynamicObject()) {
         int actionVal = static_cast<int>(obj->getProperty("action"));
-        if (actionVal >= 0 && actionVal <= static_cast<int>(Action::SetSafetyLimiterCeiling))
+        if (actionVal >= 0 && actionVal <= static_cast<int>(Action::AutoProcessorsAdd))
             event.action = static_cast<Action>(actionVal);
         event.intParam = obj->getProperty("intParam");
         event.floatParam = static_cast<float>(static_cast<double>(obj->getProperty("floatParam")));
