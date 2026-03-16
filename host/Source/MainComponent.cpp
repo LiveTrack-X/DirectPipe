@@ -116,6 +116,15 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     addAndMakeVisible(inputGainSlider_);
 
+    // ── Auto Button ──
+    autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A4035));
+    autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    autoProcessorBtn_.onClick = [this] {
+        (void)audioEngine_.getVSTChain().addAutoProcessors();
+    };
+    addAndMakeVisible(autoProcessorBtn_);
+
     // ── Output Panel ──
     outputPanel_ = std::make_unique<OutputPanel>(audioEngine_);
     outputPanel_->onSettingsChanged = [this] { markSettingsDirty(); };
@@ -574,9 +583,14 @@ void MainComponent::resized()
     inputSectionLabel_.setBounds(cx, y, 100, 24);
     y += 26;
 
-    // Input gain row
-    inputGainLabel_.setBounds(cx, y, 40, 24);
-    inputGainSlider_.setBounds(cx + 44, y, cw - 44, 24);
+    // Input gain row: [Gain:] [slider] [Auto]
+    {
+        int autoBtnW = 44;
+        int gap = 4;
+        inputGainLabel_.setBounds(cx, y, 40, 24);
+        inputGainSlider_.setBounds(cx + 44, y, cw - 44 - autoBtnW - gap, 24);
+        autoProcessorBtn_.setBounds(cx + cw - autoBtnW, y, autoBtnW, 24);
+    }
     y += 30;
 
     // ── VST CHAIN Section ──
@@ -673,7 +687,7 @@ void MainComponent::timerCallback()
         logComp->flushPendingLogs();
 
     // ── Status bar, mute indicators, level meters, broadcaster ──
-    statusUpdater_->tick(presetManager_.get(), PresetSlotBar::kNumPresetSlots);
+    statusUpdater_->tick(presetManager_.get(), PresetManager::kNumSlots);
 
     // Sync limiter toggle + per-plugin latency in chain editor
     if (pluginChainEditor_) {

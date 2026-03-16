@@ -116,9 +116,10 @@ void PluginChainEditor::PluginRowComponent::update(int newRowIndex)
     rowIndex_ = newRowIndex;
 
     if (auto* slot = owner_.vstChain_.getPluginSlot(rowIndex_)) {
-        nameLabel_.setText(
-            juce::String(rowIndex_ + 1) + ". " + slot->name,
-            juce::dontSendNotification);
+        juce::String displayName = juce::String(rowIndex_ + 1) + ". " + slot->name;
+        if (slot->type != PluginSlot::Type::VST)
+            displayName += " (Built-in)";
+        nameLabel_.setText(displayName, juce::dontSendNotification);
         bypassButton_.setToggleState(slot->bypassed, juce::dontSendNotification);
     }
 }
@@ -323,6 +324,16 @@ void PluginChainEditor::showAddPluginMenu()
 {
     juce::PopupMenu menu;
 
+    // Built-in processors submenu
+    {
+        juce::PopupMenu builtinMenu;
+        builtinMenu.addItem(901, "Filter (HPF + LPF)");
+        builtinMenu.addItem(902, "Noise Removal (RNNoise)");
+        builtinMenu.addItem(903, "Auto Gain (LUFS AGC)");
+        menu.addSubMenu("Built-in", builtinMenu);
+        menu.addSeparator();
+    }
+
     // Add scanned plugins as submenu
     auto& knownPlugins = vstChain_.getKnownPlugins();
     auto types = knownPlugins.getTypes();
@@ -352,7 +363,13 @@ void PluginChainEditor::showAddPluginMenu()
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addButton_),
         [safeThis, types](int result) {
             if (!safeThis) return;
-            if (result == 1) {
+            if (result == 901)
+                (void)safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinFilter);
+            else if (result == 902)
+                (void)safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemoval);
+            else if (result == 903)
+                (void)safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinAutoGain);
+            else if (result == 1) {
                 safeThis->addPluginFromFile();
             } else if (result == 2) {
                 safeThis->openScannerDialog();

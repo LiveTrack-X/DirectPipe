@@ -58,7 +58,17 @@ public:
     std::function<void()> onRefreshUI;
     std::function<void(const juce::String&, NotificationLevel)> onNotification;
 
-    static constexpr int kNumPresetSlots = 5;
+    static constexpr int kNumPresetSlots = 6;
+    static constexpr int kAutoSlotIndex = 5;
+
+    /** @brief Check if a slot index is in the Next/Previous cycling rotation (0-4 only). */
+    bool isInRotation(int idx) const { return idx >= 0 && idx < kAutoSlotIndex; }
+
+    /** @brief Check if a slot is renameable (Auto slot is not). */
+    bool isRenameable(int idx) const { return idx >= 0 && idx < kAutoSlotIndex; }
+
+    /** @brief Reset the Auto slot: clear chain and add auto processors. */
+    void resetAutoSlot();
 
 private:
     static constexpr int kSlotBtnGap = 4;
@@ -69,7 +79,7 @@ private:
     std::atomic<bool>& loadingSlot_;
     std::atomic<bool>& partialLoad_;
 
-    std::array<std::unique_ptr<juce::TextButton>, 5> slotButtons_;
+    std::array<std::unique_ptr<juce::TextButton>, kNumPresetSlots> slotButtons_;
     int pendingSlot_ = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetSlotBar)

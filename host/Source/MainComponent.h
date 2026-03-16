@@ -104,6 +104,9 @@ private:
     juce::Slider inputGainSlider_;
     juce::Label inputGainLabel_{"", "Gain:"};
 
+    // Auto button (adds built-in auto processors to chain)
+    juce::TextButton autoProcessorBtn_{"Auto"};
+
     // Preset buttons
     juce::TextButton savePresetBtn_{"Save Preset"};
     juce::TextButton loadPresetBtn_{"Load Preset"};

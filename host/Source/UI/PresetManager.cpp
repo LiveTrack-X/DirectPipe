@@ -112,15 +112,27 @@ juce::String PresetManager::exportToJSON()
         if (auto* slot = chain.getPluginSlot(i)) {
             auto plugin = std::make_unique<juce::DynamicObject>();
             plugin->setProperty("name", slot->name);
-            plugin->setProperty("path", slot->path);
             plugin->setProperty("bypassed", slot->bypassed);
-            // Store full PluginDescription as XML for accurate re-loading
-            if (auto xml = slot->desc.createXml())
-                plugin->setProperty("descXml", xml->toString());
-            // Store plugin internal state (parameters, settings)
-            if (slot->instance) {
+
+            // Type field for built-in vs VST
+            switch (slot->type) {
+                case PluginSlot::Type::BuiltinFilter:       plugin->setProperty("type", "builtin_filter"); break;
+                case PluginSlot::Type::BuiltinNoiseRemoval: plugin->setProperty("type", "builtin_noise_removal"); break;
+                case PluginSlot::Type::BuiltinAutoGain:     plugin->setProperty("type", "builtin_auto_gain"); break;
+                default:                                    plugin->setProperty("type", "vst"); break;
+            }
+
+            if (slot->type == PluginSlot::Type::VST) {
+                plugin->setProperty("path", slot->path);
+                // Store full PluginDescription as XML for accurate re-loading
+                if (auto xml = slot->desc.createXml())
+                    plugin->setProperty("descXml", xml->toString());
+            }
+
+            // Store processor state (parameters, settings) -- works for both VST and built-in
+            if (auto* proc = slot->getProcessor()) {
                 juce::MemoryBlock stateData;
-                slot->instance->getStateInformation(stateData);
+                proc->getStateInformation(stateData);
                 if (stateData.getSize() > 0)
                     plugin->setProperty("state", stateData.toBase64Encoding());
             }
@@ -178,10 +190,10 @@ bool PresetManager::importFromJSON(const juce::String& json)
     int version = root->getProperty("version");
     if (version < 1) return false;
 
-    // Restore active slot (clamp to valid range)
+    // Restore active slot (clamp to valid range, allow Auto slot index = kNumSlots)
     if (root->hasProperty("activeSlot")) {
         int slot = static_cast<int>(root->getProperty("activeSlot"));
-        activeSlot_ = juce::jlimit(-1, kNumSlots - 1, slot);
+        activeSlot_ = juce::jlimit(-1, kNumSlots, slot);
     }
 
     // Pre-set SR/BS before device type switch so the new driver opens with
@@ -334,6 +346,19 @@ std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
             t.path = plugin->getProperty("path").toString();
             t.bypassed = static_cast<bool>(plugin->getProperty("bypassed"));
 
+            // Parse type field (backward compat: missing type = VST)
+            auto typeStr = plugin->hasProperty("type")
+                ? plugin->getProperty("type").toString()
+                : juce::String("vst");
+            if (typeStr == "builtin_filter")
+                t.type = PluginSlot::Type::BuiltinFilter;
+            else if (typeStr == "builtin_noise_removal")
+                t.type = PluginSlot::Type::BuiltinNoiseRemoval;
+            else if (typeStr == "builtin_auto_gain")
+                t.type = PluginSlot::Type::BuiltinAutoGain;
+            else
+                t.type = PluginSlot::Type::VST;
+
             if (plugin->hasProperty("descXml")) {
                 auto xmlStr = plugin->getProperty("descXml").toString();
                 if (auto xml = juce::XmlDocument::parse(xmlStr))
@@ -372,6 +397,14 @@ bool PresetManager::isSameChain(const std::vector<TargetPlugin>& targets, VSTCha
         auto& t = targets[static_cast<size_t>(i)];
         if (!slot) return false;
 
+        // Type must match
+        if (slot->type != t.type) return false;
+
+        // Built-in processors: same type = same chain entry
+        if (t.type != PluginSlot::Type::VST)
+            continue;
+
+        // VST: compare by description or path
         if (t.hasDesc) {
             if (slot->desc.uniqueId != t.desc.uniqueId ||
                 slot->desc.fileOrIdentifier != t.desc.fileOrIdentifier)
@@ -394,8 +427,9 @@ void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTC
         chain.setPluginBypassed(i, t.bypassed);
         if (t.hasState) {
             if (auto* slot = chain.getPluginSlot(i)) {
-                if (slot->instance)
-                    slot->instance->setStateInformation(
+                // Use getProcessor() to handle both built-in and VST processors
+                if (auto* proc = slot->getProcessor())
+                    proc->setStateInformation(
                         t.stateData.getData(), static_cast<int>(t.stateData.getSize()));
             }
         }
@@ -420,31 +454,40 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
         auto& target = targets[ti];
         int idx = -1;
 
-        if (target.hasDesc)
-            idx = chain.addPlugin(target.desc);
+        // Built-in processors: add via addBuiltinProcessor
+        if (target.type != PluginSlot::Type::VST) {
+            auto result = chain.addBuiltinProcessor(target.type);
+            if (result) {
+                idx = chain.getPluginCount() - 1;
+            }
+        } else {
+            // VST loading logic
+            if (target.hasDesc)
+                idx = chain.addPlugin(target.desc);
 
-        if (idx < 0) {
-            auto& knownPlugins = chain.getKnownPlugins();
-            for (const auto& desc : knownPlugins.getTypes()) {
-                if (desc.fileOrIdentifier == target.path && desc.name == target.name) {
-                    idx = chain.addPlugin(desc);
-                    break;
+            if (idx < 0) {
+                auto& knownPlugins = chain.getKnownPlugins();
+                for (const auto& desc : knownPlugins.getTypes()) {
+                    if (desc.fileOrIdentifier == target.path && desc.name == target.name) {
+                        idx = chain.addPlugin(desc);
+                        break;
+                    }
                 }
             }
-        }
 
-        if (idx < 0) {
-            auto& knownPlugins = chain.getKnownPlugins();
-            for (const auto& desc : knownPlugins.getTypes()) {
-                if (desc.name == target.name) {
-                    idx = chain.addPlugin(desc);
-                    break;
+            if (idx < 0) {
+                auto& knownPlugins = chain.getKnownPlugins();
+                for (const auto& desc : knownPlugins.getTypes()) {
+                    if (desc.name == target.name) {
+                        idx = chain.addPlugin(desc);
+                        break;
+                    }
                 }
             }
-        }
 
-        if (idx < 0)
-            idx = chain.addPlugin(target.path);
+            if (idx < 0)
+                idx = chain.addPlugin(target.path);
+        }
 
         if (idx >= 0) {
             if (target.bypassed)
@@ -460,9 +503,10 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
         chain.suspendProcessing(true);
         for (auto& lp : loaded) {
             if (auto* loadedSlot = chain.getPluginSlot(lp.idx)) {
-                if (loadedSlot->instance) {
+                // Use getProcessor() to handle both built-in and VST processors
+                if (auto* proc = loadedSlot->getProcessor()) {
                     auto& t = targets[lp.targetIdx];
-                    loadedSlot->instance->setStateInformation(
+                    proc->setStateInformation(
                         t.stateData.getData(), static_cast<int>(t.stateData.getSize()));
                 }
             }
@@ -485,13 +529,27 @@ juce::String PresetManager::exportChainToJSON()
         if (auto* slot = chain.getPluginSlot(i)) {
             auto plugin = std::make_unique<juce::DynamicObject>();
             plugin->setProperty("name", slot->name);
-            plugin->setProperty("path", slot->path);
             plugin->setProperty("bypassed", slot->bypassed);
-            if (auto xml = slot->desc.createXml())
-                plugin->setProperty("descXml", xml->toString());
-            if (slot->instance) {
+
+            // Type field for built-in vs VST
+            switch (slot->type) {
+                case PluginSlot::Type::BuiltinFilter:       plugin->setProperty("type", "builtin_filter"); break;
+                case PluginSlot::Type::BuiltinNoiseRemoval: plugin->setProperty("type", "builtin_noise_removal"); break;
+                case PluginSlot::Type::BuiltinAutoGain:     plugin->setProperty("type", "builtin_auto_gain"); break;
+                default:                                    plugin->setProperty("type", "vst"); break;
+            }
+
+            if (slot->type == PluginSlot::Type::VST) {
+                // VST plugins: save path and description XML
+                plugin->setProperty("path", slot->path);
+                if (auto xml = slot->desc.createXml())
+                    plugin->setProperty("descXml", xml->toString());
+            }
+
+            // State: use getProcessor() which returns the active processor (built-in or VST)
+            if (auto* proc = slot->getProcessor()) {
                 juce::MemoryBlock stateData;
-                slot->instance->getStateInformation(stateData);
+                proc->getStateInformation(stateData);
                 if (stateData.getSize() > 0)
                     plugin->setProperty("state", stateData.toBase64Encoding());
             }
@@ -844,8 +902,10 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         req.bypassed = t.bypassed;
         req.stateData = std::move(t.stateData);
         req.hasState = t.hasState;
+        req.builtinType = t.type;
 
-        if (!t.hasDesc) {
+        // VST plugins: resolve description from known plugins list
+        if (t.type == PluginSlot::Type::VST && !t.hasDesc) {
             for (const auto& desc : chain.getKnownPlugins().getTypes()) {
                 if (desc.fileOrIdentifier == t.path && desc.name == t.name) {
                     req.desc = desc;

@@ -203,6 +203,7 @@ private:
         bool bypassed = false;
         juce::MemoryBlock stateData;
         bool hasState = false;
+        PluginSlot::Type type = PluginSlot::Type::VST;  ///< Built-in or VST
     };
 
     static std::vector<TargetPlugin> parseTargetPlugins(const juce::Array<juce::var>* pluginsArray);

@@ -236,6 +236,7 @@ public:
         bool bypassed = false;
         juce::MemoryBlock stateData;
         bool hasState = false;
+        PluginSlot::Type builtinType = PluginSlot::Type::VST;  ///< Non-VST = built-in processor (no DLL loading needed)
     };
 
     /**

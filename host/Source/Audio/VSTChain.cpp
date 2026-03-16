@@ -919,6 +919,11 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
         if (preWork) preWork();
 
         for (auto& req : requests) {
+            if (req.builtinType != PluginSlot::Type::VST) {
+                // Built-in processors don't need DLL loading — pass through with null instance
+                result->entries.push_back({nullptr, std::move(req)});
+                continue;
+            }
             juce::String error;
             auto inst = createPluginOnCorrectThread(formatManager_, req.desc, sr, bs, error, aliveFlag);
             if (inst)
@@ -954,26 +959,72 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
                 // Add NEW nodes (async — single rebuild at end)
                 for (auto& entry : result->entries) {
-                    auto node = graph_->addNode(std::move(entry.instance), {},
-                        juce::AudioProcessorGraph::UpdateKind::async);
-                    if (!node) continue;
-
                     PluginSlot slot;
-                    slot.name = entry.request.name;
-                    slot.path = entry.request.path;
-                    slot.desc = entry.request.desc;
-                    slot.nodeId = node->nodeID;
-                    slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
                     slot.bypassed = entry.request.bypassed;
-                    chain_.push_back(slot);
 
-                    if (slot.bypassed)
-                        node->setBypassed(true);
+                    if (entry.request.builtinType != PluginSlot::Type::VST) {
+                        // Built-in processor: create inline on message thread
+                        std::unique_ptr<juce::AudioProcessor> processor;
+                        juce::String builtinName;
+                        switch (entry.request.builtinType) {
+                            case PluginSlot::Type::BuiltinFilter:
+                                processor = std::make_unique<BuiltinFilter>();
+                                builtinName = "Filter";
+                                break;
+                            case PluginSlot::Type::BuiltinNoiseRemoval:
+                                processor = std::make_unique<BuiltinNoiseRemoval>();
+                                builtinName = "Noise Removal";
+                                break;
+                            case PluginSlot::Type::BuiltinAutoGain:
+                                processor = std::make_unique<BuiltinAutoGain>();
+                                builtinName = "Auto Gain";
+                                break;
+                            default: continue;
+                        }
 
-                    if (entry.request.hasState && slot.instance)
-                        slot.instance->setStateInformation(
-                            entry.request.stateData.getData(),
-                            static_cast<int>(entry.request.stateData.getSize()));
+                        processor->setPlayConfigDetails(2, 2, currentSampleRate_, currentBlockSize_);
+                        processor->prepareToPlay(currentSampleRate_, currentBlockSize_);
+
+                        auto* rawPtr = processor.get();
+                        auto node = graph_->addNode(std::move(processor), {},
+                            juce::AudioProcessorGraph::UpdateKind::async);
+                        if (!node) continue;
+
+                        slot.name = builtinName;
+                        slot.type = entry.request.builtinType;
+                        slot.nodeId = node->nodeID;
+                        slot.instance = nullptr;
+                        slot.builtinProcessor = rawPtr;
+                        chain_.push_back(slot);
+
+                        if (slot.bypassed)
+                            node->setBypassed(true);
+
+                        if (entry.request.hasState && rawPtr)
+                            rawPtr->setStateInformation(
+                                entry.request.stateData.getData(),
+                                static_cast<int>(entry.request.stateData.getSize()));
+                    } else {
+                        // VST plugin
+                        auto node = graph_->addNode(std::move(entry.instance), {},
+                            juce::AudioProcessorGraph::UpdateKind::async);
+                        if (!node) continue;
+
+                        slot.name = entry.request.name;
+                        slot.path = entry.request.path;
+                        slot.desc = entry.request.desc;
+                        slot.nodeId = node->nodeID;
+                        slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
+                        chain_.push_back(slot);
+
+                        if (slot.bypassed)
+                            node->setBypassed(true);
+
+                        if (entry.request.hasState && slot.instance)
+                            slot.instance->setStateInformation(
+                                entry.request.stateData.getData(),
+                                static_cast<int>(entry.request.stateData.getSize()));
+                    }
                 }
 
                 rebuildGraph();  // single rebuild with connections + suspendProcessing(false)
