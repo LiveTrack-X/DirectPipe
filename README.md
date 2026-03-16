@@ -146,6 +146,7 @@ External Control:
 - **Safety Limiter** — VST 체인 이후 전역 피드포워드 리미터. 기본 ceiling -0.3 dBFS, 예기치 않은 클리핑 방지 — Global feed-forward limiter after VST chain. Default ceiling -0.3 dBFS, prevents unexpected clipping
 - **Per-Plugin Latency Display** — 체인 에디터에서 각 플러그인의 PDC(Plugin Delay Compensation) 표시 + 체인 전체 PDC 요약 — Each plugin's reported PDC shown in chain editor, with total chain PDC summary
 - **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) insertable alongside VST plugins. [Auto] button adds all 3 at once
+- **Clock Drift Compensation** — Bidirectional IPC drift handling for stable long-duration streaming (auto buffer management prevents clicks/pops) / 양방향 IPC 클록 드리프트 보상으로 장시간 스트리밍 안정성 보장 (자동 버퍼 관리로 끊김/팝 방지)
 
 ### 외부 제어 / External Control
 

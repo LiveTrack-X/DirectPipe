@@ -817,13 +817,13 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 | `buffer` | Choice (0-4) | 1 (Low) | 버퍼 프리셋 선택 |
 
 #### 버퍼 프리셋
-| # | 이름 | targetFillFrames | highFillThreshold | 레이턴시 @48kHz |
-|---|------|-----------------|-------------------|----------------|
-| 0 | Ultra Low | 256 | 768 | ~5ms |
-| 1 | Low | 512 | 1536 | ~10ms |
-| 2 | Medium | 1024 | 3072 | ~21ms |
-| 3 | High | 2048 | 6144 | ~42ms |
-| 4 | Safe | 4096 | 12288 | ~85ms |
+| # | 이름 | targetFillFrames | highFillThreshold | lowFillThreshold | 레이턴시 @48kHz |
+|---|------|-----------------|-------------------|------------------|----------------|
+| 0 | Ultra Low | 256 | 768 | 64 | ~5ms |
+| 1 | Low | 512 | 1536 | 128 | ~10ms |
+| 2 | Medium | 1024 | 3072 | 256 | ~21ms |
+| 3 | High | 2048 | 6144 | 512 | ~42ms |
+| 4 | Safe | 4096 | 12288 | 1024 | ~85ms |
 
 #### IPC 연결
 | 항목 | 상세 |
@@ -842,6 +842,26 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 5. 링 버퍼에서 프레임 읽기
 6. 인터리브 → JUCE planar 변환
 7. 부분 읽기 시 패딩 (무음)
+
+#### Clock Drift Compensation
+
+호스트와 DAW/OBS의 오디오 클록이 미세하게 다를 때 발생하는 버퍼 드리프트를 자동 보상.
+
+| 상태 | 조건 | 동작 |
+|------|------|------|
+| 정상 | lowThreshold ≤ fill ≤ highThreshold | 그대로 읽기 |
+| 버퍼 과다 (호스트 빠름) | fill > highThreshold | excess 프레임 스킵 → targetFill로 복귀 |
+| 버퍼 부족 (호스트 느림) | fill < lowThreshold | 읽기량 절반으로 쿠션 확보 → 하드 클릭 대신 미세 갭 |
+
+버퍼 프리셋별 임계값:
+
+| 프리셋 | Target | High Threshold | Low Threshold |
+|--------|--------|----------------|---------------|
+| Ultra Low (256) | 256 | 768 | 64 |
+| Low (512) | 512 | 1536 | 128 |
+| Medium (1024) | 1024 | 3072 | 256 |
+| High (2048) | 2048 | 6144 | 512 |
+| Safe (4096) | 4096 | 12288 | 1024 |
 
 #### 페이드아웃 로직
 - 마지막 출력 버퍼: 64 샘플 (planar 형식)
