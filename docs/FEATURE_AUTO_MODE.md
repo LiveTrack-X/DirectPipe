@@ -136,6 +136,11 @@ bool isRenameable(int slotIndex) { return slotIndex != kAutoSlotIndex; }
 
 // Auto 슬롯 초기화 (Reset to Defaults)
 void resetAutoSlot();  // Filter + NR + AGC 기본 체인 생성 + 저장
+
+// ⚠️ 프리셋 순환(Next/Previous Preset)에서 Auto 슬롯 제외
+// A→B→C→D→E→A 로테이션에 Auto가 포함되지 않음
+// Auto는 명시적으로 [Auto] 버튼을 눌러야만 활성화
+bool isInRotation(int slotIndex) { return slotIndex < kAutoSlotIndex; }
 ```
 
 ### "Add Plugin" 메뉴 확장
