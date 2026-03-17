@@ -23,7 +23,7 @@
 ## 다운로드 / Download
 
 - **Stable (안정 빌드)**: [v3.10.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — 전체 테스트 통과 / Fully tested (Windows only)
-- **Pre-release (프리릴리즈)**: [v4.0.0-alpha 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.0-Beta) — 크로스 플랫폼 / Cross-platform (Windows, macOS, Linux)
+- **Pre-release (프리릴리즈)**: [v4.0.0-Beta 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.0-beta) — 크로스 플랫폼 / Cross-platform (Windows, macOS, Linux)
 
 > **Pre-release 주의사항**: macOS/Linux 빌드는 실험적이며, 실기기 테스트가 완료되지 않았습니다. 프로덕션 환경에서는 Stable 빌드를 사용하세요.
 > **Pre-release notice**: macOS/Linux builds are experimental and have not been tested on real hardware. Use the Stable build for production.
