@@ -56,6 +56,16 @@ Feed-forward limiter applied after VST chain, before all outputs. Prevents clipp
 - **SHA-256 체크섬** — 자동 업데이터 다운로드 무결성 검증 / Auto-updater integrity check
 - **IPC 다중 연결 감지** — Receiver VST 2개 동시 연결 시 경고 / SPSC violation warning
 
+### Upgrade Notes / 업그레이드 안내
+
+> **Receiver VST 업데이트 권장**: OBS/DAW에서 사용 중인 DirectPipe Receiver를 v4.0.0으로 교체하세요. 구 버전도 동작하지만, 다중 연결 경고 등 새 기능은 v4.0.0 Receiver에서만 지원됩니다. ZIP/DMG 안에 포함된 Receiver 파일을 기존 VST 폴더에 덮어쓰세요.
+>
+> **Receiver VST update recommended**: Replace your DirectPipe Receiver in OBS/DAW with the v4.0.0 version. Old versions still work, but new features (multi-connection warning) require the v4.0.0 Receiver. Overwrite the existing files in your VST folder with the Receiver included in the ZIP/DMG.
+
+> **Stream Deck 플러그인 업데이트 권장**: [Elgato Marketplace](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)에서 최신 버전으로 업데이트하세요. 3개 새 액션 (Performance Monitor, Plugin Parameter, Preset Bar)은 새 버전에서만 사용 가능합니다.
+>
+> **Stream Deck plugin update recommended**: Update from [Elgato Marketplace](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3). 3 new actions (Performance Monitor, Plugin Parameter, Preset Bar) require the updated plugin.
+
 ### Downloads / 다운로드
 
 | File | Description |
