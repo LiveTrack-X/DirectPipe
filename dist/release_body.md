@@ -8,14 +8,34 @@
 
 ---
 
+### 🎤 처음 사용자라면: [Auto] 버튼 하나로 시작하세요 / New? Start with one click
+
+> **VST 플러그인을 모르셔도 괜찮습니다.** DirectPipe를 실행하고 왼쪽 하단의 초록색 **[Auto]** 버튼을 누르세요. 3가지 내장 프로세서가 자동으로 구성됩니다:
+>
+> 1. **배경 소음 제거** — 키보드, 에어컨, 팬 소리를 AI가 실시간 제거
+> 2. **음량 자동 조절** — 작게 말하면 올리고, 크게 말하면 줄여서 일정한 볼륨 유지
+> 3. **저주파 필터** — 마이크 험이나 진동 제거
+>
+> 추가 설정 없이 바로 방송/통화 품질이 개선됩니다. 나중에 세부 조정이 필요하면 각 프로세서를 클릭해서 파라미터를 변경할 수 있습니다.
+
+> **Don't know VST plugins? No problem.** Launch DirectPipe and click the green **[Auto]** button at the bottom-left. 3 built-in processors are configured automatically:
+>
+> 1. **Noise Removal** — AI removes keyboard, AC, and fan noise in real-time
+> 2. **Auto Gain** — Boosts quiet speech, reduces loud speech for consistent volume
+> 3. **Low-cut Filter** — Removes microphone rumble and vibration
+>
+> Your broadcast/call quality improves immediately with zero configuration. Adjust individual parameters later by clicking each processor in the chain.
+
+---
+
 ### Built-in Processors (내장 프로세서) — NEW
 
-VST 플러그인 없이 기본 마이크 처리를 제공합니다. **[Auto] 버튼** 원클릭으로 3개 프로세서가 자동 구성됩니다.
-Built-in audio processing without VST plugins. One-click **[Auto] button** configures all 3 processors.
+**[Auto] 버튼** 원클릭으로 3개 프로세서가 자동 구성됩니다. 개별 추가도 가능 (Add Plugin → Built-in 메뉴).
+One-click **[Auto] button** configures all 3 processors. Can also be added individually via Add Plugin → Built-in menu.
 
-- **Filter** — HPF (60Hz) + LPF (16kHz). 에어컨 소음, 저주파 험 제거 / Remove rumble, AC noise
+- **Filter** — HPF (60Hz ON) + LPF (16kHz OFF). 에어컨 소음, 저주파 험 제거. 프리셋 또는 Custom 슬라이더 / Remove rumble, AC noise. Presets or custom slider
 - **Noise Removal** — RNNoise AI 노이즈 제거. 3단계 강도 (Light/Standard/Aggressive). 48kHz 전용 / AI noise suppression with 3 strength levels. 48kHz only
-- **Auto Gain** — LUFS 기반 자동 볼륨 레벨러. 작은 목소리 증폭 + 큰 소리 억제 / LUFS-based automatic leveler (WebRTC dual-envelope pattern)
+- **Auto Gain** — LUFS 기반 자동 볼륨 레벨러. 작은 목소리 증폭 + 큰 소리 억제. 타겟 LUFS, Freeze Level, Max Gain 조절 가능 / LUFS-based automatic leveler. Configurable target, freeze, max gain
 
 ### Safety Limiter — NEW
 

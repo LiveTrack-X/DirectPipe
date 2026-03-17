@@ -102,37 +102,43 @@ Send Discord via VB-Cable, OBS via DirectPipe Receiver — **independently contr
 
 ---
 
-## 4. VST 플러그인 추가 / Add VST Plugins
+## 4. 마이크 처리 시작 / Start Processing
 
-1. **"Scan..."** 클릭 → PC에 설치된 VST 플러그인 자동 스캔 (처음 한 번만) / Click "Scan..." to find installed plugins (once)
-2. **"+ Add Plugin"** 클릭 → 목록에서 원하는 플러그인 선택 / Click "+ Add Plugin" → select from list
-3. **Edit** 버튼으로 플러그인 GUI를 열어 설정 / Click **Edit** to open plugin GUI
+### 방법 1: [Auto] 버튼 (권장, 초보자) / Method 1: Auto Button (Recommended for beginners)
 
-**아직 VST 플러그인이 없다면? / No VST plugins yet?**
+> **VST 플러그인을 몰라도 괜찮습니다!** [Auto] 버튼 하나로 전문가 수준의 마이크 처리가 즉시 적용됩니다.
+
+1. 왼쪽 하단의 초록색 **[Auto]** 버튼 클릭 / Click the green **[Auto]** button at the bottom-left
+2. 끝! 3가지 내장 프로세서가 자동 구성됩니다 / Done! 3 built-in processors are configured automatically:
+   - **Filter** — 에어컨 소음, 마이크 진동 제거 / Removes AC noise, mic rumble
+   - **Noise Removal** — AI가 키보드, 팬 소리를 실시간 제거 / AI removes keyboard, fan noise
+   - **Auto Gain** — 음량 자동 조절 (작으면 올리고 크면 줄임) / Auto-levels your volume
+
+> 각 프로세서를 클릭하면 세부 파라미터를 조정할 수 있습니다. 우클릭 → Reset to Defaults로 기본값 복원.
+> Click each processor to adjust parameters. Right-click → Reset to Defaults to restore defaults.
+
+### 방법 2: VST 플러그인 직접 추가 (고급) / Method 2: Add VST Plugins (Advanced)
+
+이미 VST 플러그인을 사용하고 있다면:
+
+1. **"Scan..."** 클릭 → VST 플러그인 자동 스캔 (처음 한 번만) / Click "Scan..." to find plugins (once)
+2. **"+ Add Plugin"** 클릭 → 목록에서 선택 / Click "+ Add Plugin" → select from list
+3. **Edit** 버튼으로 플러그인 GUI 열기 / Click **Edit** to open plugin GUI
+
+> [Auto]와 VST 플러그인은 같은 체인에 혼합 사용 가능합니다. 예: [Auto] + 추가 EQ.
+> Auto and VST plugins can be mixed in the same chain. Example: [Auto] + additional EQ.
+
+<details>
+<summary><b>무료 VST 플러그인 추천 / Recommended Free VST Plugins</b></summary>
 
 | 플러그인 / Plugin | 용도 / Purpose | 링크 / Link |
 |---|---|---|
-| **RNNoise** | AI 노이즈 제거 (키보드, 팬 소음 차단) / AI noise removal | [다운로드 / Download](https://github.com/werman/noise-suppression-for-voice) |
-| **ReaPlugs** | EQ, 컴프레서, 게이트 (올인원) / EQ, compressor, gate (all-in-one) | [다운로드 / Download](https://www.reaper.fm/reaplugs/) |
+| **RNNoise** | AI 노이즈 제거 / AI noise removal | [다운로드 / Download](https://github.com/werman/noise-suppression-for-voice) |
+| **ReaPlugs** | EQ, 컴프레서, 게이트 / EQ, compressor, gate | [다운로드 / Download](https://www.reaper.fm/reaplugs/) |
 | **TDR Nova** | 다이나믹 EQ / Dynamic EQ | [다운로드 / Download](https://www.tokyodawn.net/tdr-nova/) |
 
-> 모두 무료이며, 64-bit VST2 또는 VST3로 설치하세요. / All free — install as 64-bit VST2 or VST3.
-
-**권장 체인 순서 / Recommended Chain Order:**
-
-```
-[노이즈 제거 / Noise Removal] → [EQ] → [컴프레서 / Compressor]
-```
-
-### Auto 모드 (내장 프로세서) / Auto Mode (Built-in Processors)
-
-VST 플러그인 없이 즉시 사용하려면 입력 게인 슬라이더 옆의 **[Auto]** 버튼을 클릭하세요.
-[Auto]는 특수 프리셋 슬롯(A-E와 별도)으로, 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인이 생성됩니다.
-이후에는 마지막으로 저장된 Auto 슬롯 상태를 로드합니다. 우클릭 → Reset to Defaults로 기본값 복원 가능.
-
-Click the **[Auto]** button next to the input gain slider to use built-in processors without any VST plugins.
-[Auto] is a special preset slot (separate from A-E). First click creates a default chain with Filter + Noise Removal + Auto Gain.
-After that, it loads the last saved Auto slot state. Right-click → Reset to Defaults to restore defaults.
+> 모두 무료, 64-bit VST2/VST3. / All free, 64-bit VST2/VST3.
+</details>
 
 ---
 

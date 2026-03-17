@@ -33,11 +33,11 @@
 
 **스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** 크로스 플랫폼 실시간 마이크 프로세서.
 
-USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 즉시 전환할 수 있다.
+USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. **VST 플러그인을 모르셔도 [Auto] 버튼 하나로 AI 노이즈 제거 + 자동 볼륨 조절 + 저주파 필터가 즉시 적용됩니다.** 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 즉시 전환할 수 있다.
 
 **Cross-platform real-time microphone processor for streamers, podcasters, gamers, and voice chat users.**
 
-Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deliver clean audio directly to Discord, Zoom, or OBS. Switch effects, adjust volume, and mute with a single Stream Deck button while live — or use hotkeys during gameplay, MIDI controllers for hands-on mixing. Set up a professional mic chain without a DAW, and instantly switch between situation presets (A-E).
+Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deliver clean audio directly to Discord, Zoom, or OBS. **Don't know VST plugins? Just click the [Auto] button — AI noise removal + auto volume leveling + low-cut filter are applied instantly.** Switch effects, adjust volume, and mute with a single Stream Deck button while live — or use hotkeys during gameplay, MIDI controllers for hands-on mixing. Set up a professional mic chain without a DAW, and instantly switch between situation presets (A-E).
 
 > **Platform support**: Windows (WASAPI/ASIO), macOS (CoreAudio), Linux (ALSA/JACK). Windows는 안정 빌드, macOS는 베타, Linux는 실험적 지원.
 > Windows is the stable release. macOS is in beta. Linux support is experimental.
