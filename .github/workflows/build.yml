@@ -335,8 +335,15 @@ jobs:
           cp artifacts/StreamDeck-Plugin/com.directpipe.directpipe.streamDeckPlugin \
              "release/com.directpipe.directpipe.streamDeckPlugin"
 
+          # Generate SHA-256 checksums for integrity verification
+          cd release
+          sha256sum * > checksums.sha256
+          cd ..
+
           echo "=== Release artifacts ==="
           ls -lh release/
+          echo "=== Checksums ==="
+          cat release/checksums.sha256
 
       - name: Upload to GitHub Release
         env:

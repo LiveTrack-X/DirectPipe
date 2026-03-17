@@ -85,6 +85,11 @@ bool RingBuffer::attachAsConsumer(void* memory)
     data_ = reinterpret_cast<float*>(static_cast<uint8_t*>(memory) + sizeof(DirectPipeHeader));
     mask_ = header_->buffer_frames - 1;
 
+    // Check if another consumer is already reading this buffer (SPSC violation).
+    // We still connect (audio will likely be corrupted), but flag it for UI warning.
+    anotherConsumerWasActive_ = header_->consumer_active.load(std::memory_order_acquire);
+    header_->consumer_active.store(true, std::memory_order_release);
+
     return true;
 }
 

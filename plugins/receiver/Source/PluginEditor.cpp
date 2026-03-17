@@ -44,6 +44,10 @@ DirectPipeReceiverEditor::DirectPipeReceiverEditor(DirectPipeReceiverProcessor& 
     srWarningLabel_.setFont(juce::Font(10.0f));
     addAndMakeVisible(srWarningLabel_);
 
+    multiConsumerLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF4444));
+    multiConsumerLabel_.setFont(juce::Font(10.0f, juce::Font::bold));
+    addAndMakeVisible(multiConsumerLabel_);
+
     startTimerHz(10);
 }
 
@@ -113,6 +117,8 @@ void DirectPipeReceiverEditor::resized()
     bufferLatencyLabel_.setBounds(bounds.getX() + labelW + 4, y, bounds.getWidth() - labelW - 4, 14);
     y += 16;
     srWarningLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 14);
+    y += 16;
+    multiConsumerLabel_.setBounds(bounds.getX(), y, bounds.getWidth(), 14);
 }
 
 void DirectPipeReceiverEditor::timerCallback()
@@ -146,6 +152,18 @@ void DirectPipeReceiverEditor::timerCallback()
         } else {
             bufferLatencyLabel_.setText("", juce::dontSendNotification);
         }
+    }
+
+    // Multi-consumer warning (SPSC violation — another Receiver is already reading)
+    bool multiConsumer = processor_.hasMultiConsumerWarning();
+    if (multiConsumer != lastMultiConsumer_) {
+        lastMultiConsumer_ = multiConsumer;
+        if (multiConsumer)
+            multiConsumerLabel_.setText(
+                "WARNING: Another Receiver is active — audio may be corrupted",
+                juce::dontSendNotification);
+        else
+            multiConsumerLabel_.setText("", juce::dontSendNotification);
     }
 
     // SR mismatch warning (source vs host)

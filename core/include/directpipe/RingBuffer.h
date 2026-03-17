@@ -60,11 +60,20 @@ public:
      * @brief Attach to an existing ring buffer in shared memory.
      *
      * Called by the consumer (OBS plugin) to connect to an already-initialized buffer.
+     * Sets consumer_active flag in the header. If another consumer is already active,
+     * attachment still succeeds but anotherConsumerWasActive() returns true (caller
+     * should warn the user — SPSC buffer cannot safely support two readers).
      *
      * @param memory Pointer to the shared memory region.
      * @return true if the buffer is valid and version matches.
      */
     bool attachAsConsumer(void* memory);
+
+    /**
+     * @brief Returns true if another consumer was already active when we attached.
+     * Use this to display a warning in the Receiver UI.
+     */
+    bool anotherConsumerWasActive() const { return anotherConsumerWasActive_; }
 
     /**
      * @brief Write audio frames into the ring buffer (producer side).
@@ -128,16 +137,24 @@ public:
     /**
      * @brief Detach from the shared memory region.
      *
-     * Resets internal pointers to nullptr so isValid() returns false.
-     * Call this before closing the underlying shared memory to prevent
-     * dangling pointer dereferences.
+     * Clears consumer_active flag in the header, then resets internal pointers
+     * to nullptr so isValid() returns false. Call this before closing the
+     * underlying shared memory to prevent dangling pointer dereferences.
      */
-    void detach() { header_ = nullptr; data_ = nullptr; mask_ = 0; }
+    void detach() {
+        if (header_)
+            header_->consumer_active.store(false, std::memory_order_release);
+        header_ = nullptr;
+        data_ = nullptr;
+        mask_ = 0;
+        anotherConsumerWasActive_ = false;
+    }
 
 private:
     DirectPipeHeader* header_ = nullptr;
     float* data_ = nullptr;
     uint32_t mask_ = 0;  // capacity - 1 for power-of-2 modulo
+    bool anotherConsumerWasActive_ = false;  // true if consumer_active was already set on attach
 };
 
 } // namespace directpipe

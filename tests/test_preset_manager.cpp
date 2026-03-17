@@ -1,6 +1,11 @@
 // tests/test_preset_manager.cpp
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
+#include "UI/PresetSlotBar.h"
+#include "UI/PresetManager.h"
+#include "Util/AtomicFileIO.h"
+
+using namespace directpipe;
 
 // Test at JSON/file level — no AudioEngine needed for most tests
 class PresetManagerTest : public ::testing::Test {
@@ -282,4 +287,77 @@ TEST_F(PresetManagerTest, MultiplePluginChainRoundtrip) {
     EXPECT_TRUE(static_cast<bool>((*plugins)[0].getDynamicObject()->getProperty("bypassed")));
     EXPECT_FALSE(static_cast<bool>((*plugins)[1].getDynamicObject()->getProperty("bypassed")));
     EXPECT_TRUE(static_cast<bool>((*plugins)[2].getDynamicObject()->getProperty("bypassed")));
+}
+
+// ─── Auto Slot Constants ───
+
+TEST(PresetSlotBarConstants, AutoSlotIndex) {
+    EXPECT_EQ(PresetSlotBar::kAutoSlotIndex, 5);
+    EXPECT_EQ(PresetSlotBar::kNumPresetSlots, 5);  // A-E only (Auto is separate)
+}
+
+TEST(PresetManagerConstants, NumSlotsIncludesAuto) {
+    EXPECT_EQ(PresetManager::kNumSlots, 6);  // A-E (0-4) + Auto (5)
+}
+
+// ─── Atomic File IO ───
+
+TEST_F(PresetManagerTest, AtomicWriteFileCreatesFile) {
+    auto target = tempDir_.getChildFile("test.json");
+    EXPECT_TRUE(atomicWriteFile(target, R"({"version":4})"));
+    EXPECT_TRUE(target.existsAsFile());
+    EXPECT_EQ(target.loadFileAsString().trimEnd(), R"({"version":4})");
+}
+
+TEST_F(PresetManagerTest, AtomicWriteFileCreatesBackup) {
+    auto target = tempDir_.getChildFile("test.json");
+    EXPECT_TRUE(atomicWriteFile(target, R"({"version":1})"));
+    auto bak = tempDir_.getChildFile("test.json.bak");
+    EXPECT_FALSE(bak.existsAsFile());
+
+    EXPECT_TRUE(atomicWriteFile(target, R"({"version":2})"));
+    EXPECT_TRUE(bak.existsAsFile());
+    EXPECT_EQ(bak.loadFileAsString().trimEnd(), R"({"version":1})");
+    EXPECT_EQ(target.loadFileAsString().trimEnd(), R"({"version":2})");
+}
+
+TEST_F(PresetManagerTest, AtomicWriteNoTmpLeftOver) {
+    auto target = tempDir_.getChildFile("test.json");
+    EXPECT_TRUE(atomicWriteFile(target, R"({"ok":true})"));
+    auto tmp = tempDir_.getChildFile("test.json.tmp");
+    EXPECT_FALSE(tmp.existsAsFile());
+}
+
+TEST_F(PresetManagerTest, BackupFallbackRecovery) {
+    auto target = tempDir_.getChildFile("test.json");
+    auto bak = tempDir_.getChildFile("test.json.bak");
+
+    bak.replaceWithText(R"({"version":4,"type":"chain","plugins":[]})");
+    target.replaceWithText("CORRUPTED{{{");
+
+    auto content = loadFileWithBackupFallback(target);
+    EXPECT_FALSE(content.isEmpty());
+    auto parsed = juce::JSON::parse(content);
+    EXPECT_TRUE(parsed.isObject());
+    EXPECT_EQ(static_cast<int>(parsed.getDynamicObject()->getProperty("version")), 4);
+}
+
+TEST_F(PresetManagerTest, BackupFallbackBothCorrupt) {
+    auto target = tempDir_.getChildFile("test.json");
+    auto bak = tempDir_.getChildFile("test.json.bak");
+
+    target.replaceWithText("CORRUPTED");
+    bak.replaceWithText("ALSO_CORRUPTED");
+
+    auto content = loadFileWithBackupFallback(target);
+    EXPECT_TRUE(content.isEmpty());
+}
+
+TEST_F(PresetManagerTest, BackupFallbackMainValid) {
+    auto target = tempDir_.getChildFile("test.json");
+    target.replaceWithText(R"({"version":4,"type":"chain","plugins":[]})");
+
+    auto content = loadFileWithBackupFallback(target);
+    EXPECT_FALSE(content.isEmpty());
+    EXPECT_TRUE(juce::JSON::parse(content).isObject());
 }

@@ -294,7 +294,7 @@ void UpdateChecker::performUpdate()
             output.flush();
         }
 
-        // Verify downloaded file
+        // Verify downloaded file — size check
         if (!downloadFile.existsAsFile() || downloadFile.getSize() < 100 * 1024) {
             downloadFile.deleteFile();
             juce::MessageManager::callAsync([alive, progressDlg]() {
@@ -308,6 +308,66 @@ void UpdateChecker::performUpdate()
                     "OK");
             });
             return;
+        }
+
+        // Verify downloaded file — SHA-256 integrity check
+        // Try to fetch checksums.sha256 from the same release.
+        // Format: "<sha256hex>  <filename>\n" (shasum -a 256 compatible)
+        // If checksum file is unavailable, skip verification (older releases won't have it).
+        {
+            auto checksumUrl = downloadUrl.upToLastOccurrenceOf("/", true, false) + "checksums.sha256";
+            int csStatus = 0;
+            auto csStream = juce::URL(checksumUrl).createInputStream(
+                juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
+                    .withConnectionTimeoutMs(5000)
+                    .withStatusCode(&csStatus));
+
+            if (csStream && csStatus == 200) {
+                auto checksumContent = csStream->readEntireStreamAsString();
+                auto downloadName = downloadFile.getFileName();
+
+                // Parse checksum file: find line containing our filename
+                juce::String expectedHash;
+                for (auto line : juce::StringArray::fromLines(checksumContent)) {
+                    line = line.trim();
+                    if (line.containsIgnoreCase(downloadName) ||
+                        line.containsIgnoreCase(downloadUrl.fromLastOccurrenceOf("/", false, false))) {
+                        expectedHash = line.upToFirstOccurrenceOf(" ", false, false).trim().toLowerCase();
+                        break;
+                    }
+                }
+
+                if (expectedHash.isNotEmpty() && expectedHash.length() == 64) {
+                    // Compute SHA-256 of downloaded file
+                    juce::FileInputStream fis(downloadFile);
+                    if (fis.openedOk()) {
+                        juce::SHA256 sha256(fis);
+                        auto actualHash = sha256.toHexString().toLowerCase();
+
+                        if (actualHash != expectedHash) {
+                            downloadFile.deleteFile();
+                            juce::Logger::writeToLog("[APP] SHA-256 mismatch: expected "
+                                + expectedHash + ", got " + actualHash);
+                            juce::MessageManager::callAsync([alive, progressDlg]() {
+                                if (!alive->load()) return;
+                                if (*progressDlg)
+                                    (*progressDlg)->exitModalState(0);
+                                juce::AlertWindow::showMessageBoxAsync(
+                                    juce::MessageBoxIconType::WarningIcon,
+                                    "Integrity Check Failed",
+                                    "Downloaded file hash does not match expected value.\n"
+                                    "The file may be corrupted or tampered.\n"
+                                    "Please download manually from GitHub.",
+                                    "OK");
+                            });
+                            return;
+                        }
+                        juce::Logger::writeToLog("[APP] SHA-256 verified: " + actualHash);
+                    }
+                }
+                // If no matching hash line found, skip verification (release may not have checksum for this asset)
+            }
+            // If checksums.sha256 not found (404), skip verification — older releases don't have it
         }
 
         // Create update batch script

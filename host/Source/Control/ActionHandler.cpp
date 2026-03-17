@@ -183,6 +183,9 @@ void ActionHandler::handle(const ActionEvent& event)
             break;
 
         case Action::InputGainAdjust:
+            // floatParam is a "step count" (±1 = ±0.1 linear gain on 0.0-2.0 scale).
+            // Hotkey/MIDI Toggle/WS send ±1 step. HTTP pre-scales actual delta by 10.
+            // Convention: floatParam * 0.1f = actual linear gain delta.
             if (engine_.isMuted()) break;
             engine_.setInputGain(engine_.getInputGain() + event.floatParam * 0.1f);
             if (onInputGainSync) onInputGainSync(engine_.getInputGain());
@@ -293,6 +296,18 @@ void ActionHandler::handle(const ActionEvent& event)
                 if (!r)
                     juce::Logger::writeToLog("[ACTION] Auto processors failed: " + r.message);
                 if (onDirty) onDirty();
+            }
+            // Warn if sample rate is not 48kHz — Noise Removal (RNNoise) will be bypassed
+            {
+                double sr = engine_.getLatencyMonitor().getSampleRate();
+                if (sr > 0.0 && std::abs(sr - 48000.0) > 1.0) {
+                    if (onNotification)
+                        onNotification("Noise Removal requires 48 kHz. Current: "
+                            + juce::String(static_cast<int>(sr)) + " Hz (NR bypassed) / "
+                            "Noise Removal은 48kHz 전용입니다. 현재: "
+                            + juce::String(static_cast<int>(sr)) + " Hz (NR 비활성)",
+                            NotificationLevel::Warning);
+                }
             }
             break;
         }

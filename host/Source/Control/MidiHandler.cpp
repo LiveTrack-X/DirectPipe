@@ -251,7 +251,18 @@ void MidiHandler::processCC(int cc, int channel, int value,
                 }
                 case MidiMappingType::Continuous: {
                     auto event = binding.action;
-                    event.floatParam = static_cast<float>(value) / 127.0f;
+                    float normalized = static_cast<float>(value) / 127.0f;  // 0.0 - 1.0
+
+                    if (event.action == Action::InputGainAdjust) {
+                        // Continuous CC for input gain: map 0-127 → absolute gain 0.0-2.0
+                        // Use SetVolume with "input" target for absolute set (bypasses * 0.1f delta)
+                        event.action = Action::SetVolume;
+                        event.stringParam = "input";
+                        event.floatParam = normalized * 2.0f;  // 0.0 - 2.0 range
+                    } else {
+                        event.floatParam = normalized;
+                    }
+
                     pendingActions.push_back(event);
                     break;
                 }

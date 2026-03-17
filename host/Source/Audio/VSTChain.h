@@ -362,6 +362,11 @@ private:
     std::atomic<bool> chainDirty_{false};                // [Message write, RT read] Lock-free chain swap flag
 
     // [Protected: chain_, editorWindows_, graph nodes. NEVER in processBlock. NEVER writeToLog inside.]
+    // Design note: CriticalSection (recursive mutex) used instead of shared_mutex because:
+    //   1. No recursive locking (verified) — all methods use scoped block + unlock before calling peers
+    //   2. Win32 CRITICAL_SECTION has user-mode fast-path, competitive with shared_mutex for low contention
+    //   3. Chain size 4-5 plugins → lock hold time ~μs, no measurable read contention at 30Hz UI + HTTP
+    //   4. shared_mutex transition is possible if contention grows (no recursive barrier)
     mutable juce::CriticalSection chainLock_;
 
     // ─── Async loading state ───

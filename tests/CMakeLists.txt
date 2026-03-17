@@ -60,6 +60,10 @@ if(DIRECTPIPE_BUILD_HOST)
         test_safety_limiter.cpp
         # Slice 6: Built-in Processors
         test_builtin_processors.cpp
+        test_builtin_noise_removal.cpp
+        test_builtin_auto_gain.cpp
+        # Slice 7: VSTChain
+        test_vst_chain.cpp
         # Slice 4: Platform
         test_platform.cpp
         # Host source files needed by tests

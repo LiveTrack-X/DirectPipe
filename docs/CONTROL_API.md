@@ -117,7 +117,10 @@ Immediately mutes all outputs and stops active recording. Send again to unmute (
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `delta` | number | Yes | Gain change in dB (+louder, -quieter) / dB 단위 게인 변화 |
+| `delta` | number | Yes | Step count (±1 = ±0.1 linear gain, range 0.0-2.0). Default: 1.0 / 스텝 수 (±1 = ±0.1 선형 게인 변화) |
+
+> **Note**: `delta`는 dB가 아닌 스텝 카운트입니다. 1 스텝 = 선형 게인 0.1 변화. 실제 게인을 직접 설정하려면 `set_volume` 액션에 `target: "input"`, `value: 0.0-2.0`을 사용하세요.
+> `delta` is a step count, NOT dB. 1 step = 0.1 linear gain change. To set absolute gain, use `set_volume` with `target: "input"` and `value: 0.0-2.0`.
 
 ---
 
@@ -358,7 +361,7 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/preset/:index` | Load preset / 프리셋 로드 |
 | `GET /api/slot/:index` | Switch preset slot (0-4 = A-E) / 슬롯 전환 |
 | `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |
-| `GET /api/gain/:delta` | Adjust input gain (dB) / 입력 게인 조절 |
+| `GET /api/gain/:delta` | Adjust input gain (linear, e.g. 0.1 = +0.1 gain) / 입력 게인 조절 (선형, 예: 0.1 = +0.1 게인) |
 | `GET /api/recording/toggle` | Toggle audio recording on/off / 오디오 녹음 토글 |
 | `GET /api/ipc/toggle` | Toggle IPC output (DirectPipe Receiver) on/off / IPC 출력 (DirectPipe Receiver) 토글 |
 | `GET /api/plugin/:pluginIndex/param/:paramIndex/:value` | Set plugin parameter (0.0-1.0) / 플러그인 파라미터 설정 |

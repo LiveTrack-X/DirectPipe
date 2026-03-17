@@ -39,6 +39,7 @@ public:
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts_; }
 
     bool isConnected() const { return connected_.load(std::memory_order_relaxed); }
+    bool hasMultiConsumerWarning() const { return multiConsumerWarning_.load(std::memory_order_relaxed); }
     uint32_t getSourceSampleRate() const;
     uint32_t getSourceChannels() const;
 
@@ -47,6 +48,7 @@ private:
     directpipe::RingBuffer ringBuffer_;
 
     std::atomic<bool> connected_{false};
+    std::atomic<bool> multiConsumerWarning_{false};  // true if another Receiver was already reading
     std::atomic<uint32_t> cachedSampleRate_{0};  // GUI-safe cache (avoids ringBuffer_ race)
     std::atomic<uint32_t> cachedChannels_{0};     // GUI-safe cache (avoids ringBuffer_ race)
     int reconnectCounter_ = 0;

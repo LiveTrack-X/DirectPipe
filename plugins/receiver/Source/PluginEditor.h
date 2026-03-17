@@ -27,8 +27,10 @@ private:
     juce::Label bufferLabel_{"", "Buffer:"};
     juce::Label bufferLatencyLabel_;
     juce::Label srWarningLabel_;
+    juce::Label multiConsumerLabel_;  // SPSC violation warning
 
     bool lastConnected_ = false;
+    bool lastMultiConsumer_ = false;
     uint32_t lastSampleRate_ = 0;
     uint32_t lastChannels_ = 0;
     int lastBufferIdx_ = -1;
@@ -36,7 +38,7 @@ private:
     bool lastSrMismatch_ = false;
 
     static constexpr int kWidth = 240;
-    static constexpr int kHeight = 200;
+    static constexpr int kHeight = 216;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DirectPipeReceiverEditor)
 };

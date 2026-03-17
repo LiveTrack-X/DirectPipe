@@ -922,13 +922,18 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // Work buffer already cleared above, so just skip the copy.
     if (!inputDeviceLost_.load(std::memory_order_relaxed)) {
         if (chMode == 1) {
-            // Mono mode: sum all input channels to channel 0 (full gain, no attenuation)
+            // Mono mode: average all input channels to channel 0.
+            // Single input channel: direct copy (no division needed).
+            // Multiple input channels: sum then divide by channel count to prevent
+            // +3dB boost when stereo mic sends identical signal on both channels.
             if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
                 buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
                 for (int ch = 1; ch < numInputChannels; ++ch) {
                     if (inputChannelData[ch] != nullptr)
                         buffer.addFrom(0, 0, inputChannelData[ch], numSamples);
                 }
+                if (numInputChannels > 1)
+                    buffer.applyGain(0, 0, numSamples, 1.0f / static_cast<float>(numInputChannels));
             }
             // Duplicate mono to channel 1 so both L/R outputs carry the same signal
             if (buffer.getNumChannels() > 1)

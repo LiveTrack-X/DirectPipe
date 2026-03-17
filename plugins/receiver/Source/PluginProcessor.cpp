@@ -203,6 +203,9 @@ void DirectPipeReceiverProcessor::tryConnect()
         return;
     }
 
+    // SPSC warning: if another consumer was already reading, audio will be corrupted
+    multiConsumerWarning_.store(ringBuffer_.anotherConsumerWasActive(), std::memory_order_relaxed);
+
     // Skip to fresh position — minimal latency on connect
     skipToFreshPosition();
 
@@ -321,9 +324,10 @@ uint32_t DirectPipeReceiverProcessor::getLowFillThreshold() const
 void DirectPipeReceiverProcessor::disconnect()
 {
     connected_.store(false, std::memory_order_release);
+    multiConsumerWarning_.store(false, std::memory_order_relaxed);
     cachedSampleRate_.store(0, std::memory_order_relaxed);
     cachedChannels_.store(0, std::memory_order_relaxed);
-    ringBuffer_.detach();  // Invalidate pointers before unmapping shared memory
+    ringBuffer_.detach();  // Clears consumer_active flag, then invalidates pointers
     sharedMemory_.close();
 }
 

@@ -69,8 +69,17 @@ struct DirectPipeHeader {
     /// Whether the producer (JUCE host) is actively writing
     std::atomic<bool> producer_active{false};
 
-    /// Reserved padding to ensure header is cache-line aligned
-    uint8_t reserved[64 - sizeof(std::atomic<bool>) - 4 * sizeof(uint32_t)]{};
+    /// Whether a consumer (Receiver VST) is currently attached and reading.
+    /// SPSC design: only one consumer is supported. If a second consumer attaches
+    /// while this is true, it should warn the user (data will be corrupted with
+    /// two readers advancing the same read_pos).
+    /// Set to true by RingBuffer::attachAsConsumer(), false by detach().
+    /// PROTOCOL_VERSION remains 1 — old consumers ignore this field (it was in
+    /// the previously unused reserved area of cache line 1).
+    std::atomic<bool> consumer_active{false};
+
+    /// Reserved padding for cache line 1 (keeps sizeof(DirectPipeHeader) == 192)
+    uint8_t reserved[64 - 2 * sizeof(std::atomic<bool>) - 4 * sizeof(uint32_t)]{};
 };
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -87,7 +96,10 @@ static_assert(alignof(DirectPipeHeader) >= 64,
               "DirectPipeHeader must be at least 64-byte aligned");
 
 // Ensure header size is consistent across compilers (3 x 64-byte cache lines = 192 bytes).
-// If this fails after a layout change, update the expected size and bump PROTOCOL_VERSION.
+// Cache line 0: write_pos. Cache line 1: read_pos + config + producer_active + consumer_active.
+// Cache line 2: trailing padding/future use.
+// consumer_active was added in the reserved area of cache line 1 (no size change).
+// PROTOCOL_VERSION stays at 1 — old consumers ignore the new field.
 static_assert(sizeof(DirectPipeHeader) == 192,
               "DirectPipeHeader size changed — update PROTOCOL_VERSION if layout changed");
 
