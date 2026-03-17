@@ -100,6 +100,18 @@ public:
      */
     int getBufferSize() const { return bufferSize_.load(std::memory_order_relaxed); }
 
+    /**
+     * @brief Get the number of callback overruns detected since last reset.
+     * A callback overrun means the processing time exceeded the buffer period,
+     * which guarantees an audio glitch (the hardware ran out of data to play).
+     */
+    uint32_t getCallbackOverrunCount() const { return callbackOverruns_.load(std::memory_order_relaxed); }
+
+    /**
+     * @brief Reset the callback overrun counter.
+     */
+    void resetCallbackOverruns() { callbackOverruns_.store(0, std::memory_order_relaxed); }
+
 private:
     std::atomic<double> sampleRate_{48000.0};       // [Message write, RT read]
     std::atomic<int> bufferSize_{128};               // [Message write, RT read]
@@ -114,6 +126,9 @@ private:
     // Running average for smooth display
     std::atomic<double> avgProcessingTime_{0.0};     // [Message write (reset), RT read+write]
     static constexpr double kSmoothingFactor = 0.1;
+
+    // Callback overrun detection: processing time > buffer period = guaranteed glitch
+    std::atomic<uint32_t> callbackOverruns_{0};       // [RT write, Message read]
 };
 
 } // namespace directpipe

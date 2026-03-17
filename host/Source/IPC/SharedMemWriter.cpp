@@ -148,8 +148,11 @@ void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int num
             std::memory_order_relaxed);
     }
 
-    // Signal the consumer (OBS plugin) that new data is available
-    dataEvent_.signal();
+    // Signal the consumer only when data was actually written.
+    // Skipping the signal when written==0 avoids an unnecessary kernel syscall
+    // (SetEvent/sem_post) on every callback, reducing DPC overhead.
+    if (written > 0)
+        dataEvent_.signal();
 }
 
 } // namespace directpipe

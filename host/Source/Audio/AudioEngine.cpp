@@ -885,6 +885,30 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     jassert(!juce::MessageManager::getInstanceWithoutCreating()
             || !juce::MessageManager::getInstance()->isThisTheMessageThread());
 
+    // One-time MMCSS registration on the audio callback thread (Windows only).
+    // Boosts thread priority via Multimedia Class Scheduler Service, reducing
+    // DPC latency interference. JUCE WASAPI registers at AVRT_PRIORITY_NORMAL;
+    // we re-register at AVRT_PRIORITY_HIGH for stronger protection.
+    // For ASIO (where JUCE does NO MMCSS), this is the only MMCSS registration.
+#if defined(_WIN32)
+    if (!mmcssRegistered_.load(std::memory_order_relaxed)) {
+        mmcssRegistered_.store(true, std::memory_order_relaxed);
+        using AvSetFn = HANDLE(WINAPI*)(LPCWSTR, LPDWORD);
+        using AvPrioFn = BOOL(WINAPI*)(HANDLE, int);
+        if (auto* avrt = LoadLibraryA("avrt.dll")) {
+            auto setChar = reinterpret_cast<AvSetFn>(GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW"));
+            auto setPrio = reinterpret_cast<AvPrioFn>(GetProcAddress(avrt, "AvSetMmThreadPriority"));
+            if (setChar && setPrio) {
+                DWORD taskIndex = 0;
+                HANDLE task = setChar(L"Pro Audio", &taskIndex);
+                if (task)
+                    setPrio(task, 2);  // AVRT_PRIORITY_HIGH = 2
+            }
+            // Note: do NOT FreeLibrary — MMCSS registration persists for thread lifetime
+        }
+    }
+#endif
+
     // Flush denormalized floats to zero — prevents 10-100x CPU spikes
     // when VST plugins process near-silence (reverb tails, compressor release, etc.)
     juce::ScopedNoDenormals noDenormals;
@@ -1027,6 +1051,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
+
+    // Reset MMCSS flag — new device means new audio thread, re-registration needed
+    mmcssRegistered_.store(false, std::memory_order_relaxed);
 
     // Remember last used ASIO device for future type switches
     if (device->getTypeName().containsIgnoreCase("ASIO"))

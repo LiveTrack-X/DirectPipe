@@ -46,6 +46,7 @@ void LatencyMonitor::reset(double sampleRate, int bufferSize)
     processingTimeMs_.store(0.0, std::memory_order_relaxed);
     cpuUsage_.store(0.0, std::memory_order_relaxed);
     avgProcessingTime_.store(0.0, std::memory_order_relaxed);
+    callbackOverruns_.store(0, std::memory_order_relaxed);
 }
 
 void LatencyMonitor::markCallbackStart()
@@ -79,6 +80,12 @@ void LatencyMonitor::markCallbackEnd()
     if (callbackPeriodMs > 0.0) {
         double usage = (avg / callbackPeriodMs) * 100.0;
         cpuUsage_.store(usage, std::memory_order_relaxed);
+
+        // Callback overrun detection: if THIS callback (not the average) took longer
+        // than the buffer period, the audio hardware ran out of data — guaranteed glitch.
+        // Use raw processingMs, not the smoothed average, for instant detection.
+        if (processingMs > callbackPeriodMs)
+            callbackOverruns_.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
