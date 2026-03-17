@@ -48,12 +48,34 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 **DirectPipe는 누구를 위한 건가요? / Who is DirectPipe for?**
 
-| | 사용 예 / Use Case |
-|---|---|
-| **스트리머 / Streamers** | OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. Receiver VST2로 가상 케이블 없이 OBS 직접 연결 — Control effects live with Stream Deck while streaming to OBS. Direct OBS connection via Receiver VST2, no virtual cable needed |
-| **팟캐스터 / Podcasters** | 노이즈 제거 + EQ + 컴프레서 체인을 한 번 설정하면 매번 자동 적용. 녹음 기능 내장 — Set up your noise removal + EQ + compressor chain once, auto-applied every time. Built-in recording |
-| **게이머 / Gamers** | 단축키(Ctrl+Shift)로 게임 중 뮤트/프리셋 전환. 시스템 트레이 상주, 리소스 최소 사용 — Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. Runs in system tray, minimal resource usage |
-| **보이스챗 / Voice Chat** | 가상 오디오 케이블 *(별도 설치 필요)* 로 Discord/Zoom에 처리된 음성 전달. Windows: [VB-Cable](https://vb-audio.com/Cable/), macOS: [BlackHole](https://existential.audio/blackhole/)/[Loopback](https://rogueamoeba.com/loopback/), Linux: PipeWire/JACK — Route processed audio to Discord/Zoom via virtual audio cable *(separate install)*. Windows: VB-Cable, macOS: BlackHole/Loopback, Linux: PipeWire/JACK |
+> VST 플러그인을 몰라도 괜찮습니다. **[Auto] 버튼 하나면 충분합니다.**
+> Don't know what VST plugins are? No problem. **The [Auto] button is all you need.**
+
+🎙 **스트리머 / Streamers**
+OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. **[Auto] 한 번이면 노이즈 제거 + 볼륨 안정화 완료.** Receiver VST2로 가상 케이블 없이 OBS 직접 연결.
+Control effects live with Stream Deck while streaming to OBS. **One click on [Auto] = noise removal + volume leveling done.** Direct OBS connection via Receiver VST2, no virtual cable needed.
+
+🎧 **팟캐스터 / Podcasters**
+**[Auto]로 노이즈 제거 + EQ + 볼륨 조절을 한 번에 설정**, 매번 자동 적용. 녹음 기능 내장.
+**[Auto] sets up noise removal + EQ + volume leveling in one click**, auto-applied every time. Built-in recording.
+
+🎮 **게이머 / Gamers**
+단축키(Ctrl+Shift)로 게임 중 뮤트/프리셋 전환. **[Auto] 켜두면 키보드·팬 소리 자동 제거.** 시스템 트레이 상주, 리소스 최소 사용.
+Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. **Leave [Auto] on and keyboard/fan noise is removed automatically.** Runs in system tray, minimal resource usage.
+
+💬 **보이스챗 / Voice Chat (Discord, Zoom, Google Meet)**
+**[Auto] 클릭 한 번으로 깨끗한 음성 완성.** 가상 오디오 케이블로 Discord/Zoom에 전달. Windows: [VB-Cable](https://vb-audio.com/Cable/), macOS: [BlackHole](https://existential.audio/blackhole/)/[Loopback](https://rogueamoeba.com/loopback/), Linux: PipeWire/JACK.
+**One click on [Auto] = clean voice ready.** Route to Discord/Zoom via virtual audio cable. Windows: VB-Cable, macOS: BlackHole/Loopback, Linux: PipeWire/JACK.
+
+### 30초 만에 시작하기 / Get Started in 30 Seconds
+
+> 아래 3단계만 따라하면 바로 깨끗한 마이크 음질을 들을 수 있습니다.
+> Follow these 3 steps to hear cleaner audio from your mic right away.
+
+1. **다운로드 & 실행** — [최신 버전 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → 압축 해제 → 실행 / [Download latest](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → Extract → Run
+2. **마이크 선택** — Audio 탭 → Input에서 USB 마이크 선택 / Audio tab → Select your USB mic as Input
+3. **[Auto] 클릭** — 노이즈 제거 + 자동 볼륨 + 저주파 필터 즉시 적용! / Click [Auto] — Noise removal + auto volume + filter applied instantly!
+4. **끝!** 더 자세한 설정은 [Quick Start 가이드](docs/QUICKSTART.md) 참조 / **Done!** For detailed setup, see the [Quick Start guide](docs/QUICKSTART.md)
 
 ---
 

@@ -4,6 +4,10 @@
 >
 > 5-minute onboarding guide for USB mic users. See [User Guide](USER_GUIDE.md) for details.
 
+> **핵심: 1~3단계만 하면 바로 깨끗한 마이크 소리를 들을 수 있습니다.** 나머지는 Discord/OBS에 보내고 싶을 때 설정하세요.
+>
+> **Key point: Complete steps 1-3 to hear cleaner audio right away.** Steps 4+ are for when you want to route audio to Discord/OBS.
+
 ---
 
 ## 1. 다운로드 & 실행 / Download & Launch
@@ -34,6 +38,10 @@
 2. **Input**: USB 마이크 선택 (예: `Microphone (Blue Yeti)`) / Select your USB mic
 3. 왼쪽 **INPUT** 미터가 움직이면 마이크 인식 성공 / If the left **INPUT** meter moves, mic is working
 
+> **왜 Driver를 선택하나요?** DirectPipe는 운영체제의 오디오 시스템(드라이버)을 통해 마이크에 접근합니다. 대부분의 경우 기본값이 자동 선택되어 있으니, Input에서 마이크만 고르면 됩니다.
+>
+> **Why select a Driver?** DirectPipe accesses your mic through your OS audio system (driver). In most cases the default is already selected — just pick your mic from the Input dropdown.
+
 ```
 Audio 탭 / Audio Tab
 ┌──────────────────────────────┐
@@ -41,18 +49,47 @@ Audio 탭 / Audio Tab
 │         [CoreAudio         ] │  ← macOS
 │         [ALSA / JACK       ] │  ← Linux
 │ Input:  [Blue Yeti         ] │  ← USB 마이크 선택 / Select your mic
-│ Output: [CABLE Input       ] │  ← 3단계에서 설정 / Set in Step 3
+│ Output: [CABLE Input       ] │  ← 4단계에서 설정 / Set in Step 4
 │ SR: 48000  BS: 256           │
 └──────────────────────────────┘
 ```
 
 ---
 
-## 3. 출력 경로 선택 / Choose Your Output Path
+## 3. [Auto] 클릭 — 바로 차이를 들어보세요! / Click [Auto] — Hear the Difference!
+
+> **VST 플러그인을 몰라도 괜찮습니다!** [Auto] 버튼 하나로 전문가 수준의 마이크 처리가 즉시 적용됩니다.
+>
+> **Don't know what VST plugins are? No problem!** The [Auto] button applies professional mic processing instantly.
+
+1. 왼쪽 하단의 초록색 **[Auto]** 버튼 클릭 / Click the green **[Auto]** button at the bottom-left
+2. 끝! 3가지 내장 프로세서가 자동 구성됩니다 / Done! 3 built-in processors are configured automatically:
+   - **Filter** — 에어컨 소음, 마이크 진동 같은 저주파 잡음을 제거합니다 / Removes low-frequency noise like AC hum and mic rumble
+   - **Noise Removal** — AI가 키보드, 팬 소리를 실시간으로 제거합니다 / AI removes keyboard clatter, fan noise in real-time
+   - **Auto Gain** — 음량을 자동 조절합니다 (작으면 올리고 크면 줄임) / Auto-levels your volume (boosts quiet, tames loud)
+
+> **여기까지 하면 마이크 소리가 깨끗해진 것을 바로 확인할 수 있습니다!** 헤드폰을 연결하고 5단계(모니터)를 설정하면 직접 들을 수 있고, 아래 4단계는 Discord/OBS 등 다른 앱에 보내고 싶을 때 진행하세요.
+>
+> **At this point your mic audio is already improved!** Connect headphones and set up Step 5 (Monitor) to hear yourself, or continue to Step 4 when you want to route audio to Discord/OBS.
+
+> 각 프로세서를 클릭하면 세부 파라미터를 조정할 수 있습니다. 우클릭 → Reset to Defaults로 기본값 복원.
+> Click each processor to adjust parameters. Right-click → Reset to Defaults to restore defaults.
+
+---
+
+## 4. 출력 경로 선택 (Discord/OBS로 보내기) / Choose Output Path (Send to Discord/OBS)
+
+> **왜 이 단계가 필요한가요?** DirectPipe는 마이크 소리를 처리하지만, 처리된 소리를 Discord나 OBS 같은 다른 앱에서 사용하려면 "출력 경로"를 설정해야 합니다. 혼자 녹음만 한다면 이 단계를 건너뛰어도 됩니다.
+>
+> **Why is this step needed?** DirectPipe processes your mic audio, but to use it in other apps like Discord or OBS, you need to set up an "output path." If you only want to record locally, you can skip this step.
 
 사용 목적에 따라 아래에서 **해당하는 것만** 설정하세요. / Set up only what you need:
 
 ### Discord / Zoom 사용자 (가상 오디오 케이블 필요) / Discord / Zoom Users (Virtual Audio Cable)
+
+> **가상 오디오 케이블이란?** DirectPipe의 출력을 다른 앱에서 마이크처럼 인식하게 해주는 소프트웨어입니다. 한 번 설치하면 계속 사용할 수 있습니다.
+>
+> **What is a virtual audio cable?** It's software that makes DirectPipe's output appear as a microphone to other apps. Install once and it works permanently.
 
 가상 오디오 케이블 설치 / Install a virtual audio cable:
 
@@ -81,6 +118,10 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 
 ### OBS 사용자 (가상 케이블 불필요) / OBS Users (No Virtual Cable)
 
+> **왜 OBS는 가상 케이블이 필요 없나요?** DirectPipe에 포함된 Receiver 플러그인이 OBS 안에서 직접 오디오를 수신하기 때문입니다. 더 깔끔하고 지연(레이턴시)도 적습니다.
+>
+> **Why no virtual cable for OBS?** The included Receiver plugin receives audio directly inside OBS. Cleaner setup with less latency.
+
 1. Receiver 플러그인을 VST2 폴더에 복사 / Copy Receiver plugin to VST2 folder:
    - Windows: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\`
    - macOS: `DirectPipe Receiver.vst` → `~/Library/Audio/Plug-Ins/VST/`
@@ -102,24 +143,30 @@ Send Discord via VB-Cable, OBS via DirectPipe Receiver — **independently contr
 
 ---
 
-## 4. 마이크 처리 시작 / Start Processing
+## 5. 헤드폰 모니터 설정 / Monitor with Headphones
 
-### 방법 1: [Auto] 버튼 (권장, 초보자) / Method 1: Auto Button (Recommended for beginners)
+자기 목소리에 이펙트가 적용된 소리를 실시간으로 확인할 수 있습니다. [Auto] 버튼을 눌렀다면, 여기서 그 차이를 직접 들어보세요!
 
-> **VST 플러그인을 몰라도 괜찮습니다!** [Auto] 버튼 하나로 전문가 수준의 마이크 처리가 즉시 적용됩니다.
+Hear your processed voice in real-time through headphones. If you clicked [Auto], this is where you hear the difference!
 
-1. 왼쪽 하단의 초록색 **[Auto]** 버튼 클릭 / Click the green **[Auto]** button at the bottom-left
-2. 끝! 3가지 내장 프로세서가 자동 구성됩니다 / Done! 3 built-in processors are configured automatically:
-   - **Filter** — 에어컨 소음, 마이크 진동 제거 / Removes AC noise, mic rumble
-   - **Noise Removal** — AI가 키보드, 팬 소리를 실시간 제거 / AI removes keyboard, fan noise
-   - **Auto Gain** — 음량 자동 조절 (작으면 올리고 크면 줄임) / Auto-levels your volume
+1. **Output** 탭 → **Monitor** 섹션 / **Output** tab → **Monitor** section
+2. **Device**: 헤드폰/이어폰 장치 선택 / Select your headphone device
+3. **Enable** 토글 ON / Toggle ON
+4. 상태가 **Active** (초록색)이면 정상 / Green **Active** = working
 
-> 각 프로세서를 클릭하면 세부 파라미터를 조정할 수 있습니다. 우클릭 → Reset to Defaults로 기본값 복원.
-> Click each processor to adjust parameters. Right-click → Reset to Defaults to restore defaults.
+> 반드시 **헤드폰/이어폰**으로만 모니터하세요. 스피커로 모니터하면 피드백(하울링)이 발생합니다.
+> **왜?** 마이크가 스피커 소리를 다시 수음하면서 소리가 무한 반복됩니다.
+>
+> Always monitor with **headphones/earbuds only**. Speaker monitoring causes feedback.
+> **Why?** The mic picks up the speaker output and creates an infinite sound loop.
 
-### 방법 2: VST 플러그인 직접 추가 (고급) / Method 2: Add VST Plugins (Advanced)
+---
 
-이미 VST 플러그인을 사용하고 있다면:
+## 6. VST 플러그인 직접 추가 (고급) / Add VST Plugins (Advanced)
+
+> 이미 VST 플러그인(음향 효과 소프트웨어)을 사용하고 있거나, [Auto] 외에 추가 이펙트를 적용하고 싶다면 이 단계를 진행하세요.
+>
+> If you already use VST plugins (audio effect software), or want to add effects beyond [Auto], follow this step.
 
 1. **"Scan..."** 클릭 → VST 플러그인 자동 스캔 (처음 한 번만) / Click "Scan..." to find plugins (once)
 2. **"+ Add Plugin"** 클릭 → 목록에서 선택 / Click "+ Add Plugin" → select from list
@@ -142,28 +189,11 @@ Send Discord via VB-Cable, OBS via DirectPipe Receiver — **independently contr
 
 ---
 
-## 5. 헤드폰 모니터 설정 / Monitor with Headphones
+## 7. 프리셋 저장 / Save a Preset
 
-자기 목소리에 이펙트가 적용된 소리를 실시간으로 확인할 수 있습니다.
+현재 플러그인 체인 설정을 저장해두면 다음에 즉시 불러올 수 있습니다. 상황별로 다른 설정을 만들어두고 한 번에 전환하세요.
 
-Hear your processed voice in real-time through headphones.
-
-1. **Output** 탭 → **Monitor** 섹션 / **Output** tab → **Monitor** section
-2. **Device**: 헤드폰/이어폰 장치 선택 / Select your headphone device
-3. **Enable** 토글 ON / Toggle ON
-4. 상태가 **Active** (초록색)이면 정상 / Green **Active** = working
-
-> 반드시 **헤드폰/이어폰**으로만 모니터하세요. 스피커로 모니터하면 피드백(하울링)이 발생합니다.
->
-> Always monitor with **headphones/earbuds only**. Speaker monitoring causes feedback.
-
----
-
-## 6. 프리셋 저장 / Save a Preset
-
-현재 플러그인 체인 설정을 저장해두면 다음에 즉시 불러올 수 있습니다.
-
-Save your current plugin chain to load instantly next time.
+Save your current plugin chain to load instantly next time. Create different setups for different situations and switch with one click.
 
 - 왼쪽 하단 슬롯 버튼 **A** 클릭 → 현재 체인이 A 슬롯에 저장 / Click slot **A** → saves current chain
 - **우클릭** → **Rename** → 이름 지정 (예: "게임", "통화") / Right-click → **Rename** (e.g., "Game", "Chat")
