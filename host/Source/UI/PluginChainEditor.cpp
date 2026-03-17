@@ -195,6 +195,11 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     };
     addAndMakeVisible(limiterCeilingSlider_);
 
+    // Limiter GR display label — shows gain reduction when limiter is active
+    limiterGRLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF6B6B));
+    limiterGRLabel_.setFont(juce::Font(10.0f));
+    addAndMakeVisible(limiterGRLabel_);
+
     addAndMakeVisible(addButton_);
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(removeButton_);
@@ -247,6 +252,14 @@ void PluginChainEditor::setLimiterCeiling(float dB)
         limiterCeilingSlider_.setValue(static_cast<double>(dB), juce::dontSendNotification);
 }
 
+void PluginChainEditor::setLimiterGR(float dB)
+{
+    if (dB < -0.1f)
+        limiterGRLabel_.setText("GR: " + juce::String(dB, 1) + " dB", juce::dontSendNotification);
+    else
+        limiterGRLabel_.setText("", juce::dontSendNotification);
+}
+
 void PluginChainEditor::hideLoadingState()
 {
     loading_ = false;
@@ -266,8 +279,11 @@ void PluginChainEditor::resized()
     auto limiterBar = bounds.removeFromBottom(26);
     int toggleW = 120;
     limiterButton_.setBounds(limiterBar.getX(), limiterBar.getY(), toggleW, limiterBar.getHeight());
+    int grLabelW = 60;
     limiterCeilingSlider_.setBounds(limiterBar.getX() + toggleW, limiterBar.getY(),
-                                    limiterBar.getWidth() - toggleW, limiterBar.getHeight());
+                                    limiterBar.getWidth() - toggleW - grLabelW, limiterBar.getHeight());
+    limiterGRLabel_.setBounds(limiterBar.getRight() - grLabelW, limiterBar.getY(),
+                              grLabelW, limiterBar.getHeight());
 
     int gap = 4;
     int btnW = (buttonBar.getWidth() - gap * 2) / 3;

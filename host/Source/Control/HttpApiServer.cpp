@@ -266,7 +266,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     // GET /api/limiter/ceiling/:value — set safety limiter ceiling (-6.0 ~ 0.0 dBFS)
     if (action == "limiter" && segments.size() >= 4 && segments[2] == "ceiling") {
         auto valueStr = juce::String(segments[3]);
-        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.-") < 0)
+        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("-0123456789.") < 0)
             return {400, R"({"error": "value must be a number"})"};
         float value = valueStr.getFloatValue();
         if (value < -6.0f || value > 0.0f)

@@ -77,6 +77,9 @@ public:
     /** @brief Update limiter ceiling slider value (called from timer/external control). */
     void setLimiterCeiling(float dB);
 
+    /** @brief Update limiter gain reduction display (called from timer). */
+    void setLimiterGR(float dB);
+
 private:
     bool loading_ = false;
     friend class PluginRowComponent;
@@ -92,6 +95,7 @@ private:
     juce::ListBox pluginList_{"VST Chain"};
     juce::ToggleButton limiterButton_{"Safety Limiter"};
     juce::Slider limiterCeilingSlider_;
+    juce::Label limiterGRLabel_;
     juce::TextButton addButton_{"+ Add Plugin"};
     juce::TextButton scanButton_{"Scan..."};
     juce::TextButton removeButton_{"Remove"};

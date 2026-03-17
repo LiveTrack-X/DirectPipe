@@ -1074,6 +1074,7 @@ juce::String PresetManager::getSlotName(int slotIndex) const
 void PresetManager::setSlotName(int slotIndex, const juce::String& name)
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return;
+    if (slotIndex == 5) return;  // Auto slot (index 5) name is fixed — not renameable
     slotNames_[static_cast<size_t>(slotIndex)] = name.trim();
 
     // Persist name to slot file (re-save if file exists)

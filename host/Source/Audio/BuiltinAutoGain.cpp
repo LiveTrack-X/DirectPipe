@@ -31,7 +31,7 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     lufsRingBuf_.assign(static_cast<size_t>(lufsWindowSize_), 0.0f);
     lufsWritePos_ = 0;
     lufsSampleCount_ = 0;
-    runningSquareSum_ = 0.0;  // I1: reset running sum
+    runningSquareSum_.store(0.0, std::memory_order_relaxed);  // I1: reset running sum
 
     // Pre-allocate scratch buffer for K-weighting measurement
     kWeightScratch_.setSize(2, samplesPerBlock);
@@ -106,6 +106,7 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     //
     // This reduces per-block cost from O(windowSize) to O(blockSize), which is critical
     // for RT audio thread performance (blockSize is typically 128-512 samples).
+    double sum = runningSquareSum_.load(std::memory_order_relaxed);
     for (int i = 0; i < numSamples; ++i) {
         float sq = kL[i] * kL[i];
         if (kR != nullptr)
@@ -114,8 +115,8 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         double newVal = static_cast<double>(sq);
         // Subtract the OLD value that's about to be overwritten from the running sum
         double oldVal = static_cast<double>(lufsRingBuf_[static_cast<size_t>(lufsWritePos_)]);
-        runningSquareSum_ -= oldVal;
-        runningSquareSum_ += newVal;
+        sum -= oldVal;
+        sum += newVal;
 
         lufsRingBuf_[static_cast<size_t>(lufsWritePos_)] = sq;
         lufsWritePos_++;
@@ -124,15 +125,15 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         if (lufsSampleCount_ < lufsWindowSize_)
             lufsSampleCount_++;
     }
+    runningSquareSum_.store(std::max(sum, 0.0), std::memory_order_relaxed);
 
     // Step 4: Calculate mean square over window -> LUFS
     float measuredLUFS = -60.0f;
 
     if (lufsSampleCount_ > 0) {
         // Use the incrementally maintained running sum (see Step 3 above).
-        // NOTE: Clamp to 0.0 because floating-point subtraction accumulates rounding
-        // errors over time, which can cause the sum to drift slightly negative.
-        double safeSum = std::max(runningSquareSum_, 0.0);
+        // NOTE: Already clamped to 0.0 in the store above, but defensive here too.
+        double safeSum = runningSquareSum_.load(std::memory_order_relaxed);
         double meanSquare = safeSum / static_cast<double>(lufsSampleCount_);
 
         // LUFS = -0.691 + 10 * log10(meanSquare)

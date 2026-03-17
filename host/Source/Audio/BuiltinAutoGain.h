@@ -156,7 +156,7 @@ private:
     int lufsWritePos_ = 0;
     int lufsSampleCount_ = 0;          // number of valid samples (grows until window is full)
     int lufsWindowSize_ = 0;           // 1.5 * sampleRate (was 3s, shortened for faster response)
-    double runningSquareSum_ = 0.0;    // incremental sum -- avoids O(windowSize) scan per block
+    std::atomic<double> runningSquareSum_{0.0};    // incremental sum -- avoids O(windowSize) scan per block
 
     // -- Gain state (RT thread only) --
     float currentGainLinear_ = 1.0f;   // current smoothed gain (persists across blocks for continuity)

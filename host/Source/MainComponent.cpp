@@ -168,9 +168,19 @@ MainComponent::MainComponent(bool enableExternalControls)
             loadingSlot_ = true;
             // Clear chain and add auto processors
             auto& chain = audioEngine_.getVSTChain();
-            while (chain.getPluginCount() > 0)
-                chain.removePlugin(chain.getPluginCount() - 1);
-            (void)chain.addAutoProcessors();
+            while (chain.getPluginCount() > 0) {
+                if (!chain.removePlugin(chain.getPluginCount() - 1)) {
+                    showNotification("Auto setup: failed to remove plugin", NotificationLevel::Error);
+                    loadingSlot_ = false;
+                    return;
+                }
+            }
+            auto result = chain.addAutoProcessors();
+            if (!result.success) {
+                showNotification("Auto setup failed: " + result.message, NotificationLevel::Error);
+                loadingSlot_ = false;
+                return;
+            }
             presetManager_->setActiveSlot(autoIdx);
             presetManager_->saveSlot(autoIdx);
             loadingSlot_ = false;
@@ -772,17 +782,25 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         menu.addItem(1, "Reset Auto to Defaults");
 
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&autoProcessorBtn_),
-            [this](int result) {
-                if (result == 1) {
+            [this](int menuResult) {
+                if (menuResult == 1) {
                     // Reset: clear chain, add default processors, save
                     auto& chain = audioEngine_.getVSTChain();
 
                     // Remove all plugins from chain
-                    while (chain.getPluginCount() > 0)
-                        (void)chain.removePlugin(0);
+                    while (chain.getPluginCount() > 0) {
+                        if (!chain.removePlugin(0)) {
+                            showNotification("Auto reset: failed to remove plugin", NotificationLevel::Error);
+                            return;
+                        }
+                    }
 
                     // Add default built-in processors
-                    (void)chain.addAutoProcessors();
+                    auto result = chain.addAutoProcessors();
+                    if (!result.success) {
+                        showNotification("Auto reset failed: " + result.message, NotificationLevel::Error);
+                        return;
+                    }
 
                     // Save to Auto slot
                     int autoIdx = PresetSlotBar::kAutoSlotIndex;
@@ -834,10 +852,11 @@ void MainComponent::timerCallback()
     // Sync Auto button visual (active/inactive)
     updateAutoButtonVisual();
 
-    // Sync limiter toggle + ceiling in chain editor
+    // Sync limiter toggle + ceiling + GR in chain editor
     if (pluginChainEditor_) {
         pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
         pluginChainEditor_->setLimiterCeiling(audioEngine_.getSafetyLimiter().getCeilingdB());
+        pluginChainEditor_->setLimiterGR(audioEngine_.getSafetyLimiter().getCurrentGainReduction());
     }
 
     // Update recording state in OutputPanel (Monitor tab)
