@@ -4,36 +4,63 @@ All notable changes to DirectPipe will be documented in this file.
 
 ---
 
-## [4.0.0-alpha] — Cross-Platform Alpha
+## [4.0.0] — Cross-Platform Release
 
-> **v3에서 아키텍처 리팩토링 + 크로스플랫폼 확장한 알파 버전입니다.**
-> MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입.
+> **v3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서 + 외부 제어 강화.**
+> MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 294+ 테스트.
 >
-> **Architecture refactoring + cross-platform expansion from v3.**
-> MainComponent split into 7 focused modules, Platform/ abstraction layer introduced.
+> **Architecture refactoring + cross-platform + built-in processors + enhanced external control.**
+> MainComponent split into 7 focused modules, Platform/ abstraction layer, 294+ tests.
 
-### Added
-- **Cross-platform support** — macOS (beta), Linux (experimental) alongside Windows (stable)
-- **Platform abstraction layer** (`Platform/`) — PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock with per-OS implementations
-- **ActionHandler** — Centralized action routing extracted from MainComponent
-- **SettingsAutosaver** — Dirty-flag auto-save with debounce, extracted from MainComponent
-- **StatusUpdater** — Periodic UI status updates, extracted from MainComponent
-- **PresetSlotBar** — Preset slot A-E buttons, extracted from MainComponent
-- **UpdateChecker** — GitHub API polling + update dialog, extracted from MainComponent
-- **HotkeyTab / MidiTab / StreamDeckTab** — Controls sub-tabs split into separate files
-- **ActionResult** pattern — Structured ok/fail returns replacing bare bool/void
-- **HTTP CORS preflight** — OPTIONS request handler for browser-based clients (`Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`)
-- **HTTP input validation** — Volume and parameter endpoints validate numeric input (reject non-numeric strings like "abc")
+### Added — 새 기능
 
-### Fixed
-- **Panic mute now blocks all actions** — PluginBypass, MasterBypass, InputGainAdjust, SetVolume (input), SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle all check `isMuted()` before executing / 패닉 뮤트 중 모든 액션 차단
-- **Panic mute stops recording** — Active recording is automatically stopped when panic mute engages (recording is mic output, so it must stop). Recording does not auto-restart on unmute / 패닉 뮤트 시 녹음 자동 중지 (해제 시 자동 재시작 안 함)
-- **HTTP gain delta scaling** — `/api/gain/:delta` now correctly applies the requested gain change (was applying 1/10th of intended value due to ActionHandler's `*0.1f` scaling for hotkey steps) / HTTP 게인 델타 스케일링 수정
-- **`input_muted` state field** — Clarified that `input_muted` mirrors `muted` (panic mute state). There is no independent input mute — `InputMuteToggle` triggers panic mute / `input_muted`는 `muted`와 동일 (독립 입력 뮤트 없음)
+- **Cross-platform support** — macOS (beta), Linux (experimental) alongside Windows (stable) / 크로스 플랫폼: macOS(베타), Linux(실험적)
+- **Platform abstraction layer** (`Platform/`) — PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock with per-OS implementations / 플랫폼 추상화 레이어
+- **Built-in Processors (내장 프로세서)** — VST 없이 기본 마이크 처리 제공:
+  - **Filter** — HPF (60Hz ON) + LPF (16kHz OFF), 프리셋 + Custom 슬라이더 / High-pass + Low-pass filter
+  - **Noise Removal** — RNNoise AI 노이즈 제거, 3단계 강도 (Light/Standard/Aggressive), 48kHz 전용, VAD 게이팅 / AI noise suppression with VAD gating
+  - **Auto Gain** — LUFS 기반 자동 볼륨 레벨러, WebRTC 듀얼 envelope 패턴 / LUFS-based AGC with WebRTC dual-envelope
+- **[Auto] 프리셋 슬롯** — A-E와 별도인 특수 슬롯 (인덱스 5). 원클릭 Filter+NR+AGC 기본 체인 / Special preset slot for one-click built-in processor chain
+- **Safety Limiter** — VST 체인 후 모든 출력 경로 전에 적용되는 피드포워드 리미터 (0.1ms attack, 50ms release, -0.3dBFS) / Feed-forward limiter after VST chain
+- **Stream Deck 10 액션** — 기존 7개 + Performance Monitor, Plugin Parameter (SD+), Preset Bar (SD+) / 10 actions (was 7)
+- **19 통합 액션** — XRunReset, SafetyLimiterToggle, SetSafetyLimiterCeiling, AutoProcessorsAdd 추가 / 19 actions (was 15)
+- **IPC consumer_active 감지** — Receiver VST 다중 연결 시 경고 표시 / SPSC violation warning when multiple Receivers connect
+- **DPC Latency 대책** — MMCSS "Pro Audio" AVRT_PRIORITY_HIGH, IPC SetEvent 최적화, 콜백 오버런 감지 / MMCSS registration, IPC optimization, callback overrun detection
+- **SHA-256 체크섬 검증** — 자동 업데이터 다운로드 무결성 확인 (`checksums.sha256`) / Auto-updater integrity check
+- **48kHz NotificationBar 경고** — Auto/NR 추가 시 비-48kHz 샘플레이트 경고 / Warning when NR added at non-48kHz
+- **ActionHandler** — 중앙 액션 라우팅, MainComponent에서 추출 / Centralized action routing
+- **SettingsAutosaver** — dirty-flag + 1초 디바운스 자동 저장 / Auto-save with debounce
+- **StatusUpdater** — 30Hz UI 상태 갱신, MainComponent에서 추출 / Periodic status updates
+- **PresetSlotBar** — 프리셋 슬롯 A-E 버튼, 우클릭 컨텍스트 메뉴 / Preset slot buttons with context menu
+- **UpdateChecker** — GitHub API 업데이트 체크 + 다이얼로그 / Update check + dialog
+- **HotkeyTab / MidiTab / StreamDeckTab** — Controls 서브탭 분리 / Split into separate files
+- **ActionResult** 패턴 — ok/fail 구조화 반환값 / Structured error handling
+- **HTTP CORS preflight** — 브라우저 클라이언트용 OPTIONS 핸들러 / Browser client support
+- **CONTRIBUTING.md / SECURITY.md** — 기여 가이드 + 보안 취약점 보고 절차 / Contributor and security guidelines
+- **294+ 테스트** — NR, AGC, VSTChain, DeviceState, PresetManager, Safety Limiter 등 / Comprehensive test suite
 
-### Changed
-- **CI/CD** — macOS build artifact changed from `.zip` to `.dmg` (updater safety: prevents v3 updater from downloading wrong binary)
-- **MainComponent** — Reduced from ~1,835 lines to ~729 lines via extraction of 7 focused classes
+### Fixed — 버그 수정
+
+- **AGC freeze gate** — 무음 구간에서 게인을 0dB로 리셋하던 버그 → 현재 게인 유지 (hold) / Freeze now holds current gain instead of resetting to unity
+- **AGC 오버슈트** — 1.5s LUFS 윈도우 + IIR envelope 이중 지연 → WebRTC 듀얼 envelope + direct gain으로 해결 / Dual-envelope resolves overshoot from double-smoothing
+- **Mono 합산 +3dB** — L+R 합산 시 나눗셈 누락 → numInputChannels로 평균 / Fixed mono summing to average instead of raw sum
+- **MIDI Continuous 게인** — InputGainAdjust에 0-1.0 delta 적용되던 버그 → SetVolume으로 절대 게인 설정 / Continuous CC now maps to absolute gain via SetVolume
+- **HTTP gain 범위** — `/api/gain/:delta` 범위 검증 추가 (-2.0~2.0) / Added range validation
+- **outputFifoWrite/Read 오버플로** — BuiltinNoiseRemoval의 `int` → `uint32_t` (12시간 후 정의되지 않은 동작 방지) / Prevent undefined behavior after ~12h
+- **quickStateHash 누락** — chainPDCMs 필드 미포함 → 해당 변경이 브로드캐스트 안 되던 문제 / Added missing field to state hash
+- **Panic mute 모든 액션 차단** — 패닉 뮤트 중 바이패스, 볼륨, 프리셋 등 모든 액션 차단 / All actions blocked during panic mute
+- **Panic mute 녹음 중지** — 패닉 뮤트 시 녹음 자동 중지 (해제 시 재시작 안 함) / Recording stops on panic engage
+- **HTTP gain delta 스케일링** — `*0.1f` 보상용 `*10.0f` 스케일링 문서화 / Documented gain scaling convention
+
+### Changed — 변경사항
+
+- **AGC 아키텍처** — IIR envelope → WebRTC 듀얼 envelope (fast 10ms/200ms + slow 0.4s LUFS) + direct gain / Architecture rewrite
+- **AGC 기본값** — hiCorr 0.75→0.90, maxGain 24→22dB, LUFS 1.5s→0.4s, release 700→100ms, -4dB 타겟 오프셋 / Updated defaults
+- **CI/CD 릴리스 에셋** — `win64.zip` → `Windows.zip`, `linux-x64.tar.gz` → `Linux.tar.gz` (업데이터 플랫폼 태그 일치) / Asset names match updater
+- **CI checksums.sha256** — 릴리스 아티팩트 SHA-256 체크섬 자동 생성 / Auto-generated checksums
+- **MainComponent** — ~1,835줄 → ~729줄 (7개 클래스 추출) / Reduced via extraction
+- **기본 핫키** — 11개 (Ctrl+Shift+F6=Input Mute, Ctrl+Shift+1~3=Plugin 1-3 Bypass 등) / 11 default hotkeys
+- **juce_cryptography** 모듈 추가 — SHA-256 검증용 / Added for checksum verification
 
 ---
 
