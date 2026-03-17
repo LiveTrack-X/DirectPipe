@@ -234,3 +234,46 @@ cd build && ctest --config Release --output-on-failure
 # Generate JSON output for dashboard / 대시보드용 JSON 출력 생성
 bash tools/pre-release-test.sh
 ```
+
+---
+
+## CI/CD (GitHub Actions)
+
+워크플로우 파일: `.github/workflows/build.yml`
+
+### 트리거 / Triggers
+
+| 이벤트 / Event | 조건 / Condition | 동작 / Action |
+|---|---|---|
+| Pull Request | `v4` 또는 `main` 브랜치 대상 / targeting `v4` or `main` | 4개 플랫폼 빌드 + 테스트 (릴리스 업로드 없음) / Build + test (no upload) |
+| Release created | GitHub Release 생성 시 / On release creation | 빌드 + 릴리스 asset 업로드 / Build + upload to release |
+| workflow_dispatch | 수동 실행 + release_tag 입력 / Manual with tag | 빌드 + 지정 릴리스에 업로드 / Build + upload to specified tag |
+
+### 빌드 매트릭스 / Build Matrix
+
+| 플랫폼 / Platform | Runner | 결과물 / Output | 포함 내용 / Includes |
+|---|---|---|---|
+| Windows | `windows-latest` | `DirectPipe-{tag}-win64.zip` | DirectPipe.exe + Receiver VST2(.dll) + VST3(.vst3) |
+| macOS | `macos-14` (ARM) | `DirectPipe-{tag}-macOS.dmg` | DirectPipe.app + Receiver VST2(.vst) + VST3(.vst3) + AU(.component) |
+| Linux | `ubuntu-24.04` | `DirectPipe-{tag}-linux-x64.tar.gz` | DirectPipe + Receiver VST2(.so) + VST3(.vst3) |
+| Stream Deck | `ubuntu-latest` | `com.directpipe.directpipe.streamDeckPlugin` | Node.js 20, npm ci + rollup + streamdeck pack |
+
+### GitHub Secrets (필수 / Required)
+
+| Secret | 용도 / Purpose | 없을 때 / Without |
+|---|---|---|
+| `VST2_SDK_B64` | Base64-encoded VST2 SDK archive | VST2 포맷 빌드 생략 / VST2 format skipped |
+| `ASIO_SDK_B64` | Base64-encoded Steinberg ASIO SDK (Windows only) | ASIO 드라이버 비활성 / ASIO driver disabled |
+
+> VST2/ASIO SDK는 라이선스 제약으로 리포지토리에 포함되지 않습니다. CI에서는 Secrets에서 디코딩하여 `thirdparty/` 하위에 복원합니다.
+> VST2/ASIO SDKs are excluded from the repository due to licensing. CI decodes them from Secrets into `thirdparty/`.
+
+### 릴리스 프로세스 / Release Process
+
+1. GitHub에서 Release 생성 (v4는 반드시 `--prerelease`) / Create Release on GitHub (v4 must use `--prerelease`)
+2. CI가 자동으로 4개 빌드 실행 / CI automatically runs 4 builds
+3. `upload-release` job이 모든 빌드 완료 후 asset 업로드 / `upload-release` job uploads after all builds pass
+4. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention
+
+> ⚠️ v4 릴리스는 반드시 `--prerelease`로 생성해야 v3 사용자의 자동 업데이터가 감지하지 않습니다. 자세한 내용은 최상위 `CLAUDE.md` Section 2 참조.
+> v4 releases must use `--prerelease` to prevent v3 users' auto-updater from detecting them. See top-level `CLAUDE.md` Section 2.

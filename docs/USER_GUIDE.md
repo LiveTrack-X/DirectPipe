@@ -496,6 +496,46 @@ VST 플러그인 없이 기본적인 마이크 처리를 제공하는 내장 프
 > **참고**: 48kHz가 아닌 샘플레이트에서는 Noise Removal이 비활성화됩니다 (향후 리샘플링 지원 예정).
 > **Note**: Noise Removal is inactive at non-48kHz sample rates (resampling support planned).
 
+### 내장 프로세서 상세 가이드 / Built-in Processor Details
+
+플러그인 체인에서 각 내장 프로세서를 클릭하면 편집 패널이 열립니다. / Click any built-in processor in the chain to open its edit panel.
+
+#### Filter (하이패스 + 로우패스 필터 / HPF + LPF)
+
+- **HPF (High-Pass Filter)**: 저음역 잡음 제거 (에어컨 소음, 저주파 험 등). 기본값 60Hz ON / Removes low-frequency noise. Default: 60Hz ON
+  - 프리셋 / Presets: Off, 40Hz, 60Hz, 80Hz, 100Hz, 120Hz, Custom
+  - Custom 선택 시 슬라이더로 20-500Hz 범위 조절 / Custom: slider for 20-500Hz range
+- **LPF (Low-Pass Filter)**: 고음역 잡음 제거 (치찰음, 고주파 잡음 등). 기본값 16kHz OFF / Removes high-frequency noise. Default: 16kHz OFF
+  - 프리셋 / Presets: Off, 8kHz, 12kHz, 16kHz, 20kHz, Custom
+  - 대부분 OFF 또는 16kHz 권장. 음성 위주라면 12kHz도 적합 / OFF or 16kHz recommended. 12kHz fine for voice-only
+
+#### Noise Removal (노이즈 제거 / RNNoise)
+
+AI 기반 노이즈 억제. 배경 소음(키보드, 팬, 환경 소음)을 실시간 제거합니다. / AI noise suppression. Removes background noise in real-time.
+
+- **Strength (강도)**: 3단계 프리셋 / 3 presets
+  - **Light (가벼움)**: VAD 0.50. 약한 배경 소음 제거. 음성 왜곡 최소 / Mild noise. Minimal voice distortion
+  - **Standard (표준)**: VAD 0.70. 일반적인 사용에 권장 (**기본값**) / Typical use (**default**)
+  - **Aggressive (강력)**: VAD 0.90. 시끄러운 환경. 작은 목소리가 잘릴 수 있음 / Noisy environments. May clip quiet speech
+- ⚠️ **48kHz 전용**: Audio 탭에서 샘플레이트를 48kHz로 설정하세요. 다른 SR에서는 자동 패스스루됩니다 / **48kHz only**: set SR to 48kHz in Audio tab. Auto-bypassed at other rates
+
+#### Auto Gain (자동 게인 / LUFS AGC)
+
+LUFS 기반 자동 볼륨 조절. 작은 목소리를 올리고 큰 소리를 줄여 일정한 출력 레벨을 유지합니다. / LUFS-based automatic volume leveling.
+
+| 파라미터 / Parameter | 기본값 / Default | 범위 / Range | 설명 / Description |
+|---|---|---|---|
+| **Target LUFS** | -15.0 | -24 ~ -6 | 목표 라우드니스. 방송용 -14~-16 권장 / Target loudness. -14~-16 for streaming |
+| **Freeze Level** | -45 dBFS | — | 이 레벨 이하 입력은 무시 (무음 증폭 방지) / Ignores input below this (prevents silence amplification) |
+| **Low Correct** | 0.50 | 0.0 ~ 1.0 | 작은 소리 부스트 **속도**. 높을수록 빠르게 올림 / Boost **speed**. Higher = faster boost |
+| **High Correct** | 0.75 | 0.0 ~ 1.0 | 큰 소리 컷 **속도**. 높을수록 빠르게 줄임 / Cut **speed**. Higher = faster reduction |
+| **Max Gain** | 24 dB | — | 최대 부스트 한계. 과도한 증폭 방지 / Maximum boost limit |
+
+**권장 설정 / Recommended Settings:**
+- 일반 방송 / General streaming: Target -15, Low 0.50, High 0.75, Max Gain 24 dB
+- 조용한 환경 / Quiet room: Target -14, Low 0.60, High 0.80, Max Gain 18 dB
+- 게임 + 음성 / Gaming + voice: Target -16, Low 0.40, High 0.70, Max Gain 24 dB
+
 ---
 
 ## Output 탭 / Output Tab
@@ -674,11 +714,16 @@ DirectPipe/
 
 In portable mode, multiple DirectPipe instances can run simultaneously. External controls (hotkeys, MIDI, WebSocket, HTTP) are owned by one instance only — others run in audio-only mode.
 
-| 시나리오 / Scenario | 결과 / Result |
-|---|---|
-| 일반 모드 실행 중 → 포터블 시작 / Normal running → Portable starts | 포터블 = Audio Only (외부 제어 비활성) / Portable = Audio Only |
-| 포터블이 제어 중 → 일반 모드 시작 / Portable controlling → Normal starts | 일반 모드 차단 (다이얼로그 → 종료) / Normal blocked (dialog → quit) |
-| 포터블 2개+ / 2+ Portables | 첫 번째만 외부 제어, 나머지 Audio Only / First gets controls, rest Audio Only |
+| 먼저 실행 / Running First | 나중 실행 / Launched Second | 나중 실행 상태 / Second Instance State |
+|---|---|---|
+| 일반 설치 / Normal | 일반 설치 / Normal | ❌ 차단 (실행 불가) / Blocked (cannot run) |
+| 일반 설치 / Normal | 포터블 / Portable | 🔊 Audio Only (외부 제어 없음) / Audio Only (no external control) |
+| 포터블 (제어 중) / Portable (controlling) | 일반 설치 / Normal | ❌ 차단 (다이얼로그 → 종료) / Blocked (dialog → quit) |
+| 포터블 (제어 중) / Portable (controlling) | 포터블 / Portable | 🔊 Audio Only / Audio Only |
+| 일반 설치 / Normal | 일반 설치 (동일 폴더) / Normal (same folder) | ❌ 차단 (중복 감지) / Blocked (duplicate detected) |
+
+> **Audio Only 모드**: 오디오 처리만 가능. WebSocket/HTTP/Hotkey 서버가 시작되지 않으므로 Stream Deck, 핫키, API 제어 불가.
+> **Audio Only mode**: Audio processing works but WebSocket/HTTP/Hotkey servers don't start. No Stream Deck, hotkey, or API control.
 
 **UI 표시 / UI Indicators:**
 
@@ -875,7 +920,7 @@ During streams, taking hands off the keyboard is difficult. Use Stream Deck or M
 
 | 버튼 / Button | 액션 / Action | 용도 / Purpose |
 |---|---|---|
-| 🔴 큰 버튼 / Big button | Panic Mute | 긴급 전체 뮤트 / Emergency kill all |
+| 🔴 큰 버튼 / Big button | Panic Mute | 긴급 패닉 뮤트 (전체 출력 차단) / Emergency kill all |
 | 🎙️ | IPC Toggle | OBS 마이크 ON/OFF / OBS mic ON/OFF |
 | 🔇 | Toggle Mute | Discord 마이크 ON/OFF / Discord mic ON/OFF |
 | 🎧 | Monitor Toggle | 헤드폰 모니터 ON/OFF / Headphone monitor ON/OFF |

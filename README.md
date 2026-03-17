@@ -156,7 +156,7 @@ External Control:
   | Ctrl+Shift+1–9 | 플러그인 1-9 Bypass 토글 / Plugin 1-9 bypass |
   | Ctrl+Shift+0 | 마스터 Bypass (전체 체인) / Master bypass |
   | Ctrl+Shift+M | 패닉 뮤트 / Panic mute |
-  | Ctrl+Shift+N | 입력 뮤트 토글 / Input mute |
+  | Ctrl+Shift+N | 입력 뮤트 토글 (= 패닉 뮤트) / Input mute (= Panic Mute) |
   | Ctrl+Shift+O | 출력 뮤트 토글 / Output mute |
   | Ctrl+Shift+H | 모니터 토글 / Monitor toggle |
   | Ctrl+Shift+I | VST 출력 토글 / VST output toggle |
@@ -782,9 +782,9 @@ Once enabled, DirectPipe launches automatically at login. Closing the window (X 
 
 **[Install free from Elgato Marketplace](https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3)** — Installs directly into the Stream Deck app.
 
-지원 액션: Bypass Toggle, Volume Control (SD+ 다이얼), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle
+지원 액션 (10종): Bypass Toggle, Volume Control (SD+ 다이얼), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle, Performance Monitor, Plugin Parameter (SD+ 다이얼), Preset Bar (SD+ 터치스크린)
 
-Supported actions: Bypass Toggle, Volume Control (SD+ dial), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle
+Supported actions (10): Bypass Toggle, Volume Control (SD+ dial), Preset Switch, Monitor Toggle, Panic Mute, Recording Toggle, IPC Toggle, Performance Monitor, Plugin Parameter (SD+ dial), Preset Bar (SD+ touchscreen)
 </details>
 
 <details>
@@ -1035,6 +1035,118 @@ DirectPipe includes **in-app update notification**. When a newer version is avai
 **macOS/Linux**: Click "View on GitHub" to manually download from the release page.
 
 If you're offline, the current version continues to work normally.
+</details>
+
+<details>
+<summary><b>ASIO를 선택했는데 다른 앱에서 소리가 안 나요 / Other apps lose audio when ASIO is selected</b></summary>
+
+ASIO 드라이버는 오디오 장치를 **독점(Exclusive)** 으로 사용합니다. DirectPipe가 ASIO로 오디오 장치를 열면, 다른 앱(Discord, 브라우저 등)이 같은 장치에 접근할 수 없습니다.
+
+**해결 방법:**
+1. **WASAPI Shared 사용 (권장)** — Audio 탭 > Driver Type을 "Windows Audio"로 변경. 다른 앱과 장치를 공유할 수 있습니다.
+2. **ASIO4ALL 사용** — 여러 장치를 하나의 가상 ASIO 장치로 묶을 수 있지만, 지연이 다소 증가합니다.
+3. **전용 오디오 인터페이스 사용** — Focusrite, SSL 등 전용 인터페이스의 ASIO 드라이버는 해당 장치만 독점하므로, 내장 사운드카드는 다른 앱이 사용할 수 있습니다.
+
+---
+
+ASIO drivers use **exclusive access** to the audio device. When DirectPipe opens a device via ASIO, other apps (Discord, browser, etc.) cannot access it.
+
+**Solutions:**
+1. **Use WASAPI Shared (recommended)** — Change Driver Type to "Windows Audio" in Audio tab. Shares the device with other apps.
+2. **Use ASIO4ALL** — Combines multiple devices into one virtual ASIO device, but adds some latency.
+3. **Use a dedicated audio interface** — Focusrite, SSL, etc. Their ASIO driver only locks the interface, leaving the built-in sound card free for other apps.
+</details>
+
+<details>
+<summary><b>플러그인이 스캔 목록에 안 나와요 (64-bit 전용) / Plugin not showing in scan results (64-bit only)</b></summary>
+
+DirectPipe는 **64-bit VST2/VST3 플러그인만** 지원합니다. 32-bit 플러그인은 표시되지 않습니다.
+
+**체크리스트:**
+1. **64-bit인지 확인** — 32-bit 전용 플러그인은 지원되지 않습니다
+2. **VST 경로 확인** — Audio 탭 > Scan Plugins > 스캔 경로에 플러그인 폴더가 포함되어 있는지 확인
+3. **블랙리스트 확인** — 이전 스캔에서 크래시한 플러그인은 블랙리스트에 등록됩니다. Settings > Clear Plugin Cache로 초기화 후 재스캔
+4. **플러그인 재설치** — 간혹 손상된 DLL/VST3 번들은 스캐너가 건너뜁니다
+
+---
+
+DirectPipe only supports **64-bit VST2/VST3 plugins**. 32-bit plugins won't appear.
+
+**Checklist:**
+1. **Verify 64-bit** — 32-bit-only plugins are not supported
+2. **Check VST paths** — Audio tab > Scan Plugins > verify plugin folder is in scan paths
+3. **Check blacklist** — Plugins that crashed during previous scans are blacklisted. Reset via Settings > Clear Plugin Cache, then re-scan
+4. **Reinstall plugin** — Corrupted DLL/VST3 bundles may be silently skipped
+</details>
+
+<details>
+<summary><b>프리셋 전환할 때 소리가 잠깐 끊겨요 / Brief audio gap when switching presets</b></summary>
+
+프리셋 전환 시 **~10-50ms의 매우 짧은 오디오 갭**이 발생할 수 있습니다. 이것은 **Keep-Old-Until-Ready** 메커니즘의 정상 동작입니다 — 새 플러그인 체인이 백그라운드에서 완전히 로드될 때까지 이전 체인이 계속 오디오를 처리하고, 준비가 되면 원자적으로 교체합니다.
+
+이 10-50ms 갭은 v3의 1-3초 무음 갭에서 크게 개선된 것입니다. 프리로드 캐시가 활성화되어 있으면 (다른 슬롯 플러그인을 미리 로드) 더 짧아질 수 있습니다.
+
+---
+
+A **very brief audio gap (~10-50ms)** may occur during preset switches. This is normal **Keep-Old-Until-Ready** behavior — the old plugin chain continues processing audio while the new chain loads in the background, then swaps atomically when ready.
+
+This 10-50ms gap is a major improvement over v3's 1-3 second mute gap. With the preload cache active (pre-loads other slots' plugins), the gap can be even shorter.
+</details>
+
+<details>
+<summary><b>CPU 사용량이 높아요 / High CPU usage</b></summary>
+
+**원인 진단:**
+1. **Performance Monitor 확인** — 상태 바의 CPU % 확인. 70% 이상이면 플러그인 체인 최적화 필요
+2. **무거운 플러그인 식별** — 각 플러그인을 하나씩 Bypass하면서 CPU 변화 확인
+3. **오버샘플링 확인** — 일부 플러그인(리미터, 이퀄라이저)은 내부 오버샘플링(2x-8x)이 있어 CPU를 크게 사용
+
+**해결 방법:**
+- 무거운 플러그인을 더 가벼운 대안으로 교체 (예: FabFilter Pro-Q 3 → TDR Nova)
+- 불필요한 플러그인 제거 또는 Bypass
+- 버퍼 크기 늘리기 (Audio 탭) — 지연이 증가하지만 CPU 부하 감소
+- Auto 모드의 내장 프로세서는 최적화되어 있어 CPU 사용량이 매우 낮음
+
+---
+
+**Diagnosis:**
+1. **Check Performance Monitor** — Look at CPU % in status bar. Above 70% means the plugin chain needs optimization
+2. **Identify heavy plugins** — Bypass plugins one by one and observe CPU change
+3. **Check oversampling** — Some plugins (limiters, EQs) have internal oversampling (2x-8x) that significantly increases CPU
+
+**Solutions:**
+- Replace heavy plugins with lighter alternatives (e.g., FabFilter Pro-Q 3 → TDR Nova)
+- Remove or Bypass unused plugins
+- Increase buffer size (Audio tab) — adds latency but reduces CPU load
+- Auto mode's built-in processors are optimized and use very little CPU
+</details>
+
+<details>
+<summary><b>모니터에서 지연이 느껴져요 / Hearing delay in monitor output</b></summary>
+
+모니터 출력은 메인 출력과 **별도의 오디오 장치**를 사용하므로, 추가 지연이 발생할 수 있습니다.
+
+**원인:**
+1. **모니터 장치의 버퍼 크기** — WASAPI Shared 모드는 장치 기본 버퍼를 사용합니다 (보통 10-20ms)
+2. **샘플레이트 불일치** — 메인 장치와 모니터 장치의 샘플레이트가 다르면 리샘플링 지연 발생
+
+**해결 방법:**
+- 메인 장치와 모니터 장치의 샘플레이트를 일치시키기 (Audio 탭에서 확인)
+- ASIO를 사용한다면, 같은 인터페이스의 다른 출력을 모니터로 사용 (추가 장치 불필요)
+- 모니터 지연은 자기 목소리 모니터링용이므로, 방송/녹음 품질에는 영향 없음
+
+---
+
+Monitor output uses a **separate audio device** from the main output, which can introduce additional latency.
+
+**Causes:**
+1. **Monitor device buffer size** — WASAPI Shared mode uses the device's default buffer (typically 10-20ms)
+2. **Sample rate mismatch** — Different sample rates between main and monitor devices cause resampling delay
+
+**Solutions:**
+- Match sample rates between main and monitor devices (check in Audio tab)
+- If using ASIO, use a different output of the same interface as monitor (no extra device needed)
+- Monitor delay only affects self-monitoring; it doesn't affect broadcast/recording quality
 </details>
 
 ## Star History
