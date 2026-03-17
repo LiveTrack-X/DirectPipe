@@ -121,9 +121,14 @@ private:
     // juce::LagrangeInterpolator resamplerOutL_, resamplerOutR_;
     // std::vector<float> resampleBuf_;
 
-    // -- VAD gating (per-channel smooth gain) --
-    float gateGainL_ = 1.0f;
-    float gateGainR_ = 1.0f;
+    // -- VAD gating (per-channel smooth gain + hold time) --
+    // Hold keeps gate open for ~300ms after last voice detection,
+    // preventing choppy audio between words.
+    static constexpr int kHoldSamples = 48000 * 300 / 1000;  // 300ms at 48kHz = 14400 samples
+    float gateGainL_ = 0.0f;   // starts closed (warmup)
+    float gateGainR_ = 0.0f;
+    int holdCounterL_ = 0;
+    int holdCounterR_ = 0;
 
     // -- Internal helpers --
     void destroyRNNoise();
@@ -134,7 +139,7 @@ private:
                         DenoiseState* rnn,
                         std::vector<float>& inputFifo, int& inputFifoWrite,
                         std::vector<float>& outputFifo, int& outputFifoRead, int& outputFifoWrite,
-                        float& gateGain);
+                        float& gateGain, int& holdCounter);
 };
 
 } // namespace directpipe

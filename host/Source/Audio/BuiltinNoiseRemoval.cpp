@@ -70,6 +70,8 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
     // Start with gate CLOSED -- prevents initial noise burst before RNNoise stabilizes
     gateGainL_ = 0.0f;
     gateGainR_ = 0.0f;
+    holdCounterL_ = 0;
+    holdCounterR_ = 0;
 
     // Warm up RNNoise with silent frames so it learns the noise floor faster
     {
@@ -111,7 +113,7 @@ void BuiltinNoiseRemoval::processBlock(juce::AudioBuffer<float>& buffer, juce::M
                        numSamples, rnnL_,
                        inputFifoL_, inputFifoWriteL_,
                        outputFifoL_, outputFifoReadL_, outputFifoWriteL_,
-                       gateGainL_);
+                       gateGainL_, holdCounterL_);
     }
 
     // Channel 1 (Right) -- dual-mono, independent RNNoise instance
@@ -120,7 +122,7 @@ void BuiltinNoiseRemoval::processBlock(juce::AudioBuffer<float>& buffer, juce::M
                        numSamples, rnnR_,
                        inputFifoR_, inputFifoWriteR_,
                        outputFifoR_, outputFifoReadR_, outputFifoWriteR_,
-                       gateGainR_);
+                       gateGainR_, holdCounterR_);
     }
 }
 
@@ -131,10 +133,12 @@ void BuiltinNoiseRemoval::processChannel(
     DenoiseState* rnn,
     std::vector<float>& inputFifo,  int& inputFifoWrite,
     std::vector<float>& outputFifo, int& outputFifoRead, int& outputFifoWrite,
-    float& gateGain)
+    float& gateGain, int& holdCounter)
 {
     const float threshold = vadThreshold_.load(std::memory_order_relaxed);
-    constexpr float kGateSmooth = 0.9958f;
+    // Gate smoothing: ~20ms transition at 48kHz for natural open/close
+    // (was 5ms/0.9958 -- too abrupt, caused choppy feel between words)
+    constexpr float kGateSmooth = 0.9990f;  // exp(-1/(48000*0.020)) ≈ 0.9990
     constexpr float kScale = 32767.0f;
     constexpr float kInvScale = 1.0f / 32767.0f;
 
@@ -153,7 +157,19 @@ void BuiltinNoiseRemoval::processChannel(
 
             float vad = rnnoise_process_frame(rnn, rnnOut, rnnIn);
 
-            float targetGate = (vad >= threshold) ? 1.0f : 0.0f;
+            // VAD gate with hold time — keeps gate open between words
+            // holdCounter tracks how many samples since last voice detection
+            float targetGate;
+            if (vad >= threshold) {
+                targetGate = 1.0f;
+                holdCounter = 0;  // reset hold
+            } else if (holdCounter < kHoldSamples) {
+                targetGate = 1.0f;  // still in hold period — stay open
+                holdCounter += kRNNFrameSize;
+            } else {
+                targetGate = 0.0f;  // hold expired — close gate
+            }
+
             for (int j = 0; j < kRNNFrameSize; ++j) {
                 gateGain = kGateSmooth * gateGain + (1.0f - kGateSmooth) * targetGate;
                 outputFifo[static_cast<size_t>(outputFifoWrite % kFifoCapacity)] = rnnOut[j] * kInvScale * gateGain;
