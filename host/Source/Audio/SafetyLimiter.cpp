@@ -27,6 +27,9 @@ namespace directpipe {
 
 SafetyLimiter::SafetyLimiter()
 {
+    // Initialize coefficients with 48kHz defaults. Without this, attack/release coefficients
+    // would be zero until the first prepareToPlay() call from audioDeviceAboutToStart().
+    // DO NOT remove — would leave uninitialized coefficients during early audio callbacks.
     prepareToPlay(48000.0);
 }
 

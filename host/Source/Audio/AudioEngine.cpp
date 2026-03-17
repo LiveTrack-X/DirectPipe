@@ -965,6 +965,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     //    Each plugin's bypass flag is atomic — can be toggled from any thread
     vstChain_.processBlock(buffer, numSamples);
 
+    // CRITICAL: Steps 2.1-4 MUST execute in this exact order.
+    // Safety Limiter (step 2.1) must run BEFORE all output paths (steps 2.5-4).
+    // Reordering would cause un-limited audio to be recorded/broadcast/monitored.
+
     // 2.1. Safety Limiter — clip prevention for all output paths (RT-safe)
     safetyLimiter_.process(buffer, numSamples);
 

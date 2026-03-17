@@ -110,6 +110,11 @@ MainComponent::MainComponent(bool enableExternalControls)
     inputGainSlider_.setRange(0.0, 2.0, 0.01);
     inputGainSlider_.setValue(1.0);
     inputGainSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
+    // Direct engine call — intentionally bypasses ActionDispatcher.
+    // The slider sends continuous values on every mouse drag; routing through
+    // ActionDispatcher would flood the event system and add latency.
+    // Note: this means the gain slider is NOT blocked by panic mute
+    // (but audio output is still zeroed by the mute fast-path in the RT callback).
     inputGainSlider_.onValueChange = [this] {
         audioEngine_.setInputGain(static_cast<float>(inputGainSlider_.getValue()));
         markSettingsDirty();
@@ -356,7 +361,8 @@ MainComponent::MainComponent(bool enableExternalControls)
         rightTabs_->addTab("Settings", tabBg, settingsPanel.release(), true);
     }
 
-    // Re-acquire raw pointers (TabbedComponent owns the components now)
+    // Release unique_ptrs — TabbedComponent now owns these components (passed via .release() above).
+    // Calling .reset() on an already-released unique_ptr is a no-op, but makes ownership explicit.
     audioSettings_.reset();
     outputPanel_.reset();
     controlSettingsPanel_.reset();

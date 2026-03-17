@@ -26,8 +26,8 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSR_ = sampleRate;
 
-    // Pre-allocate LUFS ring buffer (3-second window)
-    lufsWindowSize_ = static_cast<int>(sampleRate * 1.5);  // 1.5s window (was 3s) -- faster response
+    // Pre-allocate LUFS ring buffer (1.5-second window)
+    lufsWindowSize_ = static_cast<int>(sampleRate * 1.5);  // 1.5s window -- faster response than ITU default 3s
     lufsRingBuf_.assign(static_cast<size_t>(lufsWindowSize_), 0.0f);
     lufsWritePos_ = 0;
     lufsSampleCount_ = 0;
@@ -49,7 +49,7 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     // Envelope follower coefficients:
     //   coeff = 1 - exp(-1 / (time_seconds * sampleRate))
     // We compute per-sample coefficients from time constants.
-    // attack = 500ms, release = 300ms -- tight leveling
+    // attack = 500ms, release = 700ms -- tight leveling
     if (sampleRate > 0.0) {
         attackCoeff_  = 1.0f - std::exp(-1.0f / (0.5f * static_cast<float>(sampleRate)));   // 500ms boost
         releaseCoeff_ = 1.0f - std::exp(-1.0f / (0.7f * static_cast<float>(sampleRate)));  // 700ms cut

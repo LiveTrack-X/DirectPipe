@@ -44,6 +44,11 @@ ActionHandler::ActionHandler(AudioEngine& engine, PresetManager& presetMgr,
 
 // ─── Panic Mute (shared logic) ───────────────────────────────────────────────
 
+// Panic Mute contract:
+// ON (mute=true):  Save monitor/output/IPC states -> disable all -> stop recording.
+// OFF (mute=false): Restore monitor/output/IPC to saved states.
+// Recording does NOT auto-restart on unmute — intentional design.
+// The user may have lost the take during panic and should consciously re-engage.
 void ActionHandler::doPanicMute(bool mute)
 {
     engine_.setMuted(mute);
@@ -129,6 +134,12 @@ void ActionHandler::togglePanicMute()
 
 // ─── Action Dispatch ─────────────────────────────────────────────────────────
 
+// During panic mute, most actions are blocked by the engine_.isMuted() check.
+// Actions that BYPASS the mute guard (no isMuted check):
+//   - PanicMute/InputMuteToggle: they ARE the panic toggle
+//   - XRunReset: stateless counter reset, safe anytime
+//   - SafetyLimiterToggle/SetSafetyLimiterCeiling: safety feature, must always work
+//   - AutoProcessorsAdd: chain configuration, not live audio routing
 void ActionHandler::handle(const ActionEvent& event)
 {
     switch (event.action) {

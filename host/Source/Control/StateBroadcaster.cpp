@@ -35,6 +35,10 @@ AppState StateBroadcaster::getState() const
 
 // Fast hash of the state fields that change frequently (volumes, levels, CPU, recording)
 // to skip full JSON serialization + broadcast when nothing changed.
+//
+// MAINTENANCE WARNING: When adding a new field to AppState, you MUST also
+// add it to this hash function. If omitted, changes to that field will NEVER
+// trigger a WebSocket broadcast or UI update — a silent, hard-to-diagnose bug.
 static uint32_t quickStateHash(const AppState& s)
 {
     uint32_t h = 0;

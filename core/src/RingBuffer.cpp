@@ -93,6 +93,12 @@ bool RingBuffer::attachAsConsumer(void* memory)
     return true;
 }
 
+// Memory ordering rationale for SPSC:
+// - Own position (write_pos for producer, read_pos for consumer): relaxed
+//   (single writer, no contention — we are the only one advancing this)
+// - Other's position (read_pos for producer, write_pos for consumer): acquire
+//   (must see the other side's latest advance to compute available space correctly)
+
 uint32_t RingBuffer::write(const float* data, uint32_t frames)
 {
     if (!isValid() || frames == 0) return 0;

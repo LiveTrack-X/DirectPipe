@@ -181,6 +181,10 @@ void MidiHandler::handleIncomingMidiMessage(
         int value = message.getControllerValue();
 
         {
+            // CAS (compare-and-swap) ensures only one MIDI message wins the learn slot.
+            // Multiple devices can fire simultaneously on different callback threads.
+            // DO NOT simplify to if(learning_.load()) { learning_.store(false); ... }
+            // — that has a TOCTOU race where two threads both read true and both proceed.
             bool expected = true;
             if (learning_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
                 std::function<void(int, int, int, const juce::String&)> cb;

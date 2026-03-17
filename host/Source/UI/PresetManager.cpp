@@ -654,6 +654,9 @@ bool PresetManager::saveSlot(int slotIndex)
         }
     }
 
+    // atomicWriteFile: writes to .tmp, renames original to .bak, renames .tmp to target.
+    // Crash-safe: power failure at any point leaves either the original or .bak intact.
+    // DO NOT replace with file.replaceWithText() — that can lose data on crash.
     bool ok = atomicWriteFile(file, json);
     if (ok) {
         activeSlot_ = slotIndex;

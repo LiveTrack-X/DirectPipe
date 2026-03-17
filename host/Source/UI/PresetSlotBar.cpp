@@ -101,6 +101,9 @@ void PresetSlotBar::handlePresetAction(const ActionEvent& event)
             int currentSlot = presetManager_.getActiveSlot();
             int direction = (event.action == Action::NextPreset) ? 1 : -1;
             int start = (currentSlot < 0 || currentSlot >= kNumPresetSlots) ? 0 : currentSlot;
+            // Modulo kNumPresetSlots (5) cycles through A-E (indices 0-4) only.
+            // Auto slot (index 5) is deliberately excluded from Next/Previous cycling.
+            // DO NOT change kNumPresetSlots to 6 — that would include Auto in the cycle.
             int nextSlot = (start + direction + kNumPresetSlots) % kNumPresetSlots;
             if (loadingSlot_) {
                 pendingSlot_ = nextSlot;

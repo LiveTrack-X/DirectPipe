@@ -252,6 +252,10 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     }
 
     // GET /api/xrun/reset — reset xrun counter
+    // Direct engine call — bypasses ActionDispatcher.
+    // Functionally identical: Action::XRunReset in ActionHandler just calls requestXRunReset().
+    // Skipping the dispatcher avoids an unnecessary message-thread roundtrip for this
+    // stateless, thread-safe atomic flag reset.
     if (action == "xrun" && segments.size() >= 3 && segments[2] == "reset") {
         engine_.requestXRunReset();
         return {200, R"({"ok": true, "action": "xrun_reset"})"};

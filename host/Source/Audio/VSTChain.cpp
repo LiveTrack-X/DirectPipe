@@ -166,6 +166,10 @@ void VSTChain::releaseResources()
 
 void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
 {
+    // No chainLock_ here — AudioProcessorGraph internally swaps render sequences atomically.
+    // Holding chainLock_ in the RT callback would risk deadlock with message-thread operations
+    // that hold chainLock_ and call suspendProcessing() (which waits for the RT callback to finish).
+
     // RT thread only — must NOT be called from the message thread
     jassert(!juce::MessageManager::getInstanceWithoutCreating()
             || !juce::MessageManager::getInstance()->isThisTheMessageThread());
@@ -617,7 +621,8 @@ void VSTChain::setPluginBypassed(int index, bool bypassed)
         logMsg = "[VST] Bypass: \"" + chain_[static_cast<size_t>(index)].name + "\" [" + juce::String(index) + "] = " + (bypassed ? "true" : "false");
 
         // Sync node + plugin bypass state. replaceChainWithPreloaded sets
-        // node->setBypassed(true) + bypass parameter = 1.0 for cached plugins.
+        // node->setBypassed(true) for cached plugins (but does NOT call
+        // setValueNotifyingHost — only the graph-level bypass is set).
         // Without clearing these here, un-bypassing leaves the plugin's internal
         // bypass active (e.g., Clear, RNNoise with getBypassParameter()).
         if (auto* node = graph_->getNodeForId(chain_[static_cast<size_t>(index)].nodeId)) {
@@ -918,6 +923,9 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
 
     asyncLoading_.store(true);
     juce::Logger::writeToLog("[VST] Async chain load started: " + juce::String(requests.size()) + " plugins");
+    // fetch_add returns the PREVIOUS value; +1 gives us the NEW generation number.
+    // This new generation is what asyncGeneration_ now stores. The callAsync lambda
+    // compares its captured generation against the current value to detect staleness.
     uint32_t generation = asyncGeneration_.fetch_add(1) + 1;
 
     // Capture values needed by background thread
@@ -942,6 +950,9 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
          preWork = std::move(preWork), sr, bs, result, aliveFlag, generation]()
     {
     #if JUCE_WINDOWS
+        // COM must be initialized as APARTMENTTHREADED (STA) for VST3 plugin factories.
+        // VST3 uses COM interfaces internally. COINIT_MULTITHREADED would cause
+        // random crashes in VST3 plugin loading. DO NOT change this.
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         // RAII guard ensures CoUninitialize runs even if plugin loading throws
         struct ComScope { ~ComScope() { CoUninitialize(); } } comGuard;

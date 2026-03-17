@@ -207,6 +207,9 @@ void BuiltinNoiseRemoval::processChannel(
                 holdCounter = 0;  // reset hold
             } else if (holdCounter < kHoldSamples) {
                 targetGate = 1.0f;  // still in hold period — stay open
+                // Hold counter tracks time in SAMPLES, not frames. Since this decision runs once per
+                // RNNoise frame (480 samples), advance by kRNNFrameSize (not by 1).
+                // Changing to holdCounter++ would reduce 300ms hold time to ~10ms.
                 holdCounter += kRNNFrameSize;
             } else {
                 targetGate = 0.0f;  // hold expired — close gate
