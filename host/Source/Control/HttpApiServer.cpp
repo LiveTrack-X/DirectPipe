@@ -354,6 +354,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.-") < 0)
             return {400, R"({"error": "delta must be a number"})"};
         float delta = valueStr.getFloatValue();
+        if (delta < -2.0f || delta > 2.0f)
+            return {400, "{\"error\": \"delta out of range (-2.0 to 2.0)\"}"};
         dispatcher_.inputGainAdjust(delta * 10.0f);
         return {200, R"({"ok": true, "action": "input_gain", "delta": )" +
                floatToString(delta) + "}"};

@@ -153,16 +153,20 @@ private:
     // Input FIFOs -- accumulate host samples until a full frame is ready
     std::vector<float> inputFifoL_;
     std::vector<float> inputFifoR_;
-    int inputFifoWriteL_ = 0;
+    int inputFifoWriteL_ = 0;  // Reset to 0 after each frame — no overflow risk
     int inputFifoWriteR_ = 0;
 
-    // Output FIFOs -- store processed frames for the host to consume
+    // Output FIFOs -- store processed frames for the host to consume.
+    // Read/write positions grow monotonically, wrapped via % kFifoCapacity.
+    // uint32_t: unsigned overflow is well-defined (modulo 2^32), preventing
+    // undefined behavior that would occur with signed int after ~12 hours
+    // of continuous use at 48kHz (INT_MAX / 48000 ≈ 12.4 hours).
     std::vector<float> outputFifoL_;
     std::vector<float> outputFifoR_;
-    int outputFifoReadL_  = 0;
-    int outputFifoWriteL_ = 0;
-    int outputFifoReadR_  = 0;
-    int outputFifoWriteR_ = 0;
+    uint32_t outputFifoReadL_  = 0;
+    uint32_t outputFifoWriteL_ = 0;
+    uint32_t outputFifoReadR_  = 0;
+    uint32_t outputFifoWriteR_ = 0;
 
     // -- Resampling (TODO) --
     double hostSampleRate_ = 48000.0;
@@ -194,7 +198,7 @@ private:
     void processChannel(const float* in, float* out, int numSamples,
                         DenoiseState* rnn,
                         std::vector<float>& inputFifo, int& inputFifoWrite,
-                        std::vector<float>& outputFifo, int& outputFifoRead, int& outputFifoWrite,
+                        std::vector<float>& outputFifo, uint32_t& outputFifoRead, uint32_t& outputFifoWrite,
                         float& gateGain, int& holdCounter);
 };
 

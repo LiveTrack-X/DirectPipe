@@ -160,7 +160,7 @@ void BuiltinNoiseRemoval::processChannel(
     const float* in, float* out, int numSamples,
     DenoiseState* rnn,
     std::vector<float>& inputFifo,  int& inputFifoWrite,
-    std::vector<float>& outputFifo, int& outputFifoRead, int& outputFifoWrite,
+    std::vector<float>& outputFifo, uint32_t& outputFifoRead, uint32_t& outputFifoWrite,
     float& gateGain, int& holdCounter)
 {
     const float threshold = vadThreshold_.load(std::memory_order_relaxed);
