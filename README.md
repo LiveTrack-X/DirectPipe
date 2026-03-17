@@ -24,8 +24,8 @@
 - **Latest (최신)**: [v4.0.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.0) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
 - **Previous Stable**: [v3.10.3](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — Windows 전용 / Windows only
 
-> **Pre-release 주의사항**: macOS/Linux 빌드는 실험적이며, 실기기 테스트가 완료되지 않았습니다. 프로덕션 환경에서는 Stable 빌드를 사용하세요.
-> **Pre-release notice**: macOS/Linux builds are experimental and have not been tested on real hardware. Use the Stable build for production.
+> **참고**: Windows는 안정(Stable), macOS는 베타, Linux는 실험적입니다. macOS/Linux 빌드는 실기기 테스트가 제한적입니다.
+> **Note**: Windows is stable, macOS is beta, Linux is experimental. macOS/Linux builds have limited real-hardware testing.
 
 <p align="center">
   <em>DirectPipe is a modern lightweight VST host for applying studio-quality effects to your microphone.</em>

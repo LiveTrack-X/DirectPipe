@@ -5,7 +5,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 
 크로스 플랫폼 실시간 VST2/VST3 호스트. Windows(안정), macOS(베타), Linux(실험적). 마이크 입력을 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치로 직접 전송, 별도 공유 모드 모니터 출력(헤드폰) 옵션. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
-> **v4.0.0은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장한 알파 버전입니다.**
+> **v4.0.0은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서를 추가한 정식 릴리즈입니다.**
 > MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→294+개 확장.
 
 ## Documentation Sync Rule (필수)
@@ -327,7 +327,7 @@ When the user asks to "release", "make a release", "commit for release", "push r
 Do NOT proceed with release packaging (ZIP, gh release, git push) until all 5 steps are confirmed.
 If any step fails, help fix the issue first, then re-run that step.
 
-**v4 릴리스 시 주의**: GitHub Release에 반드시 `--prerelease` 플래그를 사용해야 합니다. 그래야 v3 사용자의 자동 업데이터가 v4를 감지하지 않습니다. stable이 확정된 후에만 latest로 전환.
+**v4.0.0은 정식 릴리즈(latest)입니다.** v3 사용자의 자동 업데이터가 v4.0.0을 감지합니다. 릴리스 asset 이름에 플랫폼 태그(-Windows.zip, -macOS.dmg, -Linux.tar.gz)가 포함되어 있어 올바른 바이너리를 다운로드합니다.
 
 **문서 업데이트도 필수**: 코드 변경 시 README.md, docs/ 내 관련 문서, 이 CLAUDE.md도 현재 상태에 맞게 업데이트해야 합니다.
 
