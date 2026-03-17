@@ -1,47 +1,71 @@
-### [최신버전](../releases/latest)이 있습니다. 해당 버전을 받아 주세요.
-### A [newer version](../releases/latest) is available. Please download the latest release.
+## DirectPipe v4.0.0 — Cross-Platform + Built-in Processors + Enhanced Control
+
+> **v3에서 대규모 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서 + 외부 제어 강화.**
+> MainComponent를 7개 모듈로 분할, 294+ 자동 테스트, 19개 통합 액션, 10개 Stream Deck 액션.
+>
+> **Major architecture refactoring from v3 + cross-platform + built-in processors + enhanced external control.**
+> MainComponent split into 7 modules, 294+ automated tests, 19 unified actions, 10 Stream Deck actions.
 
 ---
 
-## What's New in v4.0.0
+### Built-in Processors (내장 프로세서) — NEW
+
+VST 플러그인 없이 기본 마이크 처리를 제공합니다. **[Auto] 버튼** 원클릭으로 3개 프로세서가 자동 구성됩니다.
+Built-in audio processing without VST plugins. One-click **[Auto] button** configures all 3 processors.
+
+- **Filter** — HPF (60Hz) + LPF (16kHz). 에어컨 소음, 저주파 험 제거 / Remove rumble, AC noise
+- **Noise Removal** — RNNoise AI 노이즈 제거. 3단계 강도 (Light/Standard/Aggressive). 48kHz 전용 / AI noise suppression with 3 strength levels. 48kHz only
+- **Auto Gain** — LUFS 기반 자동 볼륨 레벨러. 작은 목소리 증폭 + 큰 소리 억제 / LUFS-based automatic leveler (WebRTC dual-envelope pattern)
+
+### Safety Limiter — NEW
+
+VST 체인 후 모든 출력 경로에 적용되는 피드포워드 리미터. 플러그인 파라미터 변경이나 프리셋 전환 시 클리핑을 방지합니다.
+Feed-forward limiter applied after VST chain, before all outputs. Prevents clipping from plugin changes or preset switches.
 
 ### Cross-Platform Support / 크로스 플랫폼 지원
-- **macOS (Beta)** — CoreAudio driver, CGEventTap global hotkeys (Accessibility permission), LaunchAgent auto-start, Gatekeeper handling
-- macOS (베타) — CoreAudio 드라이버, CGEventTap 글로벌 핫키 (접근성 권한), LaunchAgent 자동 시작
-- **Linux (Experimental)** — ALSA + JACK drivers, XDG autostart, PipeWire JACK compatibility
-- Linux (실험적) — ALSA + JACK 드라이버, XDG 자동 시작, PipeWire JACK 호환
-- **Platform abstraction layer** — PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock interfaces with per-platform implementations
-- 플랫폼 추상화 레이어 — 오디오, 자동 시작, 프로세스 우선순위, 다중 인스턴스 인터페이스
+
+- **Windows (Stable)** — WASAPI (Shared/Low Latency/Exclusive) + ASIO + DirectSound
+- **macOS (Beta)** — CoreAudio, CGEventTap 글로벌 핫키, LaunchAgent 자동 시작 / CoreAudio, global hotkeys, LaunchAgent
+- **Linux (Experimental)** — ALSA + JACK (PipeWire 호환), XDG 자동 시작 / ALSA + JACK, XDG autostart
+
+### Stream Deck / 스트림 덱 — 10 Actions
+
+기존 7개 + 3개 새 액션. SD+ 다이얼과 터치스크린 지원.
+7 original + 3 new actions. SD+ dial and touchscreen support.
+
+- **Performance Monitor** — CPU/레이턴시/XRun 실시간 표시 / Real-time CPU/latency/XRun display
+- **Plugin Parameter (SD+)** — 다이얼로 VST 파라미터 직접 조절 / Direct VST parameter control via dial
+- **Preset Bar (SD+)** — 터치스크린에 A-E 프리셋 바 표시 / Touchscreen preset bar
+
+### DPC Latency Countermeasures / DPC 레이턴시 대책 — NEW
+
+- **MMCSS "Pro Audio"** — 오디오 스레드에 AVRT_PRIORITY_HIGH 등록 (WASAPI + ASIO 모두 적용) / Audio thread registered at HIGH priority
+- **IPC 최적화** — 데이터 전송 시에만 커널 시그널 (매 콜백 syscall 제거) / Signal only when data written
+- **콜백 오버런 감지** — 처리 시간이 버퍼 주기를 초과하면 카운트 / Callback overrun detection
+
+### Architecture / 아키텍처
+
+- **MainComponent** — 1,835줄 → 729줄 (7개 모듈 추출) / Split into 7 focused modules
+- **19 통합 액션** — 모든 외부 제어 (핫키/MIDI/SD/HTTP/WebSocket)가 ActionDispatcher를 통해 통합 / All external controls unified
+- **294+ 자동 테스트** — GTest (코어 + 호스트), VSTChain, AGC, NR, Safety Limiter 등 / Comprehensive test suite
+- **ActionResult** 패턴 — 구조화된 ok/fail 에러 처리 / Structured error handling
 
 ### Data Safety / 데이터 안전
-- **Cross-OS backup protection** — Backup files now include platform info; restoring on a different OS is blocked with a warning dialog
-- 크로스 OS 백업 보호 — 백업 파일에 플랫폼 정보 포함, 다른 OS에서 복원 시 경고 다이얼로그 표시 후 차단
-- **Platform-adaptive UI** — "Start with Windows" / "Start at Login" (macOS) / "Start on Login" (Linux)
-- 플랫폼 적응형 UI — 자동 시작 라벨이 OS별로 표시
 
-### Receiver Plugin / 리시버 플러그인
-- **VST3 + AU formats** — Receiver now builds as VST2, VST3, and AU (macOS) across all platforms
-- VST3 + AU 포맷 — 리시버를 VST2, VST3, AU (macOS)로 빌드
-- **macOS IPC** — POSIX named semaphore for cross-process signaling (replaces eventfd)
-- macOS IPC — POSIX named semaphore로 프로세스 간 시그널링
-
-### CI / 빌드
-- **3-platform CI** — GitHub Actions builds and tests on Windows, macOS, Linux with full artifact uploads
-- 3 플랫폼 CI — Windows, macOS, Linux에서 빌드 + 테스트 + 아티팩트 업로드
-
-### Documentation / 문서
-- All docs updated for cross-platform: README, User Guide, Quick Start, Architecture, Build Guide, Platform Guide (new), API Examples, Stream Deck Guide, Log Rules
-- 전체 문서 크로스 플랫폼 업데이트
-
-> Synced: Stream Deck Plugin v4.0.0.0 / DirectPipe Receiver v4.0.0
+- **Cross-OS 백업 보호** — 다른 OS에서 복원 시 차단 / Cross-OS restore blocked
+- **SHA-256 체크섬** — 자동 업데이터 다운로드 무결성 검증 / Auto-updater integrity check
+- **IPC 다중 연결 감지** — Receiver VST 2개 동시 연결 시 경고 / SPSC violation warning
 
 ### Downloads / 다운로드
 
 | File | Description |
 |------|-------------|
-| `DirectPipe-v4.0.0-win64.zip` | DirectPipe.exe + DirectPipe Receiver.dll (Windows) |
-| `DirectPipe-macOS.zip` | DirectPipe.app (macOS beta) |
-| `DirectPipe-Linux.tar.gz` | DirectPipe binary (Linux experimental) |
-| `com.directpipe.directpipe.streamDeckPlugin` | Stream Deck Plugin (double-click to install) |
+| `DirectPipe-v4.0.0-Windows.zip` | DirectPipe.exe + Receiver VST2(.dll) + VST3(.vst3) |
+| `DirectPipe-v4.0.0-macOS.dmg` | DirectPipe.app + Receiver VST2(.vst) + VST3(.vst3) + AU(.component) |
+| `DirectPipe-v4.0.0-Linux.tar.gz` | DirectPipe + Receiver VST2(.so) + VST3(.vst3) |
+| `com.directpipe.directpipe.streamDeckPlugin` | Stream Deck Plugin (더블클릭 설치 / double-click to install) |
+| `checksums.sha256` | SHA-256 체크섬 / Checksums for integrity verification |
+
+> Synced: Stream Deck Plugin v4.0.0.0 / DirectPipe Receiver v4.0.0
 
 **Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v3.10.0...v4.0.0
