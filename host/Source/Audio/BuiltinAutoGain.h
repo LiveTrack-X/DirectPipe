@@ -9,65 +9,58 @@
 namespace directpipe {
 
 /**
- * @brief Built-in LUFS-based auto-gain control (Luveler Mode 2 style).
+ * @brief Built-in LUFS-based auto-gain control (WebRTC AGC dual-envelope pattern).
  *
  * ## Architecture Overview
  *
  * Measures short-term LUFS via K-weighted sidechain, then applies asymmetric
- * correction gain to the ORIGINAL (un-weighted) audio. The K-weighting is
- * applied to a COPY of the audio -- it is purely for measurement, never
- * heard by the user.
+ * correction gain to the ORIGINAL (un-weighted) audio. Uses dual-envelope level
+ * detection (fast + slow) inspired by WebRTC AGC for responsive loud speech suppression.
  *
  * ## Key Design Decisions
  *
+ * ### Dual-Envelope Level Detection (WebRTC AGC pattern)
+ * Instead of relying solely on a slow LUFS window (which lags behind level changes),
+ * we use two parallel level trackers:
+ * - Fast envelope (~10ms attack, ~200ms release): catches loud transients instantly
+ * - Slow LUFS window (0.4s EBU Momentary): provides stable average
+ * Effective level = max(fast, slow) — loud signals are caught immediately while
+ * quiet signals use the stable average for gentle boost.
+ * Reference: WebRTC AGC uses capacitorFast + capacitorSlow with max selection.
+ *
+ * ### Direct Gain Computation (no IIR gain envelope)
+ * Gain is computed directly from the level measurement and applied via linear ramp.
+ * Previous design used an IIR envelope follower on the gain (500ms/700ms), which
+ * created DOUBLE smoothing (slow measurement + slow gain convergence). Removing
+ * the gain envelope and using only level-domain smoothing gives faster response.
+ * Correction % (lowCorr/hiCorr) now blends between hold and full correction per block.
+ *
  * ### Sidechain Measurement (K-weighting on copy, not original)
- * IMPORTANT: K-weighting reshapes the frequency response to match human hearing
- * perception (ITU-R BS.1770). If we applied K-weighting to the actual audio,
- * it would color the sound. Instead, we copy the buffer to a scratch buffer,
- * apply K-weighting there, measure loudness, then apply ONLY a flat gain
- * change to the original unmodified audio. This preserves the tonal character.
+ * K-weighting reshapes the frequency response to match human hearing perception
+ * (ITU-R BS.1770). Applied to a COPY of the audio — purely for measurement.
  *
  * ### Asymmetric Correction (boost vs cut have different speeds)
- * - Boosting (quiet audio): controlled by lowCorrect (Low Correction %).
- *   Slower response avoids amplifying transient noises (keyboard, breathing).
- * - Cutting (loud audio): controlled by highCorrect (High Correction %).
- *   Faster response prevents clipping and protects downstream equipment.
- *
- * ### Correction % Controls Envelope SPEED, Not Gain AMOUNT
- * IMPORTANT: A common misconception is that "50% correction" means "apply 50%
- * of the needed gain." In this implementation, correction % scales the envelope
- * follower COEFFICIENT, not the gain amount. Both 50% and 100% correction
- * eventually reach the same target gain -- 100% just gets there faster.
- * This gives users intuitive control: "how aggressively should AGC react?"
+ * - Boosting (quiet): lowCorrect blends between hold and full correction (gentle)
+ * - Cutting (loud): highCorrect blends between hold and full correction (fast)
  *
  * ### Freeze Level Uses Per-Block RMS (Instant Reaction)
- * The Freeze Level threshold uses per-block RMS (~2.7ms window at 128 samples)
- * instead of the 1.5s LUFS window. This is critical because:
- * - LUFS has a 1.5s window -- a brief keyboard click barely moves the average
- * - Per-block RMS reacts within ONE buffer period (~2.7ms)
- * - Without instant freeze, AGC would boost keyboard clicks and breathing
- *   by up to +24dB before the LUFS window catches up
+ * Freeze gate uses per-block RMS (~2.7ms) to detect silence immediately.
+ * During freeze, current gain is HELD (not reset to 0dB).
  *
- * ### Attack/Release Envelope Follower
- * Per-sample IIR smoothing with direction-dependent coefficients:
- * - Attack (500ms): gain increasing (boosting quiet audio)
- * - Release (700ms): gain decreasing (cutting loud audio)
- * These are computed as: coeff = 1 - exp(-1 / (time_seconds * sampleRate))
- * and applied per-sample as: gain += coeff * (target - gain)
- *
- * ### Max Gain Limit
- * Limits total boost/cut to prevent extreme amplification. Without this,
- * silence between sentences could be boosted by +60dB, amplifying room noise
- * to painful levels.
+ * ### Target Offset (-4dB)
+ * Internal target is 4dB below user setting to compensate for systematic overshoot
+ * from open-loop pre-gain measurement. Keeps output at or slightly below target.
  *
  * Algorithm:
  *   1. Copy buffer to scratch (measurement only)
  *   2. Apply ITU-R BS.1770 K-weighting (high shelf + HPF) to scratch
- *   3. Accumulate squared K-weighted samples in 1.5s ring buffer
+ *   3. Accumulate squared K-weighted samples in 0.4s ring buffer (EBU Momentary)
  *   4. Compute LUFS = -0.691 + 10*log10(mean_square)
- *   5. Asymmetric correction: boost uses lowCorrect, cut uses highCorrect
- *   6. Smooth gain via envelope follower (500ms attack, 700ms release)
- *   7. Apply smoothed gain to original (un-weighted) audio with linear ramp
+ *   5. Dual-envelope: fast(10ms/200ms) + slow(LUFS), effective = max(fast, slow)
+ *   6. Compute gain directly: correction = (target-4dB) - effective, blend by lowCorr/hiCorr
+ *   7. Apply gain to original audio with per-block linear ramp (click-free)
+ *
+ * Defaults: target -15 LUFS, lowCorr 0.50, hiCorr 0.90, maxGain 22dB, freeze -45dBFS
  *
  * Thread Ownership:
  *   processBlock()    -- [RT audio thread]
@@ -133,8 +126,8 @@ private:
     // -- Parameters (atomic, any thread) --
     std::atomic<float> targetLUFS_{ -15.0f };    // target loudness level in LUFS
     std::atomic<float> lowCorrect_{ 0.50f };     // boost correction SPEED factor (0.0=frozen, 2.0=2x speed)
-    std::atomic<float> highCorrect_{ 0.75f };    // cut correction SPEED factor (0.0=frozen, 2.0=2x speed)
-    std::atomic<float> maxGaindB_{ 24.0f };      // maximum boost/cut in dB (prevents extreme amplification)
+    std::atomic<float> highCorrect_{ 0.90f };    // cut correction SPEED factor (0.0=frozen, 2.0=2x speed)
+    std::atomic<float> maxGaindB_{ 22.0f };      // maximum boost/cut in dB (prevents extreme amplification)
     std::atomic<float> freezeLevel_{ -45.0f };   // dBFS -- per-block RMS below this = don't boost (silence/breath/keyboard)
 
     // -- K-weighting filters (sidechain -- measurement only, RT thread) --
@@ -157,6 +150,9 @@ private:
     int lufsSampleCount_ = 0;          // number of valid samples (grows until window is full)
     int lufsWindowSize_ = 0;           // 1.5 * sampleRate (was 3s, shortened for faster response)
     std::atomic<double> runningSquareSum_{0.0};    // incremental sum -- avoids O(windowSize) scan per block
+
+    // -- Dual envelope level detection (WebRTC AGC pattern, RT thread only) --
+    float fastEnvelope_ = -60.0f;      // fast envelope on LUFS (~10ms attack, ~200ms release)
 
     // -- Gain state (RT thread only) --
     float currentGainLinear_ = 1.0f;   // current smoothed gain (persists across blocks for continuity)

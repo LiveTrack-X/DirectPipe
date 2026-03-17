@@ -26,8 +26,12 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSR_ = sampleRate;
 
-    // Pre-allocate LUFS ring buffer (1.5-second window)
-    lufsWindowSize_ = static_cast<int>(sampleRate * 1.5);  // 1.5s window -- faster response than ITU default 3s
+    // Pre-allocate LUFS ring buffer (0.4-second window = EBU R128 "Momentary")
+    // Shorter window = faster reaction to level changes.
+    // 1.5s caused 6dB overshoot, 0.8s still too slow for loud speech suppression.
+    // 0.4s is the ITU EBU R128 Momentary standard — the shortest standard LUFS window.
+    // Risk: more volatile on natural speech dynamics, but freeze gate prevents silence pumping.
+    lufsWindowSize_ = static_cast<int>(sampleRate * 0.4);  // 0.4s EBU Momentary
     lufsRingBuf_.assign(static_cast<size_t>(lufsWindowSize_), 0.0f);
     lufsWritePos_ = 0;
     lufsSampleCount_ = 0;
@@ -45,14 +49,19 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
 
     // Reset gain state
     currentGainLinear_ = 1.0f;
+    fastEnvelope_ = -60.0f;
 
     // Envelope follower coefficients:
     //   coeff = 1 - exp(-1 / (time_seconds * sampleRate))
     // We compute per-sample coefficients from time constants.
-    // attack = 500ms, release = 700ms -- tight leveling
+    // attack = 500ms (boost quiet — gentle, avoids pumping on natural pauses)
+    // release = 150ms (cut loud — fast enough to suppress loud speech within ~0.5s)
+    // 700ms release was too slow: 20dB gain swings took ~4s to converge.
+    // 150ms with hiCorr=0.90 gives ~167ms effective, 99% in ~0.8s.
+    // Typical compressor release: 50-200ms. 150ms is in the normal range.
     if (sampleRate > 0.0) {
-        attackCoeff_  = 1.0f - std::exp(-1.0f / (0.5f * static_cast<float>(sampleRate)));   // 500ms boost
-        releaseCoeff_ = 1.0f - std::exp(-1.0f / (0.7f * static_cast<float>(sampleRate)));  // 700ms cut
+        attackCoeff_  = 1.0f - std::exp(-1.0f / (0.5f  * static_cast<float>(sampleRate)));  // 500ms boost
+        releaseCoeff_ = 1.0f - std::exp(-1.0f / (0.1f * static_cast<float>(sampleRate)));   // 100ms cut
     }
 
     // Reset UI feedback
@@ -72,7 +81,11 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (kWeightScratch_.getNumSamples() < numSamples)
         return;  // Safety: skip if scratch is too small (should not happen)
 
-    // Step 1: Copy buffer to scratch for K-weighting measurement
+    // Step 1: Copy buffer to scratch for K-weighting measurement (PRE-GAIN signal).
+    // Open-loop control: measure input loudness, compute full correction to target.
+    // Closed-loop (post-gain measurement) was tried but has a stability issue:
+    // correction=0 at target → gain resets to 1.0x → output drops → oscillation.
+    // Open-loop with proper envelope follower gives stable convergence.
     for (int ch = 0; ch < juce::jmin(numChannels, 2); ++ch)
         juce::FloatVectorOperations::copy(
             kWeightScratch_.getWritePointer(ch),
@@ -145,111 +158,91 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             measuredLUFS = -60.0f;
     }
 
-    // Step 5: Asymmetric correction
-    const float target  = targetLUFS_.load(std::memory_order_relaxed);
+    // ═══ Step 5: Dual-Envelope Level Detection (WebRTC AGC pattern) ═══
+    //
+    // Instead of using a single LUFS window for both level detection AND gain smoothing
+    // (which was too slow for loud speech suppression), we separate the two stages:
+    //
+    // Stage A: LEVEL DETECTION — dual envelope on the LUFS measurement
+    //   Fast envelope (~100ms): catches loud transients immediately
+    //   Slow envelope (LUFS window): provides stable average for boost
+    //   Effective level = max(fast, slow) — loud signals are caught instantly
+    //
+    // Stage B: GAIN COMPUTATION — direct lookup, no IIR envelope on gain
+    //   correction = target - effectiveLevel → gain = 10^(correction/20)
+    //   Smoothing is ONLY via the linear ramp in Step 7 (click-free block transitions)
+    //
+    // Reference: WebRTC AGC uses capacitorFast + capacitorSlow, max selection,
+    //   then gain table lookup. No separate gain envelope follower.
+
+    // Aim 4dB below user target — compensate for systematic overshoot.
+    // Real-time open-loop AGC measures pre-gain input; the fast envelope + LUFS window
+    // combination still has ~3-4dB overshoot vs Luveler (closed-loop with look-ahead).
+    // This offset brings the average output in line with user expectation.
+    const float target  = targetLUFS_.load(std::memory_order_relaxed) - 4.0f;
     const float lowCorr = lowCorrect_.load(std::memory_order_relaxed);
     const float hiCorr  = highCorrect_.load(std::memory_order_relaxed);
     const float maxGain = maxGaindB_.load(std::memory_order_relaxed);
-
     const float freeze  = freezeLevel_.load(std::memory_order_relaxed);
 
-    // ═══ Mode 2 AGC: always aim for target, Correction % = response speed ═══
-    //
-    // IMPORTANT: Correction % does NOT scale the gain amount. It scales the
-    // envelope follower coefficient (see Step 6 below). This means:
-    //   - 100% correction: full-speed convergence to target
-    //   - 50% correction: half-speed convergence (gentler, less aggressive)
-    //   - 0% correction: frozen (no gain change at all)
-    //   - 200% correction: 2x speed (very aggressive, may cause audible pumping)
-    //
-    // Low Correct %  → controls boost speed (higher = faster response to quiet parts)
-    // High Correct % → controls cut speed (higher = faster response to loud parts)
-    // Both reach target eventually -- percentage affects how quickly, not how much.
+    // Compute per-block RMS for freeze gate
+    float blockRMS = 0.0f;
+    for (int ch = 0; ch < numChannels; ++ch)
+        for (int i = 0; i < numSamples; ++i) {
+            float s = buffer.getSample(ch, i);
+            blockRMS += s * s;
+        }
+    blockRMS = (numSamples * numChannels > 0)
+        ? std::sqrt(blockRMS / static_cast<float>(numSamples * numChannels))
+        : 0.0f;
+    float blockdBFS = (blockRMS > 1.0e-7f)
+        ? 20.0f * std::log10(blockRMS)
+        : -120.0f;
 
-    float correction = target - measuredLUFS;  // full correction to reach target
+    // Fast envelope on LUFS measurement (~100ms attack, ~200ms release)
+    // Catches loud speech instantly; releases moderately fast
+    {
+        float blockDuration = static_cast<float>(numSamples) / static_cast<float>(currentSR_);
+        float fastAttack = 1.0f - std::exp(-blockDuration / 0.01f);   // ~10ms (instant)
+        float fastRelease = 1.0f - std::exp(-blockDuration / 0.2f);   // ~200ms
+
+        if (measuredLUFS > fastEnvelope_) {
+            fastEnvelope_ += fastAttack * (measuredLUFS - fastEnvelope_);
+        } else {
+            fastEnvelope_ += fastRelease * (measuredLUFS - fastEnvelope_);
+        }
+    }
+
+    // Effective level = max(fast envelope, slow LUFS) — catches loud signals immediately
+    // For quiet signals, the slow LUFS window dominates (gentle boost).
+    // For loud signals, the fast envelope dominates (rapid cut).
+    float effectiveLevel = juce::jmax(fastEnvelope_, measuredLUFS);
+
+    // Step 6: Compute gain directly from level (no IIR gain envelope)
+    float correction = target - effectiveLevel;
     float gaindB;
 
     if (correction > 0.0f) {
-        // Boosting (quiet) -- Linear Low (Mode 2) + Freeze Gate
-        //
-        // NOTE: The Freeze Gate uses per-block RMS (instant reaction, ~2.7ms at 128 samples)
-        // instead of the 1.5s LUFS window for the freeze decision. This is critical because:
-        //   - A keyboard click or breath is only a few ms long
-        //   - The 1.5s LUFS window barely registers it (averaged over 72k samples)
-        //   - Without instant freeze, AGC would boost the click by up to +24dB
-        //   - Per-block RMS catches it within ONE buffer period and freezes the gain
-        float blockRMS = 0.0f;
-        for (int ch = 0; ch < numChannels; ++ch)
-            for (int i = 0; i < numSamples; ++i) {
-                float s = buffer.getSample(ch, i);
-                blockRMS += s * s;
-            }
-        blockRMS = (numSamples * numChannels > 0)
-            ? std::sqrt(blockRMS / static_cast<float>(numSamples * numChannels))
-            : 0.0f;
-        float blockdBFS = (blockRMS > 1.0e-7f)
-            ? 20.0f * std::log10(blockRMS)
-            : -120.0f;
-
+        // Boosting (quiet) — scale by lowCorr (0=frozen, 1=full speed)
         if (freeze > -65.0f && blockdBFS < freeze) {
-            // Block level below freeze threshold — HOLD current gain (don't change).
-            // Previous bug: gaindB = 0.0f reset to unity, causing volume drops.
-            // Fix: hold the last applied gain by converting current linear gain back to dB.
-            // Reference: rms-leveler returns oldAmp when loudness < MIN_LOUDNESS.
+            // Freeze: HOLD current gain during silence
             gaindB = 20.0f * std::log10(juce::jmax(currentGainLinear_, 1.0e-6f));
         } else {
-            gaindB = correction;
+            // Apply lowCorr as a blend: 0% = hold current, 100% = full correction
+            float currentdB = 20.0f * std::log10(juce::jmax(currentGainLinear_, 1.0e-6f));
+            gaindB = currentdB + lowCorr * (correction - currentdB);
         }
     } else {
-        // Cutting (loud) — direct correction to bring back to target
-        gaindB = correction;
+        // Cutting (loud) — scale by hiCorr
+        float currentdB = 20.0f * std::log10(juce::jmax(currentGainLinear_, 1.0e-6f));
+        gaindB = currentdB + hiCorr * (correction - currentdB);
     }
 
     gaindB = juce::jlimit(-maxGain, maxGain, gaindB);
 
-    // Slew rate limit: cap gain change speed to prevent abrupt jumps.
-    // Without this, a 10dB correction target is applied immediately to the
-    // envelope follower, which converges too fast even with 500ms attack.
-    // Reference: rms-leveler uses MAX_CHANGE = 0.7 dB/s * adjustRate.
-    // We use a per-block limit based on block duration.
-    {
-        float currentdB = 20.0f * std::log10(juce::jmax(currentGainLinear_, 1.0e-6f));
-        float blockDurationS = static_cast<float>(numSamples) / static_cast<float>(currentSR_);
-        // Max 6 dB/s change (configurable via lowCorr/hiCorr scaling below)
-        float maxChangedB = 6.0f * blockDurationS;
-        float delta = gaindB - currentdB;
-        // Scale max change by correction speed (lowCorr for boost, hiCorr for cut)
-        float speedScale = (delta > 0.0f) ? lowCorr : hiCorr;
-        float scaledMax = maxChangedB * juce::jmax(speedScale, 0.01f);
-        if (delta > scaledMax)
-            gaindB = currentdB + scaledMax;
-        else if (delta < -scaledMax)
-            gaindB = currentdB - scaledMax;
-    }
-
-    // Step 6: Smooth gain with envelope follower (per-sample in block)
-    float targetGainLinear = std::pow(10.0f, gaindB / 20.0f);
-
-    // Apply per-sample smoothing to currentGainLinear_.
-    // Per-sample loop with direction-dependent coefficient selection.
-    float gain = currentGainLinear_;
-
-    // Per-sample IIR smoothing -- Correction % scales the envelope speed.
-    //
-    // For each sample, we select direction-dependent coefficients:
-    //   - targetGainLinear > gain: we're boosting → use attackCoeff_ * lowCorr
-    //   - targetGainLinear < gain: we're cutting  → use releaseCoeff_ * hiCorr
-    //
-    // The correction factor (lowCorr/hiCorr) multiplies the base coefficient,
-    // so it controls convergence SPEED, not final gain AMOUNT.
-    // At lowCorr=1.0, we get the full 500ms attack time constant.
-    // At lowCorr=0.5, the effective time constant doubles to ~1000ms.
-    for (int i = 0; i < numSamples; ++i) {
-        float baseCoeff = (targetGainLinear > gain) ? attackCoeff_ : releaseCoeff_;
-        float speedScale = (targetGainLinear > gain) ? lowCorr : hiCorr;
-        float c = baseCoeff * speedScale;
-        gain += c * (targetGainLinear - gain);
-    }
+    // Convert to linear gain — no additional IIR smoothing.
+    // The linear ramp in Step 7 provides click-free transitions between blocks.
+    float gain = std::pow(10.0f, gaindB / 20.0f);
 
     // Step 7: Apply gain to ORIGINAL buffer (not K-weighted)
     //

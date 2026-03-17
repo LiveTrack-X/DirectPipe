@@ -67,8 +67,8 @@ protected:
 TEST_F(BuiltinAutoGainTest, DefaultState) {
     EXPECT_FLOAT_EQ(agc.getTargetLUFS(), -15.0f);
     EXPECT_FLOAT_EQ(agc.getLowCorrect(), 0.50f);
-    EXPECT_FLOAT_EQ(agc.getHighCorrect(), 0.75f);
-    EXPECT_FLOAT_EQ(agc.getMaxGaindB(), 24.0f);
+    EXPECT_FLOAT_EQ(agc.getHighCorrect(), 0.90f);
+    EXPECT_FLOAT_EQ(agc.getMaxGaindB(), 22.0f);
     EXPECT_FLOAT_EQ(agc.getFreezeLevel(), -45.0f);
     EXPECT_EQ(agc.getLatencySamples(), 0);
     EXPECT_EQ(agc.getName(), juce::String("AutoGain"));
