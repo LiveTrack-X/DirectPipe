@@ -192,17 +192,40 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             : -120.0f;
 
         if (freeze > -65.0f && blockdBFS < freeze) {
-            // Block level below freeze threshold -- don't boost (silence/noise)
-            gaindB = 0.0f;
+            // Block level below freeze threshold — HOLD current gain (don't change).
+            // Previous bug: gaindB = 0.0f reset to unity, causing volume drops.
+            // Fix: hold the last applied gain by converting current linear gain back to dB.
+            // Reference: rms-leveler returns oldAmp when loudness < MIN_LOUDNESS.
+            gaindB = 20.0f * std::log10(juce::jmax(currentGainLinear_, 1.0e-6f));
         } else {
             gaindB = correction;
         }
     } else {
-        // Cutting (loud) -- direct correction to bring back to target
-        gaindB = correction;  // full correction (negative = cutting)
+        // Cutting (loud) — direct correction to bring back to target
+        gaindB = correction;
     }
 
     gaindB = juce::jlimit(-maxGain, maxGain, gaindB);
+
+    // Slew rate limit: cap gain change speed to prevent abrupt jumps.
+    // Without this, a 10dB correction target is applied immediately to the
+    // envelope follower, which converges too fast even with 500ms attack.
+    // Reference: rms-leveler uses MAX_CHANGE = 0.7 dB/s * adjustRate.
+    // We use a per-block limit based on block duration.
+    {
+        float currentdB = 20.0f * std::log10(juce::jmax(currentGainLinear_, 1.0e-6f));
+        float blockDurationS = static_cast<float>(numSamples) / static_cast<float>(currentSR_);
+        // Max 6 dB/s change (configurable via lowCorr/hiCorr scaling below)
+        float maxChangedB = 6.0f * blockDurationS;
+        float delta = gaindB - currentdB;
+        // Scale max change by correction speed (lowCorr for boost, hiCorr for cut)
+        float speedScale = (delta > 0.0f) ? lowCorr : hiCorr;
+        float scaledMax = maxChangedB * juce::jmax(speedScale, 0.01f);
+        if (delta > scaledMax)
+            gaindB = currentdB + scaledMax;
+        else if (delta < -scaledMax)
+            gaindB = currentdB - scaledMax;
+    }
 
     // Step 6: Smooth gain with envelope follower (per-sample in block)
     float targetGainLinear = std::pow(10.0f, gaindB / 20.0f);
