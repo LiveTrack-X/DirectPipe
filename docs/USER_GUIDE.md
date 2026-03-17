@@ -1217,7 +1217,7 @@ Playing monitor output through speakers creates an **echo/feedback loop** as the
 2. DirectPipe 하단의 **VST** 버튼이 **초록색**(IPC ON)인지 확인
 3. OBS의 VST 필터에서 **"DirectPipe Receiver"**가 선택되어 있는지 확인
 4. DirectPipe를 **먼저 실행**한 뒤 OBS를 시작하면 자동 연결됨
-5. OBS가 먼저 실행된 경우: Receiver가 약 1초마다 자동 재연결을 시도하므로 DirectPipe 실행 후 잠시 대기
+5. OBS가 먼저 실행된 경우: Receiver가 100 오디오 블록마다 자동 재연결을 시도합니다 (버퍼 512 @ 48kHz 기준 ~1초). DirectPipe 실행 후 잠시 대기
 
 1. Check **DirectPipe is running** (system tray / menu bar icon)
 2. Check the **VST** button at bottom of DirectPipe is **green** (IPC ON)
@@ -1234,7 +1234,7 @@ Playing monitor output through speakers creates an **echo/feedback loop** as the
 | **MON** (모니터 → 헤드폰 / Monitor → Headphones) | 즉시 무음 (오디오 콜백 중단) / Immediate silence (audio callback stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
 | **REC** (WAV 녹음 / WAV Recording) | 녹음 파일 자동 마무리 (FIFO 플러시 후 파일 닫기). 녹음 중이었다면 중단 시점까지 저장됨 / Recording file auto-finalized (FIFO flushed, file closed). Saved up to the point of closure | 재시작 후 수동 녹음 시작 / Manually start recording after restart |
 
-> **OBS Receiver 자동 재연결**: DirectPipe를 다시 시작하면 DirectPipe Receiver가 약 1초마다 공유 메모리 연결을 시도합니다. DirectPipe에서 IPC를 켜면(VST 버튼 초록) 자동으로 재연결됩니다 — OBS를 재시작할 필요 없음.
+> **OBS Receiver 자동 재연결**: DirectPipe를 다시 시작하면 DirectPipe Receiver가 100 오디오 블록마다 공유 메모리 연결을 시도합니다 (버퍼 크기에 따라 ~0.5-2초). DirectPipe에서 IPC를 켜면(VST 버튼 초록) 자동으로 재연결됩니다 — OBS를 재시작할 필요 없음.
 >
 > **OBS Receiver auto-reconnect**: After restarting DirectPipe, DirectPipe Receiver attempts shared memory connection every ~1 second. Once IPC is enabled (VST button green), it reconnects automatically — no need to restart OBS.
 

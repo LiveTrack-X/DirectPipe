@@ -210,7 +210,7 @@ VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 
 | 스캔 UI | 실시간 텍스트 필터 + 칼럼 정렬 (이름/벤더/포맷). 프로그레스 바 |
 | 기본 스캔 경로 | Windows: VST2 `C:\Program Files\Common Files\VST2`, VST3 `C:\Program Files\Common Files\VST3`. macOS: `/Library/Audio/Plug-Ins/VST`, `/Library/Audio/Plug-Ins/VST3`. Linux: `~/.vst`, `~/.vst3` |
 | 스캔 캐시 | XML 파일로 캐시. 재스캔 불필요 |
-| 스캔 로그 | Windows: `%AppData%/DirectPipe/scanner-log.txt`, macOS: `~/Library/Application Support/DirectPipe/`, Linux: `~/.local/share/DirectPipe/` |
+| 스캔 로그 | Windows: `%AppData%/DirectPipe/scanner-log.txt`, macOS: `~/Library/Application Support/DirectPipe/`, Linux: `~/.config/DirectPipe/` |
 | 스캔 타임아웃 | 플러그인당 300초 (5분) |
 
 #### 4.2.2 플러그인 체인 에디터
@@ -677,9 +677,9 @@ rebuildGraph(bool suspend = true)
 | 폴더 변경 버튼 (...) | 녹음 폴더 선택 |
 | 폴더 경로 라벨 | 말줄임표로 축약 표시 |
 
-녹음 설정은 앱 데이터 디렉토리(Windows: `%AppData%/DirectPipe/`, macOS: `~/Library/Application Support/DirectPipe/`, Linux: `~/.local/share/DirectPipe/`)의 `recording-config.json`에 영속 저장
+녹음 설정은 앱 데이터 디렉토리(Windows: `%AppData%/DirectPipe/`, macOS: `~/Library/Application Support/DirectPipe/`, Linux: `~/.config/DirectPipe/`)의 `recording-config.json`에 영속 저장
 
-#### 4.6.4 Controls 탭 (ControlSettingsPanel) — 4개 서브탭
+#### 4.6.4 Controls 탭 (ControlSettingsPanel) — 3개 서브탭
 
 **Hotkeys 서브탭:**
 - 스크롤 가능한 바인딩 리스트
@@ -701,11 +701,6 @@ rebuildGraph(bool suspend = true)
 - WebSocket 서버 상태 (Running/Stopped + 포트)
 - HTTP API 서버 상태 (Running/Stopped + 포트)
 - 연결된 클라이언트 수
-
-**General 서브탭:**
-- 자동 시작 토글 (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login")
-- 포터블 모드 표시기 (활성 시)
-- Settings 내보내기/가져오기 버튼
 
 #### 4.6.5 Settings 탭 (LogPanel)
 
@@ -959,7 +954,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
 - Dirty-flag 패턴 + 1초 디바운스 (30Hz 타이머에서 30틱 카운트다운)
 - `onSettingsChanged` 콜백 → `markSettingsDirty()` → 카운터 리셋 → 0 도달 시 `saveSettings()`
 - `loadingSlot_` 또는 `isLoading()` true면 저장 스킵 (부분 상태 손상 방지)
-- 저장 위치: Windows `%AppData%/DirectPipe/settings.dppreset`, macOS `~/Library/Application Support/DirectPipe/`, Linux `~/.local/share/DirectPipe/` (JSON, 버전 4)
+- 저장 위치: Windows `%AppData%/DirectPipe/settings.dppreset`, macOS `~/Library/Application Support/DirectPipe/`, Linux `~/.config/DirectPipe/` (JSON, 버전 4)
 
 #### 4.11.2 프리셋 파일 형식 (JSON, version 4)
 ```json
@@ -1006,6 +1001,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
 ```json
 {
   "version": 2,
+  "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
   "appVersion": "4.0.0",
   "audioSettings": { /* plugins 키 제거됨 */ },

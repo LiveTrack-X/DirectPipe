@@ -198,8 +198,8 @@ MainComponent Split (v3→v4):
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow.
 
 ### UI & Settings
-- **Tabbed UI**: Audio/Monitor/Controls/Settings tabs in right column. Controls has sub-tabs (each in separate file): HotkeyTab, MidiTab, StreamDeckTab, General. ControlSettingsPanel is the slim tabbed container (~75 lines).
-- **Auto-start**: Platform::AutoStart abstraction. Windows: Registry. macOS: LaunchAgent. Linux: XDG autostart. Toggle in tray menu + Controls > General tab.
+- **Tabbed UI**: Audio/Monitor/Controls/Settings tabs in right column. Controls has 3 sub-tabs (each in separate file): HotkeyTab, MidiTab, StreamDeckTab. ControlSettingsPanel is the slim tabbed container (~75 lines).
+- **Auto-start**: Platform::AutoStart abstraction. Windows: Registry. macOS: LaunchAgent. Linux: XDG autostart. Toggle in tray menu + Settings tab.
 - **System tray**: Close -> tray (macOS/Windows) or minimize to taskbar (Linux, GNOME 42+ tray limitation). Right-click -> Show/Quit/auto-start toggle.
 - **Settings export/import**: Two tiers: `.dpbackup` (settings only) and `.dpfullbackup` (everything). **Cross-OS protection**: Backup files include `platform` field (windows/macos/linux). `getCurrentPlatform()`/`getBackupPlatform()`/`isPlatformCompatible()` block cross-OS restore. Legacy backups without platform field accepted.
 - **In-app auto-updater**: Background thread fetches latest release from GitHub API. **Platform-aware asset selection** — prefers platform-tagged asset (e.g. `DirectPipe-...-Windows.zip`), falls back to legacy naming. Update Now (Windows): downloads ZIP/exe, batch script auto-restart. macOS/Linux: "View on GitHub" only (manual download). Post-update notification via `_updated.flag`. **릴리스 asset 네이밍 필수**: Windows=`.zip`, macOS=`.dmg`, Linux=`.tar.gz` — macOS/Linux를 `.zip`으로 배포하면 v3 구 업데이터가 잘못된 바이너리를 다운로드함.

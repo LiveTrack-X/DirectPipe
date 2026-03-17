@@ -8,10 +8,10 @@
 
 | Platform | File | Description |
 |----------|------|-------------|
-| Windows | `%LocalAppData%/DirectPipe/directpipe.log` | Current session log / 현재 세션 로그 |
-| Windows | `%LocalAppData%/DirectPipe/directpipe.log.prev` | Previous session log / 이전 세션 로그 |
+| Windows | `%AppData%/DirectPipe/directpipe.log` | Current session log / 현재 세션 로그 |
+| Windows | `%AppData%/DirectPipe/directpipe.log.prev` | Previous session log / 이전 세션 로그 |
 | macOS | `~/Library/Application Support/DirectPipe/directpipe.log` | Current session log |
-| Linux | `~/.local/share/DirectPipe/directpipe.log` | Current session log |
+| Linux | `~/.config/DirectPipe/directpipe.log` | Current session log |
 
 Portable mode (all platforms): `./config/directpipe.log`
 
