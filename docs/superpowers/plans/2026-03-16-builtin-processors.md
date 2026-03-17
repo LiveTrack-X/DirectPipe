@@ -8,7 +8,7 @@
 
 **Tech Stack:** C++17, JUCE 7.0.12, RNNoise (BSD-3, 순수 C), ITU-R BS.1770 K-weighting
 
-**Spec:** `docs/FEATURE_AUTO_MODE.md`
+**Spec:** Integrated into `docs/PRODUCT_SPEC.md` Section 4.1.10 and `CLAUDE.md` Key Implementations
 **Version:** v5.0.0 대상 (현재 4.0.0)
 
 ---

@@ -352,6 +352,11 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
 }
 
 // ─── Built-in Processor Support ─────────────────────────────────
+//
+// Built-in processors (Filter, Noise Removal, Auto Gain) are compiled into
+// the host binary. Unlike VST plugins, they don't require DLL loading, COM
+// initialization, or crash-safe scanning. They are created as plain C++ objects
+// and added to the AudioProcessorGraph just like VST plugins.
 
 ActionResult VSTChain::addBuiltinProcessor(PluginSlot::Type type, int insertIndex)
 {
@@ -385,11 +390,20 @@ ActionResult VSTChain::addBuiltinProcessor(PluginSlot::Type type, int insertInde
             return ActionResult::fail("Invalid built-in processor type");
     }
 
-    // Prepare the processor for the current audio settings
+    // IMPORTANT: setPlayConfigDetails(2, 2, ...) must be called BEFORE addNode().
+    // AudioProcessorGraph::addNode() reads the processor's channel configuration
+    // to set up internal routing. Without this call, the processor reports 0 channels
+    // and the graph won't create audio connections to/from it.
+    // The (2, 2) means stereo in, stereo out -- matching the host's bus layout.
     processor->setPlayConfigDetails(2, 2, currentSampleRate_, currentBlockSize_);
     processor->prepareToPlay(currentSampleRate_, currentBlockSize_);
 
-    // Add to graph (mirrors addPlugin flow: addNode → create slot → rebuildGraph)
+    // Add to graph (mirrors addPlugin flow: addNode → create slot → rebuildGraph).
+    //
+    // IMPORTANT: Save raw pointer BEFORE std::move transfers ownership to the graph.
+    // After addNode(std::move(processor)), the unique_ptr is empty and we can no
+    // longer access the processor through it. The raw pointer remains valid because
+    // the graph keeps the processor alive as part of its Node.
     auto* rawPtr = processor.get();
     auto node = graph_->addNode(std::move(processor));
     if (!node)
@@ -417,6 +431,10 @@ ActionResult VSTChain::addBuiltinProcessor(PluginSlot::Type type, int insertInde
             resultIdx = static_cast<int>(chain_.size()) - 1;
         }
 
+        // NOTE: rebuildGraph() is called INSIDE chainLock_ scope to ensure the
+        // graph's audio connections match the chain_ vector atomically. If we
+        // rebuilt outside the lock, processBlock could see a chain_ with the new
+        // slot but graph connections without it, causing audio routing errors.
         rebuildGraph();
 
         if (Log::isAuditMode())
@@ -435,7 +453,12 @@ ActionResult VSTChain::addAutoProcessors()
 {
     jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
 
-    // Check which built-in types are already in the chain
+    // Check which built-in types are already in the chain.
+    //
+    // NOTE: This duplicate check prevents adding a second Filter/NR/AGC if one
+    // already exists. This happens when the user clicks Auto on a chain that
+    // already has some built-in processors (e.g., they manually added a Filter
+    // and then clicked Auto -- we should only add NR + AGC, not a second Filter).
     bool hasFilter = false, hasNR = false, hasAGC = false;
     {
         const juce::ScopedLock sl(chainLock_);
@@ -446,7 +469,11 @@ ActionResult VSTChain::addAutoProcessors()
         }
     }
 
-    // Add missing ones at the front (Filter first, then NR, then AGC)
+    // Add missing ones at the FRONT of the chain (before any VST plugins).
+    // Order matters: Filter → NR → AGC is the correct signal processing order:
+    //   1. Filter: remove rumble/DC offset before noise removal
+    //   2. Noise Removal: clean signal before loudness measurement
+    //   3. Auto Gain: measure and adjust loudness of the clean signal
     int insertPos = 0;
 
     if (!hasFilter) {

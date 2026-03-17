@@ -12,14 +12,59 @@ namespace directpipe {
 /**
  * @brief Built-in noise removal -- wraps RNNoise with FIFO buffering and VAD gating.
  *
- * RNNoise processes exactly 480 mono float samples at 48 kHz.
- * This processor handles arbitrary host buffer sizes via input/output FIFO
- * and applies VAD-based noise gating with smooth gain transitions.
+ * ## Architecture Overview
+ *
+ * RNNoise is a neural-network-based noise suppressor that processes exactly
+ * 480 mono float samples per frame at 48 kHz. This class bridges the gap
+ * between RNNoise's fixed requirements and the JUCE host's variable buffer sizes.
+ *
+ * ## Key Design Decisions
+ *
+ * ### FIFO Buffering (2-pass architecture)
+ * The host sends buffers of arbitrary size (e.g., 128, 256, 512 samples).
+ * A FIFO accumulates input samples until a full 480-sample frame is ready,
+ * then feeds it to RNNoise. The output FIFO stores processed frames for
+ * the host to drain at its own pace.
+ *
+ * IMPORTANT: JUCE's AudioProcessorGraph may reuse the SAME buffer for both
+ * input and output (in-place / aliased processing). If we read input and write
+ * output to the same buffer simultaneously, we corrupt the input data.
+ * The 2-pass design solves this: Pass 1 copies ALL input into the FIFO first,
+ * then Pass 2 writes processed output back. This is the ONLY safe approach
+ * when `in` and `out` pointers may alias.
+ *
+ * ### RNNoise Scaling (int16 range)
+ * IMPORTANT: RNNoise was trained on int16 audio data, so it expects sample
+ * values in the range [-32767, +32767]. JUCE audio is float [-1.0, +1.0].
+ * We must scale by 32767 before processing and scale back after.
+ * Forgetting this scaling makes RNNoise treat all audio as near-silence.
+ *
+ * ### VAD Gate with Hold Time
+ * RNNoise returns a Voice Activity Detection (VAD) probability [0.0, 1.0]
+ * alongside the denoised audio. We use this to gate the output:
+ * - Above threshold: gate opens (voice detected)
+ * - Below threshold but within hold time: gate stays open (natural pauses between words)
+ * - Below threshold and hold expired: gate closes (suppress background noise)
+ *
+ * NOTE: The gate starts CLOSED (0.0) on initialization. This prevents an
+ * initial noise burst during the first ~50ms while RNNoise's internal state
+ * stabilizes (warmup period). Without this, users hear a brief noise pop on start.
+ *
+ * ### 48 kHz Only
+ * TODO: Non-48kHz sample rates currently pass audio through unprocessed.
+ *       Future: add juce::LagrangeInterpolator resampling up/down around
+ *       RNNoise frames. This affects ~5% of users on non-standard rates.
+ *
+ * ### Dual-Mono Processing
+ * Each channel (L/R) has its own RNNoise instance, FIFO, and gate state.
+ * This means stereo is processed as dual-mono (no cross-channel interaction).
+ * This is correct for voice/microphone use cases where stereo content is
+ * typically identical or near-identical.
  *
  * Strength presets:
- *   0 = Light       (VAD threshold 0.35)
- *   1 = Standard    (VAD threshold 0.60)  -- default
- *   2 = Aggressive  (VAD threshold 0.85)
+ *   0 = Light       (VAD threshold 0.50)
+ *   1 = Standard    (VAD threshold 0.70)  -- default
+ *   2 = Aggressive  (VAD threshold 0.90)
  *
  * Thread Ownership:
  *   processBlock()    -- [RT audio thread]
@@ -94,9 +139,14 @@ private:
 
     // -- FIFO buffering --
     //
-    // RNNoise frame size is always 480 samples.
+    // RNNoise frame size is always 480 samples (10ms at 48kHz, fixed by the neural network architecture).
     // FIFO capacity is 2x frame size to allow accumulation while draining.
     // Per-channel separate positions so L/R stay independent.
+    //
+    // NOTE: The output FIFO uses modular (ring buffer) indexing with % kFifoCapacity
+    // wrapping. Read and write positions grow monotonically and wrap via modulo.
+    // This avoids the complexity of linear reset (which would need atomic
+    // coordination between the read/write positions).
     static constexpr int kRNNFrameSize = 480;
     static constexpr int kFifoCapacity = kRNNFrameSize * 2;
 
@@ -122,8 +172,14 @@ private:
     // std::vector<float> resampleBuf_;
 
     // -- VAD gating (per-channel smooth gain + hold time) --
+    //
     // Hold keeps gate open for ~300ms after last voice detection,
     // preventing choppy audio between words.
+    //
+    // NOTE: 300ms was chosen because it matches the typical duration of a natural
+    // speech pause (e.g., between sentences or while thinking). Shorter hold times
+    // (e.g., 100ms) cause choppy gating between words; longer (e.g., 1s) fails
+    // to suppress noise during actual silence.
     static constexpr int kHoldSamples = 48000 * 300 / 1000;  // 300ms at 48kHz = 14400 samples
     float gateGainL_ = 0.0f;   // starts closed (warmup)
     float gateGainR_ = 0.0f;

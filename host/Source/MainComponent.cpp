@@ -117,6 +117,28 @@ MainComponent::MainComponent(bool enableExternalControls)
     addAndMakeVisible(inputGainSlider_);
 
     // ── Auto Button (switches to Auto preset slot, index 5) ──
+    //
+    // ## Auto Slot Architecture
+    //
+    // Auto is a SPECIAL preset slot (index 5, defined as PresetSlotBar::kAutoSlotIndex).
+    // It is NOT part of the A-E preset bar (indices 0-4). Key differences:
+    //
+    // 1. First click: If no Auto preset file exists yet, creates a DEFAULT chain
+    //    with 3 built-in processors (Filter + Noise Removal + Auto Gain) and saves it.
+    //    This provides instant "one-click audio improvement" for new users.
+    //
+    // 2. Subsequent clicks: Loads the saved Auto preset (which may have been customized
+    //    by the user, e.g., different NR strength or AGC target).
+    //
+    // 3. Right-click: Shows a context menu with "Reset Auto to Defaults" option
+    //    that recreates the default 3-processor chain (see mouseDown handler below).
+    //
+    // 4. Auto slot is EXCLUDED from Next/Previous preset cycling (A→B→C→D→E→A).
+    //    External controls (hotkeys, MIDI, Stream Deck) cycle only through A-E.
+    //    Auto must be explicitly selected.
+    //
+    // 5. When Auto is active, the A-E buttons are visually deselected and the
+    //    Auto button turns green (0xFF4CAF50). See updateAutoButtonVisual().
     autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A4035));
     autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);

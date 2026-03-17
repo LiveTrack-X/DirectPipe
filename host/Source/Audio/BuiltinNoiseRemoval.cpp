@@ -73,7 +73,14 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
     holdCounterL_ = 0;
     holdCounterR_ = 0;
 
-    // Warm up RNNoise with silent frames so it learns the noise floor faster
+    // Warm up RNNoise with silent frames so it learns the noise floor faster.
+    //
+    // NOTE: RNNoise's internal RNN state starts uninitialized. Without warmup,
+    // the first few real audio frames produce noisy/distorted output as the
+    // network "calibrates." 5 silent frames (~50ms at 48kHz) give the model
+    // enough context to establish a baseline noise floor estimate.
+    // Combined with the gate starting CLOSED (gateGainL_ = 0.0f above),
+    // this ensures zero audible artifacts on startup.
     {
         float silent[kRNNFrameSize] = {};
         float dummy[kRNNFrameSize];
@@ -127,6 +134,27 @@ void BuiltinNoiseRemoval::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 }
 
 // ─── Per-channel FIFO + RNNoise processing ──────────────────────
+//
+// This is the core processing function, called once per channel per processBlock.
+//
+// ## 2-Pass Architecture (critical for correctness)
+//
+// IMPORTANT: `in` and `out` may point to the SAME buffer (JUCE AudioProcessorGraph
+// in-place optimization). If we read from `in[i]` and write to `out[i]` in the
+// same loop, we corrupt unread input samples.
+//
+// Solution: 2-pass approach:
+//   Pass 1: Read ALL input samples into inputFifo. Process complete frames through
+//           RNNoise and store results in outputFifo. Never touch `out` buffer.
+//   Pass 2: Copy processed samples from outputFifo to `out` buffer.
+//
+// This guarantees all input is consumed before any output is written, regardless
+// of whether `in` and `out` alias.
+//
+// ## Data Flow
+//
+//   Host input → inputFifo (accumulate) → [480 samples ready?] → scale to int16 range
+//   → rnnoise_process_frame() → scale back to float → VAD gate → outputFifo → Host output
 
 void BuiltinNoiseRemoval::processChannel(
     const float* in, float* out, int numSamples,
@@ -136,14 +164,28 @@ void BuiltinNoiseRemoval::processChannel(
     float& gateGain, int& holdCounter)
 {
     const float threshold = vadThreshold_.load(std::memory_order_relaxed);
-    // Gate smoothing: ~20ms transition at 48kHz for natural open/close
-    // (was 5ms/0.9958 -- too abrupt, caused choppy feel between words)
+
+    // Gate smoothing coefficient: controls how fast the gate opens/closes.
+    // Derivation: for a 20ms time constant at 48kHz sample rate:
+    //   kGateSmooth = exp(-1 / (sampleRate * timeConstant))
+    //              = exp(-1 / (48000 * 0.020))
+    //              = exp(-1 / 960) ≈ 0.9990
+    //
+    // NOTE: Was originally 5ms (0.9958) but that was too abrupt -- the gate
+    // opening/closing was audible as a "click" between words. 20ms gives a
+    // smooth, natural fade that's imperceptible to listeners.
     constexpr float kGateSmooth = 0.9990f;  // exp(-1/(48000*0.020)) ≈ 0.9990
+
+    // IMPORTANT: RNNoise was trained on int16 audio data (range [-32767, +32767]).
+    // JUCE provides float audio in [-1.0, +1.0]. We MUST scale up before processing
+    // and scale back down after, or RNNoise treats all input as near-zero silence
+    // and outputs garbage.
     constexpr float kScale = 32767.0f;
     constexpr float kInvScale = 1.0f / 32767.0f;
 
-    // ══ PASS 1: Copy ALL input into inputFifo, process frames as they complete ══
-    // CRITICAL: in and out may alias (JUCE in-place). Read all input first.
+    // ══ PASS 1: Consume ALL host input, process complete RNNoise frames ══
+    // IMPORTANT: in and out may alias (JUCE AudioProcessorGraph in-place buffer reuse).
+    // We MUST read ALL input before writing ANY output. See function-level comment above.
     for (int i = 0; i < numSamples; ++i) {
         inputFifo[static_cast<size_t>(inputFifoWrite)] = in[i];
         ++inputFifoWrite;
@@ -170,6 +212,12 @@ void BuiltinNoiseRemoval::processChannel(
                 targetGate = 0.0f;  // hold expired — close gate
             }
 
+            // Apply per-sample gate smoothing and store in output ring buffer.
+            // NOTE: outputFifoWrite grows monotonically and wraps via % kFifoCapacity.
+            // This ring buffer approach avoids the need for a linear reset of read/write
+            // positions (which would require coordination). The modulo wrap is safe because
+            // kFifoCapacity (960) is a power-of-nothing-special, but the math works for
+            // any capacity as long as (write - read) never exceeds kFifoCapacity.
             for (int j = 0; j < kRNNFrameSize; ++j) {
                 gateGain = kGateSmooth * gateGain + (1.0f - kGateSmooth) * targetGate;
                 outputFifo[static_cast<size_t>(outputFifoWrite % kFifoCapacity)] = rnnOut[j] * kInvScale * gateGain;
@@ -180,13 +228,17 @@ void BuiltinNoiseRemoval::processChannel(
         }
     }
 
-    // ══ PASS 2: Write output from ring buffer ══
+    // ══ PASS 2: Drain output ring buffer to host output ══
+    // Now safe to write to `out` -- all input has been consumed in Pass 1.
     for (int i = 0; i < numSamples; ++i) {
         if (outputFifoRead < outputFifoWrite) {
             out[i] = outputFifo[static_cast<size_t>(outputFifoRead % kFifoCapacity)];
             ++outputFifoRead;
         } else {
-            out[i] = 0.0f;  // latency fill period
+            // No processed data available yet -- output silence.
+            // This happens during the initial latency fill period (first ~480 samples)
+            // while the FIFO accumulates enough input for the first RNNoise frame.
+            out[i] = 0.0f;
         }
     }
 }

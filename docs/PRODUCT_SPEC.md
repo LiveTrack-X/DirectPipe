@@ -189,13 +189,13 @@ VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 
 
 | 프로세서 | 클래스 | 상세 |
 |---------|--------|------|
-| **Filter** | `BuiltinFilter` | HPF (20-300Hz) + LPF (4k-20kHz). IIR 필터, atomic 파라미터 |
-| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거. 480-frame FIFO (~10ms 레이턴시), VAD 게이팅, 48kHz 고정, 듀얼 모노. 32767 스케일링 (int16 범위) 필수, 2-pass FIFO (in-place 안전), 링 버퍼 출력, 게이트 초기 닫힘, 5프레임 워밍업. VAD 임계값: Light 0.50, Standard 0.70, Aggressive 0.90 |
-| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC. ITU-R BS.1770 K-weighting 사이드체인, 비대칭 보정. Attack 500ms, Release 700ms, LUFS 윈도우 1.5s, Max Gain 기본 24 dB. Freeze Level: per-block RMS 게이트 (LUFS 아님), 기본 -45 dBFS. Correction % = 엔벨로프 속도 (게인 양이 아님) |
+| **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz) + LPF (기본 OFF, 16kHz). 범위: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터, atomic 파라미터. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
+| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거. 480-frame FIFO (~10ms 레이턴시). 48kHz only (비-48kHz = 패스스루, TODO: 리샘플링). 듀얼 모노 (2 RNNoise 인스턴스). x32767 스케일링 전처리, /32767 후처리. 2-pass FIFO (in-place 버퍼 안전). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 CLOSED (0.0), 5프레임 워밍업. VAD 게이트 홀드 타임 300ms (`kHoldSamples`=14400 @48kHz). 게이트 스무딩 20ms (`kGateSmooth`=0.9990). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD 임계값: Light 0.50, Standard 0.70 (기본값), Aggressive 0.90 |
+| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC. Target LUFS -15.0 기본 (범위 -24~-6). Low Correct 0.50 기본 (부스트 엔벨로프 속도). High Correct 0.75 기본 (컷 엔벨로프 속도). Max Gain 24 dB 기본. ITU-R BS.1770 K-weighting 사이드체인 (copy, 실제 오디오 미적용). Attack 500ms, Release 700ms, LUFS 윈도우 1.5s. Freeze Level -45 dBFS (per-block RMS, NOT LUFS), -65 dBFS 미만 시 바이패스. Incremental `runningSquareSum_` (O(blockSize)). Correction % = 엔벨로프 속도 (게인 양 아님) |
 
-**[Auto] 버튼**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치). 클릭 시 Auto 슬롯 로드 (첫 사용 시 Filter + Noise Removal + Auto Gain 기본 체인 생성). 우클릭 → Reset to Defaults.
+**[Auto] 버튼**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults.
 
-**Auto 프리셋 슬롯**: 6번째 프리셋 슬롯 (인덱스 5). 이름 변경 불가, Next/Previous 사이클에서 제외. Reset 시 Filter + NoiseRemoval + AutoGain 기본값 복원.
+**Auto 프리셋 슬롯**: 6번째 프리셋 슬롯 (인덱스 5). 이름 변경 불가, Next/Previous 사이클에서 제외. Reset 시 Filter + NoiseRemoval + AutoGain 기본값 복원. Factory Reset 시 Auto 슬롯도 포함 삭제 (`slot_Auto.dppreset` 와일드카드 삭제, 메시지 "(A-E + Auto)").
 
 ---
 
@@ -330,7 +330,7 @@ rebuildGraph(bool suspend = true)
 - **ActionDispatcher**: 메시지 스레드 전달 보장. 오프스레드 호출 시 `callAsync`. `alive_` 플래그 수명 보호. 리스너 copy-before-iterate (재진입 안전)
 - **StateBroadcaster**: `quickStateHash()` 더티 체크로 무변경 시 브로드캐스트 생략. float 0.05 정밀도 양자화
 
-#### 4.5.2 액션 목록 (15종)
+#### 4.5.2 액션 목록 (19종)
 
 | # | Action | 설명 | 파라미터 |
 |---|--------|------|---------|
@@ -349,6 +349,10 @@ rebuildGraph(bool suspend = true)
 | 13 | `RecordingToggle` | 녹음 토글 | — |
 | 14 | `SetPluginParameter` | 플러그인 파라미터 설정 | intParam=플러그인, intParam2=파라미터, floatParam=0.0~1.0 |
 | 15 | `IpcToggle` | IPC 출력(DirectPipe Receiver) 토글 | — |
+| 16 | `XRunReset` | XRun 카운터 리셋 | — |
+| 17 | `SafetyLimiterToggle` | Safety Limiter on/off 토글 | — (패닉 뮤트 가드 없음) |
+| 18 | `SetSafetyLimiterCeiling` | Safety Limiter ceiling 설정 | floatParam = dB 값 (-6.0~0.0) (패닉 뮤트 가드 없음) |
+| 19 | `AutoProcessorsAdd` | Auto 프로세서 추가 (Filter+NR+AGC) | — |
 
 #### 4.5.3 키보드 핫키
 
@@ -471,7 +475,7 @@ rebuildGraph(bool suspend = true)
 | 타임아웃 | 3초 읽기 타임아웃 |
 | 응답 | JSON. 상태 코드: 200/400/404/405 |
 
-**엔드포인트 (16개):**
+**엔드포인트 (22개):**
 | 엔드포인트 | 액션 | 파라미터 검증 |
 |-----------|------|-------------|
 | `GET /api/status` | 전체 상태 JSON | — |
@@ -480,6 +484,7 @@ rebuildGraph(bool suspend = true)
 | `GET /api/mute/panic` | 패닉 뮤트 | — |
 | `GET /api/mute/toggle` | 마스터 뮤트 토글 | — |
 | `GET /api/volume/{target}/{value}` | 볼륨 설정 | target: monitor(0~1)/input(0~2)/output(0~1). 범위 초과 시 400 |
+| `GET /api/volume/output/{value}` | 출력 볼륨 설정 | 0~1 범위 |
 | `GET /api/preset/{index}` | 프리셋 로드 | 0~4 범위 |
 | `GET /api/slot/{index}` | 슬롯 전환 | 0~4 범위 |
 | `GET /api/gain/{delta}` | 입력 게인 조정 | float 델타 |
@@ -487,7 +492,13 @@ rebuildGraph(bool suspend = true)
 | `GET /api/monitor/toggle` | 모니터 출력 토글 | — |
 | `GET /api/recording/toggle` | 녹음 토글 | — |
 | `GET /api/ipc/toggle` | IPC 출력 토글 | — |
+| `GET /api/plugins` | 플러그인 목록 조회 | — |
+| `GET /api/plugin/{idx}/params` | 플러그인 파라미터 목록 조회 | index 범위 검증 |
 | `GET /api/plugin/{pIdx}/param/{paramIdx}/{value}` | 플러그인 파라미터 설정 | 인덱스 + 값(0~1) 범위 검증 |
+| `GET /api/perf` | 성능 통계 조회 | — |
+| `GET /api/limiter/toggle` | Safety Limiter on/off 토글 | — |
+| `GET /api/limiter/ceiling/{value}` | Safety Limiter ceiling 설정 | -6.0~0.0 범위 |
+| `GET /api/auto/add` | Auto 프로세서 추가 (Filter+NR+AGC) | — |
 | `GET /api/midi/cc/{ch}/{num}/{val}` | MIDI CC 테스트 주입 | ch:1~16, num:0~127, val:0~127 |
 | `GET /api/midi/note/{ch}/{num}/{vel}` | MIDI Note 테스트 주입 | ch:1~16, num:0~127, vel:0~127 |
 
@@ -511,7 +522,7 @@ rebuildGraph(bool suspend = true)
 | 데드 클라이언트 | `sendFrame` 실패 시 즉시 소켓 종료 |
 | 브로드캐스트 | 전용 스레드 (논블로킹). `clientsMutex_` 밖에서 thread join (데드락 방지) |
 
-**수신 명령 (16개):**
+**수신 명령 (19개):**
 ```json
 {"type": "action", "action": "command_name", "params": {/* optional */}}
 ```
@@ -533,6 +544,10 @@ rebuildGraph(bool suspend = true)
 | `recording_toggle` | — |
 | `ipc_toggle` | — |
 | `set_plugin_parameter` | `{"pluginIndex": 0, "paramIndex": 2, "value": 0.5}` |
+| `xrun_reset` | — |
+| `safety_limiter_toggle` | — |
+| `set_safety_limiter_ceiling` | `{"value": -0.5}` |
+| `auto_add` | — |
 
 **상태 브로드캐스트 (서버 → 클라이언트):**
 ```json
@@ -540,7 +555,7 @@ rebuildGraph(bool suspend = true)
   "type": "state",
   "data": {
     "plugins": [{"name": "Plugin 1", "bypass": false, "loaded": true, "type": "vst", "latency_samples": 128}],
-    "volumes": {"input": 1.0, "monitor": 1.0},
+    "volumes": {"input": 1.0, "monitor": 1.0, "output": 1.0},
     "master_bypassed": false,
     "muted": false,
     "output_muted": false,
@@ -561,6 +576,7 @@ rebuildGraph(bool suspend = true)
     "ipc_enabled": true,
     "device_lost": false,
     "monitor_lost": false,
+    "xrun_count": 0,
     "chain_pdc_samples": 128,
     "chain_pdc_ms": 2.67,
     "safety_limiter": {"enabled": true, "ceiling_db": -0.3, "gain_reduction_db": 0.0}
@@ -714,8 +730,8 @@ rebuildGraph(bool suspend = true)
 | Full Backup | `.dpfullbackup`으로 전체 백업 | 없음 (파일 선택) |
 | Full Restore | `.dpfullbackup`에서 전체 복원 | 있음 |
 | Clear Plugin Cache | 플러그인 스캔 캐시 삭제 | 있음 |
-| Clear All Presets | 슬롯 + 백업 + 임시 파일 삭제, 활성 체인 초기화 | 있음 |
-| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋, 캐시, 녹음 설정) | 있음 |
+| Clear All Presets | 슬롯 A-E + Auto + 백업 + 임시 파일 삭제, 활성 체인 초기화 | 있음 |
+| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정) | 있음 |
 
 #### 4.6.6 상태 바 (30px)
 | 요소 | 설명 |
@@ -1033,8 +1049,8 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
 | Full Backup | `.dpfullbackup`으로 전체 백업 | 파일 선택 |
 | Full Restore | `.dpfullbackup`에서 전체 복원 (같은 OS만 — 크로스 OS 복원 차단) | 확인 다이얼로그 |
 | Clear Plugin Cache | 스캔 캐시 XML 삭제 | 확인 다이얼로그 |
-| Clear All Presets | 슬롯 파일 + 백업 + 임시 파일 삭제, 활성 체인 초기화 | 확인 다이얼로그 |
-| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋, 캐시, 녹음 설정) | 확인 다이얼로그 |
+| Clear All Presets | 슬롯 A-E + Auto 파일 + 백업 + 임시 파일 삭제, 활성 체인 초기화 | 확인 다이얼로그 |
+| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정) | 확인 다이얼로그 |
 
 ---
 

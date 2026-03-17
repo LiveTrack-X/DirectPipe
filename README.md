@@ -197,7 +197,7 @@ External Control:
   - **Audio**: 드라이버 선택 (Windows: WASAPI/ASIO, macOS: CoreAudio, Linux: ALSA/JACK), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드. **Audio 탭의 샘플레이트가 VST 체인·모니터 출력·IPC 전체에 적용됨** — Driver (Windows: WASAPI/ASIO, macOS: CoreAudio, Linux: ALSA/JACK), devices, SR, buffer, channel mode. **Audio tab SR applies to VST chain, monitor output, and IPC**
   - **Output**: 모니터 출력(장치/볼륨/상태), VST 출력 토글, 녹음(REC/Play/폴더) — Monitor output, VST output toggle, recording
   - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
-  - **Settings**: 자동 시작 (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset)
+  - **Settings**: 자동 시작 (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset(A-E + Auto 슬롯 포함)) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset (includes A-E + Auto slots))
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
 - **Panic Mute** — 전체 출력 즉시 뮤트 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 모든 액션 및 외부 제어 잠금 — Instant mute all + auto-stop recording, locks all actions and controls until unmuted (recording does not auto-restart)
 - **상태 바** — 레이턴시, CPU %, 오디오 포맷, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU, format, portable mode, version. Auto-fade notifications
@@ -321,7 +321,9 @@ host/                     JUCE host application (main)
   Source/
     ActionResult.h          Typed success/failure return value
     Audio/                  AudioEngine, VSTChain, OutputRouter, MonitorOutput,
-                            AudioRingBuffer, LatencyMonitor, AudioRecorder
+                            AudioRingBuffer, LatencyMonitor, AudioRecorder,
+                            SafetyLimiter, BuiltinFilter, BuiltinNoiseRemoval,
+                            BuiltinAutoGain
     Control/                ActionDispatcher, ActionHandler, SettingsAutosaver,
                             ControlManager, ControlMapping,
                             WebSocketServer, HttpApiServer,
@@ -337,13 +339,14 @@ host/                     JUCE host application (main)
                             PresetSlotBar, StatusUpdater, UpdateChecker,
                             PluginChainEditor, PluginScanner, PresetManager,
                             LevelMeter, LogPanel, NotificationBar,
-                            DirectPipeLookAndFeel, SettingsExporter
+                            DirectPipeLookAndFeel, SettingsExporter,
+                            FilterEditPanel, NoiseRemovalEditPanel, AGCEditPanel
 core/                     IPC library (RingBuffer, SharedMemory, Protocol)
 plugins/receiver/         Receiver VST2/VST3/AU plugin (for OBS/DAW)
 com.directpipe.directpipe.sdPlugin/  Stream Deck plugin (Node.js, SDK v3)
 dist/                     Packaged plugin (.streamDeckPlugin) + marketplace assets
 tests/                    Unit tests (Google Test)
-thirdparty/               VST2 SDK, ASIO SDK (not included, see BUILDING.md)
+thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, included)
 ```
 
 ## 문서 / Documentation

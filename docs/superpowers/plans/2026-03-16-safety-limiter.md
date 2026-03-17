@@ -8,7 +8,7 @@
 
 **Tech Stack:** C++17, JUCE 7.0.12, std::atomic (RT↔UI 통신)
 
-**Spec:** `docs/FEATURE_SAFETY_LIMITER.md`
+**Spec:** Integrated into `docs/PRODUCT_SPEC.md` Section 4.1.8 and `CLAUDE.md` Key Implementations
 
 **Base:** `DirectPipe-v4/host/Source/`
 

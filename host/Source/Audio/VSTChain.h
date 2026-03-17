@@ -48,9 +48,33 @@ struct PluginLatencyInfo {
 
 /**
  * @brief Information about a loaded plugin in the chain.
+ *
+ * ## Ownership Model
+ *
+ * PluginSlot does NOT own its processor. The AudioProcessorGraph owns all
+ * processor instances (via graph_->addNode(std::move(processor))). PluginSlot
+ * holds only raw, non-owning pointers for access.
+ *
+ * ## VST vs Built-in: Two Pointer Paths
+ *
+ * For VST plugins:
+ *   - instance != nullptr    (points to the AudioPluginInstance)
+ *   - builtinProcessor == nullptr
+ *   - type == Type::VST
+ *
+ * For built-in processors (Filter, NoiseRemoval, AutoGain):
+ *   - instance == nullptr    (no AudioPluginInstance -- built-in is not a VST)
+ *   - builtinProcessor != nullptr (points to the BuiltinFilter/BuiltinNoiseRemoval/BuiltinAutoGain)
+ *   - type == Type::BuiltinFilter / BuiltinNoiseRemoval / BuiltinAutoGain
+ *
+ * IMPORTANT: Always use getProcessor() for generic access. Never assume
+ * instance is non-null without checking type first.
  */
 struct PluginSlot {
-    /// Built-in processor type (VST for external plugins, others for built-in processors)
+    /// Type discriminator: VST for external plugins loaded from DLL/dylib/so,
+    /// other values for built-in processors that are compiled into the host.
+    /// NOTE: The serialization layer (PresetManager) uses these type values to
+    /// distinguish between "load a VST from disk" and "create a built-in processor."
     enum class Type { VST, BuiltinFilter, BuiltinNoiseRemoval, BuiltinAutoGain };
 
     juce::String name;
@@ -58,12 +82,22 @@ struct PluginSlot {
     juce::PluginDescription desc; ///< Full description for accurate re-loading
     bool bypassed = false;
     juce::AudioProcessorGraph::NodeID nodeId;
-    juce::AudioPluginInstance* instance = nullptr;  // non-owning (VST plugins)
+
+    /// Non-owning pointer to the VST plugin instance. NULL for built-in processors.
+    /// The AudioProcessorGraph owns the actual instance via its Node.
+    juce::AudioPluginInstance* instance = nullptr;
 
     Type type = Type::VST;
-    juce::AudioProcessor* builtinProcessor = nullptr;  // non-owning (graph owns it), non-null for built-in types
 
-    /// Unified accessor -- returns whichever processor is active (built-in or VST)
+    /// Non-owning pointer to the built-in processor. NULL for VST plugins.
+    /// The AudioProcessorGraph owns the actual instance via its Node.
+    /// IMPORTANT: This pointer is obtained BEFORE addNode(std::move(processor)),
+    /// which transfers ownership. The raw pointer remains valid as long as the
+    /// node exists in the graph.
+    juce::AudioProcessor* builtinProcessor = nullptr;
+
+    /// Unified accessor -- returns whichever processor is active (built-in or VST).
+    /// Use this instead of directly accessing instance or builtinProcessor.
     juce::AudioProcessor* getProcessor() const {
         if (type != Type::VST && builtinProcessor)
             return builtinProcessor;

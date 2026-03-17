@@ -449,7 +449,9 @@ void LogPanel::onClearAllPresets()
             slotsDir.getChildFile(base + ".dppreset").deleteFile();
             slotsDir.getChildFile(base + ".dppreset.backup").deleteFile();
         }
-        // Clean up any leftover temp files
+        // NOTE: The wildcard deletion below also catches slot_Auto.dppreset
+        // (the Auto preset slot) and any .tmp files from interrupted saves.
+        // This is intentional -- "Clear All Presets" means ALL slots including Auto.
         for (auto& f : slotsDir.findChildFiles(juce::File::findFiles, false, "*"))
             f.deleteFile();
 
@@ -475,7 +477,7 @@ void LogPanel::onResetSettingsClicked()
                      "to its initial state:\n\n"
                      "  - Audio settings\n"
                      "  - Hotkeys / MIDI mappings\n"
-                     "  - Quick slot presets (A-E)\n"
+                     "  - Quick slot presets (A-E + Auto)\n"
                      "  - User presets\n"
                      "  - Plugin scan cache\n"
                      "  - Recording config\n\n"
@@ -507,10 +509,12 @@ void LogPanel::onResetSettingsClicked()
             slotsDir.getChildFile(base + ".dppreset").deleteFile();
             slotsDir.getChildFile(base + ".dppreset.backup").deleteFile();
         }
+        // NOTE: Wildcard deletion also removes slot_Auto.dppreset (Auto slot)
+        // and any temporary files from interrupted save operations.
         for (auto& f : slotsDir.findChildFiles(juce::File::findFiles, false, "*"))
             f.deleteFile();
 
-        // User presets
+        // User presets (saved via "Save Preset" button, stored in Presets/ folder)
         auto presetsDir = dir.getChildFile("Presets");
         for (auto& f : presetsDir.findChildFiles(juce::File::findFiles, false, "*"))
             f.deleteFile();

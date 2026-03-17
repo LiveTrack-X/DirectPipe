@@ -97,14 +97,22 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const float* kL = kWeightScratch_.getReadPointer(0);
     const float* kR = (numChannels > 1) ? kWeightScratch_.getReadPointer(1) : nullptr;
 
-    // I1: Incremental ring buffer update with running sum (O(blockSize) instead of O(144k))
+    // Incremental ring buffer update with running sum.
+    //
+    // Instead of summing the entire ring buffer (O(windowSize) = ~72k samples at 48kHz),
+    // we maintain a running sum and update it incrementally:
+    //   runningSquareSum_ -= old_value_being_overwritten
+    //   runningSquareSum_ += new_value
+    //
+    // This reduces per-block cost from O(windowSize) to O(blockSize), which is critical
+    // for RT audio thread performance (blockSize is typically 128-512 samples).
     for (int i = 0; i < numSamples; ++i) {
         float sq = kL[i] * kL[i];
         if (kR != nullptr)
-            sq = (sq + kR[i] * kR[i]) * 0.5f;  // average L+R squared
+            sq = (sq + kR[i] * kR[i]) * 0.5f;  // average L+R squared for stereo
 
         double newVal = static_cast<double>(sq);
-        // Subtract old value from running sum before overwriting
+        // Subtract the OLD value that's about to be overwritten from the running sum
         double oldVal = static_cast<double>(lufsRingBuf_[static_cast<size_t>(lufsWritePos_)]);
         runningSquareSum_ -= oldVal;
         runningSquareSum_ += newVal;
@@ -121,8 +129,10 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float measuredLUFS = -60.0f;
 
     if (lufsSampleCount_ > 0) {
-        // I1: Use running sum instead of scanning all 144k samples
-        double safeSum = std::max(runningSquareSum_, 0.0);  // handle floating-point drift
+        // Use the incrementally maintained running sum (see Step 3 above).
+        // NOTE: Clamp to 0.0 because floating-point subtraction accumulates rounding
+        // errors over time, which can cause the sum to drift slightly negative.
+        double safeSum = std::max(runningSquareSum_, 0.0);
         double meanSquare = safeSum / static_cast<double>(lufsSampleCount_);
 
         // LUFS = -0.691 + 10 * log10(meanSquare)
@@ -143,6 +153,14 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const float freeze  = freezeLevel_.load(std::memory_order_relaxed);
 
     // ═══ Mode 2 AGC: always aim for target, Correction % = response speed ═══
+    //
+    // IMPORTANT: Correction % does NOT scale the gain amount. It scales the
+    // envelope follower coefficient (see Step 6 below). This means:
+    //   - 100% correction: full-speed convergence to target
+    //   - 50% correction: half-speed convergence (gentler, less aggressive)
+    //   - 0% correction: frozen (no gain change at all)
+    //   - 200% correction: 2x speed (very aggressive, may cause audible pumping)
+    //
     // Low Correct %  → controls boost speed (higher = faster response to quiet parts)
     // High Correct % → controls cut speed (higher = faster response to loud parts)
     // Both reach target eventually -- percentage affects how quickly, not how much.
@@ -152,8 +170,13 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     if (correction > 0.0f) {
         // Boosting (quiet) -- Linear Low (Mode 2) + Freeze Gate
-        // Use per-block RMS (instant) instead of 3s LUFS (slow) for freeze decision.
-        // This reacts to breaths/keyboard sounds within one block (~2.7ms).
+        //
+        // NOTE: The Freeze Gate uses per-block RMS (instant reaction, ~2.7ms at 128 samples)
+        // instead of the 1.5s LUFS window for the freeze decision. This is critical because:
+        //   - A keyboard click or breath is only a few ms long
+        //   - The 1.5s LUFS window barely registers it (averaged over 72k samples)
+        //   - Without instant freeze, AGC would boost the click by up to +24dB
+        //   - Per-block RMS catches it within ONE buffer period and freezes the gain
         float blockRMS = 0.0f;
         for (int ch = 0; ch < numChannels; ++ch)
             for (int i = 0; i < numSamples; ++i) {
@@ -187,8 +210,16 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // Per-sample loop with direction-dependent coefficient selection.
     float gain = currentGainLinear_;
 
-    // Per-sample smoothing — Correction % scales the speed
-    // Higher % = faster convergence to target, Lower % = slower, more gentle
+    // Per-sample IIR smoothing -- Correction % scales the envelope speed.
+    //
+    // For each sample, we select direction-dependent coefficients:
+    //   - targetGainLinear > gain: we're boosting → use attackCoeff_ * lowCorr
+    //   - targetGainLinear < gain: we're cutting  → use releaseCoeff_ * hiCorr
+    //
+    // The correction factor (lowCorr/hiCorr) multiplies the base coefficient,
+    // so it controls convergence SPEED, not final gain AMOUNT.
+    // At lowCorr=1.0, we get the full 500ms attack time constant.
+    // At lowCorr=0.5, the effective time constant doubles to ~1000ms.
     for (int i = 0; i < numSamples; ++i) {
         float baseCoeff = (targetGainLinear > gain) ? attackCoeff_ : releaseCoeff_;
         float speedScale = (targetGainLinear > gain) ? lowCorr : hiCorr;
@@ -197,12 +228,19 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // Step 7: Apply gain to ORIGINAL buffer (not K-weighted)
-    // Use a linear ramp from old gain to new gain for click-free operation
+    //
+    // IMPORTANT: We apply gain as a LINEAR RAMP from startGain to endGain across
+    // the block. Without this ramp, a sudden gain jump between blocks causes an
+    // audible click/pop (discontinuity in the waveform). The ramp interpolates
+    // smoothly across all samples in the block, eliminating clicks.
+    //
+    // If the gain change is negligible (<1e-6), we skip the ramp and apply
+    // constant gain for efficiency (FloatVectorOperations::multiply is SIMD-optimized).
     const float startGain = currentGainLinear_;
     const float endGain = gain;
 
     if (std::abs(startGain - endGain) < 1.0e-6f) {
-        // Constant gain -- no ramp needed
+        // Constant gain -- no ramp needed, use SIMD-optimized multiply
         for (int ch = 0; ch < numChannels; ++ch)
             juce::FloatVectorOperations::multiply(
                 buffer.getWritePointer(ch), endGain, numSamples);
@@ -229,20 +267,32 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 }
 
 // ─── K-weighting coefficients ──────────────────────────────────
+//
+// K-weighting is defined by ITU-R BS.1770-4 for LUFS loudness measurement.
+// It models human hearing sensitivity with two filter stages:
+//   Stage 1: High shelf filter (+4dB above ~1681Hz) -- models head diffraction
+//   Stage 2: High-pass filter (38Hz cutoff) -- removes inaudible low frequencies
+//
+// The ITU standard provides EXACT biquad coefficients only for 48kHz.
+// For other sample rates, we approximate using JUCE's IIR coefficient designers.
+// This approximation is close enough for real-time AGC purposes but may not
+// pass strict EBU R128 compliance testing at non-48kHz rates.
 
 void BuiltinAutoGain::updateKWeightingCoeffs()
 {
     // ITU-R BS.1770-4 K-weighting: two biquad stages.
-    // Pre-computed coefficients for 48 kHz.
+    // Pre-computed coefficients for 48 kHz (exact from the standard).
     // For other sample rates, we use JUCE's IIR designer as approximation.
 
     if (currentSR_ <= 0.0)
         return;
 
     if (std::abs(currentSR_ - 48000.0) < 1.0) {
-        // Exact 48 kHz coefficients from ITU-R BS.1770-4
+        // Exact 48 kHz coefficients from ITU-R BS.1770-4.
+        // These are the ONLY officially specified coefficients in the standard.
+        // Format: [b0, b1, b2, a1, a2] (a0 is implicitly 1.0)
 
-        // Stage 1: High shelf (+4 dB at ~1681 Hz)
+        // Stage 1: High shelf (+4 dB at ~1681 Hz) -- models head/ear diffraction
         juce::IIRCoefficients stage1;
         stage1.coefficients[0] = 1.53512485958697f;
         stage1.coefficients[1] = -2.69169618940638f;
@@ -263,6 +313,9 @@ void BuiltinAutoGain::updateKWeightingCoeffs()
         kStage2R_.setCoefficients(stage2);
     } else {
         // Approximate K-weighting for non-48kHz rates using JUCE's built-in designers.
+        // NOTE: These are approximations -- the ITU standard only defines exact
+        // coefficients for 48kHz. The approximation is accurate enough for AGC
+        // but may differ from reference implementations by ~0.1-0.3 LUFS.
         // Stage 1: High shelf approximation (+4 dB, 1681 Hz)
         auto stage1 = juce::IIRCoefficients::makeHighShelf(
             currentSR_, 1681.0, 0.7071, // Q ~ sqrt(2)/2
