@@ -132,6 +132,9 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 뮤트 fast-path | 뮤트 상태에서 VST 처리 스킵 |
 | 워크버퍼 | 8채널 사전 할당 (`workBuffer_`). 콜백에서 힙 할당 없음 |
 | 프로세스 우선순위 | `HIGH_PRIORITY_CLASS` |
+| MMCSS 스레드 등록 | Windows: 오디오 콜백 스레드를 "Pro Audio" MMCSS에 AVRT_PRIORITY_HIGH로 등록 (WASAPI + ASIO 모두). DPC 지연 간섭 방지 |
+| IPC 이벤트 최적화 | `SetEvent` 시그널을 데이터 기록 시에만 발생 (불필요한 커널 호출 감소) |
+| 콜백 오버런 감지 | LatencyMonitor: 처리 시간이 버퍼 주기를 초과하면 카운트 (`getCallbackOverrunCount()`) |
 
 #### 4.1.5 장치 자동 재연결
 | 항목 | 상세 |
@@ -191,7 +194,7 @@ VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 
 |---------|--------|------|
 | **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz) + LPF (기본 OFF, 16kHz). 범위: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터, atomic 파라미터. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
 | **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거. 480-frame FIFO (~10ms 레이턴시). 48kHz only (비-48kHz = 패스스루, TODO: 리샘플링). 듀얼 모노 (2 RNNoise 인스턴스). x32767 스케일링 전처리, /32767 후처리. 2-pass FIFO (in-place 버퍼 안전). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 CLOSED (0.0), 5프레임 워밍업. VAD 게이트 홀드 타임 300ms (`kHoldSamples`=14400 @48kHz). 게이트 스무딩 20ms (`kGateSmooth`=0.9990). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD 임계값: Light 0.50, Standard 0.70 (기본값), Aggressive 0.90 |
-| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC. Target LUFS -15.0 기본 (범위 -24~-6). Low Correct 0.50 기본 (부스트 엔벨로프 속도). High Correct 0.75 기본 (컷 엔벨로프 속도). Max Gain 24 dB 기본. ITU-R BS.1770 K-weighting 사이드체인 (copy, 실제 오디오 미적용). Attack 500ms, Release 700ms, LUFS 윈도우 1.5s. Freeze Level -45 dBFS (per-block RMS, NOT LUFS), -65 dBFS 미만 시 바이패스. Incremental `runningSquareSum_` (O(blockSize)). Correction % = 엔벨로프 속도 (게인 양 아님) |
+| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 (범위 -24~-6, 내부적으로 -4dB 오프셋 적용하여 오픈루프 오버슈트 보정). Low Correct 0.50 기본 (hold↔full correction 블렌드, 부스트). High Correct 0.90 기본 (hold↔full correction 블렌드, 컷). Max Gain 22 dB 기본. ITU-R BS.1770 K-weighting 사이드체인 (copy, 실제 오디오 미적용). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음), per-block linear ramp으로 click-free 전환. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 (0dB 리셋 아님), -65 dBFS 미만 시 바이패스. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) |
 
 **[Auto] 버튼**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults.
 

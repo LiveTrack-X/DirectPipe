@@ -787,6 +787,7 @@ void AudioEngine::updateXRunTracking()
         for (int i = 0; i < 60; ++i)
             total += xrunHistory_[i];
         recentXRuns_.store(total, std::memory_order_relaxed);
+
     }
 }
 

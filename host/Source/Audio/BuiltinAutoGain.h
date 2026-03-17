@@ -125,8 +125,8 @@ public:
 private:
     // -- Parameters (atomic, any thread) --
     std::atomic<float> targetLUFS_{ -15.0f };    // target loudness level in LUFS
-    std::atomic<float> lowCorrect_{ 0.50f };     // boost correction SPEED factor (0.0=frozen, 2.0=2x speed)
-    std::atomic<float> highCorrect_{ 0.90f };    // cut correction SPEED factor (0.0=frozen, 2.0=2x speed)
+    std::atomic<float> lowCorrect_{ 0.50f };     // boost correction blend (0.0=hold current gain, 1.0=full correction)
+    std::atomic<float> highCorrect_{ 0.90f };    // cut correction blend (0.0=hold current gain, 1.0=full correction)
     std::atomic<float> maxGaindB_{ 22.0f };      // maximum boost/cut in dB (prevents extreme amplification)
     std::atomic<float> freezeLevel_{ -45.0f };   // dBFS -- per-block RMS below this = don't boost (silence/breath/keyboard)
 
@@ -140,15 +140,15 @@ private:
     // runningSquareSum_ is an incremental accumulator: when a new sample enters
     // the ring buffer, we subtract the old value being overwritten and add the
     // new value. This gives O(blockSize) per processBlock instead of O(windowSize)
-    // (~72k samples for 1.5s at 48kHz). Without this optimization, scanning the
+    // (~19k samples for 0.4s at 48kHz). Without this optimization, scanning the
     // entire ring buffer every block would consume excessive CPU on the RT thread.
     //
     // NOTE: Floating-point drift can cause runningSquareSum_ to go slightly negative
     // over time due to accumulated rounding errors. We clamp to 0.0 before use.
-    std::vector<float> lufsRingBuf_;   // 1.5 seconds of squared K-weighted mono samples
+    std::vector<float> lufsRingBuf_;   // 0.4 seconds of squared K-weighted mono samples (EBU Momentary)
     int lufsWritePos_ = 0;
     int lufsSampleCount_ = 0;          // number of valid samples (grows until window is full)
-    int lufsWindowSize_ = 0;           // 1.5 * sampleRate (was 3s, shortened for faster response)
+    int lufsWindowSize_ = 0;           // 0.4 * sampleRate (EBU R128 Momentary window)
     std::atomic<double> runningSquareSum_{0.0};    // incremental sum -- avoids O(windowSize) scan per block
 
     // -- Dual envelope level detection (WebRTC AGC pattern, RT thread only) --
@@ -156,8 +156,8 @@ private:
 
     // -- Gain state (RT thread only) --
     float currentGainLinear_ = 1.0f;   // current smoothed gain (persists across blocks for continuity)
-    float attackCoeff_ = 0.0f;         // envelope follower: 500ms attack (gain increasing = boosting)
-    float releaseCoeff_ = 0.0f;        // envelope follower: 700ms release (gain decreasing = cutting)
+    float attackCoeff_ = 0.0f;         // per-sample smoothing: 500ms attack (gain increasing = boosting)
+    float releaseCoeff_ = 0.0f;        // per-sample smoothing: 100ms release (gain decreasing = cutting)
 
     double currentSR_ = 48000.0;
 
