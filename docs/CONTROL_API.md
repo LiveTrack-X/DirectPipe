@@ -274,7 +274,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
     "output_muted": false,
     "input_muted": false,
     "active_slot": 0,
-    "slot_names": ["게임", "토크", "", "", ""],
+    "slot_names": ["게임", "토크", "", "", "", "Auto"],
     "preset": "Streaming Vocal",
     "latency_ms": 5.2,
     "level_db": -18.3,
@@ -317,7 +317,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
 | `output_muted` | boolean | Main output muted / 메인 출력 뮤트 |
 | `input_muted` | boolean | Input muted (mirrors `muted` — no independent input mute) / 입력 뮤트 (`muted`와 동일 — 독립 입력 뮤트 없음) |
 | `active_slot` | number | Active preset slot (0-4 = A-E) / 활성 슬롯 |
-| `slot_names` | array | Slot names (5 strings, empty = unnamed) / 슬롯 이름 (5개, 빈 문자열 = 이름 없음) |
+| `slot_names` | array | Slot names (6 strings (A-E + Auto), empty = unnamed) / 슬롯 이름 (6개 (A-E + Auto), 빈 문자열 = 이름 없음) |
 | `preset` | string | Current preset name / 현재 프리셋 이름 |
 | `latency_ms` | number | Latency in ms / 레이턴시 (ms) |
 | `monitor_latency_ms` | number | Monitor output latency in ms / 모니터 출력 레이턴시 (ms) |
@@ -359,7 +359,7 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/volume/:target/:value` | Set volume (target: `input` [0.0-2.0], `monitor` [0.0-1.0], `output` [0.0-1.0]; validated) / 볼륨 설정 (범위 검증) |
 | `GET /api/monitor/toggle` | Toggle monitor output on/off / 모니터 출력 토글 |
 | `GET /api/preset/:index` | Load preset / 프리셋 로드 |
-| `GET /api/slot/:index` | Switch preset slot (0-4 = A-E) / 슬롯 전환 |
+| `GET /api/slot/:index` | Switch preset slot (0-5, A-E + Auto) / 슬롯 전환 |
 | `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |
 | `GET /api/gain/:delta` | Adjust input gain (linear, e.g. 0.1 = +0.1 gain) / 입력 게인 조절 (선형, 예: 0.1 = +0.1 게인) |
 | `GET /api/recording/toggle` | Toggle audio recording on/off / 오디오 녹음 토글 |
@@ -367,6 +367,7 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/plugin/:pluginIndex/param/:paramIndex/:value` | Set plugin parameter (0.0-1.0) / 플러그인 파라미터 설정 |
 | `GET /api/plugins` | List loaded plugins: `[{index, name, bypassed, loaded, parameterCount}]` / 로드된 플러그인 목록 |
 | `GET /api/plugin/:idx/params` | List plugin parameters: `[{index, name, value}]` / 플러그인 파라미터 목록 |
+| `GET /api/xrun/reset` | Reset XRun counter (bypasses ActionDispatcher, direct engine call) / XRun 카운터 리셋 (ActionDispatcher 우회, 엔진 직접 호출) |
 | `GET /api/perf` | Performance stats: `{latencyMs, cpuPercent, sampleRate, bufferSize, xrunCount}` / 성능 통계 |
 | `GET /api/limiter/toggle` | Toggle safety limiter on/off / Safety Limiter 토글 |
 | `GET /api/limiter/ceiling/:value` | Set limiter ceiling (-6.0 to 0.0 dBFS) / 리미터 실링 설정 |

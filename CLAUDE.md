@@ -6,7 +6,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 크로스 플랫폼 실시간 VST2/VST3 호스트. Windows(안정), macOS(베타), Linux(실험적). 마이크 입력을 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치로 직접 전송, 별도 공유 모드 모니터 출력(헤드폰) 옵션. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
 > **v4.0.0은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장한 알파 버전입니다.**
-> MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→233+개 확장.
+> MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→294+개 확장.
 
 ## Documentation Sync Rule (필수)
 
@@ -191,7 +191,7 @@ MainComponent Split (v3→v4):
 - **Panic Mute**: Remembers pre-mute state (monitor, output mute, IPC), restores on unmute. Stops active recording on engage (does not auto-restart). During panic mute, all actions and external controls locked — only PanicMute/unmute can change state. Logic consolidated in `ActionHandler::doPanicMute()`. `input_muted` state field mirrors `muted` (no independent input mute).
 - **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup. Port 8765. UDP discovery broadcast (port 8767). `broadcastToClients` thread join outside `clientsMutex_` lock.
 - **IPC Toggle**: `Action::IpcToggle` toggles IPC output. WebSocket/HTTP/MIDI mappable.
-- **Default hotkeys**: Minimal set for new installs — Panic Mute (Ctrl+Shift+M) + Plugin 1 Bypass (Ctrl+Shift+1) only. Users add more via Controls > Hotkeys tab. Existing users keep their saved config (createDefaults() only runs on first launch).
+- **Default hotkeys**: 11 defaults from `createDefaults()` — Panic Mute (Ctrl+Shift+M), Master Bypass (Ctrl+Shift+0), Plugin 1-3 Bypass (Ctrl+Shift+1~3), Input Mute (Ctrl+Shift+F6), Monitor Toggle (Ctrl+Shift+H), Preset Slot A-E (Ctrl+Shift+F1~F5). Users can change/add more via Controls > Hotkeys tab. Existing users keep their saved config (createDefaults() only runs on first launch).
 - **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: volume/parameter values validated as numeric. Gain delta endpoint scales by 10× (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`), safety limiter toggle/ceiling (`/api/limiter/toggle`, `/api/limiter/ceiling/:value`), auto processors add (`/api/auto/add`).
 - **MIDI Learn cancel**: Cancel button in MidiTab. `stopLearn()` called on cancel.
 - **MIDI HTTP API test endpoints**: `/api/midi/cc/:ch/:num/:val` and `/api/midi/note/:ch/:num/:vel`.
@@ -280,7 +280,7 @@ MainComponent Split (v3→v4):
   - Root: MainComponent, Main, **ActionResult.h**
 - `plugins/receiver/` -> Receiver VST2/VST3/AU plugin for OBS and DAWs (shared memory IPC consumer, configurable buffer size)
 - `com.directpipe.directpipe.sdPlugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v3)
-- `tests/` -> Google Test (core tests + host tests, **233+ tests, 14 host suites**)
+- `tests/` -> Google Test (core tests + host tests, **294+ tests, 18 host suites**)
 - `dist/` -> Packaged .streamDeckPlugin + marketplace assets
 
 **(bold = v3에 없고 v4에서 추가된 모듈)**
@@ -293,7 +293,7 @@ MainComponent Split (v3→v4):
 - ASIO SDK path: `thirdparty/asiosdk/common`
 - Preset version 4 (deviceType, activeSlot, plugin state)
 - SHA-1: custom implementation for WebSocket handshake only
-- Stream Deck: SDKVersion 3 (SDK v2.0.1 npm), Version 3.9.10.0, 10 actions (Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle, Recording Toggle, IPC Toggle, Performance Monitor, Plugin Parameter [SD+], Preset Bar [SD+]), 5 PI HTMLs, SVG-based icons + @2x, packaged via `streamdeck pack` CLI
+- Stream Deck: SDKVersion 3 (SDK v2.0.1 npm), Version 4.0.0.0, 10 actions (Bypass Toggle, Panic Mute, Volume Control, Preset Switch, Monitor Toggle, Recording Toggle, IPC Toggle, Performance Monitor, Plugin Parameter [SD+], Preset Bar [SD+]), 5 PI HTMLs, SVG-based icons + @2x, packaged via `streamdeck pack` CLI
 - Auto-save: dirty-flag + 1s debounce (not periodic timer), managed by SettingsAutosaver
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
 - Credit label "Created by LiveTrack" at bottom-right. Shows "NEW vX.Y.Z" in orange.

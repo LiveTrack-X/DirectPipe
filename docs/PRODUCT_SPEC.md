@@ -106,7 +106,7 @@ GPL v3 (오픈소스)
 9. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시)
 10. OutputRouter → 모니터 출력 (별도 WASAPI 장치)
 11. 메인 출력: outputChannelData에 직접 memcpy
-11. 출력 RMS 레벨 계산 (데시메이션)
+12. 출력 RMS 레벨 계산 (데시메이션)
 ```
 
 #### 4.1.3 출력 경로 (3가지 + 녹음)
@@ -356,16 +356,14 @@ rebuildGraph(bool suspend = true)
 
 #### 4.5.3 키보드 핫키
 
-**기본 매핑 (18개):**
+**기본 매핑 (11개):**
 | 핫키 | 액션 | 파라미터 |
 |------|------|---------|
-| Ctrl+Shift+1~9 | PluginBypass | 인덱스 0~8 |
-| Ctrl+Shift+0 | MasterBypass | — |
 | Ctrl+Shift+M | PanicMute | — |
-| Ctrl+Shift+N | InputMuteToggle | — |
-| Ctrl+Shift+O | ToggleMute | "output" |
+| Ctrl+Shift+0 | MasterBypass | — |
+| Ctrl+Shift+1~3 | PluginBypass | 인덱스 0~2 |
+| Ctrl+Shift+F6 | InputMuteToggle | — |
 | Ctrl+Shift+H | MonitorToggle | — |
-| Ctrl+Shift+I | IpcToggle | — |
 | Ctrl+Shift+F1~F5 | SwitchPresetSlot | 0~4 |
 
 **구현:**
@@ -430,7 +428,7 @@ rebuildGraph(bool suspend = true)
 | 6 | Recording Toggle | `...recording-toggle` | Keypad | 2 (REC/REC) | 없음 |
 | 7 | IPC Toggle | `...ipc-toggle` | Keypad | 2 (ON/OFF) | 없음 |
 | 8 | Performance Monitor | `...performance-monitor` | Keypad + Encoder | 1 | performance-pi.html |
-| 9 | Plugin Parameter | `...plugin-parameter` | Encoder (SD+) | 1 | plugin-parameter-pi.html |
+| 9 | Plugin Parameter | `...plugin-param` | Encoder (SD+) | 1 | plugin-param-pi.html |
 | 10 | Preset Bar | `...preset-bar` | Encoder (SD+) | 1 | 없음 |
 
 **Bypass Toggle 상세:**
@@ -547,7 +545,7 @@ rebuildGraph(bool suspend = true)
 | `xrun_reset` | — |
 | `safety_limiter_toggle` | — |
 | `set_safety_limiter_ceiling` | `{"value": -0.5}` |
-| `auto_add` | — |
+| `auto_processors_add` | — |
 
 **상태 브로드캐스트 (서버 → 클라이언트):**
 ```json
@@ -570,7 +568,7 @@ rebuildGraph(bool suspend = true)
     "channel_mode": 2,
     "monitor_enabled": true,
     "active_slot": 0,
-    "slot_names": ["게임", "토크", "", "", ""],
+    "slot_names": ["게임", "토크", "", "", "", "Auto"],
     "recording": false,
     "recording_seconds": 0.0,
     "ipc_enabled": true,
@@ -579,7 +577,7 @@ rebuildGraph(bool suspend = true)
     "xrun_count": 0,
     "chain_pdc_samples": 128,
     "chain_pdc_ms": 2.67,
-    "safety_limiter": {"enabled": true, "ceiling_db": -0.3, "gain_reduction_db": 0.0}
+    "safety_limiter": {"enabled": true, "ceiling_dB": -0.3, "gain_reduction_dB": 0.0, "is_limiting": false}
   }
 }
 ```
@@ -1157,19 +1155,25 @@ DirectPipe/
 │       │   ├── AudioRingBuffer.h       → Lock-free 스테레오 링 버퍼
 │       │   ├── AudioRecorder.h/cpp     → WAV 녹음 (ThreadedWriter)
 │       │   ├── PluginPreloadCache.h/cpp → 슬롯 백그라운드 프리로드
-│       │   └── LatencyMonitor.h        → 실시간 레이턴시/CPU 측정
+│       │   ├── LatencyMonitor.h        → 실시간 레이턴시/CPU 측정
+│       │   ├── SafetyLimiter.h/cpp     → RT-safe 피드포워드 리미터
+│       │   ├── DeviceState.h           → 장치 연결 상태 enum 상태 머신
+│       │   ├── BuiltinFilter.h/cpp     → HPF+LPF 오디오 프로세서
+│       │   ├── BuiltinNoiseRemoval.h/cpp → RNNoise 기반 노이즈 제거
+│       │   ├── BuiltinAutoGain.h/cpp   → LUFS 기반 자동 게인 제어
+│       │   └── PluginLoadHelper.h      → 크로스 플랫폼 VST 로딩 헬퍼
 │       ├── Control/
-│       │   ├── ActionDispatcher.h      → 15개 Action enum, 메시지 스레드 디스패치
+│       │   ├── ActionDispatcher.h      → 19개 Action enum, 메시지 스레드 디스패치
 │       │   ├── ActionHandler.h/cpp     → 중앙 액션 이벤트 처리 (MainComponent에서 추출)
 │       │   ├── SettingsAutosaver.h/cpp → dirty-flag + 디바운스 자동 저장 (MainComponent에서 추출)
 │       │   ├── ControlManager.h        → 컨트롤 핸들러 소유, configStore_
-│       │   ├── ControlMapping.cpp      → 기본 핫키 18개
-│       │   ├── WebSocketServer.h/cpp   → RFC 6455, UDP 디스커버리, 16 명령
-│       │   ├── HttpApiServer.cpp       → REST API, 16 엔드포인트, CORS
+│       │   ├── ControlMapping.cpp      → 기본 핫키 11개
+│       │   ├── WebSocketServer.h/cpp   → RFC 6455, UDP 디스커버리, 19 명령
+│       │   ├── HttpApiServer.cpp       → REST API, 23 엔드포인트, CORS
 │       │   ├── HotkeyHandler.h/cpp     → RegisterHotKey, 글로벌 핫키
 │       │   ├── MidiHandler.h/cpp       → CC/Note, Learn, 4 바인딩 타입
-│       │   ├── StateBroadcaster.h/cpp  → 21필드 상태 JSON, 해시 기반 더티 체크
-│       │   ├── DirectPipeLogger.h/cpp  → 링 버퍼 로깅, 12 카테고리
+│       │   ├── StateBroadcaster.h/cpp  → 26필드 상태 JSON, 해시 기반 더티 체크
+│       │   ├── DirectPipeLogger.h/cpp  → 링 버퍼 로깅, 13 카테고리
 │       │   └── Log.h/cpp              → 로그 유틸리티, 스코프드 타이머
 │       ├── IPC/
 │       │   └── SharedMemWriter.h/cpp   → RT-safe IPC 쓰기, 인터리브 변환
@@ -1190,7 +1194,11 @@ DirectPipe/
 │           ├── LogPanel.h/cpp          → 로그 뷰어, 유지보수, 팩토리 리셋
 │           ├── NotificationBar.h/cpp   → 컬러코딩 알림, 자동 페이드
 │           ├── DirectPipeLookAndFeel.h/cpp → 다크 테마, CJK 폰트
-│           └── SettingsExporter.h/cpp  → 2단계 백업 (.dpbackup / .dpfullbackup)
+│           ├── SettingsExporter.h/cpp  → 2단계 백업 (.dpbackup / .dpfullbackup)
+│           ├── FilterEditPanel.h/cpp   → 내장 필터 편집 패널
+│           ├── NoiseRemovalEditPanel.h/cpp → 노이즈 제거 편집 패널
+│           ├── AGCEditPanel.h/cpp      → 자동 게인 제어 편집 패널
+│           └── DeviceSelector.h/cpp    → 오디오 장치 선택 위젯
 │
 ├── plugins/receiver/               → DirectPipe Receiver (VST2/VST3/AU)
 │   └── Source/
@@ -1205,7 +1213,7 @@ DirectPipe/
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉
 │       └── actions/                → 10개 SingletonAction 클래스
 │
-├── tests/                          → Google Test (core + host, 110+ tests)
+├── tests/                          → Google Test (core + host, 294+ tests)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등
 └── dist/                           → 빌드 산출물 + .streamDeckPlugin

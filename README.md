@@ -153,14 +153,14 @@ External Control:
 
   | 단축키 / Shortcut | 동작 / Action |
   |---|---|
-  | Ctrl+Shift+1–9 | 플러그인 1-9 Bypass 토글 / Plugin 1-9 bypass |
-  | Ctrl+Shift+0 | 마스터 Bypass (전체 체인) / Master bypass |
   | Ctrl+Shift+M | 패닉 뮤트 / Panic mute |
-  | Ctrl+Shift+N | 입력 뮤트 토글 (= 패닉 뮤트) / Input mute (= Panic Mute) |
-  | Ctrl+Shift+O | 출력 뮤트 토글 / Output mute |
+  | Ctrl+Shift+0 | 마스터 Bypass (전체 체인) / Master bypass |
+  | Ctrl+Shift+1–3 | 플러그인 1-3 Bypass 토글 / Plugin 1-3 bypass |
+  | Ctrl+Shift+F6 | 입력 뮤트 (= 패닉 뮤트) / Input mute (= Panic Mute) |
   | Ctrl+Shift+H | 모니터 토글 / Monitor toggle |
-  | Ctrl+Shift+I | VST 출력 토글 / VST output toggle |
   | Ctrl+Shift+F1–F5 | 프리셋 슬롯 A-E / Preset slot A-E |
+
+  > 모든 단축키는 Controls > Hotkeys 탭에서 변경/추가 가능 / All shortcuts are customizable in Controls > Hotkeys tab
 
 - **MIDI CC** — Learn 모드로 CC/노트 매핑 (Cancel 버튼으로 취소 가능). 플러그인 파라미터 직접 매핑도 지원 — CC/note mapping with Learn mode (Cancel button to abort). Direct plugin parameter mapping supported
 - **WebSocket** (RFC 6455, port 8765) — 양방향 실시간 통신, 상태 자동 푸시 — Bidirectional real-time communication with auto state push

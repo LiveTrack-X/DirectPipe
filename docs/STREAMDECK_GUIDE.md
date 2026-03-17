@@ -210,7 +210,7 @@ Supports both Keypad and SD+ Encoder (dial). / 키패드와 SD+ 인코더 (다�
 
 ### Plugin Parameter / 플러그인 파라미터 *(SD+ only / SD+ 전용)*
 
-**UUID:** `com.directpipe.directpipe.plugin-parameter`
+**UUID:** `com.directpipe.directpipe.plugin-param`
 
 SD+ Encoder only — requires Stream Deck+ hardware. / SD+ 인코더 전용 — Stream Deck+ 하드웨어 필요.
 
@@ -325,14 +325,14 @@ com.directpipe.directpipe.sdPlugin/
       recording-toggle.js     Recording toggle SingletonAction / 녹음 토글 액션
       ipc-toggle.js           IPC toggle SingletonAction / IPC 토글 액션
       performance-monitor.js  Performance monitor SingletonAction / 성능 모니터 액션
-      plugin-parameter.js     Plugin parameter SingletonAction (SD+) / 플러그인 파라미터 액션 (SD+)
+      plugin-param.js         Plugin parameter SingletonAction (SD+) / 플러그인 파라미터 액션 (SD+)
       preset-bar.js           Preset bar SingletonAction (SD+) / 프리셋 바 액션 (SD+)
     inspectors/
       bypass-pi.html          Bypass settings (sdpi-components v4) / Bypass 설정 UI
       volume-pi.html          Volume settings (target, mode, step) / 볼륨 설정 UI
       preset-pi.html          Preset settings (slot selector) / 프리셋 설정 UI
       performance-pi.html     Performance monitor settings (display mode) / 성능 모니터 설정 UI
-      plugin-parameter-pi.html  Plugin parameter settings (plugin/param selector) / 플러그인 파라미터 설정 UI
+      plugin-param-pi.html      Plugin parameter settings (plugin/param selector) / 플러그인 파라미터 설정 UI
   images/                     Button icons (PNG + @2x) / 버튼 아이콘
   icons-src/                  SVG icon sources / SVG 아이콘 원본
   scripts/

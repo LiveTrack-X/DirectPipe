@@ -321,7 +321,7 @@ jobs:
 
           # Windows ZIP
           cp artifacts/DirectPipe-win64/DirectPipe-win64.zip \
-             "release/DirectPipe-${TAG}-win64.zip"
+             "release/DirectPipe-${TAG}-Windows.zip"
 
           # macOS DMG
           cp artifacts/DirectPipe-macOS/DirectPipe-macOS.dmg \
@@ -329,7 +329,7 @@ jobs:
 
           # Linux tar.gz
           cp artifacts/DirectPipe-linux-x64/DirectPipe-linux-x64.tar.gz \
-             "release/DirectPipe-${TAG}-linux-x64.tar.gz"
+             "release/DirectPipe-${TAG}-Linux.tar.gz"
 
           # Stream Deck Plugin
           cp artifacts/StreamDeck-Plugin/com.directpipe.directpipe.streamDeckPlugin \
