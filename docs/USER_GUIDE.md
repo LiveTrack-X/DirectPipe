@@ -452,6 +452,52 @@ Slots store **chain data + name** (plugins, order, bypass, parameters, slot name
 
 ---
 
+## Auto 모드 (내장 프로세서) / Auto Mode (Built-in Processors)
+
+VST 플러그인 없이 기본적인 마이크 처리를 제공하는 내장 프로세서 3종. / 3 built-in processors for basic microphone processing without VST plugins.
+
+### [Auto] 버튼 / Auto Button
+
+입력 게인 슬라이더 옆의 **[Auto]** 버튼은 A-E와 별도인 **특수 프리셋 슬롯**(인덱스 5)입니다. / The **[Auto]** button next to input gain is a **special preset slot** (index 5), separate from A-E.
+
+- **첫 클릭**: Filter + Noise Removal + Auto Gain 기본 체인 생성 / First click: creates default chain
+- **이후 클릭**: 마지막 저장된 Auto 슬롯 상태 로드 / Subsequent: loads saved Auto preset
+- **우클릭 → Reset to Defaults**: 기본 3개 프로세서로 초기화 / Right-click to reset
+- **활성 시 녹색** 표시, A-E 슬롯은 비선택 상태로 전환 / Green when active, A-E deselected
+- Next/Previous 프리셋 순환에서 **제외** (A→B→C→D→E→A만 순환) / Excluded from preset cycling
+
+### 내장 프로세서 / Built-in Processors
+
+일반 VST 플러그인과 동일하게 체인에 추가/제거/바이패스/순서 변경 가능. "Add Plugin" → Built-in 메뉴에서 개별 추가도 가능. / Work like regular VST plugins. Also addable individually via "Add Plugin" → Built-in submenu.
+
+| 프로세서 | 기능 | 기본 설정 |
+|---------|------|----------|
+| **Filter** | HPF (하이패스) + LPF (로우패스) | HPF ON 60Hz, LPF OFF |
+| **Noise Removal** | RNNoise AI 노이즈 제거 + VAD 게이팅 | Standard (VAD 0.70), Hold 300ms |
+| **Auto Gain** | LUFS 기반 자동 볼륨 레벨러 | Target -15 LUFS, Max Gain 24 dB |
+
+### Noise Removal 강도 프리셋 / Strength Presets
+
+| 프리셋 | VAD 임계값 | 특징 |
+|--------|-----------|------|
+| 약 (Light) | 0.50 | 최소 게이팅. 잔여 노이즈 약간 남지만 음성 손실 최소 |
+| **중 (Standard)** | **0.70** | **기본값**. 대부분의 환경에 적합 |
+| 강 (Aggressive) | 0.90 | 강한 게이팅. 매우 깨끗하지만 작은 소리 잘릴 수 있음 |
+
+고급 설정에서 VAD Threshold를 직접 조절 가능. / Advanced: adjust VAD threshold directly.
+
+### Auto Gain 설정 / Auto Gain Settings
+
+- **Target LUFS**: 목표 라우드니스 (-24 ~ -6 LUFS, 기본 -15)
+- **Freeze Level**: 이 레벨 이하의 블록은 증폭하지 않음 (숨소리/키보드 방지, 기본 -45 dBFS)
+- **Low/High Correct**: 증폭/감쇠 반응 속도 (기본 50%/75%). 높을수록 빠르게 반응
+- **Max Gain**: 최대 증폭 한도 (기본 24 dB)
+
+> **참고**: 48kHz가 아닌 샘플레이트에서는 Noise Removal이 비활성화됩니다 (향후 리샘플링 지원 예정).
+> **Note**: Noise Removal is inactive at non-48kHz sample rates (resampling support planned).
+
+---
+
 ## Output 탭 / Output Tab
 
 Output 탭은 3개 섹션으로 구성됩니다. / The Output tab has 3 sections.
