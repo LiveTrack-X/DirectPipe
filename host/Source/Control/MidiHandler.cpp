@@ -22,6 +22,7 @@
  */
 
 #include "MidiHandler.h"
+#include "Log.h"
 
 namespace directpipe {
 
@@ -137,9 +138,19 @@ void MidiHandler::startLearn(
         MidiHandler& handler;
         LearnTimeout(MidiHandler& h) : handler(h) {}
         void timerCallback() override {
-            juce::Logger::writeToLog("[MIDI] Learn timed out after 30s");
-            handler.stopLearn();
-            stopTimer();
+            stopTimer();  // Stop BEFORE any cleanup — safe to call on self
+            Log::info("MIDI", "Learn timed out after 30s");
+            // Clear learn state directly — do NOT call stopLearn() which would
+            // call learnTimer_.reset() and destroy us while on the call stack.
+            handler.learning_.store(false, std::memory_order_release);
+            {
+                std::lock_guard<std::mutex> lock(handler.bindingsMutex_);
+                handler.learnCallback_ = nullptr;
+            }
+            // Schedule our own cleanup after this callback returns safely
+            juce::MessageManager::callAsync([&h = handler]() {
+                h.learnTimer_.reset();
+            });
         }
     };
     learnTimer_ = std::make_unique<LearnTimeout>(*this);
