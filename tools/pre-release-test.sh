@@ -192,8 +192,14 @@ else
   rm -f "$BUILD_DIR/host/DirectPipe_artefacts/JuceLibraryCode/DirectPipe_resources.rc" 2>/dev/null
   rm -f "$BUILD_DIR/plugins/receiver/DirectPipeReceiver_artefacts/JuceLibraryCode/DirectPipeReceiver_resources.rc" 2>/dev/null
 
+  # Build targets — VST2 only if SDK is present
+  TARGETS="DirectPipe DirectPipeReceiver_VST3 directpipe-tests directpipe-host-tests"
+  if [[ -f "$PROJECT_ROOT/thirdparty/VST2_SDK/pluginterfaces/vst2.x/aeffect.h" ]]; then
+    TARGETS="$TARGETS DirectPipeReceiver_VST"
+  fi
+
   BUILD_START=$SECONDS
-  if "$CMAKE" --build "$BUILD_DIR" --config Release --target DirectPipe DirectPipeReceiver_VST directpipe-tests directpipe-host-tests 2>&1 | tail -5; then
+  if "$CMAKE" --build "$BUILD_DIR" --config Release --target $TARGETS 2>&1 | tail -5; then
     BUILD_TIME=$((SECONDS - BUILD_START))
     pass "Build completed (${BUILD_TIME}s)"
     add_result "Build|PASS"
