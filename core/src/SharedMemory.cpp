@@ -246,7 +246,7 @@ bool SharedMemory::create(const ::std::string& name, size_t size)
     // Remove any existing shared memory with this name
     shm_unlink(name_.c_str());
 
-    fd_ = shm_open(name_.c_str(), O_CREAT | O_RDWR, 0666);
+    fd_ = shm_open(name_.c_str(), O_CREAT | O_RDWR, 0600);
     if (fd_ < 0) return false;
 
     if (ftruncate(fd_, static_cast<off_t>(size)) < 0) {
@@ -275,7 +275,7 @@ bool SharedMemory::open(const ::std::string& name, size_t size)
     close();
     name_ = toPosixName(name);
 
-    fd_ = shm_open(name_.c_str(), O_RDWR, 0666);
+    fd_ = shm_open(name_.c_str(), O_RDWR, 0600);
     if (fd_ < 0) return false;
 
     data_ = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
@@ -353,10 +353,10 @@ bool NamedEvent::create(const ::std::string& name)
     close();
     name_ = toPosixName(name);
     // Try create first; if stale semaphore exists, unlink and retry once
-    auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0600, 0);
     if (s == SEM_FAILED && errno == EEXIST) {
         sem_unlink(name_.c_str());
-        s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+        s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0600, 0);
     }
     if (s == SEM_FAILED) return false;
     sem_ = static_cast<void*>(s);
@@ -447,10 +447,10 @@ bool NamedEvent::create(const ::std::string& name)
     close();
     name_ = toPosixName(name);
     // Try create first; if stale semaphore exists, unlink and retry once
-    auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+    auto* s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0600, 0);
     if (s == SEM_FAILED && errno == EEXIST) {
         sem_unlink(name_.c_str());
-        s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0666, 0);
+        s = sem_open(name_.c_str(), O_CREAT | O_EXCL, 0600, 0);
     }
     if (s == SEM_FAILED) return false;
     sem_ = static_cast<void*>(s);
