@@ -48,8 +48,8 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 **DirectPipe는 누구를 위한 건가요? / Who is DirectPipe for?**
 
-> VST 플러그인을 몰라도 괜찮습니다. **[Auto] 버튼 하나로 기본적인 마이크 보정이 완료됩니다.** 더 세밀한 조정은 VST 플러그인으로.
-> Don't know what VST plugins are? No problem. **One click on [Auto] handles the essential mic correction.** Fine-tune further with VST plugins.
+> VST 플러그인을 몰라도 괜찮습니다. **[Auto] 버튼 하나로 기본적인 마이크 보정이 완료됩니다.** 더 세밀한 조정은 VST 플러그인으로. ([Auto 설계 원칙](docs/AUTO_DESIGN.md))
+> Don't know what VST plugins are? No problem. **One click on [Auto] handles the essential mic correction.** Fine-tune further with VST plugins. ([Auto design principles](docs/AUTO_DESIGN.md))
 
 🎙 **스트리머 / Streamers**
 OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. **[Auto] 한 번이면 노이즈 제거 + 볼륨 안정화 완료.** Receiver VST2로 가상 케이블 없이 OBS 직접 연결.
@@ -354,6 +354,7 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - **[Quick Start](docs/QUICKSTART.md) — USB 마이크 5분 설정 가이드 / 5-minute USB mic setup guide**
 - [Platform Guide](docs/PLATFORM_GUIDE.md) — 플랫폼별 가이드 (Windows/macOS/Linux) / Platform-specific setup, features, and limitations
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
+- [Auto Design](docs/AUTO_DESIGN.md) — [Auto] 설계 원칙 및 파라미터 근거 / Auto chain design principles, parameter rationale
 - [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety
 - [Build Guide](docs/BUILDING.md) — 빌드 가이드 (멀티 플랫폼) / Build instructions for all platforms
 - [User Guide](docs/USER_GUIDE.md) — 사용법 / Setup and usage

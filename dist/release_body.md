@@ -37,6 +37,7 @@
 
 #### AGC Tuning / AGC 튜닝
 - **내부 오프셋 -4dB → -6dB** — 상용 레벨러에 가까운 출력 레벨 / Output level closer to commercial levelers
+- Auto 체인 설계 원칙 문서 추가: [Auto Design](https://github.com/LiveTrack-X/DirectPipe/blob/main/docs/AUTO_DESIGN.md)
 
 #### Build / 빌드
 - **ARM 호환** — RNNoise x86 소스 아키텍처 가드 (Universal macOS 빌드 수정) / RNNoise x86 files guarded for ARM
