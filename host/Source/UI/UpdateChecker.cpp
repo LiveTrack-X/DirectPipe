@@ -379,6 +379,12 @@ void UpdateChecker::performUpdate()
         auto batchPath = batchFile.getFullPathName().replace("/", "\\");
         auto updateDirPath = updateDir.getFullPathName().replace("/", "\\");
 
+        // Escape single quotes for PowerShell string literals ('...')
+        // e.g. O'Brien becomes O''Brien
+        auto escapePSQuote = [](const juce::String& s) -> juce::String {
+            return s.replace("'", "''");
+        };
+
         juce::String script;
         script << "@echo off\r\n";
         script << "chcp 65001 > nul\r\n";
@@ -399,13 +405,13 @@ void UpdateChecker::performUpdate()
         if (isZip) {
             script << "echo  Extracting update...\r\n";
             script << "if exist \"" << updateDirPath << "\" rd /s /q \"" << updateDirPath << "\"\r\n";
-            script << "powershell -NoProfile -Command \"Expand-Archive -Path '" << downloadPath
-                   << "' -DestinationPath '" << updateDirPath << "' -Force\"\r\n";
+            script << "powershell -NoProfile -Command \"Expand-Archive -Path '" << escapePSQuote(downloadPath)
+                   << "' -DestinationPath '" << escapePSQuote(updateDirPath) << "' -Force\"\r\n";
             script << "if exist \"" << backupPath << "\" del /f \"" << backupPath << "\"\r\n";
             script << "move /y \"" << currentPath << "\" \"" << backupPath << "\"\r\n";
-            script << "powershell -NoProfile -Command \"$f = Get-ChildItem -Path '" << updateDirPath
+            script << "powershell -NoProfile -Command \"$f = Get-ChildItem -Path '" << escapePSQuote(updateDirPath)
                    << "' -Recurse -Filter 'DirectPipe.exe' | Select-Object -First 1; "
-                   << "if ($f) { Copy-Item $f.FullName -Destination '" << currentPath << "' -Force }\"\r\n";
+                   << "if ($f) { Copy-Item $f.FullName -Destination '" << escapePSQuote(currentPath) << "' -Force }\"\r\n";
             script << "rd /s /q \"" << updateDirPath << "\"\r\n";
             script << "del /f \"" << downloadPath << "\"\r\n";
             script << "del /f \"" << backupPath << "\"\r\n";
@@ -418,7 +424,7 @@ void UpdateChecker::performUpdate()
         }
 
         script << "echo " << version << " > \"" << flagPath << "\"\r\n";
-        script << "powershell -NoProfile -Command \"Start-Process -FilePath '" << currentPath << "'\"\r\n";
+        script << "powershell -NoProfile -Command \"Start-Process -FilePath '" << escapePSQuote(currentPath) << "'\"\r\n";
         script << "exit\r\n";
 
         batchFile.replaceWithText(script);

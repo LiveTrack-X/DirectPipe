@@ -1140,9 +1140,9 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     + juce::String(desiredBS) + " SR=" + juce::String(desiredSR) + ")");
             });
         } else {
+            // Atomics — safe from any thread
             deviceLost_.store(false, std::memory_order_relaxed);
             inputDeviceLost_.store(false, std::memory_order_relaxed);
-            reconnectMissCount_ = 0;
             // Auto-unmute output if it was auto-muted due to device loss
             if (outputAutoMuted_.load(std::memory_order_relaxed)) {
                 outputAutoMuted_.store(false, std::memory_order_relaxed);
@@ -1150,16 +1150,28 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 if (!outputNone_.load(std::memory_order_relaxed))
                     outputMuted_.store(false, std::memory_order_relaxed);
             }
-            if (setup.inputDeviceName.isNotEmpty())
-                desiredInputDevice_ = setup.inputDeviceName;
-            if (setup.outputDeviceName.isNotEmpty())
-                desiredOutputDevice_ = setup.outputDeviceName;
-            // Only set desired SR/BS from device if user/settings haven't
-            // explicitly set them (first launch with no saved settings).
-            if (!desiredSRBSSet_) {
-                desiredSampleRate_ = setup.sampleRate;
-                desiredBufferSize_ = setup.bufferSize;
-            }
+            // Non-atomic [Message thread only] variables — must write on
+            // message thread to avoid data race with device thread.
+            auto aliveFlag = alive_;
+            auto inName = setup.inputDeviceName;
+            auto outName = setup.outputDeviceName;
+            auto sr = setup.sampleRate;
+            auto bs = setup.bufferSize;
+            bool srbsSet = desiredSRBSSet_;
+            juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs, srbsSet] {
+                if (!aliveFlag->load()) return;
+                reconnectMissCount_ = 0;
+                if (inName.isNotEmpty())
+                    desiredInputDevice_ = inName;
+                if (outName.isNotEmpty())
+                    desiredOutputDevice_ = outName;
+                // Only set desired SR/BS from device if user/settings haven't
+                // explicitly set them (first launch with no saved settings).
+                if (!srbsSet) {
+                    desiredSampleRate_ = sr;
+                    desiredBufferSize_ = bs;
+                }
+            });
         }
     }
 
