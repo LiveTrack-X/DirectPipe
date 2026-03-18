@@ -901,7 +901,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // we re-register at AVRT_PRIORITY_HIGH for stronger protection.
     // For ASIO (where JUCE does NO MMCSS), this is the only MMCSS registration.
 #if defined(_WIN32)
-    if (!mmcssRegistered_.load(std::memory_order_relaxed)) {
+    if (!mmcssRegistered_.load(std::memory_order_acquire)) {
         mmcssRegistered_.store(true, std::memory_order_relaxed);
         if (avSetMmThreadChar_ && avSetMmThreadPrio_) {
             DWORD taskIndex = 0;
@@ -1058,7 +1058,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     if (!device) return;
 
     // Reset MMCSS flag — new device means new audio thread, re-registration needed
-    mmcssRegistered_.store(false, std::memory_order_relaxed);
+    mmcssRegistered_.store(false, std::memory_order_release);
 
 #if defined(_WIN32)
     if (!avSetMmThreadChar_) {
@@ -1067,6 +1067,11 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW"));
             avSetMmThreadPrio_ = reinterpret_cast<AvSetMmThreadPrioFn>(
                 GetProcAddress(avrt, "AvSetMmThreadPriority"));
+            // Guard: if either function missing (corrupted DLL), null both to allow future retry
+            if (!avSetMmThreadChar_ || !avSetMmThreadPrio_) {
+                avSetMmThreadChar_ = nullptr;
+                avSetMmThreadPrio_ = nullptr;
+            }
         }
     }
 #endif
