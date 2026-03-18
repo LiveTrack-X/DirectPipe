@@ -1466,6 +1466,11 @@ void AudioEngine::attemptReconnection()
 
 // ─── Notification queue ─────────────────────────────────────────────────────
 
+// NOTE: notifQueue_[slot] assignment copies a juce::String (heap allocation).
+// This is acceptable because pushNotification is only called from the device
+// error thread (audioDeviceError) and message thread — never from the RT
+// audio callback. If a future caller needs to push from the RT callback,
+// switch to a fixed-size char array or pre-allocated string pool.
 void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)
 {
     // MPSC-safe: device thread (audioDeviceError) and message thread can both call.

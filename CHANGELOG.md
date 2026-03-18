@@ -18,6 +18,23 @@ All notable changes to DirectPipe will be documented in this file.
 - **Platform**: AutoStart setters return bool, notify user on failure
 - **IPC**: Restrict POSIX semaphore/shm permissions to owner-only (0600)
 - **XRun Tracking**: Device restart no longer clears XRun history — display persists for full 60s window
+- **Audio RT**: Moved MMCSS LoadLibraryA call from RT callback to audioDeviceAboutToStart
+- **MIDI**: Fixed LearnTimeout use-after-free when timer callback destroyed itself
+- **Preset**: Added loadingSlot_ guard to Reset Auto to prevent intermediate state auto-save
+- **Audio**: Recorder now stops on device loss (audioDeviceStopped) to prevent WAV corruption
+- **Preset**: Auto first-click failure now sets partialLoad_ to prevent saving incomplete chain
+- **Preset**: pendingSlot_ cleared on Factory Reset / Clear All Presets
+- **State**: Plugin name now included in quickStateHash — name changes trigger WebSocket broadcast
+- **WebSocket**: broadcastToClients releases clientsMutex_ before socket writes — prevents slow client blocking shutdown
+- **IPC**: Receiver VST now calls detach() before close() on failed producer check — fixes spurious multi-consumer warning
+- **Thread Safety**: audioDeviceAboutToStart non-atomic variable writes deferred to message thread via callAsync
+- **Update**: PowerShell batch script now escapes single quotes in paths (e.g., O'Brien user profiles)
+- **Audio**: Added null guard on outputChannelData for ASIO legacy drivers
+- **Preset**: parseSlotFile now uses .bak fallback (loadFileWithBackupFallback) for crash resilience
+- **UI**: Plugin removal now identifies by index+name, not name-only (fixes duplicate-name removal)
+- **WebSocket**: Sends RFC 6455 close frame (1009) before disconnecting oversized-message clients
+- **Settings**: importAll/importFullBackup now check platform compatibility internally
+- **Platform**: macOS/Linux AutoStart uses atomicWriteFile for crash-safe plist/desktop writes
 
 ---
 
