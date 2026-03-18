@@ -6,7 +6,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 크로스 플랫폼 실시간 VST2/VST3 호스트. Windows(안정), macOS(베타), Linux(실험적). 마이크 입력을 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치로 직접 전송, 별도 공유 모드 모니터 출력(헤드폰) 옵션. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
 > **v4.0.0은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서를 추가한 정식 릴리즈입니다.**
-> MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→294+개 확장.
+> MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→295개 확장.
 
 ## Documentation Sync Rule (필수)
 
@@ -32,7 +32,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 8. Platform abstraction layer: `host/Source/Platform/` with per-OS implementations
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+, project version 4.0.0
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 4.0.1
 - **Windows**: WASAPI Shared + Low Latency + Exclusive Mode + ASIO (Steinberg ASIO SDK)
 - **macOS**: CoreAudio + AU hosting. Universal binary (arm64+x86_64). Deployment target 10.15
 - **Linux**: ALSA + JACK (PipeWire via JACK compat)
@@ -49,8 +49,8 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 | Class | Method/Area | Thread | Notes |
 |-------|------------|--------|-------|
 | AudioEngine | audioDeviceIOCallbackWithContext | RT (audio) | No alloc, no mutex, no logging |
-| AudioEngine | checkReconnection | Message (30Hz timer) | Timer callback |
-| AudioEngine | audioDeviceAboutToStart | Device thread | Non-atomic writes deferred via callAsync |
+| AudioEngine | checkReconnection | Message (30Hz timer) | Timer callback; also drains chainCrashed_ notification (deferred from RT) |
+| AudioEngine | audioDeviceAboutToStart | Device thread | SpinLock for desiredDevice_ reads; non-atomic writes deferred via callAsync; BS=0/SR=0 guard skips prepare |
 | AudioEngine | setInputDevice/setOutputDevice | Message | May restart device |
 | VSTChain | processBlock | RT (audio) | NO chainLock_ |
 | VSTChain | addPlugin/removePlugin/movePlugin | Message | Holds chainLock_ |
@@ -87,9 +87,11 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 3. bindingsMutex_ (MidiHandler) — bindings_ 보호
 4. clientsMutex_ (WebSocketServer) — clients_ 벡터 보호
    4a. sendMutex (WebSocketServer, per-connection) — 소켓 동시 쓰기 방지
+   4b. handlersMutex_ (HttpApiServer) — handlerThreads_ 벡터 보호
 5. stateMutex_ (StateBroadcaster) — state_ 보호
 6. listenerMutex_ (ActionDispatcher/StateBroadcaster) — listeners_ 보호
 7. writeMutex_ (DirectPipeLogger) — 로그 쓰기 보호
+S. desiredDeviceLock_ (AudioEngine, SpinLock) — desiredInputDevice_/desiredOutputDevice_ 보호 (RT-safe, 짧은 임계 구간)
 
 ⛔ 금지: chainLock_ 내에서 writeToLog 호출 (교착 위험: chainLock_ → writeMutex_)
 ⛔ 금지: clientsMutex_ 내에서 thread.join() (교착 위험)
@@ -100,11 +102,11 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 
 | Pattern | Description | Used By |
 |---------|-------------|---------|
-| `alive_` flag | `shared_ptr<atomic<bool>>`, destructor에서 false 설정, callAsync 람다에서 값 캡처 | ActionDispatcher, StateBroadcaster, VSTChain, UpdateChecker, AudioEngine, MonitorOutput, PluginScanner, HttpApiServer, PresetManager |
+| `alive_` flag | `shared_ptr<atomic<bool>>`, destructor에서 false 설정, callAsync 람다에서 값 캡처 | ActionDispatcher, StateBroadcaster, VSTChain, UpdateChecker, AudioEngine, MonitorOutput, PluginScanner, HttpApiServer, PresetManager, MidiHandler, SettingsAutosaver |
 | SafePointer | JUCE Component 포인터, 삭제 시 null, callAsync에서 UI 안전 | MainComponent, PluginChainEditor, HotkeyTab, MidiTab, LogPanel, OutputPanel, PresetSlotBar, PluginScanner |
 | copy-before-iterate | 리스너 벡터 복사 후 락 밖에서 순회 (재진입 안전) | ActionDispatcher, StateBroadcaster |
 | ActionResult | `[[nodiscard]]` ok()/fail(msg) 구조화 에러 처리. 반환값 무시 시 컴파일 경고 | AudioEngine 디바이스 메서드, MonitorOutput |
-| atomicWriteFile | `[[nodiscard]]` .tmp → .bak → rename (crash-safe 파일 저장). 반환값 무시 시 컴파일 경고 | PresetManager, SettingsExporter, ControlMapping, OutputPanel |
+| atomicWriteFile | `[[nodiscard]]` .tmp → .bak → rename (crash-safe 파일 저장). 반환값 무시 시 컴파일 경고 | PresetManager, SettingsExporter, ControlMapping, OutputPanel, MacAutoStart, LinuxAutoStart |
 | generation counter | uint32_t atomic 카운터, 오래된 콜백 폐기 | VSTChain asyncGeneration_, PluginPreloadCache preloadGeneration_ |
 | AtomicGuard/BoolGuard | RAII 스코프 가드 — 생성 시 true, 소멸 시 false. early return 안전 (`Util/ScopedGuard.h`) | AudioEngine intentionalChange_/attemptingReconnection_, ActionHandler loadingSlot_ |
 | PluginIndex/SlotIndex | 강타입 인덱스 래퍼 — 서로 다른 인덱스 타입 혼동 시 컴파일 에러 (`Util/StrongIndex.h`) | VSTChain movePlugin |
@@ -174,7 +176,9 @@ MainComponent Split (v3→v4):
 - **Device auto-reconnection**: Dual mechanism — `ChangeListener` on `deviceManager_` for immediate detection + 3s timer polling fallback (`checkReconnection`). Tracks `desiredInputDevice_`/`desiredOutputDevice_`. `deviceLost_` set by `audioDeviceError`, cleared by `audioDeviceAboutToStart`. `attemptReconnection()` preserves SR/BS/channel routing (ASIO safe). Re-entrancy guard (`attemptingReconnection_`). NotificationBar: Warning on disconnect, Info on reconnect. Monitor device uses same pattern independently (`monitorLost_` + own cooldown). **Per-direction loss**: `inputDeviceLost_` silences input in audio callback. `outputAutoMuted_` auto-mutes on device loss, auto-unmutes on restore. `reconnectMissCount_` after 5 failed attempts. AudioSettings combos show "DeviceName (Disconnected)" for lost devices.
 - **Driver type snapshot/restore**: `DriverTypeSnapshot` struct stores per-driver-type settings (input/output device, SR, BS, `outputNone`) in `driverSnapshots_` map. ASIO switch builds ordered `tryOrder` list (preferred → lastAsio → all remaining) and iterates all devices before reverting. `AudioSettings::onDriverTypeChanged` checks return value and syncs driver combo on failure.
 - **Device fallback protection**: `intentionalChange_` flag in AudioEngine prevents `audioDeviceAboutToStart` from treating JUCE auto-fallback as successful reconnection. MonitorOutput rejects JUCE auto-fallback devices. OutputPanel shows "Fallback: DeviceName" in orange. Settings export uses desired device names.
-- **audioDeviceAboutToStart thread safety**: Called on device thread. Non-atomic writes (`desiredInputDevice_`, `desiredOutputDevice_`, `reconnectMissCount_`, etc.) deferred to message thread via `callAsync` with `alive_` guard. MMCSS function pointers cached here (write-once, then read from RT callback). `mmcssRegistered_` reset to false for re-registration on new audio thread.
+- **audioDeviceAboutToStart thread safety**: Called on device thread. `desiredInputDevice_`/`desiredOutputDevice_` protected by `desiredDeviceLock_` SpinLock (reads on device thread, writes deferred via callAsync to message thread). Other non-atomic writes (`reconnectMissCount_`, etc.) deferred to message thread via `callAsync` with `alive_` guard. **BS=0/SR=0 guard**: if device reports invalid SR/BS, logs warning and skips prepareToPlay (prevents division-by-zero). MMCSS function pointers cached here (write-once, then read from RT callback). `mmcssRegistered_` reset to false for re-registration on new audio thread. **chainCrashed_ NOT reset here** — device events (WASAPI session changes, ASIO BS change) fire without chain change; instead cleared by `clearChainCrash()` on chain structure change (plugin add/remove/slot switch).
+- **processBlockSEH (Windows SEH crash guard)**: `processBlockSEH()` helper wraps `VSTChain::processBlock` in `__try/__except` to catch Windows SEH exceptions (access violations) that `try/catch(...)` cannot. Extracted into a separate function because MSVC forbids `__try` in functions with C++ destructors on stack. On non-Windows: `try/catch(...)` fallback. On exception: buffer cleared + `chainCrashed_` set atomically.
+- **chainCrashed_ deferred notification**: `chainCrashed_` is set on RT thread (no logging/alloc). `chainCrashNotified_` one-shot flag prevents repeated notifications. `checkReconnection()` (30Hz timer, message thread) detects the flag and pushes user notification. `clearChainCrash()` resets both flags — called on chain structure change (not device restart).
 - **Main output**: Processed audio written directly to outputChannelData. Works with WASAPI, ASIO, CoreAudio, ALSA, JACK.
 - **Output "None" mode**: `setOutputNone(bool)` / `isOutputNone()` — `outputNone_` atomic flag mutes output and locks OUT button. Cleared on driver type switch. `DriverTypeSnapshot` saves/restores per driver type.
 - **Monitor output**: Separate shared-mode AudioDeviceManager (WASAPI/CoreAudio/ALSA) + lock-free AudioRingBuffer for headphone monitoring. Independent of main driver type. Status indicator (Active/SampleRateMismatch/Error/No device). Auto-reconnection via `monitorLost_` atomic + 3s timer polling. Monitor underrun tracking via `underrunCount_` atomic counter. `getUnderrunCount()` accessor for diagnostics.
@@ -194,7 +198,8 @@ MainComponent Split (v3→v4):
 - **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup. Port 8765. UDP discovery broadcast (port 8767). `broadcastToClients` releases `clientsMutex_` before socket writes (prevents shutdown hang); dead thread join outside lock.
 - **IPC Toggle**: `Action::IpcToggle` toggles IPC output. WebSocket/HTTP/MIDI mappable.
 - **Default hotkeys**: 11 defaults from `createDefaults()` — Panic Mute (Ctrl+Shift+M), Master Bypass (Ctrl+Shift+0), Plugin 1-3 Bypass (Ctrl+Shift+1~3), Input Mute (Ctrl+Shift+F6), Monitor Toggle (Ctrl+Shift+H), Preset Slot A-E (Ctrl+Shift+F1~F5). Users can change/add more via Controls > Hotkeys tab. Existing users keep their saved config (createDefaults() only runs on first launch).
-- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: `parseFloat()` strict validation rejects strings like "abc0.5" that `getFloatValue()` silently converts. `escapeJsonString()` prevents response injection from URL segments. Gain delta endpoint scales by 10x (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`), safety limiter toggle/ceiling (`/api/limiter/toggle`, `/api/limiter/ceiling/:value`), auto processors add (`/api/auto/add`).
+- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: `parseFloat()` strict validation rejects strings like "abc0.5" that `getFloatValue()` silently converts. `escapeJsonString()` prevents response injection from URL segments. Gain delta endpoint scales by 10x (compensates ActionHandler's `*0.1f` hotkey step design). **Handler socket tracking**: `HandlerThread` struct tracks per-connection thread + socket + done flag. `handlersMutex_` protects `handlerThreads_` vector. `stop()` closes all tracked sockets to unblock read(), then joins threads outside lock (same pattern as WebSocketServer). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`), safety limiter toggle/ceiling (`/api/limiter/toggle`, `/api/limiter/ceiling/:value`), auto processors add (`/api/auto/add`).
+- **MidiHandler `alive_` flag**: Uses `shared_ptr<atomic<bool>>` pattern for callAsync lifetime guard. **Duplicate binding overwrite**: `addBinding()` checks for existing binding with same CC/channel/device/type — overwrites action instead of creating duplicate entry.
 - **MIDI Learn cancel**: Cancel button in MidiTab. `stopLearn()` called on cancel. Learn timeout (30s): timer callback clears learn state directly instead of calling `stopLearn()` — avoids destroying the timer from its own callback (use-after-free).
 - **MIDI HTTP API test endpoints**: `/api/midi/cc/:ch/:num/:val` and `/api/midi/note/:ch/:num/:vel`.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow.
@@ -211,8 +216,8 @@ MainComponent Split (v3→v4):
 
 ### Receiver & Stream Deck
 - **Receiver VST plugin**: VST2/VST3/AU plugin for OBS and DAWs. Reads shared memory IPC. Configurable buffer size (5 presets). Formats: .dll (Win VST2), .vst3 (all), .vst (macOS VST2 bundle), .component (macOS AU), .so (Linux VST2).
-- **IPC drift compensation**: Bidirectional clock drift handling in Receiver VST. High-fill: excess frames skipped when buffer > highThreshold. Low-fill: read amount halved when buffer < lowThreshold, creating micro-gaps instead of hard clicks. Buffer presets include targetFill/highThreshold/lowThreshold per preset. Warmup period (50 blocks) before drift checks activate.
-- **Stream Deck plugin**: SDKVersion 3, 10 SingletonAction subclasses (7 original + Performance Monitor, Plugin Parameter [SD+], Preset Bar [SD+]), Property Inspector HTML (sdpi-components v4), event-driven reconnection, SVG icons + @2x. Pending message queue (cap 50). Packaged via `streamdeck pack` CLI. Plugin Parameter and Preset Bar PI use `GET /api/plugins` and `GET /api/plugin/:idx/params` for dynamic dropdowns.
+- **IPC drift compensation**: Bidirectional clock drift handling in Receiver VST. High-fill: excess frames skipped when buffer > highThreshold. Low-fill: read amount halved when buffer < lowThreshold, creating micro-gaps instead of hard clicks. Buffer presets include targetFill/highThreshold/lowThreshold per preset. Warmup period (50 blocks) before drift checks activate. **Drift hysteresis dead-band**: between lowThreshold/2 and lowThreshold, normal reading without throttling — prevents oscillation. **Fade-out improvement**: saves last 64 samples of output buffer (`saveLastOutput`); on underrun, plays fade-out ramp using saved data (not just last sample) for smoother transition. `isBusesLayoutSupported`: mono + stereo output. `getLatencySamples()` = targetFillFrames (updated dynamically when buffer preset changes).
+- **Stream Deck plugin**: SDKVersion 3, 10 SingletonAction subclasses (7 original + Performance Monitor, Plugin Parameter [SD+], Preset Bar [SD+]), Property Inspector HTML (sdpi-components v4), event-driven reconnection, SVG icons + @2x. Pending message queue (cap 50). Packaged via `streamdeck pack` CLI. Plugin Parameter and Preset Bar PI use `GET /api/plugins` and `GET /api/plugin/:idx/params` for dynamic dropdowns. `autoReconnect: true` in plugin.js DirectPipeClient constructor. Handles `activeSlot === -1` (no slot active) and `auto_slot_active` (Auto slot selected) in preset-switch and preset-bar actions.
 
 ### Platform-Specific Notes
 - **CJK font rendering**: Platform-specific fonts — Windows: Bold Malgun Gothic. macOS: Apple SD Gothic Neo. Linux: Noto Sans CJK KR.
@@ -266,6 +271,10 @@ MainComponent Split (v3→v4):
 - **No LoadLibraryA in RT callback**: Cache function pointers (e.g., MMCSS avrt.dll) in `audioDeviceAboutToStart` — never call LoadLibraryA from the audio callback.
 - **Don't destroy juce::Timer from its own timerCallback**: Use `callAsync` to defer `reset()` or destruction. Direct destruction causes use-after-free (JUCE Timer internals reference destroyed object after callback returns).
 - **broadcastToClients lock discipline**: Release `clientsMutex_` before socket writes — holding the lock during potentially-blocking I/O causes shutdown hangs.
+- **processBlockSEH pattern (Windows)**: Wrap VST processBlock in `__try/__except` via a separate helper function (MSVC restriction). On non-Windows: `try/catch(...)`. On exception: clear buffer + set `chainCrashed_` atomic flag. Never log or allocate in the exception handler (RT thread).
+- **chainCrashed_ deferred notification**: Set `chainCrashed_` atomically on RT thread (no alloc/log). Push user notification from `checkReconnection()` on message thread via `chainCrashNotified_` one-shot flag. Reset both flags via `clearChainCrash()` on chain structure change only (NOT device restart).
+- **BS=0/SR=0 guard in audioDeviceAboutToStart**: If device reports invalid SR (<=0) or BS (<=0), log warning and return early — skip prepareToPlay to prevent division-by-zero and invalid buffer allocation.
+- **desiredDeviceLock_ SpinLock**: Protects `desiredInputDevice_`/`desiredOutputDevice_` (juce::String) for cross-thread reads from device thread. Short critical sections only. Writes deferred to message thread via callAsync.
 
 ## Modules
 - `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants). POSIX: shm_open + sem_open (macOS sem_trywait polling, Linux sem_timedwait). Windows: CreateFileMapping + CreateEvent.
@@ -285,7 +294,7 @@ MainComponent Split (v3→v4):
   - Root: MainComponent, Main, **ActionResult.h**
 - `plugins/receiver/` -> Receiver VST2/VST3/AU plugin for OBS and DAWs (shared memory IPC consumer, configurable buffer size)
 - `com.directpipe.directpipe.sdPlugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v3)
-- `tests/` -> Google Test (core tests + host tests, **294+ tests, 18 host suites**)
+- `tests/` -> Google Test (core tests + host tests, **295 tests: 51 core (6 suites) + 244 host (23 suites)**)
 - `dist/` -> Packaged .streamDeckPlugin + marketplace assets
 
 **(bold = v3에 없고 v4에서 추가된 모듈)**
@@ -318,6 +327,9 @@ MainComponent Split (v3→v4):
 - Output Volume slider is in AudioSettings (Audio tab), not OutputPanel
 - Safety Limiter ceiling slider is in PluginChainEditor (above Add Plugin), not OutputPanel
 - MUTE buttons (OUT/MON/VST): height 30-32px
+- Receiver: `isBusesLayoutSupported` accepts mono + stereo output. `getLatencySamples()` = targetFillFrames (dynamic). Drift dead-band hysteresis between lowThreshold/2 and lowThreshold. Fade-out uses saved 64-sample buffer tail (not last sample value)
+- Stream Deck: `autoReconnect: true`, handles `activeSlot === -1` (no slot active) and `auto_slot_active` (Auto slot). Clears stale state on reconnect
+- Build: RNNoise x86 sources guarded for ARM (`CMAKE_SYSTEM_PROCESSOR` check). VST2 target conditional on SDK presence (`DIRECTPIPE_HAS_VST2`). `desiredDeviceLock_` SpinLock protects device name strings across threads
 - **v3 핫픽스 동기화**: v3에서 긴급 버그를 수정하면 반드시 이 v4에도 동기화해야 합니다. 단, v3 전용 코드(version ceiling 등)는 동기화 제외. 상세 절차는 `../HOTFIX_RELEASE_GUIDE.md` Phase 10 참조.
 
 ## Pre-Release Workflow (MANDATORY)
@@ -332,7 +344,7 @@ When the user asks to "release", "make a release", "commit for release", "push r
 Do NOT proceed with release packaging (ZIP, gh release, git push) until all 5 steps are confirmed.
 If any step fails, help fix the issue first, then re-run that step.
 
-**v4.0.0은 정식 릴리즈(latest)입니다.** v3 사용자의 자동 업데이터가 v4.0.0을 감지합니다. 릴리스 asset 이름에 플랫폼 태그(-Windows.zip, -macOS.dmg, -Linux.tar.gz)가 포함되어 있어 올바른 바이너리를 다운로드합니다.
+**v4.0.x는 정식 릴리즈(latest)입니다.** v3 사용자의 자동 업데이터가 v4를 감지합니다. 릴리스 asset 이름에 플랫폼 태그(-Windows.zip, -macOS.dmg, -Linux.tar.gz)가 포함되어 있어 올바른 바이너리를 다운로드합니다.
 
 **문서 업데이트도 필수**: 코드 변경 시 README.md, docs/ 내 관련 문서, 이 CLAUDE.md도 현재 상태에 맞게 업데이트해야 합니다.
 
@@ -411,6 +423,13 @@ If any step fails, help fix the issue first, then re-run that step.
 - **원인**: 여러 플러그인을 순차 변경하는 bulk operation에서 `loadingSlot_` 가드 없이 실행 → SettingsAutosaver가 각 변경마다 dirty flag 설정
 - **진단**: `setPluginBypassed` 루프, `removePlugin` 루프 등에서 `AtomicGuard loadGuard(loadingSlot_)` 존재 확인
 - **해결**: `AtomicGuard loadGuard(loadingSlot_)` RAII 가드로 bulk operation 감싸기
+
+### Plugin processBlock 크래시 (chainCrashed_)
+- **증상**: 갑자기 오디오 출력이 무음이 되고 "Plugin crash detected" 알림 표시
+- **원인**: 써드파티 VST 플러그인이 processBlock에서 access violation (Windows SEH) 또는 예외 발생
+- **진단**: `chainCrashed_` atomic flag 확인. `processBlockSEH` 로그 확인. 문제 플러그인 식별 후 제거
+- **해결**: `clearChainCrash()` 호출 (chain structure 변경 시 자동). 문제 플러그인은 체인에서 제거
+- **참조**: Audio/AudioEngine.cpp `processBlockSEH` helper, `chainCrashed_`/`chainCrashNotified_` flags
 
 ### broadcastToClients 락 보유 중 소켓 쓰기 (셧다운 행)
 - **증상**: 앱 종료 시 행 (hang), 특히 클라이언트 연결 중 종료
