@@ -84,6 +84,8 @@ All notable changes to DirectPipe will be documented in this file.
 - **Settings**: Add null guard on getDynamicObject() in ControlMapping::load() — prevent crash on corrupt config
 - **Audio**: Guard audioDeviceAboutToStart against BS=0 or SR=0 — prevent VST prepareToPlay with invalid params
 - **Audio**: Move crash notification from RT thread to 30Hz message-thread timer — eliminate heap alloc in crash handler
+- **Action**: Add loadingSlot_ guard to AutoProcessorsAdd fallback path — prevent intermediate state auto-save
+- **File I/O**: Check atomicWriteFile return values at 4 sites — log warning on write failure instead of silent data loss
 
 ---
 
