@@ -365,8 +365,10 @@ void WebSocketServer::serverThread()
                     std::lock_guard<std::mutex> lock(clientsMutex_);
 
                     // Atomic check-and-increment under same lock — prevents TOCTOU race
-                    if (clientCount_.load(std::memory_order_relaxed) >= 16) {
-                        Log::warn("WS", "Max clients (16) reached, rejecting connection");
+                    // 32 concurrent WS clients is generous for SD + dashboards + scripts
+                    static constexpr int kMaxClients = 32;
+                    if (clientCount_.load(std::memory_order_relaxed) >= kMaxClients) {
+                        Log::warn("WS", "Max WebSocket clients reached, rejecting connection");
                         accepted->close();
                         delete accepted;
                         continue;

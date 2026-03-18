@@ -177,8 +177,11 @@ void HttpApiServer::serverThread()
                     delete client;  // stop() already ran — clean up and exit
                     break;
                 }
-                // Connection limit — prevent DoS via excessive connections
-                if (handlerThreads_.size() >= 16) {
+                // Connection limit — prevent DoS via excessive concurrent connections.
+                // 64 is generous: HTTP uses Connection: close, so each handler
+                // finishes in milliseconds. Only sustained parallel floods hit this.
+                static constexpr size_t kMaxHandlers = 64;
+                if (handlerThreads_.size() >= kMaxHandlers) {
                     delete client;
                     continue;
                 }
