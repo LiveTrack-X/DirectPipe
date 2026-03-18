@@ -362,13 +362,16 @@ void WebSocketServer::serverThread()
             if (serverSocket_->isConnected()) {
                 auto accepted = serverSocket_->waitForNextConnection();
                 if (accepted) {
-                    // Reject if too many clients are connected
+                    std::lock_guard<std::mutex> lock(clientsMutex_);
+
+                    // Atomic check-and-increment under same lock — prevents TOCTOU race
                     if (clientCount_.load(std::memory_order_relaxed) >= 16) {
                         Log::warn("WS", "Max clients (16) reached, rejecting connection");
                         accepted->close();
                         delete accepted;
                         continue;
                     }
+                    clientCount_.fetch_add(1, std::memory_order_relaxed);
 
                     auto conn = std::make_unique<ClientConnection>();
                     conn->socket = std::unique_ptr<juce::StreamingSocket>(accepted);
@@ -377,9 +380,8 @@ void WebSocketServer::serverThread()
                         clientThread(connPtr);
                     });
 
-                    std::lock_guard<std::mutex> lock(clientsMutex_);
                     clients_.push_back(std::move(conn));
-                    int count = clientCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+                    int count = clientCount_.load(std::memory_order_relaxed);
 
                     Log::info("WS", "Client connected (total=" + juce::String(count) + ")");
                 }

@@ -177,6 +177,11 @@ void HttpApiServer::serverThread()
                     delete client;  // stop() already ran — clean up and exit
                     break;
                 }
+                // Connection limit — prevent DoS via excessive connections
+                if (handlerThreads_.size() >= 16) {
+                    delete client;
+                    continue;
+                }
                 auto doneFlag = std::make_shared<std::atomic<bool>>(false);
                 handlerThreads_.push_back({
                     std::thread([this, client, aliveFlag, doneFlag]() {
