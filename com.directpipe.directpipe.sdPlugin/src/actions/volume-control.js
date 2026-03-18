@@ -153,12 +153,16 @@ class VolumeControlAction extends SingletonAction {
 
     updateAllFromState(state) {
         const now = Date.now();
-        for (const [, until] of this._localOverrideUntil) {
-            if (now < until) return;
+        // Clean up expired overrides
+        for (const [target, until] of this._localOverrideUntil) {
+            if (now >= until) this._localOverrideUntil.delete(target);
         }
-        this._localOverrideUntil.clear();
+        // Per-target override check — skip only actions whose target is still overridden
         for (const action of this.actions) {
             const settings = this._settingsCache.get(action.id) ?? {};
+            const target = settings?.target || "monitor";
+            const until = this._localOverrideUntil.get(target);
+            if (until && now < until) continue;  // skip only this target
             this._updateDisplay(action, settings, state);
         }
     }

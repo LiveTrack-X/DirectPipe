@@ -45,19 +45,34 @@ class PresetBarAction extends SingletonAction {
     updateAllFromState(state) {
         if (!state?.data) return;
         const slotNames = state.data.slot_names || [];
-        const activeSlot = state.data.active_slot ?? 0;
+        const activeSlot = state.data.active_slot;
+        const autoActive = state.data.auto_slot_active === true;
         const labels = ["A", "B", "C", "D", "E"];
 
         for (const action of this.actions) {
-            const label = labels[activeSlot] || "?";
-            const name = slotNames[activeSlot] || "";
-            const display = name ? `${label}|${name}` : `Slot ${label}`;
+            let display;
+            let indicatorValue;
+
+            if (autoActive) {
+                // Auto slot active — show [Auto] indicator
+                display = "[Auto]";
+                indicatorValue = 100;
+            } else if (activeSlot === -1 || activeSlot === undefined || activeSlot === null) {
+                // No slot active — show dash
+                display = "\u2014";
+                indicatorValue = 0;
+            } else {
+                const label = labels[activeSlot] || "?";
+                const name = slotNames[activeSlot] || "";
+                display = name ? `${label}|${name}` : `Slot ${label}`;
+                indicatorValue = (activeSlot + 1) * 20;
+            }
 
             if (typeof action.setFeedback === "function") {
                 action.setFeedback({
                     title: "Preset",
                     value: display,
-                    indicator: { value: (activeSlot + 1) * 20, enabled: true },
+                    indicator: { value: indicatorValue, enabled: true },
                 });
             }
         }

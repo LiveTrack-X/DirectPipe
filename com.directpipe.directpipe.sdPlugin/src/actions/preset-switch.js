@@ -91,12 +91,22 @@ class PresetSwitchAction extends SingletonAction {
         if (!state?.data) return;
         const activeSlot = state.data.active_slot;
         const slotNames = state.data.slot_names || [];
+        const autoActive = state.data.auto_slot_active === true;
 
         if (settings?.slotIndex !== undefined && settings.slotIndex !== "cycle") {
             const idx = Number(settings.slotIndex);
             const slotLabel = SLOT_LABELS[idx] || "?";
             const slotName = slotNames[idx] || "";
-            const isActive = activeSlot === idx;
+            let isActive;
+
+            if (autoActive) {
+                // Auto slot active — no regular slot is highlighted
+                isActive = false;
+            } else if (activeSlot === -1 || activeSlot === undefined || activeSlot === null) {
+                isActive = false;
+            } else {
+                isActive = activeSlot === idx;
+            }
 
             let title;
             if (slotName) {
@@ -107,8 +117,22 @@ class PresetSwitchAction extends SingletonAction {
             action.setTitle(title);
         } else {
             // "cycle" mode — show the currently active slot
-            const label = SLOT_LABELS[activeSlot] || "?";
-            const activeName = slotNames[activeSlot] || "";
+            let label;
+            let activeName;
+
+            if (autoActive) {
+                // Override display for cycle mode
+                label = "Auto";
+                activeName = "Auto";
+            } else if (activeSlot === -1 || activeSlot === undefined || activeSlot === null) {
+                // No slot active — show dash
+                label = "\u2014";
+                activeName = "";
+            } else {
+                label = SLOT_LABELS[activeSlot] || "?";
+                activeName = slotNames[activeSlot] || "";
+            }
+
             if (activeName) {
                 action.setTitle(`${label}|${activeName}`);
             } else {

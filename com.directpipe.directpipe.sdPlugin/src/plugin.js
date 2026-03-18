@@ -92,7 +92,8 @@ dpClient.on("state", (state) => {
 
 dpClient.on("connected", () => {
     streamDeck.logger.info("Connected to DirectPipe host");
-    broadcastState(currentState);
+    // Don't broadcast stale state — wait for fresh state from host
+    currentState = null;
 });
 
 dpClient.on("disconnected", () => {
