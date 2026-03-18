@@ -21,7 +21,7 @@
  * @brief HTTP API client for DirectPipe host, with port fallback.
  */
 
-const BASE_PORTS = [8766, 8767, 8768, 8769, 8770, 8771];
+const BASE_PORTS = [8766, 8768, 8769, 8770, 8771];
 let cachedPort = null;
 
 async function findPort() {

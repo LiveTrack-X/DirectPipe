@@ -23,7 +23,7 @@
     </sdpi-item>
 
     <script>
-    var PORTS = [8766, 8767, 8768, 8769, 8770, 8771];
+    var PORTS = [8766, 8768, 8769, 8770, 8771];
 
     async function findPort() {
         for (var i = 0; i < PORTS.length; i++) {
@@ -53,6 +53,11 @@
                 opt.textContent = (p.index + 1) + " - " + (p.name || "(Empty)");
                 sel.appendChild(opt);
             });
+            // Restore saved selection
+            var tf = document.querySelector('[setting="pluginNumber"]');
+            if (tf && tf.value && sel.querySelector('option[value="' + tf.value + '"]')) {
+                sel.value = tf.value;
+            }
         } catch (e) {
             sel.innerHTML = '<option value="">Error loading</option>';
         }
