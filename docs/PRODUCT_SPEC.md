@@ -1103,10 +1103,10 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
 | 체크 | 시작 시 백그라운드 스레드에서 GitHub API (최신 릴리즈) |
 | 비교 | Semver 비교 |
 | 표시 | Credit 라벨에 "NEW vX.Y.Z" (주황색) |
-| 다이얼로그 | [Update Now] / [View on GitHub] / [Later] |
-| 업데이트 | GitHub 릴리즈에서 아카이브 다운로드 → 플랫폼 스크립트로 바이너리 교체 (Windows: batch, macOS/Linux: shell) → 자동 재시작 |
+| 다이얼로그 | [Update Now] (Windows only) / [View on GitHub] / [Later] |
+| 업데이트 | Windows: GitHub 릴리즈에서 ZIP 다운로드 → batch 스크립트로 바이너리 교체 → 자동 재시작. macOS/Linux: "View on GitHub" 버튼으로 릴리즈 페이지 안내 (수동 다운로드) |
 | 완료 확인 | `_updated.flag` 파일 → 다음 시작 시 "Updated successfully" 알림 |
-| 스레드 안전 | `SafePointer` 사용 (`checkForUpdate` callAsync) |
+| 스레드 안전 | `alive_` 플래그 (`shared_ptr<atomic<bool>>`) 사용 (`checkForUpdate` callAsync) |
 
 ---
 
@@ -1114,7 +1114,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
 
 | 기능 | 상세 |
 |------|------|
-| **시스템 시작** | Windows: 레지스트리 `HKCU\...\Run\DirectPipe`. macOS: Login Items. Linux: `~/.config/autostart/`. 트레이 메뉴 + Controls > General에서 토글 |
+| **시스템 시작** | Windows: 레지스트리 `HKCU\...\Run\DirectPipe`. macOS: LaunchAgent (`~/Library/LaunchAgents/com.directpipe.host.plist`). Linux: `~/.config/autostart/directpipe.desktop`. 트레이 메뉴 + Settings 탭에서 토글 |
 | **단일 인스턴스** | `moreThanOneInstanceAllowed()` = false. `--scan` 인자 시에만 복수 허용. 포터블 모드에서는 true (다중 인스턴스 허용, 폴더별 InterProcessLock으로 같은 폴더 중복만 차단) |
 | **프로세스 우선순위** | `HIGH_PRIORITY_CLASS` |
 | **포터블 모드** | exe 옆 `portable.flag` → 설정을 `./config/`에 저장. `ControlMappingStore::getConfigDirectory()` 사용 |

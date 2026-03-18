@@ -333,7 +333,7 @@ Log::setAuditMode(false);  // disable (default)
 }  // → "INF [VST] Cached chain swap: 3 plugins (15ms)"
 
 // Session header (call once at startup)
-Log::sessionStart("4.0.0");
+Log::sessionStart("4.0.1");
 Log::audioConfig(driverType, inputDevice, outputDevice, sr, bs);
 ```
 
