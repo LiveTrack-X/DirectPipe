@@ -44,6 +44,14 @@ All notable changes to DirectPipe will be documented in this file.
 - **Cache**: Remove dangerous thread detach in PluginPreloadCache::cancelAndWait — leak instead of use-after-free
 - **IPC**: Add atomic detach guard to RingBuffer — prevent null deref on concurrent detach/write
 - **Audio**: Protect desiredDevice_ reads in audioDeviceAboutToStart with SpinLock (cross-thread safety)
+- **Settings**: Guard SettingsAutosaver callAsync with alive_ flag — prevent use-after-free on fast quit
+- **State**: Fix masterBypassed computation — no longer reports true when plugins are unloaded (DLL missing)
+- **WebSocket**: Handle continuation frame (opcode 0x0) — prevent stream corruption on fragmented messages
+- **Audio**: Log error when driver snapshot restore fails (setAudioDeviceSetup return value was ignored)
+- **Preset**: Sync loadSlot path now sets partialLoad_ — prevent auto-save overwriting incomplete chains
+- **WebSocket**: Check sendFrame return on initial state delivery — disconnect on failure
+- **Preset**: Allow clearing slot name to empty (previously ghost name persisted in JSON)
+- **Settings**: Reset activeSlot to A on .dpbackup import (slot files not included in backup)
 
 ---
 
