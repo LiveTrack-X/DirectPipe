@@ -98,7 +98,7 @@ public:
     /**
      * @brief Add a MIDI mapping.
      */
-    void addBinding(const MidiBinding& binding);
+    bool addBinding(const MidiBinding& binding);
 
     /**
      * @brief Remove a MIDI mapping by index.

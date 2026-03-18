@@ -194,6 +194,13 @@ MainComponent::MainComponent(bool enableExternalControls)
             presetManager_->saveSlot(autoIdx);
             loadingSlot_ = false;
 
+            // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
+            if (auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
+                if (std::abs(device->getCurrentSampleRate() - 48000.0) > 1.0)
+                    showNotification("Noise Removal requires 48kHz — currently inactive at this sample rate",
+                                     NotificationLevel::Warning);
+            }
+
             // Deselect A-E, highlight Auto button
             if (presetSlotBar_)
                 presetSlotBar_->setActiveSlot(autoIdx);
@@ -828,6 +835,13 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                     }
 
                     loadingSlot_ = false;
+
+                    // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
+                    if (auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
+                        if (std::abs(device->getCurrentSampleRate() - 48000.0) > 1.0)
+                            showNotification("Noise Removal requires 48kHz — currently inactive at this sample rate",
+                                             NotificationLevel::Warning);
+                    }
 
                     if (pluginChainEditor_)
                         pluginChainEditor_->refreshList();

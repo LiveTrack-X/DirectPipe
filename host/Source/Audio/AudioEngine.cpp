@@ -1398,6 +1398,14 @@ void AudioEngine::checkReconnection()
 
     if (isMonitorLost && !monitorOutput_.isDeviceLost())
         pushNotification("Monitor reconnected", NotificationLevel::Info);
+
+    // Monitor sample rate mismatch notification (one-shot, resets when mismatch clears)
+    if (monitorOutput_.getStatus() == VirtualCableStatus::SampleRateMismatch && !monitorSRMismatchNotified_) {
+        monitorSRMismatchNotified_ = true;
+        pushNotification("Monitor: sample rate mismatch — monitor disabled", NotificationLevel::Warning);
+    }
+    if (monitorOutput_.getStatus() != VirtualCableStatus::SampleRateMismatch)
+        monitorSRMismatchNotified_ = false;
 }
 
 void AudioEngine::attemptReconnection()

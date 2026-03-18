@@ -105,17 +105,21 @@ void MidiHandler::closeAllDevices()
     openInputs_.clear();
 }
 
-void MidiHandler::addBinding(const MidiBinding& binding)
+bool MidiHandler::addBinding(const MidiBinding& binding)
 {
     std::lock_guard<std::mutex> lock(bindingsMutex_);
-    for (const auto& existing : bindings_) {
+    // Find existing binding with same CC/channel/device — overwrite instead of duplicate
+    for (auto& existing : bindings_) {
         if (existing.cc == binding.cc && existing.channel == binding.channel
-            && existing.cc >= 0) {
-            juce::Logger::writeToLog("[MIDI] Warning: duplicate CC" + juce::String(binding.cc)
-                + " ch" + juce::String(binding.channel) + " binding");
+            && existing.deviceName == binding.deviceName && existing.type == binding.type) {
+            existing.action = binding.action;  // overwrite action
+            Log::info("MIDI", "Overwrote existing binding for CC " + juce::String(binding.cc));
+            return true;  // don't add a new one
         }
     }
+    // No existing binding — add new
     bindings_.push_back(binding);
+    return true;
 }
 
 void MidiHandler::removeBinding(int index)

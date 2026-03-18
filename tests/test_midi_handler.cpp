@@ -123,7 +123,7 @@ TEST_F(MidiHandlerTest, LearnTimeout) {
     EXPECT_FALSE(learnCompleted);
 }
 
-TEST_F(MidiHandlerTest, DuplicateBindingDetect) {
+TEST_F(MidiHandlerTest, DuplicateBindingOverwrite) {
     MidiBinding b1, b2;
     b1.cc = 7;
     b1.channel = 0;
@@ -137,7 +137,9 @@ TEST_F(MidiHandlerTest, DuplicateBindingDetect) {
     handler_->addBinding(b2);
 
     auto bindings = handler_->getBindings();
-    EXPECT_EQ(bindings.size(), 2u);
+    // Duplicate CC/channel should overwrite, not add a new entry
+    EXPECT_EQ(bindings.size(), 1u);
+    EXPECT_EQ(bindings[0].action.action, Action::MonitorToggle);
 }
 
 TEST_F(MidiHandlerTest, DispatchOutsideLock) {

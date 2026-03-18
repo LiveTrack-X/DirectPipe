@@ -311,6 +311,7 @@ private:
     int reconnectMissCount_ = 0;                        // [Message thread only] Consecutive failed reconnect attempts
     static constexpr int kMaxReconnectMisses = 5;       // ~15s at 3s intervals
     bool monitorWasLost_ = false;                       // [Message thread only] Edge detection for monitor disconnect notification
+    bool monitorSRMismatchNotified_ = false;             // [Message thread only] One-shot SR mismatch notification
     bool inputWasLost_ = false;                         // [Message thread only] Edge detection for input device loss notification
     bool outputWasAutoMuted_ = false;                   // [Message thread only] Edge detection for output auto-mute notification
 
