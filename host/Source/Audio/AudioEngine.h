@@ -293,8 +293,9 @@ private:
     double xrunAccumulatorTime_ = 0.0;                  // [Message thread only]
 
     // ─── Device reconnection tracking (Message thread only, except atomics) ───
-    juce::String desiredInputDevice_;                   // [Message thread only]
-    juce::String desiredOutputDevice_;                  // [Message thread only]
+    juce::SpinLock desiredDeviceLock_;                   // Protects desiredInputDevice_ / desiredOutputDevice_
+    juce::String desiredInputDevice_;                   // [Protected by desiredDeviceLock_]
+    juce::String desiredOutputDevice_;                  // [Protected by desiredDeviceLock_]
     juce::String desiredDeviceType_;                    // [Message thread only] Tracks intended driver type across fallbacks
     juce::String lastAsioDevice_;                       // [Message thread only] Remembers last used ASIO device for type switches
     std::map<juce::String, DriverTypeSnapshot> driverSnapshots_;  // [Message thread only] Per-driver-type settings for restore on switch

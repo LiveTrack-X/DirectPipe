@@ -164,7 +164,7 @@ void AudioEngine::setIpcEnabled(bool enabled)
 
 ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
 {
-    desiredInputDevice_ = deviceName;
+    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredInputDevice_ = deviceName; }
 
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
@@ -204,7 +204,7 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
 
 ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
 {
-    desiredOutputDevice_ = deviceName;
+    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredOutputDevice_ = deviceName; }
 
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
@@ -253,8 +253,7 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
 
 ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
 {
-    desiredInputDevice_ = deviceName;
-    desiredOutputDevice_ = deviceName;
+    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredInputDevice_ = deviceName; desiredOutputDevice_ = deviceName; }
 
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
@@ -654,6 +653,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         deviceManager_.getAudioDeviceSetup(setup);
+        const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
         if (setup.inputDeviceName.isNotEmpty())
             desiredInputDevice_ = setup.inputDeviceName;
         if (setup.outputDeviceName.isNotEmpty())
@@ -1089,12 +1089,20 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         deviceManager_.getAudioDeviceSetup(setup);
 
-        bool inputMismatch = desiredInputDevice_.isNotEmpty()
+        // Capture desired device names under lock (read from device thread)
+        juce::String desiredIn, desiredOut;
+        {
+            const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+            desiredIn = desiredInputDevice_;
+            desiredOut = desiredOutputDevice_;
+        }
+
+        bool inputMismatch = desiredIn.isNotEmpty()
                              && setup.inputDeviceName.isNotEmpty()
-                             && setup.inputDeviceName != desiredInputDevice_;
-        bool outputMismatch = desiredOutputDevice_.isNotEmpty()
+                             && setup.inputDeviceName != desiredIn;
+        bool outputMismatch = desiredOut.isNotEmpty()
                               && setup.outputDeviceName.isNotEmpty()
-                              && setup.outputDeviceName != desiredOutputDevice_;
+                              && setup.outputDeviceName != desiredOut;
 
         bool wasLost = deviceLost_.load(std::memory_order_relaxed);
 
@@ -1103,8 +1111,8 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             // don't overwrite desired names so checkReconnection restores them
             Log::warn("AUDIO", "Fallback detected: in='" + setup.inputDeviceName
                        + "' out='" + setup.outputDeviceName
-                       + "' (desired: in='" + desiredInputDevice_
-                       + "' out='" + desiredOutputDevice_ + "')");
+                       + "' (desired: in='" + desiredIn
+                       + "' out='" + desiredOut + "')");
 
             // Per-direction loss tracking:
             // Input lost → silence input in audio callback (don't use fallback mic)
@@ -1118,7 +1126,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             // Restore any device that JUCE changed but is still available.
             // e.g. output unplugged → JUCE fallback changes both → restore input + BS/SR.
             juce::MessageManager::callAsync([this, alive = alive_,
-                desiredIn = desiredInputDevice_, desiredOut = desiredOutputDevice_,
+                desiredIn, desiredOut,
                 desiredSR = desiredSampleRate_, desiredBS = desiredBufferSize_] {
                 if (!alive->load()) return;
                 auto* type = deviceManager_.getCurrentDeviceTypeObject();
@@ -1168,10 +1176,13 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs, srbsSet] {
                 if (!aliveFlag->load()) return;
                 reconnectMissCount_ = 0;
-                if (inName.isNotEmpty())
-                    desiredInputDevice_ = inName;
-                if (outName.isNotEmpty())
-                    desiredOutputDevice_ = outName;
+                {
+                    const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+                    if (inName.isNotEmpty())
+                        desiredInputDevice_ = inName;
+                    if (outName.isNotEmpty())
+                        desiredOutputDevice_ = outName;
+                }
                 // Only set desired SR/BS from device if user/settings haven't
                 // explicitly set them (first launch with no saved settings).
                 if (!srbsSet) {
@@ -1411,10 +1422,13 @@ void AudioEngine::attemptReconnection()
                     + juce::String(kMaxReconnectMisses) + " attempts, accepting current devices");
                 juce::AudioDeviceManager::AudioDeviceSetup curSetup;
                 deviceManager_.getAudioDeviceSetup(curSetup);
-                if (curSetup.inputDeviceName.isNotEmpty())
-                    desiredInputDevice_ = curSetup.inputDeviceName;
-                if (curSetup.outputDeviceName.isNotEmpty())
-                    desiredOutputDevice_ = curSetup.outputDeviceName;
+                {
+                    const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+                    if (curSetup.inputDeviceName.isNotEmpty())
+                        desiredInputDevice_ = curSetup.inputDeviceName;
+                    if (curSetup.outputDeviceName.isNotEmpty())
+                        desiredOutputDevice_ = curSetup.outputDeviceName;
+                }
                 deviceLost_.store(false, std::memory_order_relaxed);
                 inputDeviceLost_.store(false, std::memory_order_relaxed);
                 reconnectMissCount_ = 0;

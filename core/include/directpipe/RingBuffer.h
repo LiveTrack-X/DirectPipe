@@ -27,6 +27,7 @@
 #pragma once
 
 #include "Protocol.h"
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 
@@ -142,6 +143,7 @@ public:
      * underlying shared memory to prevent dangling pointer dereferences.
      */
     void detach() {
+        detached_.store(true, std::memory_order_release);
         if (header_)
             header_->consumer_active.store(false, std::memory_order_release);
         header_ = nullptr;
@@ -155,6 +157,7 @@ private:
     float* data_ = nullptr;
     uint32_t mask_ = 0;  // capacity - 1 for power-of-2 modulo
     bool anotherConsumerWasActive_ = false;  // true if consumer_active was already set on attach
+    std::atomic<bool> detached_{false};  // [Any thread] Set before nulling pointers in detach()
 };
 
 } // namespace directpipe

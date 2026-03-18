@@ -36,6 +36,8 @@ void RingBuffer::initAsProducer(void* memory, uint32_t capacity_frames,
     assert(channels > 0 && channels <= 2);
     assert(sample_rate > 0);
 
+    detached_.store(false, std::memory_order_relaxed);
+
     // Place the header at the start of the memory region
     header_ = new (memory) DirectPipeHeader{};
     header_->write_pos.store(0, std::memory_order_relaxed);
@@ -57,6 +59,8 @@ void RingBuffer::initAsProducer(void* memory, uint32_t capacity_frames,
 bool RingBuffer::attachAsConsumer(void* memory)
 {
     if (!memory) return false;
+
+    detached_.store(false, std::memory_order_relaxed);
 
     auto* h = static_cast<DirectPipeHeader*>(memory);
 
@@ -101,6 +105,7 @@ bool RingBuffer::attachAsConsumer(void* memory)
 
 uint32_t RingBuffer::write(const float* data, uint32_t frames)
 {
+    if (detached_.load(std::memory_order_acquire)) return 0;
     if (!isValid() || frames == 0) return 0;
 
     const uint32_t channels = header_->channels;
@@ -141,6 +146,7 @@ uint32_t RingBuffer::write(const float* data, uint32_t frames)
 
 uint32_t RingBuffer::read(float* data, uint32_t frames)
 {
+    if (detached_.load(std::memory_order_acquire)) return 0;
     if (!isValid() || frames == 0) return 0;
 
     const uint32_t channels = header_->channels;
