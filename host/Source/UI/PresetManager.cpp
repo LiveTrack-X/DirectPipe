@@ -646,10 +646,10 @@ bool PresetManager::saveSlot(int slotIndex)
 
     // Inject slot name into JSON
     auto slotName = slotNames_[static_cast<size_t>(slotIndex)];
-    if (slotName.isNotEmpty()) {
+    {
         auto parsed = juce::JSON::parse(json);
         if (auto* obj = parsed.getDynamicObject()) {
-            obj->setProperty("name", slotName);
+            obj->setProperty("name", slotName);  // empty string clears the name
             json = juce::JSON::toString(juce::var(obj), true);
         }
     }

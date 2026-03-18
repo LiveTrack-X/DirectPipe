@@ -123,6 +123,9 @@ bool SettingsExporter::importAll(const juce::String& json,
         presetManager.importFromJSON(audioJson);
     }
 
+    // Reset activeSlot to A since .dpbackup doesn't include slot files
+    presetManager.setActiveSlot(0);
+
     // Import control config
     if (root->hasProperty("controlConfig")) {
         auto controlJson = juce::JSON::toString(root->getProperty("controlConfig"), false);

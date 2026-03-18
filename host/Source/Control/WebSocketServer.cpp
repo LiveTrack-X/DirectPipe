@@ -405,7 +405,12 @@ void WebSocketServer::clientThread(ClientConnection* conn)
     auto stateJson = broadcaster_.toJSON();
     {
         std::lock_guard<std::mutex> sl(conn->sendMutex);
-        sendFrame(client, stateJson);
+        if (!sendFrame(client, stateJson)) {
+            Log::warn("WS", "Failed to send initial state to client");
+            client->close();
+            clientCount_.fetch_sub(1, std::memory_order_relaxed);
+            return;
+        }
     }
     Log::audit("WS", "Initial state sent (" + juce::String(stateJson.size()) + " bytes)");
 
