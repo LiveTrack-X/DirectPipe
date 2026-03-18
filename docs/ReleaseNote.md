@@ -1,6 +1,7 @@
 # DirectPipe Release Notes
 
 > 이 문서는 **사용자 대상** 릴리스 요약입니다. 개발자 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md) 참조.
+> This is a **user-facing** release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
 ## v4.0.1
 
@@ -169,7 +170,7 @@
 
 ## v3.9.9
 
-- Slot naming (right-click Rename, `A|게임` display)
+- Slot naming (right-click Rename, `A|게임` display) / Slot naming (right-click Rename, `A|Game` display)
 - Individual slot export/import (`.dppreset`)
 - StateBroadcaster `slot_names` array
 
