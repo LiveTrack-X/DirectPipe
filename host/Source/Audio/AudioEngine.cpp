@@ -939,6 +939,16 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         return;
     }
 
+    // ── Plugin crash guard: chain crashed previously → silence all outputs ──
+    if (chainCrashed_.load(std::memory_order_relaxed)) {
+        for (int ch = 0; ch < numOutputChannels; ++ch)
+            if (outputChannelData[ch])
+                std::memset(outputChannelData[ch], 0,
+                            static_cast<size_t>(numSamples) * sizeof(float));
+        latencyMonitor_.markCallbackEnd();
+        return;
+    }
+
     // 1. Copy input data into the pre-allocated work buffer (no heap allocation)
     auto& buffer = workBuffer_;
     int workChannels = juce::jmin(
@@ -993,7 +1003,15 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 
     // 2. Process through VST plugin chain (inline, zero additional latency)
     //    Each plugin's bypass flag is atomic — can be toggled from any thread
-    vstChain_.processBlock(buffer, numSamples);
+    try {
+        vstChain_.processBlock(buffer, numSamples);
+    } catch (...) {
+        // Plugin crash — silence output and stop processing on subsequent callbacks
+        buffer.clear();
+        chainCrashed_.store(true, std::memory_order_relaxed);
+        pushNotification("Plugin crash detected \xe2\x80\x94 audio muted. Remove the problematic plugin to resume.",
+                         NotificationLevel::Error);
+    }
 
     // CRITICAL: Steps 2.1-4 MUST execute in this exact order.
     // Safety Limiter (step 2.1) must run BEFORE all output paths (steps 2.5-4).

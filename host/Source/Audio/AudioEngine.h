@@ -317,6 +317,7 @@ private:
     // ─── RT thread only ───
     juce::AudioBuffer<float> workBuffer_;               // [RT thread only]
     uint32_t rmsDecimationCounter_ = 0;                 // [RT thread only] RMS computed every 4th callback (no atomic needed)
+    std::atomic<bool> chainCrashed_{false};              // [RT write, Message read] Plugin processBlock exception → silence output
     std::atomic<bool> mmcssRegistered_{false};           // [Device thread reset, RT thread write+read] MMCSS registration flag (Windows)
 
 #if defined(_WIN32)
