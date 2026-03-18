@@ -76,6 +76,11 @@ All notable changes to DirectPipe will be documented in this file.
 - **Preset**: Fix onResetSettings loadingSlot_ timing — let loadFromFile manage the guard internally
 - **Settings**: Clear partialLoad_ on successful self-heal in loadFromFile
 - **State**: masterBypassed requires at least one loaded plugin — unloaded slots no longer trigger false bypass
+- **Audio**: Windows SEH crash guard (__try/__except) for VST processBlock — catches access violations that try/catch misses
+- **Audio**: chainCrashed_ now resets on chain modification (plugin add/remove), not on every device restart
+- **Audio**: setInputDevice clears outputAutoMuted_ — prevents permanently stuck muted output after input device change
+- **Audio**: mmcssTaskHandle_ is now std::atomic<HANDLE> — prevents data race between RT and device threads on ARM
+- **Audio**: Guard SharedMemWriter::shutdown() against double call in AudioEngine::shutdown()
 
 ---
 
