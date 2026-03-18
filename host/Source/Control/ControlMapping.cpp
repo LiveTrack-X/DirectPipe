@@ -129,6 +129,7 @@ ControlConfig ControlMappingStore::load(const juce::File& file)
 
     ControlConfig config;
     auto* root = parsed.getDynamicObject();
+    if (!root) return createDefaults();
 
     // Hotkeys
     if (auto* hotkeys = root->getProperty("hotkeys").getArray()) {

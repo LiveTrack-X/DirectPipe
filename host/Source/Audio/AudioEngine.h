@@ -226,7 +226,10 @@ public:
     std::function<void()> onDeviceReconnected;
 
     /** @brief Clear the chain-crash flag (call after chain structure change: plugin add/remove/slot switch). */
-    void clearChainCrash() { chainCrashed_.store(false, std::memory_order_relaxed); }
+    void clearChainCrash() {
+        chainCrashed_.store(false, std::memory_order_relaxed);
+        chainCrashNotified_.store(false, std::memory_order_relaxed);
+    }
 
     /** Drain pending notifications (call from message thread timer). */
     bool popNotification(PendingNotification& out);
@@ -322,6 +325,7 @@ private:
     juce::AudioBuffer<float> workBuffer_;               // [RT thread only]
     uint32_t rmsDecimationCounter_ = 0;                 // [RT thread only] RMS computed every 4th callback (no atomic needed)
     std::atomic<bool> chainCrashed_{false};              // [RT write, Message read] Plugin processBlock exception → silence output
+    std::atomic<bool> chainCrashNotified_{false};        // [Message thread only] One-shot notification for chainCrashed_
     std::atomic<bool> mmcssRegistered_{false};           // [Device thread reset, RT thread write+read] MMCSS registration flag (Windows)
 
 #if defined(_WIN32)

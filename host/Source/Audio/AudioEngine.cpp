@@ -1042,8 +1042,6 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     if (!processBlockSEH(vstChain_, buffer, numSamples)) {
         buffer.clear();
         chainCrashed_.store(true, std::memory_order_relaxed);
-        pushNotification("Plugin crash detected \xe2\x80\x94 audio muted. Remove the problematic plugin to resume.",
-                         NotificationLevel::Error);
     }
 #else
     try {
@@ -1051,8 +1049,6 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     } catch (...) {
         buffer.clear();
         chainCrashed_.store(true, std::memory_order_relaxed);
-        pushNotification("Plugin crash detected \xe2\x80\x94 audio muted. Remove the problematic plugin to resume.",
-                         NotificationLevel::Error);
     }
 #endif
 
@@ -1266,6 +1262,12 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     currentSampleRate_ = device->getCurrentSampleRate();
     currentBufferSize_ = device->getCurrentBufferSizeSamples();
 
+    if (currentSampleRate_.load() <= 0.0 || currentBufferSize_.load() <= 0) {
+        Log::warn("AUDIO", "Device reported invalid SR=" + juce::String(currentSampleRate_.load())
+                  + " BS=" + juce::String(currentBufferSize_.load()) + " — skipping prepare");
+        return;
+    }
+
     // Log device capabilities for diagnostics
     {
         auto typeName = device->getTypeName();
@@ -1473,6 +1475,14 @@ void AudioEngine::checkReconnection()
     }
     if (monitorOutput_.getStatus() != VirtualCableStatus::SampleRateMismatch)
         monitorSRMismatchNotified_ = false;
+
+    // Chain crash notification (moved off RT thread — detected here on message thread)
+    if (chainCrashed_.load(std::memory_order_relaxed) && !chainCrashNotified_.load(std::memory_order_relaxed)) {
+        chainCrashNotified_.store(true, std::memory_order_relaxed);
+        pushNotification("Plugin crash detected \xe2\x80\x94 chain bypassed. Remove the problematic plugin.", NotificationLevel::Error);
+    }
+    if (!chainCrashed_.load(std::memory_order_relaxed))
+        chainCrashNotified_.store(false, std::memory_order_relaxed);
 }
 
 void AudioEngine::attemptReconnection()
