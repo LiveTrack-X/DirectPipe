@@ -743,13 +743,22 @@ void AudioEngine::updateXRunTracking()
     auto* device = deviceManager_.getCurrentAudioDevice();
     if (!device) return;
 
-    // Handle reset signal from audioDeviceAboutToStart (device thread)
+    // Device restart (WASAPI session event, internal JUCE recovery, etc.)
+    // — only resync the baseline counter so delta calculation stays correct.
+    //   History is preserved so XRun display doesn't vanish on device restart.
+    if (xrunBaselineResync_.exchange(false, std::memory_order_acquire)) {
+        int xruns = device->getXRunCount();
+        lastDeviceXRunCount_ = (xruns >= 0) ? xruns : 0;
+    }
+
+    // User-initiated full reset (Action::XRunReset) — clear everything.
     if (xrunResetRequested_.exchange(false, std::memory_order_acquire)) {
         int xruns = device->getXRunCount();
         lastDeviceXRunCount_ = (xruns >= 0) ? xruns : 0;
         std::memset(xrunHistory_, 0, sizeof(xrunHistory_));
         xrunHistoryIdx_ = 0;
         xrunAccumulatorTime_ = 0.0;
+        recentXRuns_.store(0, std::memory_order_relaxed);
         return;
     }
 
@@ -894,18 +903,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 #if defined(_WIN32)
     if (!mmcssRegistered_.load(std::memory_order_relaxed)) {
         mmcssRegistered_.store(true, std::memory_order_relaxed);
-        using AvSetFn = HANDLE(WINAPI*)(LPCWSTR, LPDWORD);
-        using AvPrioFn = BOOL(WINAPI*)(HANDLE, int);
-        if (auto* avrt = LoadLibraryA("avrt.dll")) {
-            auto setChar = reinterpret_cast<AvSetFn>(GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW"));
-            auto setPrio = reinterpret_cast<AvPrioFn>(GetProcAddress(avrt, "AvSetMmThreadPriority"));
-            if (setChar && setPrio) {
-                DWORD taskIndex = 0;
-                HANDLE task = setChar(L"Pro Audio", &taskIndex);
-                if (task)
-                    setPrio(task, 2);  // AVRT_PRIORITY_HIGH = 2
-            }
-            // Note: do NOT FreeLibrary — MMCSS registration persists for thread lifetime
+        if (avSetMmThreadChar_ && avSetMmThreadPrio_) {
+            DWORD taskIndex = 0;
+            HANDLE task = avSetMmThreadChar_(L"Pro Audio", &taskIndex);
+            if (task)
+                avSetMmThreadPrio_(task, 2);  // AVRT_PRIORITY_HIGH
         }
     }
 #endif
@@ -1056,6 +1058,17 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     // Reset MMCSS flag — new device means new audio thread, re-registration needed
     mmcssRegistered_.store(false, std::memory_order_relaxed);
 
+#if defined(_WIN32)
+    if (!avSetMmThreadChar_) {
+        if (auto* avrt = LoadLibraryA("avrt.dll")) {
+            avSetMmThreadChar_ = reinterpret_cast<AvSetMmThreadCharFn>(
+                GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW"));
+            avSetMmThreadPrio_ = reinterpret_cast<AvSetMmThreadPrioFn>(
+                GetProcAddress(avrt, "AvSetMmThreadPriority"));
+        }
+    }
+#endif
+
     // Remember last used ASIO device for future type switches
     if (device->getTypeName().containsIgnoreCase("ASIO"))
         lastAsioDevice_ = device->getName();
@@ -1188,10 +1201,12 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         }
     }
 
-    // Signal message-thread to reset xrun tracking (avoids data race
+    // Signal message-thread to resync xrun baseline counter (avoids data race
     // between device thread writing and message-thread timer reading).
-    recentXRuns_.store(0, std::memory_order_relaxed);
-    xrunResetRequested_.store(true, std::memory_order_release);
+    // NOTE: Do NOT clear recentXRuns_ or history here — device restarts (WASAPI
+    // session events, internal JUCE recovery) would erase legitimate XRun display.
+    // Only the user-initiated XRunReset action clears history.
+    xrunBaselineResync_.store(true, std::memory_order_release);
 
     // Pre-allocate work buffer conservatively to avoid heap allocation in audio callback
     // Use 8 channels minimum to handle any device channel configuration

@@ -281,10 +281,12 @@ private:
     std::atomic<int> currentBufferSize_{480};            // [Message write, RT read]
 
     // ─── XRun tracking (Message thread only, except atomics) ───
-    // xrunResetRequested_ signals message-thread to reinitialize tracking state
-    // (avoids data race between device thread and message thread).
+    // Two separate flags avoid a data race between device thread and message thread:
+    //   xrunBaselineResync_: device restart → resync lastDeviceXRunCount_ only (preserve history)
+    //   xrunResetRequested_: user action   → full clear (history + display)
     std::atomic<int> recentXRuns_{0};                   // [Message write, UI read]
-    std::atomic<bool> xrunResetRequested_{false};       // [RT write, Message read]
+    std::atomic<bool> xrunBaselineResync_{false};       // [Device thread write, Message read]
+    std::atomic<bool> xrunResetRequested_{false};       // [Any thread write, Message read]
     int lastDeviceXRunCount_ = 0;                       // [Message thread only]
     int xrunHistory_[60] = {};                          // [Message thread only]
     int xrunHistoryIdx_ = 0;                            // [Message thread only]
@@ -315,6 +317,15 @@ private:
     juce::AudioBuffer<float> workBuffer_;               // [RT thread only]
     uint32_t rmsDecimationCounter_ = 0;                 // [RT thread only] RMS computed every 4th callback (no atomic needed)
     std::atomic<bool> mmcssRegistered_{false};           // [RT thread only] One-time MMCSS registration flag (Windows)
+
+#if defined(_WIN32)
+    // Cached MMCSS function pointers — loaded in audioDeviceAboutToStart,
+    // called from RT callback without LoadLibraryA.
+    using AvSetMmThreadCharFn = HANDLE(WINAPI*)(LPCWSTR, LPDWORD);
+    using AvSetMmThreadPrioFn = BOOL(WINAPI*)(HANDLE, int);
+    AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;
+    AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;
+#endif
 
     // ─── Lock-free notification queue (RT write → Message read) ───
     static constexpr int kNotifQueueSize = 8;
