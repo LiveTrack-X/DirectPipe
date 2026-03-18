@@ -86,6 +86,8 @@ All notable changes to DirectPipe will be documented in this file.
 - **Audio**: Move crash notification from RT thread to 30Hz message-thread timer — eliminate heap alloc in crash handler
 - **Action**: Add loadingSlot_ guard to AutoProcessorsAdd fallback path — prevent intermediate state auto-save
 - **File I/O**: Check atomicWriteFile return values at 4 sites — log warning on write failure instead of silent data loss
+- **Security**: HTTP server enforces 16-handler connection limit — prevents DoS via connection flooding
+- **Security**: WebSocket connection limit check+increment now atomic under clientsMutex_ — fixes TOCTOU race
 
 ---
 
