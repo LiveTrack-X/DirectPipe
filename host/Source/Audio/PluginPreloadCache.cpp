@@ -330,9 +330,9 @@ void PluginPreloadCache::cancelAndWait()
         auto thread = std::move(preloadThread_);
         lock.unlock();
 
-        // Non-blocking wait: poll for up to 3 seconds, then detach
+        // Non-blocking wait: poll for up to 10 seconds, then leak
         auto start = std::chrono::steady_clock::now();
-        constexpr auto kTimeout = std::chrono::seconds(3);
+        constexpr auto kTimeout = std::chrono::seconds(10);
         bool joined = false;
 
         // Can't poll std::thread directly — use a helper thread to join.
@@ -354,11 +354,14 @@ void PluginPreloadCache::cancelAndWait()
             joiner.join();
             joined = true;
         } else {
-            // Timeout — detach to avoid deadlock. The preload thread will
-            // exit on its own once it checks the generation counter.
-            // heapThread and joinDone are shared_ptr, safe for detached thread.
-            joiner.detach();
-            juce::Logger::writeToLog("[VST] Preload thread detached (timeout during shutdown)");
+            // Do NOT detach — the preload thread still accesses our members (cancelPreload_,
+            // cacheMutex_, cache_). Detaching would cause use-after-free when PluginPreloadCache
+            // is destroyed. Instead, leak the joiner thread. This is a last-resort fallback
+            // for pathologically slow plugin destructors and should never occur in normal operation.
+            juce::Logger::writeToLog("[VST] CRITICAL: Preload thread did not finish in timeout — leaking joiner to avoid use-after-free");
+            // Move joiner to heap to prevent its destructor from calling std::terminate
+            auto* leaked = new std::thread(std::move(joiner));
+            (void)leaked;  // intentional leak — better than undefined behavior
         }
 
         if (!joined) {
