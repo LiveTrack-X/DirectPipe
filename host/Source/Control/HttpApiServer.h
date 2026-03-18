@@ -104,6 +104,7 @@ private:
     struct HandlerThread {
         std::thread thread;
         std::shared_ptr<std::atomic<bool>> done;
+        juce::StreamingSocket* socket = nullptr;  // non-owning: handler lambda owns via unique_ptr
     };
     std::mutex handlersMutex_;
     std::vector<HandlerThread> handlerThreads_;

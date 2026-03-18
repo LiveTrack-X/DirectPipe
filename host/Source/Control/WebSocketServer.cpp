@@ -396,6 +396,7 @@ void WebSocketServer::clientThread(ClientConnection* conn)
     // Perform RFC 6455 WebSocket handshake
     if (!performHandshake(client)) {
         Log::warn("WS", "Handshake failed");
+        client->close();
         clientCount_.fetch_sub(1, std::memory_order_relaxed);
         return;
     }

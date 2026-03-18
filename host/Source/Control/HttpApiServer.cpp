@@ -127,8 +127,13 @@ void HttpApiServer::stop()
         serverThread_.join();
     }
 
-    // Join all tracked handler threads (closing server socket above
-    // will cause client reads to fail, unblocking the handlers).
+    // Close all client sockets first to unblock read() in handler threads
+    {
+        std::lock_guard<std::mutex> lock(handlersMutex_);
+        for (auto& h : handlerThreads_)
+            if (h.socket) h.socket->close();
+    }
+
     // Move threads out before joining to avoid deadlock (same pattern as WebSocketServer).
     std::vector<std::thread> toJoin;
     {
@@ -180,7 +185,8 @@ void HttpApiServer::serverThread()
                             handleClient(std::move(clientPtr));
                         doneFlag->store(true, std::memory_order_release);
                     }),
-                    doneFlag
+                    doneFlag,
+                    client  // store raw pointer for stop() to close
                 });
             }
         }
