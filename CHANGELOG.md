@@ -4,7 +4,7 @@ All notable changes to DirectPipe will be documented in this file.
 
 ---
 
-## [4.0.1] - 2026-03-18 (Unreleased)
+## [4.0.1] - 2026-03-19
 
 ### Fixed
 - **NoiseRemoval**: Ring buffer uint32_t overflow causing permanent silence after ~25h continuous use
@@ -86,8 +86,9 @@ All notable changes to DirectPipe will be documented in this file.
 - **Audio**: Move crash notification from RT thread to 30Hz message-thread timer — eliminate heap alloc in crash handler
 - **Action**: Add loadingSlot_ guard to AutoProcessorsAdd fallback path — prevent intermediate state auto-save
 - **File I/O**: Check atomicWriteFile return values at 4 sites — log warning on write failure instead of silent data loss
-- **Security**: HTTP server enforces 16-handler connection limit — prevents DoS via connection flooding
-- **Security**: WebSocket connection limit check+increment now atomic under clientsMutex_ — fixes TOCTOU race
+- **Security**: HTTP server enforces 64-handler connection limit — prevents DoS via connection flooding
+- **Security**: WebSocket 32-client limit with atomic check+increment under clientsMutex_ — fixes TOCTOU race
+- **AGC**: Internal LUFS offset increased from -4dB to -6dB — output level closer to commercial levelers
 
 ---
 
