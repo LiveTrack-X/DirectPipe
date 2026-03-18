@@ -69,6 +69,8 @@ public:
     /** Update visual state of the active slot, including handling Auto slot (index 5). */
     void setActiveSlot(int slotIndex);
 
+    void resetPendingSlot() { pendingSlot_ = -1; }
+
 private:
     static constexpr int kSlotBtnGap = 4;
 

@@ -186,6 +186,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             auto result = chain.addAutoProcessors();
             if (!result.success) {
                 showNotification("Auto setup failed: " + result.message, NotificationLevel::Error);
+                partialLoad_ = true;
                 loadingSlot_ = false;
                 return;
             }
@@ -269,6 +270,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     {
         auto settingsPanel = std::make_unique<LogPanel>();
         settingsPanel->onPresetsCleared = [this] {
+            if (presetSlotBar_) presetSlotBar_->resetPendingSlot();
             loadingSlot_ = true;   // suppress auto-save from recreating deleted slots
             // Clear the active chain
             auto& chain = audioEngine_.getVSTChain();
@@ -284,6 +286,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             pluginChainEditor_->refreshList();
         };
         settingsPanel->onResetSettings = [this] {
+            if (presetSlotBar_) presetSlotBar_->resetPendingSlot();
             loadingSlot_ = true;
             // Clear active chain
             auto& chain = audioEngine_.getVSTChain();

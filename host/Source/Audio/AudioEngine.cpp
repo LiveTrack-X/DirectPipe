@@ -1266,6 +1266,10 @@ void AudioEngine::audioDeviceStopped()
     outputRouter_.shutdown();
     sharedMemWriter_.shutdown();
 
+    // Stop recording to prevent WAV corruption at wrong sample rate after device loss
+    if (recorder_.isRecording())
+        recorder_.stopRecording();
+
     // Mark device as lost ONLY for external events (USB unplug, driver error).
     // Intentional changes (setInputDevice, setBufferSize, etc.) set intentionalChange_
     // before calling setAudioDeviceSetup, so we skip setting deviceLost_ for those.
