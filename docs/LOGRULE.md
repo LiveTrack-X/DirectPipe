@@ -34,7 +34,7 @@ Portable mode (all platforms): `./config/directpipe.log`
 ### Example / 예시
 
 ```
-[11:23:45.123] INF [APP] DirectPipe v4.0.0 started
+[11:23:45.123] INF [APP] DirectPipe v4.0.1 started
 [11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200          (Windows)
                                  macOS 15.2 (Sequoia)            (macOS)
                                  Ubuntu 24.04 LTS (6.8.0-45)     (Linux)
@@ -227,7 +227,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 앱 시작 직후 아래 정보를 순서대로 기록:
 
 ```
-INF [APP] DirectPipe v4.0.0 started
+INF [APP] DirectPipe v4.0.1 started
 INF [APP] OS: Windows 11 Pro 10.0.26200       (or macOS 15.2 Sequoia / Ubuntu 24.04 LTS)
 INF [APP] Process priority: HIGH_PRIORITY_CLASS  (Windows; macOS/Linux use equivalent scheduling)
 INF [APP] Timer resolution: 1ms                  (Windows; macOS/Linux use platform timers)

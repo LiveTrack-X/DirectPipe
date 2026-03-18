@@ -1,6 +1,6 @@
 # DirectPipe 제품 기획서 (Product Specification)
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.0 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.1 기준)
 
 ---
 
@@ -13,7 +13,7 @@ DirectPipe
 DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운 방법 (Windows / macOS / Linux)
 
 ### 버전
-4.0.0
+4.0.1
 
 ### 개발 배경
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비
@@ -100,7 +100,9 @@ GPL v3 (오픈소스)
    Stereo 모드: 그대로 복사
 4. 입력 게인 적용 (변경 시에만)
 5. RMS 레벨 계산 (4회 콜백마다 1회 = ~23Hz @48kHz/512)
-6. VST 체인 processBlock() 통과
+6. VST 체인 processBlock() 통과 (SEH crash guard: Windows `__try/__except`, 기타 `try/catch`)
+   - 예외 발생 시: 버퍼 클리어, `chainCrashed_` 플래그 설정, 이후 모든 콜백 무음 출력
+   - 메시지 스레드에서 지연 알림 (NotificationBar)
 7. Safety Limiter 적용 (feed-forward, 0.1ms attack / 50ms release)
 8. AudioRecorder에 lock-free 쓰기 (녹음 중일 때)
 9. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시)
@@ -119,7 +121,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 |------|------|------|------|
 | **Main Output** | 메인 출력 (스피커/가상 케이블) | AudioSettings의 Output 장치에 직접 쓰기. WASAPI/ASIO 모두 지원 | OUT 버튼, ToggleMute, SetVolume |
 | **Monitor Output** | 헤드폰 모니터링 (자기 목소리 확인) | 별도 WASAPI AudioDeviceManager + lock-free AudioRingBuffer (4096 프레임, 스테레오, power-of-2) | MON 버튼, MonitorToggle, SetVolume |
-| **IPC Output** | OBS용 DirectPipe Receiver | SharedMemory 기반 IPC. 공유 메모리 이름: `Local\\DirectPipeAudio`. 인터리브 float 형식 | VST 버튼, IpcToggle |
+| **IPC Output** | OBS용 DirectPipe Receiver | SharedMemory 기반 IPC. 공유 메모리 이름: `Local\\DirectPipeAudio`. 인터리브 float 형식. POSIX sem/shm 퍼미션 0600 (owner-only) | VST 버튼, IpcToggle |
 | **Recording** | WAV 녹음 (VST 체인 이후) | AudioRecorder, lock-free ThreadedWriter | REC 버튼, RecordingToggle |
 
 #### 4.1.4 오디오 최적화
@@ -132,7 +134,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 뮤트 fast-path | 뮤트 상태에서 VST 처리 스킵 |
 | 워크버퍼 | 8채널 사전 할당 (`workBuffer_`). 콜백에서 힙 할당 없음 |
 | 프로세스 우선순위 | `HIGH_PRIORITY_CLASS` |
-| MMCSS 스레드 등록 | Windows: 오디오 콜백 스레드를 "Pro Audio" MMCSS에 AVRT_PRIORITY_HIGH로 등록 (WASAPI + ASIO 모두). DPC 지연 간섭 방지 |
+| MMCSS 스레드 등록 | Windows: 오디오 콜백 스레드를 "Pro Audio" MMCSS에 AVRT_PRIORITY_HIGH로 등록 (WASAPI + ASIO 모두). DPC 지연 간섭 방지. MMCSS 함수 포인터는 `audioDeviceAboutToStart`에서 1회 캐시 (release/acquire 순서), RT 콜백에서 읽기만. `audioDeviceStopped`에서 핸들 적절히 revert |
 | IPC 이벤트 최적화 | `SetEvent` 시그널을 데이터 기록 시에만 발생 (불필요한 커널 호출 감소) |
 | 콜백 오버런 감지 | LatencyMonitor: 처리 시간이 버퍼 주기를 초과하면 카운트 (`getCallbackOverrunCount()`) |
 
@@ -140,7 +142,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 항목 | 상세 |
 |------|------|
 | 감지 방식 | 이중 메커니즘: (1) `ChangeListener` 즉시 감지 + (2) 3초 타이머 폴링 (`checkReconnection`) |
-| 의도 추적 | `desiredInputDevice_` / `desiredOutputDevice_` / `desiredDeviceType_` / `desiredSampleRate_` / `desiredBufferSize_` 저장 |
+| 의도 추적 | `desiredInputDevice_` / `desiredOutputDevice_` (SpinLock 보호) / `desiredDeviceType_` / `desiredSampleRate_` / `desiredBufferSize_` 저장 |
 | 폴백 보호 | `intentionalChange_` 플래그: JUCE 자동 폴백을 성공적 재연결로 오인하는 것 방지 |
 | 재연결 로직 | `attemptReconnection()`: 장치 재스캔 → 가용성 확인 → desired 설정(SR/BS/채널) 복원. `attemptingReconnection_` 재진입 가드 |
 | 쿨다운 | `reconnectCooldown_` (30Hz 타이머 틱) |
@@ -293,7 +295,7 @@ rebuildGraph(bool suspend = true)
 #### 폴백 보호
 - `audioDeviceAboutToStart`에서 실제 장치명 vs desired 비교
 - JUCE 자동 폴백 감지 시: Error 상태 설정, callAsync로 장치 닫기
-- SR 불일치: `SampleRateMismatch` 상태, 링 버퍼 리셋
+- SR 불일치: `SampleRateMismatch` 상태, 링 버퍼 리셋, one-shot NotificationBar 경고 (클리어 시 리셋)
 
 #### 재연결
 - `monitorLost_` atomic 플래그 (audioDeviceError/audioDeviceStopped에서 설정)
@@ -398,6 +400,11 @@ rebuildGraph(bool suspend = true)
 - 플러그인 파라미터 매핑: 3단계 팝업 (플러그인 선택 → 파라미터 선택 → MIDI Learn)
 - [Cancel] 취소 가능
 - 기본 매핑: 없음 (사용자가 직접 학습)
+
+**바인딩 관리:**
+- `addBinding()` returns `bool` — 동일 CC/채널/장치의 기존 바인딩이 있으면 덮어쓰기(overwrite), 중복 추가 안 함
+- `alive_` 플래그 (`shared_ptr<atomic<bool>>`) — 소멸 후 callAsync 콜백 안전 보호
+- LearnTimeout (30초) — 타이머 콜백에서 자기 자신을 파괴하지 않도록 callAsync로 지연 정리
 
 **스레드 안전:**
 - `bindingsMutex_` (std::mutex)로 바인딩 접근 보호
@@ -808,7 +815,8 @@ rebuildGraph(bool suspend = true)
 | 이름 | DirectPipe Receiver |
 | 포맷 | VST2 / VST3 / AU (macOS) |
 | 입력 | **없음 (입력 버스 없음)** — `BusesProperties().withOutput(...)` only, no `.withInput()` |
-| 출력 | 스테레오 (2채널) |
+| 출력 | 스테레오 (2채널) 또는 모노 (1채널). `isBusesLayoutSupported`가 mono와 stereo 모두 허용 |
+| 레이턴시 보고 | `setLatencySamples(targetFillFrames)` — 버퍼 프리셋 크기를 호스트 DAW에 보고. 프리셋 변경 시 processBlock 내에서 동적 갱신 |
 | MIDI | 없음 |
 | 프로그램 | 1개 (전환 없음) |
 
@@ -842,15 +850,16 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 | 항목 | 상세 |
 |------|------|
 | 공유 메모리 이름 | `Local\\DirectPipeAudio` |
-| 프로토콜 | SPSC 링 버퍼, atomic read/write 포지션 |
+| 프로토콜 | SPSC 링 버퍼, atomic read/write 포지션. RingBuffer에 atomic `detached_` 플래그 (detach 시 읽기/쓰기 즉시 차단) |
 | 연결 확인 | `producer_active` 플래그 (acquire) |
 | 재연결 간격 | 100 블록마다 |
 | 드리프트 워밍업 | 50 블록 후 클록 드리프트 체크 시작 |
 
 #### 오디오 처리
+0. 인터리브 버퍼 empty 가드 → prepareToPlay 전 호출 시 즉시 무음 반환
 1. Mute 확인 → 뮤트면 버퍼 클리어
 2. 미연결: 페이드아웃 또는 무음
-3. 연결 시: producer 활성 확인
+3. 연결 시: producer 활성 확인. **Stale consumer_active 감지**: detach() 후 close() 호출하여 OBS 크래시 등으로 남은 spurious multi-consumer 경고 방지
 4. 클록 드리프트 보상: 버퍼 > highThreshold이면 초과 프레임 스킵
 5. 링 버퍼에서 프레임 읽기
 6. 인터리브 → JUCE planar 변환
@@ -862,9 +871,10 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 
 | 상태 | 조건 | 동작 |
 |------|------|------|
-| 정상 | lowThreshold ≤ fill ≤ highThreshold | 그대로 읽기 |
+| 정상 | lowThreshold/2 ≤ fill ≤ highThreshold | 그대로 읽기 |
 | 버퍼 과다 (호스트 빠름) | fill > highThreshold | excess 프레임 스킵 → targetFill로 복귀 |
-| 버퍼 부족 (호스트 느림) | fill < lowThreshold | 읽기량 절반으로 쿠션 확보 → 하드 클릭 대신 미세 갭 |
+| 데드 밴드 (히스테리시스) | lowThreshold/2 ≤ fill < lowThreshold | 정상 읽기 — 스로틀/정상 모드 간 진동 방지 |
+| 버퍼 부족 (호스트 느림) | fill < lowThreshold/2 | 읽기량 절반으로 쿠션 확보 → 하드 클릭 대신 미세 갭 |
 
 버퍼 프리셋별 임계값:
 
@@ -892,7 +902,7 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 | Buffer ComboBox | 5개 프리셋 |
 | 레이턴시 라벨 | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 | "SR mismatch: {source} vs {host}" (주황, 10pt) |
-| 버전 | "v4.0.0" (우하단, 10pt) |
+| 버전 | "v4.0.1" (우하단, 10pt) |
 | 갱신 | 10Hz 타이머 콜백 |
 
 ---
@@ -993,6 +1003,8 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
 
 #### 4.11.3 백업/복원 (2단계)
 
+**플랫폼 호환성**: `importAll()` / `importFullBackup()` 함수가 내부적으로 플랫폼 호환성을 검사하여, 다른 OS에서 만든 백업의 복원을 차단한다 (UI 레벨이 아닌 API 레벨에서 보호).
+
 **Tier 1: Settings Only (`.dpbackup`, v2)**
 | 포함 | 제외 |
 |------|------|
@@ -1005,7 +1017,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.0.0",
+  "appVersion": "4.0.1",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1028,7 +1040,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.0.0",
+  "appVersion": "4.0.1",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1210,7 +1222,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인
-│   ├── manifest.json               → SDKVersion 3, 10 액션, v4.0.0.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션, v4.0.1.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리

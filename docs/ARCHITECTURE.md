@@ -1,6 +1,6 @@
 # DirectPipe Architecture / 아키텍처
 
-> **Version 4.0.0 / 버전 4.0.0**
+> **Version 4.0.1 / 버전 4.0.1**
 
 ## System Overview / 시스템 개요
 
@@ -139,14 +139,14 @@ Cross-platform abstraction layer. Each sub-directory provides platform-specific 
 
 Shared static library for IPC. No JUCE dependency. / IPC용 정적 라이브러리. JUCE 의존성 없음.
 
-- **RingBuffer** — SPSC lock-free ring buffer. `std::atomic` with acquire/release. Cache-line aligned (`alignas(64)`). Power-of-2 capacity. / SPSC 락프리 링 버퍼.
-- **SharedMemory** — Shared memory wrapper. Windows: `CreateFileMapping`/`MapViewOfFile` with named events. macOS/Linux: POSIX `shm_open`/`mmap` with named semaphores. / 공유 메모리 래퍼. Windows: `CreateFileMapping`/`MapViewOfFile`. macOS/Linux: POSIX `shm_open`/`mmap`.
+- **RingBuffer** — SPSC lock-free ring buffer. `std::atomic` with acquire/release. Cache-line aligned (`alignas(64)`). Power-of-2 capacity. Atomic `detached_` flag for safe teardown (blocks read/write immediately on detach). / SPSC 락프리 링 버퍼. atomic `detached_` 플래그로 안전한 해제 (detach 시 읽기/쓰기 즉시 차단).
+- **SharedMemory** — Shared memory wrapper. Windows: `CreateFileMapping`/`MapViewOfFile` with named events. macOS/Linux: POSIX `shm_open`/`mmap` with named semaphores (permissions 0600, owner-only). / 공유 메모리 래퍼. Windows: `CreateFileMapping`/`MapViewOfFile`. macOS/Linux: POSIX `shm_open`/`mmap` (퍼미션 0600, 소유자 전용).
 - **Protocol** — Shared header structure for IPC communication. / IPC 헤더 구조체.
 - **Constants** — Buffer names, sizes, sample rates. / 상수.
 
 ### 3. DirectPipe Receiver Plugin (VST2/VST3/AU) (`plugins/receiver/`) / DirectPipe Receiver 플러그인 (VST2/VST3/AU)
 
-Plugin for OBS and other hosts. Reads processed audio from DirectPipe via shared memory IPC (core library). Output-only plugin (no input bus) — host audio upstream of the plugin is completely replaced by IPC data. Available as VST2, VST3, and AU (macOS). OBS only supports VST2 on all platforms. / OBS 등에서 사용하는 플러그인. 공유 메모리 IPC(core 라이브러리)를 통해 DirectPipe의 처리된 오디오를 읽음. 입력 버스가 없는 출력 전용 플러그인 — 호스트에서 플러그인 앞단의 오디오는 IPC 데이터로 완전히 대체됨. VST2, VST3, AU(macOS) 포맷 제공. OBS는 모든 플랫폼에서 VST2만 지원.
+Plugin for OBS and other hosts. Reads processed audio from DirectPipe via shared memory IPC (core library). Output-only plugin (no input bus) — host audio upstream of the plugin is completely replaced by IPC data. Supports mono and stereo output layouts (`isBusesLayoutSupported` override). Reports buffering latency to the host DAW via `setLatencySamples(targetFillFrames)`. Available as VST2, VST3, and AU (macOS). OBS only supports VST2 on all platforms. / OBS 등에서 사용하는 플러그인. 공유 메모리 IPC(core 라이브러리)를 통해 DirectPipe의 처리된 오디오를 읽음. 입력 버스가 없는 출력 전용 플러그인 — 호스트에서 플러그인 앞단의 오디오는 IPC 데이터로 완전히 대체됨. 모노 및 스테레오 출력 레이아웃 지원 (`isBusesLayoutSupported` 오버라이드). `setLatencySamples(targetFillFrames)`를 통해 버퍼링 레이턴시를 호스트 DAW에 보고. VST2, VST3, AU(macOS) 포맷 제공. OBS는 모든 플랫폼에서 VST2만 지원.
 
 - Consumes shared memory IPC written by `SharedMemWriter` / `SharedMemWriter`가 기록한 공유 메모리 IPC를 소비
 - **SPSC (Single Producer Single Consumer)** ring buffer — only one Receiver instance can read at a time. A second Receiver attaching will see a `consumer_active` warning in the UI (audio will be corrupted due to `readPos_` double-advance). / SPSC 링 버퍼 — Receiver는 한 번에 하나만 읽기 가능. 두 번째 Receiver 연결 시 `consumer_active` 경고 표시 (readPos_ 이중 전진으로 오디오 깨짐).
@@ -154,7 +154,7 @@ Plugin for OBS and other hosts. Reads processed audio from DirectPipe via shared
 - **Bidirectional clock drift compensation** / 양방향 클록 드리프트 보상:
   - Warmup: first 50 blocks after connect are skipped (drift checks inactive) / 워밍업: 연결 후 50블록은 드리프트 체크 비활성
   - **High-fill** (producer faster than consumer): when buffer fill > `highThreshold`, excess frames are discarded until fill returns to `targetFill`. Prevents buffer overflow and growing latency. / 프로듀서가 빠를 때: 버퍼가 highThreshold 초과 시 targetFill까지 초과분 폐기. 지연 증가 방지.
-  - **Low-fill** (consumer faster than producer): when buffer fill < `lowThreshold`, read amount is halved (`numSamples / 2`). Remaining output samples are zero-padded, creating micro-gaps instead of hard clicks. / 컨슈머가 빠를 때: 버퍼가 lowThreshold 미만이면 읽기량 절반. 나머지는 무음 패딩 (마이크로 갭).
+  - **Low-fill** (consumer faster than producer): when buffer fill < `lowThreshold / 2`, read amount is halved (`numSamples / 2`). Remaining output samples are zero-padded, creating micro-gaps instead of hard clicks. A **hysteresis dead-band** between `lowThreshold/2` and `lowThreshold` prevents oscillation between throttle and normal mode. / 컨슈머가 빠를 때: 버퍼가 lowThreshold/2 미만이면 읽기량 절반. 나머지는 무음 패딩 (마이크로 갭). lowThreshold/2와 lowThreshold 사이에 **히스테리시스 데드 밴드**가 있어 스로틀/정상 모드 간 진동을 방지.
   - Buffer presets define `{targetFill, highThreshold, lowThreshold}` per preset level / 버퍼 프리셋별 {targetFill, highThreshold, lowThreshold} 정의
   - Long-term stability: drift correction runs continuously after warmup. No resampling — adjustments are purely read-rate throttling/skipping. Suitable for indefinite streaming sessions. / 장시간 안정성: 워밍업 후 지속적 보정. 리샘플링 없이 읽기 속도 조절/스킵 방식. 무기한 스트리밍 세션에 적합.
 - IPC output can be toggled on/off via `IpcToggle` action / IPC 출력은 `IpcToggle` 액션으로 켜기/끄기 가능

@@ -278,6 +278,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
     "output_muted": false,
     "input_muted": false,
     "active_slot": 0,
+    "auto_slot_active": false,
     "slot_names": ["게임", "토크", "", "", "", "Auto"],
     "preset": "Streaming Vocal",
     "latency_ms": 5.2,

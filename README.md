@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.0.0-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.0.1-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -21,7 +21,7 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.0.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.0) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
+- **Latest (최신)**: [v4.0.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.1) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
 - **Previous Stable**: [v3.10.3](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — Windows 전용 / Windows only
 
 > **참고**: Windows는 안정(Stable), macOS는 베타, Linux는 실험적입니다. macOS/Linux 빌드는 실기기 테스트가 제한적입니다.
@@ -166,7 +166,7 @@ External Control:
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
 - **Safety Limiter** — VST 체인 이후 전역 피드포워드 리미터. 기본 ceiling -0.3 dBFS, 예기치 않은 클리핑 방지 — Global feed-forward limiter after VST chain. Default ceiling -0.3 dBFS, prevents unexpected clipping
 - **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼(입력 게인 옆 특수 프리셋 슬롯)으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) insertable alongside VST plugins. [Auto] button (special preset slot next to input gain) adds all 3 at once
-- **Clock Drift Compensation** — Bidirectional IPC drift handling for stable long-duration streaming (auto buffer management prevents clicks/pops) / 양방향 IPC 클록 드리프트 보상으로 장시간 스트리밍 안정성 보장 (자동 버퍼 관리로 끊김/팝 방지)
+- **Clock Drift Compensation** — Bidirectional IPC drift handling with hysteresis dead-band for stable long-duration streaming (auto buffer management prevents clicks/pops) / 히스테리시스 데드 밴드를 포함한 양방향 IPC 클록 드리프트 보상으로 장시간 스트리밍 안정성 보장 (자동 버퍼 관리로 끊김/팝 방지)
 
 ### 외부 제어 / External Control
 
@@ -191,7 +191,7 @@ External Control:
 
 ### VST 출력 (DirectPipe Receiver) / VST Output (DirectPipe Receiver)
 
-- **DirectPipe Receiver (VST2/VST3/AU)** — OBS, DAW 등에서 공유 메모리로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력 — Receive audio via shared memory in OBS, DAWs, and other hosts. **No virtual cable needed**. Output-only plugin (no input bus) — ignores upstream audio in the host's filter chain, only outputs audio sent from DirectPipe
+- **DirectPipe Receiver (VST2/VST3/AU)** — OBS, DAW 등에서 공유 메모리로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 (모노/스테레오 출력 지원) — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력. 호스트에 버퍼링 레이턴시 보고 — Receive audio via shared memory in OBS, DAWs, and other hosts. **No virtual cable needed**. Output-only plugin (no input bus, mono/stereo output) — ignores upstream audio in the host's filter chain, only outputs audio sent from DirectPipe. Reports buffering latency to host
 - **VST 출력 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
 - **버퍼 크기 설정** — Receiver 플러그인 GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver plugin GUI. Actual latency (ms) depends on sample rate
 
