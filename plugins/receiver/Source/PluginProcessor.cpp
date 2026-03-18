@@ -56,11 +56,17 @@ void DirectPipeReceiverProcessor::prepareToPlay(double /*sampleRate*/, int sampl
 void DirectPipeReceiverProcessor::releaseResources()
 {
     disconnect();
+    lastOutputSamples_ = 0;
 }
 
 void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                                 juce::MidiBuffer& /*midiMessages*/)
 {
+    if (interleavedBuffer_.empty()) {
+        buffer.clear();
+        return;
+    }
+
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();

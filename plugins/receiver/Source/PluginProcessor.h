@@ -25,6 +25,10 @@ public:
     const juce::String getName() const override { return "DirectPipe Receiver"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override {
+        auto out = layouts.getMainOutputChannelSet();
+        return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
+    }
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override { return 1; }
