@@ -177,7 +177,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.muted = muted;
         s.outputMuted = engine_.isOutputMuted();
         s.inputMuted = muted;
-        s.masterBypassed = true;
+        s.masterBypassed = false;
         s.latencyMs = static_cast<float>(mainLatency);
         if (monEnabled) {
             double monitorLat = mainLatency;
@@ -234,10 +234,15 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
                     default: ps.type = "vst"; break;
                 }
                 s.plugins.push_back(ps);
-                if (!ps.bypassed && ps.loaded) s.masterBypassed = false;
             }
         }
-        if (s.plugins.empty()) s.masterBypassed = false;
+        if (!s.plugins.empty()) {
+            bool allBypassed = true;
+            for (const auto& ps : s.plugins) {
+                if (ps.loaded && !ps.bypassed) { allBypassed = false; break; }
+            }
+            s.masterBypassed = allBypassed;
+        }
 
         s.chainPDCSamples = chain.getTotalChainPDC();
         double sr = monitor.getSampleRate();

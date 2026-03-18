@@ -615,7 +615,9 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         setup.useDefaultOutputChannels = false;
         setup.inputChannels.setRange(0, 2, true);
         setup.outputChannels.setRange(0, 2, true);
-        deviceManager_.setAudioDeviceSetup(setup, true);
+        auto restoreErr = deviceManager_.setAudioDeviceSetup(setup, true);
+        if (restoreErr.isNotEmpty())
+            Log::warn("AUDIO", "Snapshot restore failed: " + restoreErr);
     }
     intentionalChange_.store(false, std::memory_order_release);
 

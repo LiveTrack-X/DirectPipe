@@ -28,6 +28,7 @@
 #include <JuceHeader.h>
 #include <atomic>
 #include <functional>
+#include <memory>
 
 namespace directpipe {
 
@@ -39,6 +40,7 @@ public:
     SettingsAutosaver(PresetManager& presetMgr, AudioEngine& engine,
                       std::atomic<bool>& loadingSlot,
                       std::atomic<bool>& partialLoad);
+    ~SettingsAutosaver();
 
     /** Mark settings dirty — save will happen ~1s later. */
     void markDirty();
@@ -72,6 +74,8 @@ private:
     AudioEngine& engine_;
     std::atomic<bool>& loadingSlot_;
     std::atomic<bool>& partialLoad_;
+
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
     bool dirty_ = false;
     int cooldown_ = 0;      // ticks remaining before save (at 30Hz)

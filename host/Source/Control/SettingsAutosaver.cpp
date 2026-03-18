@@ -37,6 +37,11 @@ SettingsAutosaver::SettingsAutosaver(PresetManager& presetMgr, AudioEngine& engi
 {
 }
 
+SettingsAutosaver::~SettingsAutosaver()
+{
+    alive_->store(false);
+}
+
 void SettingsAutosaver::markDirty()
 {
     dirty_ = true;
@@ -98,7 +103,8 @@ void SettingsAutosaver::loadFromFile()
             && engine_.getVSTChain().getPluginCount() == 0) {
             juce::Logger::writeToLog("[PRESET] Self-healing: reloading slot "
                 + juce::String::charToString(PresetManager::slotLabel(activeSlot)) + " from file");
-            presetMgr_.loadSlot(activeSlot);
+            bool ok = presetMgr_.loadSlot(activeSlot);
+            if (!ok) partialLoad_ = true;
         }
 
         loadingSlot_ = false;
@@ -115,9 +121,11 @@ void SettingsAutosaver::loadFromFile()
         // Window is shown AFTER preload completes (prevents "frozen UI" appearance).
         auto showWindowCb = onShowWindow;
         auto* pm = &presetMgr_;
-        juce::MessageManager::callAsync([pm, showWindowCb]() {
-            pm->triggerPreload([showWindowCb]() {
-                if (showWindowCb) showWindowCb();
+        auto aliveFlag = alive_;
+        juce::MessageManager::callAsync([pm, showWindowCb, aliveFlag]() {
+            if (!aliveFlag->load()) return;
+            pm->triggerPreload([showWindowCb, aliveFlag]() {
+                if (aliveFlag->load() && showWindowCb) showWindowCb();
             });
         });
         return;  // window will be shown by preload callback

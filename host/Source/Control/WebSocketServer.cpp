@@ -424,6 +424,9 @@ void WebSocketServer::clientThread(ClientConnection* conn)
                 // Ping — respond with pong
                 std::lock_guard<std::mutex> sl(conn->sendMutex);
                 sendFrame(client, payload, 0xA);
+            } else if (opcode == 0x0) {
+                // Continuation frame — fragmented messages not supported, discard payload
+                // (readFrame already consumed the payload bytes, so stream position is correct)
             } else if (opcode == 0x1) {
                 // Text frame — process as JSON action
                 if (!payload.empty()) {
