@@ -65,7 +65,8 @@ struct AppState {
     int bufferSize = 480;
     int channelMode = 1;  // 1 = Mono, 2 = Stereo
     bool monitorEnabled = false;
-    int activeSlot = 0;   // Quick preset slot index: 0=A, 1=B, 2=C, 3=D, 4=E, 5=Auto
+    int activeSlot = 0;   // Quick preset slot index: 0=A, 1=B, 2=C, 3=D, 4=E. -1 = none
+    bool autoSlotActive = false;  // True when Auto slot (index 5) is selected
     bool recording = false;
     double recordingSeconds = 0.0;
     bool ipcEnabled = false;

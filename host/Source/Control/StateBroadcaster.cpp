@@ -58,6 +58,7 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.monitorEnabled);
     h = h * 31u + static_cast<uint32_t>(s.masterBypassed);
     h = h * 31u + static_cast<uint32_t>(s.activeSlot);
+    h = h * 31u + static_cast<uint32_t>(s.autoSlotActive);
     h = h * 31u + static_cast<uint32_t>(s.recording);
     h = h * 31u + static_cast<uint32_t>(s.recordingSeconds * 2.0);  // 0.5s precision
     h = h * 31u + static_cast<uint32_t>(s.inputMuted);
@@ -192,6 +193,7 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("channel_mode", state.channelMode);
     data->setProperty("monitor_enabled", state.monitorEnabled);
     data->setProperty("active_slot", state.activeSlot);
+    data->setProperty("auto_slot_active", state.autoSlotActive);
     data->setProperty("recording", state.recording);
     data->setProperty("recording_seconds", state.recordingSeconds);
     data->setProperty("ipc_enabled", state.ipcEnabled);

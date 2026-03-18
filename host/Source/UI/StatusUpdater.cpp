@@ -196,7 +196,11 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.bufferSize = monitor.getBufferSize();
         s.channelMode = engine_.getChannelMode();
         s.monitorEnabled = router.isEnabled(OutputRouter::Output::Monitor);
-        s.activeSlot = pm ? pm->getActiveSlot() : 0;
+        {
+            int slot = pm ? pm->getActiveSlot() : -1;
+            s.activeSlot = (slot >= 0 && slot <= 4) ? slot : -1;
+            s.autoSlotActive = (slot == 5);  // PresetSlotBar::kAutoSlotIndex == 5
+        }
         s.recording = engine_.getRecorder().isRecording();
         s.recordingSeconds = engine_.getRecorder().getRecordedSeconds();
         s.ipcEnabled = engine_.isIpcEnabled();
