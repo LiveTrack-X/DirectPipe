@@ -69,6 +69,9 @@ MainComponent::MainComponent(bool enableExternalControls)
 
     // Initialize external control system
     controlManager_ = std::make_unique<ControlManager>(dispatcher_, broadcaster_, audioEngine_);
+    controlManager_->onNotification = [this](const juce::String& msg, NotificationLevel level) {
+        showNotification(msg, level);
+    };
     controlManager_->initialize(enableExternalControls);
     dispatcher_.addListener(this);
 
@@ -790,6 +793,9 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&autoProcessorBtn_),
             [this](int menuResult) {
                 if (menuResult == 1) {
+                    if (loadingSlot_) return;
+                    loadingSlot_ = true;
+
                     // Reset: clear chain, add default processors, save
                     auto& chain = audioEngine_.getVSTChain();
 
@@ -797,6 +803,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                     while (chain.getPluginCount() > 0) {
                         if (!chain.removePlugin(0)) {
                             showNotification("Auto reset: failed to remove plugin", NotificationLevel::Error);
+                            loadingSlot_ = false;
                             return;
                         }
                     }
@@ -805,6 +812,8 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                     auto result = chain.addAutoProcessors();
                     if (!result.success) {
                         showNotification("Auto reset failed: " + result.message, NotificationLevel::Error);
+                        partialLoad_ = true;
+                        loadingSlot_ = false;
                         return;
                     }
 
@@ -814,6 +823,8 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                         presetManager_->setActiveSlot(autoIdx);
                         presetManager_->saveSlot(autoIdx);
                     }
+
+                    loadingSlot_ = false;
 
                     if (pluginChainEditor_)
                         pluginChainEditor_->refreshList();
