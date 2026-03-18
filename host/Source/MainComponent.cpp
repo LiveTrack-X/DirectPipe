@@ -736,7 +736,7 @@ void MainComponent::resized()
     int bottomY = bounds.getBottom() - kStatusBarHeight - bottomControlsH;
 
     // Plugin chain fills remaining space between preset slots and bottom controls
-    int chainH = bottomY - y - 4;
+    int chainH = (std::max)(0, bottomY - y - 4);
     pluginChainEditor_->setBounds(cx, y, cw, chainH);
 
     // Mute status indicators (OUT / MON / VST)
