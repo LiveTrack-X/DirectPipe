@@ -52,6 +52,8 @@ void MidiHandler::initialize()
 
 void MidiHandler::shutdown()
 {
+    alive_->store(false, std::memory_order_release);
+
     // Stop learn timer safely — stopTimer() is thread-safe, but destroying
     // a Timer (reset) must happen on the message thread. Just stop it here;
     // the destructor handles cleanup on the message thread.
@@ -148,7 +150,9 @@ void MidiHandler::startLearn(
                 handler.learnCallback_ = nullptr;
             }
             // Schedule our own cleanup after this callback returns safely
-            juce::MessageManager::callAsync([&h = handler]() {
+            auto aliveFlag = handler.alive_;
+            juce::MessageManager::callAsync([aliveFlag, &h = handler]() {
+                if (!aliveFlag->load(std::memory_order_acquire)) return;
                 h.learnTimer_.reset();
             });
         }
