@@ -221,6 +221,10 @@ void BuiltinNoiseRemoval::processChannel(
             // positions (which would require coordination). The modulo wrap is safe because
             // kFifoCapacity (960) is a power-of-nothing-special, but the math works for
             // any capacity as long as (write - read) never exceeds kFifoCapacity.
+            // uint32_t wraparound is handled correctly: the drain comparison uses
+            // (write - read) > 0u instead of read < write, so unsigned modular
+            // subtraction gives the correct count even after UINT32_MAX wraparound
+            // (~25 hours at 48kHz).
             for (int j = 0; j < kRNNFrameSize; ++j) {
                 gateGain = kGateSmooth * gateGain + (1.0f - kGateSmooth) * targetGate;
                 outputFifo[static_cast<size_t>(outputFifoWrite % kFifoCapacity)] = rnnOut[j] * kInvScale * gateGain;
@@ -234,7 +238,7 @@ void BuiltinNoiseRemoval::processChannel(
     // ══ PASS 2: Drain output ring buffer to host output ══
     // Now safe to write to `out` -- all input has been consumed in Pass 1.
     for (int i = 0; i < numSamples; ++i) {
-        if (outputFifoRead < outputFifoWrite) {
+        if ((outputFifoWrite - outputFifoRead) > 0u) {
             out[i] = outputFifo[static_cast<size_t>(outputFifoRead % kFifoCapacity)];
             ++outputFifoRead;
         } else {

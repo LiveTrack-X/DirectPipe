@@ -147,6 +147,9 @@ private:
     // wrapping. Read and write positions grow monotonically and wrap via modulo.
     // This avoids the complexity of linear reset (which would need atomic
     // coordination between the read/write positions).
+    // The drain comparison uses (write - read) > 0u (not read < write) so that
+    // uint32_t wraparound after ~25 hours at 48kHz is handled correctly by
+    // unsigned modular subtraction.
     static constexpr int kRNNFrameSize = 480;
     static constexpr int kFifoCapacity = kRNNFrameSize * 2;
 

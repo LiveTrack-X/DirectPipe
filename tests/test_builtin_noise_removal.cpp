@@ -134,3 +134,38 @@ TEST_F(BuiltinNoiseRemovalTest, StereoBuffer) {
     nr.processBlock(buf, midi);
     SUCCEED();
 }
+
+// 8. FifoCounterOverflowDoesNotSilence: uint32_t wraparound must not cause permanent silence
+TEST(BuiltinNoiseRemovalFifoTest, FifoCounterOverflowDoesNotSilence)
+{
+    // Simulate uint32_t near-overflow: counters wrap past UINT32_MAX
+    constexpr uint32_t kFifoCapacity = 960;
+    std::vector<float> fifo(kFifoCapacity, 0.0f);
+
+    uint32_t readPos  = UINT32_MAX - 5;
+    uint32_t writePos = UINT32_MAX - 5;
+
+    // Write 480 samples (one RNNoise frame)
+    for (int j = 0; j < 480; ++j) {
+        fifo[static_cast<size_t>(writePos % kFifoCapacity)] = 0.5f;
+        ++writePos;
+    }
+    // writePos has wrapped past UINT32_MAX
+
+    // Drain using FIXED comparison: (write - read) > 0u
+    int samplesRead = 0;
+    for (int i = 0; i < 480; ++i) {
+        if ((writePos - readPos) > 0u) {
+            float val = fifo[static_cast<size_t>(readPos % kFifoCapacity)];
+            EXPECT_NEAR(val, 0.5f, 1e-6f);
+            ++readPos;
+            ++samplesRead;
+        }
+    }
+    EXPECT_EQ(samplesRead, 480);
+
+    // Verify the OLD comparison would have failed
+    uint32_t oldRead  = UINT32_MAX - 5;
+    uint32_t oldWrite = writePos;
+    EXPECT_FALSE(oldRead < oldWrite);  // BUG: false even though data exists
+}
