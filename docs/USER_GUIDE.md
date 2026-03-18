@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 4.0.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 4.0.1** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
