@@ -166,9 +166,9 @@ sudo dnf install alsa-lib-devel jack-audio-connection-kit-devel \
 
 ### 핫키 / Hotkeys
 
-현재 Linux에서는 글로벌 핫키가 지원되지 않습니다 (stub). MIDI, HTTP API, WebSocket으로 제어하세요.
+현재 Linux에서는 글로벌 핫키가 지원되지 않습니다. Hotkeys 탭에는 지원되지 않음을 안내하는 메시지가 표시되며, MIDI, WebSocket, HTTP API를 통한 외부 제어를 안내합니다.
 
-> Global hotkeys are not supported on Linux (stub). Use MIDI, HTTP API, or WebSocket for control.
+> **Linux Hotkeys:** Global hotkeys are not supported on Linux. The Hotkeys tab shows an informational message directing users to MIDI, WebSocket, or HTTP API for external control.
 
 ### 자동 시작 / Auto Start
 

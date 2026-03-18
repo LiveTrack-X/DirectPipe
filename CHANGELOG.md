@@ -4,6 +4,23 @@ All notable changes to DirectPipe will be documented in this file.
 
 ---
 
+## [4.0.1] - 2026-03-18
+
+### Fixed
+- **NoiseRemoval**: Ring buffer uint32_t overflow causing permanent silence after ~25h continuous use
+- **HTTP API**: Strict numeric validation — reject mixed alpha-numeric input (e.g., "abc0.5")
+- **UI**: Plugin chain editor negative height on very small window
+- **State Broadcast**: activeSlot clamped to 0-4, added `auto_slot_active` field for WebSocket/SD clients
+- **Linux**: Complete XDG Desktop Entry Exec key character escaping per spec §6
+- **macOS**: Notify user when hotkey accessibility permission not granted
+- **Linux**: Show "unsupported" message in Hotkeys tab instead of non-functional UI
+- **HTTP API**: Escape JSON special characters in API responses
+- **Platform**: AutoStart setters return bool, notify user on failure
+- **IPC**: Restrict POSIX semaphore/shm permissions to owner-only (0600)
+- **XRun Tracking**: Device restart no longer clears XRun history — display persists for full 60s window
+
+---
+
 ## [4.0.0] — Cross-Platform Release
 
 > **v3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서 + 외부 제어 강화.**
