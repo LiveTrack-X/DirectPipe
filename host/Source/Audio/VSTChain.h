@@ -250,6 +250,10 @@ public:
 
     /**
      * @brief Open the native editor window for a plugin.
+     *
+     * Uses two lock scopes with NodeID re-lookup to prevent TOCTOU issues
+     * if the chain is modified between validation and window storage.
+     *
      * @param index Plugin chain index.
      * @param parentComponent Parent component for the editor window.
      */

@@ -69,7 +69,8 @@ public:
     /** Update visual state of the active slot, including handling Auto slot (index 5). */
     void setActiveSlot(int slotIndex);
 
-    /** Reset the pending slot index (call before bulk operations like Clear All Presets / Factory Reset). */
+    /** Reset the pending slot index — prevents stale slot from auto-activating.
+     *  Call before bulk operations (Clear All Presets, Factory Reset) that invalidate slot state. */
     void resetPendingSlot() { pendingSlot_ = -1; }
 
 private:

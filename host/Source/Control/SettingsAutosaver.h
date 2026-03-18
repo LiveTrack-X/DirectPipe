@@ -75,7 +75,7 @@ private:
     std::atomic<bool>& loadingSlot_;
     std::atomic<bool>& partialLoad_;
 
-    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);  // [callAsync lifetime guard]
 
     bool dirty_ = false;
     int cooldown_ = 0;      // ticks remaining before save (at 30Hz)

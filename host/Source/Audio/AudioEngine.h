@@ -269,7 +269,7 @@ private:
 
     // ─── Cross-thread atomics ───
     std::atomic<bool> ipcEnabled_{false};              // [Message write, RT read]
-    std::atomic<bool> ipcWasEnabled_{false};            // [Device thread only] Remembers IPC state across device stop/start
+    std::atomic<bool> ipcWasEnabled_{false};            // [Device callbacks only] Remembers IPC state across device stop/start
     bool ipcAllowed_ = true;                            // [Message thread only] false in audio-only multi-instance mode
 
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);  // [callAsync lifetime guard]
@@ -336,8 +336,8 @@ private:
     using AvRevertMmThreadCharFn = BOOL(WINAPI*)(HANDLE);
     AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;   // [Device thread write-once, RT thread read]
     AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;   // [Device thread write-once, RT thread read]
-    AvRevertMmThreadCharFn avRevertMmThreadChar_ = nullptr; // [Device thread write-once, device thread read]
-    std::atomic<HANDLE> mmcssTaskHandle_{nullptr};        // [RT thread write, device thread read]
+    AvRevertMmThreadCharFn avRevertMmThreadChar_ = nullptr; // [Device callback write-once, Device callback read]
+    std::atomic<HANDLE> mmcssTaskHandle_{nullptr};        // [RT thread write, Device callback read]
 #endif
 
     // ─── Lock-free notification queue (RT write → Message read) ───

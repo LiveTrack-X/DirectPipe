@@ -51,11 +51,11 @@ private:
     directpipe::SharedMemory sharedMemory_;
     directpipe::RingBuffer ringBuffer_;
 
-    std::atomic<bool> connected_{false};
-    std::atomic<bool> multiConsumerWarning_{false};  // true if another Receiver was already reading
-    std::atomic<uint32_t> cachedSampleRate_{0};  // GUI-safe cache (avoids ringBuffer_ race)
-    std::atomic<uint32_t> cachedChannels_{0};     // GUI-safe cache (avoids ringBuffer_ race)
-    int reconnectCounter_ = 0;
+    std::atomic<bool> connected_{false};                // [RT write, GUI read]
+    std::atomic<bool> multiConsumerWarning_{false};    // [RT write, GUI read] true if another Receiver was already reading
+    std::atomic<uint32_t> cachedSampleRate_{0};        // [RT write, GUI read] GUI-safe cache (avoids ringBuffer_ race)
+    std::atomic<uint32_t> cachedChannels_{0};          // [RT write, GUI read] GUI-safe cache (avoids ringBuffer_ race)
+    int reconnectCounter_ = 0;                         // [RT thread only]
     static constexpr int kReconnectInterval = 100;
 
     std::vector<float> interleavedBuffer_;

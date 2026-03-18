@@ -183,7 +183,7 @@ private:
     std::atomic<bool> learning_{false};                   // [Message write, MIDI callback read] Atomic guard for Learn mode
     std::function<void(int, int, int, const juce::String&)> learnCallback_;  // [Protected by bindingsMutex_]
     std::unique_ptr<juce::Timer> learnTimer_;             // [Message thread only]
-    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);  // [callAsync lifetime guard]
 };
 
 } // namespace directpipe
