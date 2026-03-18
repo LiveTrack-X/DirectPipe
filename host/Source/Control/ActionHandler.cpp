@@ -303,9 +303,10 @@ void ActionHandler::handle(const ActionEvent& event)
                 onAutoPresetSwitch();
             } else {
                 // Fallback: legacy behavior (should not happen if callback is wired)
+                AtomicGuard loadGuard(loadingSlot_);
                 auto r = engine_.getVSTChain().addAutoProcessors();
-                if (!r)
-                    juce::Logger::writeToLog("[ACTION] Auto processors failed: " + r.message);
+                if (!r.success && onNotification)
+                    onNotification("Auto setup failed: " + r.message, NotificationLevel::Error);
                 if (onDirty) onDirty();
             }
             // Warn if sample rate is not 48kHz — Noise Removal (RNNoise) will be bypassed

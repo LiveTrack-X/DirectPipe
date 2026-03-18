@@ -235,7 +235,8 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
                 if (slots->hasProperty(key)) {
                     auto slotJson = juce::JSON::toString(slots->getProperty(key), true);
                     auto slotFile = PresetManager::getSlotFile(i);
-                    atomicWriteFile(slotFile, slotJson);
+                    if (!atomicWriteFile(slotFile, slotJson))
+                        Log::warn("APP", "Failed to restore slot file: " + slotFile.getFileName());
                 }
             }
         }
@@ -263,8 +264,10 @@ void SettingsExporter::showSaveDialog(const juce::String& defaultFilename,
         if (file == juce::File()) return;
         auto target = file.withFileExtension(extension);
         auto json = exporter();
-        if (json.isNotEmpty())
-            atomicWriteFile(target, json);
+        if (json.isNotEmpty()) {
+            if (!atomicWriteFile(target, json))
+                Log::warn("APP", "Failed to export settings");
+        }
     });
 }
 

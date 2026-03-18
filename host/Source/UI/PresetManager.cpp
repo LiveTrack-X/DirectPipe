@@ -1090,7 +1090,8 @@ void PresetManager::setSlotName(int slotIndex, const juce::String& name)
                 obj->removeProperty("name");
             else
                 obj->setProperty("name", name.trim());
-            (void)atomicWriteFile(file, juce::JSON::toString(juce::var(obj), true));
+            if (!atomicWriteFile(file, juce::JSON::toString(juce::var(obj), true)))
+                Log::warn("PRESET", "Failed to save slot name");
         }
     }
     juce::Logger::writeToLog("[PRESET] Renamed slot " + juce::String::charToString(slotLabel(slotIndex))

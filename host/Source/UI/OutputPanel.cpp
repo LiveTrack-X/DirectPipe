@@ -23,6 +23,7 @@
 
 #include "OutputPanel.h"
 #include "../Control/ControlMapping.h"
+#include "../Control/Log.h"
 #include "../Util/AtomicFileIO.h"
 
 namespace directpipe {
@@ -376,7 +377,8 @@ void OutputPanel::saveRecordingConfig()
     juce::DynamicObject::Ptr obj = new juce::DynamicObject();
     obj->setProperty("recordingFolder", recordingFolder_.getFullPathName());
     auto json = juce::JSON::toString(juce::var(obj.get()));
-    (void)atomicWriteFile(configFile, json);
+    if (!atomicWriteFile(configFile, json))
+        Log::warn("APP", "Failed to save recording folder config");
 }
 
 void OutputPanel::loadRecordingConfig()
