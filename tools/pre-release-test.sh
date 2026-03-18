@@ -215,7 +215,7 @@ fi
 # ═══════════════════════════════════════════════
 echo "[Step 3] Core Unit Tests"
 echo "─────────────────────────────────────"
-CORE_TEST_EXE="$BUILD_DIR/tests/Release/directpipe-tests.exe"
+CORE_TEST_EXE="$BUILD_DIR/bin/Release/directpipe-tests.exe"
 CORE_JSON="$BUILD_DIR/tests/core-test-results.json"
 if [[ -f "$CORE_TEST_EXE" ]]; then
   if "$CORE_TEST_EXE" --gtest_output=json:"$CORE_JSON" 2>&1 | tail -3; then
