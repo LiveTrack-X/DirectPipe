@@ -62,7 +62,7 @@ Audio 탭 / Audio Tab
 >
 > **Don't know what VST plugins are? No problem!** The [Auto] button handles essential mic correction instantly. Fine-tune further with VST plugins.
 
-1. 왼쪽 하단의 초록색 **[Auto]** 버튼 클릭 / Click the green **[Auto]** button at the bottom-left
+1. 왼쪽 상단 입력 게인 옆의 **[Auto]** 버튼 클릭 / Click the **[Auto]** button next to the input gain slider (top-left)
 2. 끝! 3가지 내장 프로세서가 자동 구성됩니다 / Done! 3 built-in processors are configured automatically:
    - **Filter** — 에어컨 소음, 마이크 진동 같은 저주파 잡음을 제거합니다 / Removes low-frequency noise like AC hum and mic rumble
    - **Noise Removal** — AI가 키보드, 팬 소리를 실시간으로 제거합니다 / AI removes keyboard clatter, fan noise in real-time
@@ -195,7 +195,7 @@ Hear your processed voice in real-time through headphones. If you clicked [Auto]
 
 Save your current plugin chain to load instantly next time. Create different setups for different situations and switch with one click.
 
-- 왼쪽 하단 슬롯 버튼 **A** 클릭 → 현재 체인이 A 슬롯에 저장 / Click slot **A** → saves current chain
+- 왼쪽 슬롯 버튼 **A** 클릭 → 현재 체인이 A 슬롯에 저장 / Click slot **A** → saves current chain
 - **우클릭** → **Rename** → 이름 지정 (예: "게임", "통화") / Right-click → **Rename** (e.g., "Game", "Chat")
 - 슬롯 **B~E**에 다른 설정 저장 → 원클릭으로 전환 / Save different setups to B-E → one-click switch
 

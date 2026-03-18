@@ -264,12 +264,11 @@ OBS [오디오 소스 → 필터: DirectPipe Receiver]
 DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layout.
 
 **왼쪽 컬럼 / Left Column:**
-- INPUT 레벨 미터 (dB 로그 스케일) / INPUT level meter (dB log scale)
-- 입력 게인 슬라이더 (0.0x ~ 2.0x) / Input gain slider (0.0x ~ 2.0x)
-- VST 플러그인 체인 (드래그 앤 드롭 순서 변경) / VST plugin chain (drag-and-drop reorder)
-- Add Plugin / Scan / Remove 버튼 / Add Plugin / Scan / Remove buttons
-- Quick Preset Slots (A ~ E)
+- INPUT 레벨 미터 (dB 로그 스케일, 좌측 가장자리) / INPUT level meter (dB log scale, left edge)
+- 입력 게인 슬라이더 (0.0x ~ 2.0x) + [Auto] 버튼 / Input gain slider (0.0x ~ 2.0x) + [Auto] button
 - Save Preset / Load Preset 버튼 / Save Preset / Load Preset buttons
+- Quick Preset Slots (A ~ E)
+- VST 플러그인 체인 (드래그 앤 드롭 순서 변경, 하단에 Add Plugin / Scan / Remove 버튼) / VST plugin chain (drag-and-drop reorder, Add Plugin / Scan / Remove buttons at bottom)
 - 뮤트 인디케이터 (OUT / MON / VST) / Mute indicators (OUT / MON / VST)
 - PANIC MUTE 버튼 / PANIC MUTE button
 
@@ -598,7 +597,7 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 
 - **Enable VST Receiver Output** — IPC 출력 켜기/끄기 (공유 메모리로 DirectPipe Receiver에 오디오 전송) / Toggle IPC output on/off (sends audio to DirectPipe Receiver via shared memory)
 - 기본값은 **꺼짐(OFF)**. DirectPipe Receiver를 사용하는 앱(예: OBS)이 있을 때만 켜면 됩니다 / Default is **OFF**. Only enable when an app (e.g., OBS) is using DirectPipe Receiver
-- 메인 화면 **VST** 버튼, **Ctrl+Shift+I**, MIDI, Stream Deck, HTTP API로도 제어 가능 / Also controllable via main **VST** button, **Ctrl+Shift+I**, MIDI, Stream Deck, HTTP API
+- 메인 화면 **VST** 버튼, MIDI, Stream Deck, HTTP API, 사용자 정의 단축키로도 제어 가능 / Also controllable via main **VST** button, MIDI, Stream Deck, HTTP API, or user-defined hotkey
 - **샘플레이트 불일치 경고**: DirectPipe의 SR과 호스트 앱(OBS 등)의 SR이 다르면 Receiver 플러그인 GUI에 경고 메시지가 표시됩니다. SR이 다르면 피치/속도가 변합니다. 호스트 앱의 샘플레이트를 DirectPipe Audio 탭과 동일하게 맞춰주세요.
 - **SR mismatch warning**: If DirectPipe SR differs from the host app (e.g., OBS) SR, a warning is shown in the Receiver plugin GUI. Mismatched SR causes pitch/speed artifacts. Match the host app's audio sample rate to the DirectPipe Audio tab setting.
 
@@ -639,7 +638,7 @@ For installation and setup, see the [detailed Receiver VST2 guide](#receiver-vst
 
 1. 메인 화면 하단 **VST** 버튼 / **VST** button at the bottom of main screen
 2. Output 탭 → **Enable VST Receiver Output** 체크 / Output tab → **Enable VST Receiver Output** checkbox
-3. 키보드 **Ctrl+Shift+I** / Keyboard **Ctrl+Shift+I**
+3. 사용자 정의 단축키 (Controls > Hotkeys에서 IPC Toggle 액션에 단축키 할당) / User-defined hotkey (assign a key combo to IPC Toggle action in Controls > Hotkeys)
 4. Stream Deck **IPC Toggle** 버튼 / Stream Deck **IPC Toggle** button
 5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
 
@@ -1112,8 +1111,8 @@ View all app events (audio engine, plugins, WebSocket, HTTP, etc.) in real-time.
 | **Full Backup** | 전체 백업 (설정 + VST 체인 + 슬롯 A-E + 컨트롤) → `.dpfullbackup` 파일. 백업에 플랫폼 정보 포함 / Full backup (settings + VST chain + slots A-E + controls) → `.dpfullbackup` file. Includes platform info |
 | **Full Restore** | `.dpfullbackup` 파일에서 전체 복원. **같은 OS끼리만 가능** (Windows 백업은 Windows에서만, macOS 백업은 macOS에서만 복원). 다른 OS에서 복원 시 경고 다이얼로그 표시 / Restore from `.dpfullbackup`. **Same OS only** (Windows backup → Windows, macOS → macOS). Cross-OS restore is blocked with a warning dialog |
 | **Clear Plugin Cache** | 스캔된 플러그인 목록 삭제 (다음 Scan 시 재스캔) / Delete scanned plugin list (re-scan on next Scan) |
-| **Clear All Presets** | 퀵 슬롯 A~E + 백업 파일 + 사용자 프리셋 전체 삭제, 현재 체인도 클리어 / Delete all quick slots A-E + backups + user presets, clears active chain |
-| **Factory Reset** | 공장 초기화 — 모든 데이터 삭제 (설정, 컨트롤, 프리셋, 플러그인 캐시, 녹음 설정) / Factory reset — deletes all data (settings, controls, presets, plugin cache, recording config) |
+| **Clear All Presets** | 퀵 슬롯 A~E + Auto 슬롯 + 사용자 프리셋 전체 삭제, 현재 체인도 클리어 / Delete all quick slots (A-E + Auto) + user presets, clears active chain |
+| **Factory Reset** | 공장 초기화 — 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 플러그인 캐시, 녹음 설정) / Factory reset — deletes all data (settings, controls, presets (A-E + Auto), plugin cache, recording config) |
 
 ---
 

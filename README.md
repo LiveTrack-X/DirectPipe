@@ -192,7 +192,7 @@ External Control:
 ### VST 출력 (DirectPipe Receiver) / VST Output (DirectPipe Receiver)
 
 - **DirectPipe Receiver (VST2/VST3/AU)** — OBS, DAW 등에서 공유 메모리로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 (모노/스테레오 출력 지원) — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력. 호스트에 버퍼링 레이턴시 보고 — Receive audio via shared memory in OBS, DAWs, and other hosts. **No virtual cable needed**. Output-only plugin (no input bus, mono/stereo output) — ignores upstream audio in the host's filter chain, only outputs audio sent from DirectPipe. Reports buffering latency to host
-- **VST 출력 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / Ctrl+Shift+I / MIDI / Stream Deck / HTTP API로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, hotkey, MIDI, Stream Deck, or HTTP
+- **VST 출력 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / MIDI / Stream Deck / HTTP API / 사용자 정의 단축키로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, MIDI, Stream Deck, HTTP API, or user-defined hotkey
 - **버퍼 크기 설정** — Receiver 플러그인 GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver plugin GUI. Actual latency (ms) depends on sample rate
 
   | 프리셋 / Preset | 샘플 / Samples | @48kHz | @44.1kHz | 용도 / Best for |
@@ -213,7 +213,7 @@ External Control:
 
 ### UI / 사용자 인터페이스
 
-- **2컬럼 레이아웃** — 좌: 입력 미터 + 게인 + VST 체인 + 프리셋 슬롯 + 뮤트 버튼(OUT/MON/VST) + PANIC MUTE, 우: 설정 탭 패널 + 출력 미터 — Left: input meter + chain + controls, Right: tabbed settings + output meter
+- **2컬럼 레이아웃** — 좌: 입력 미터 + 게인([Auto] 포함) + 프리셋 슬롯(A~E) + VST 체인 + 뮤트 버튼(OUT/MON/VST) + PANIC MUTE, 우: 설정 탭 패널 + 출력 미터 — Left: input meter + gain (with [Auto]) + preset slots (A-E) + chain + mute buttons (OUT/MON/VST) + PANIC MUTE, Right: tabbed settings + output meter
 - **4개 탭** — Tab layout:
   - **Audio**: 드라이버 선택 (Windows: WASAPI/ASIO, macOS: CoreAudio, Linux: ALSA/JACK), 입출력 장치, 샘플레이트, 버퍼 크기, 채널 모드. **Audio 탭의 샘플레이트가 VST 체인·모니터 출력·IPC 전체에 적용됨** — Driver (Windows: WASAPI/ASIO, macOS: CoreAudio, Linux: ALSA/JACK), devices, SR, buffer, channel mode. **Audio tab SR applies to VST chain, monitor output, and IPC**
   - **Output**: 모니터 출력(장치/볼륨/상태), VST 출력 토글, 녹음(REC/Play/폴더) — Monitor output, VST output toggle, recording
@@ -221,9 +221,9 @@ External Control:
   - **Settings**: 자동 시작 (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset(A-E + Auto 슬롯 포함)) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset (includes A-E + Auto slots))
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
 - **Panic Mute** — 전체 출력 즉시 뮤트 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 모든 액션 및 외부 제어 잠금 — Instant mute all + auto-stop recording, locks all actions and controls until unmuted (recording does not auto-restart)
-- **상태 바** — 레이턴시, CPU %, 오디오 포맷, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU, format, portable mode, version. Auto-fade notifications
+- **상태 바** — 레이턴시, CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. Auto-fade notifications
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 자동 교체 → 재시작 — In-app auto-updater with one-click update from GitHub releases
-- **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Malgun Gothic Bold로 가독성 확보 — Korean/Chinese/Japanese device names rendered correctly with CJK font support
+- **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Windows: Malgun Gothic, macOS: Apple SD Gothic Neo, Linux: Noto Sans CJK KR — Korean/Chinese/Japanese device names rendered correctly with platform-specific CJK font support
 - **다크 테마** — Custom JUCE LookAndFeel
 - **포터블 모드** — exe 옆에 [`portable.flag`](tools/portable.flag) 파일 배치 시 설정을 `./config/`에 저장. 다중 인스턴스 지원: 일반 모드와 포터블을 동시에 실행하면 포터블은 "Audio Only" 모드로 동작 (외부 제어 충돌 방지). 트레이/타이틀 바에 모드 표시 ([상세 설명](docs/USER_GUIDE.md#포터블-모드--portable-mode)) — Place [`portable.flag`](tools/portable.flag) next to exe to store config in `./config/`. Multi-instance support: running portable alongside normal mode puts portable in "Audio Only" mode (prevents external control conflicts). Mode shown in tray/title bar ([details](docs/USER_GUIDE.md#포터블-모드--portable-mode))
 
@@ -863,7 +863,7 @@ Normally, to route DirectPipe's processed audio to OBS, you need a **virtual aud
 2. **DirectPipe**에서 IPC 출력 켜기
    - DirectPipe 실행 → 하단의 **VST** 버튼 클릭 (초록색으로 변경)
    - 또는: **Output** 탭에서 **"Enable VST Receiver Output"** 체크
-   - 또는: 키보드 **Ctrl+Shift+I**
+   - 또는: 사용자 정의 단축키 (Controls > Hotkeys에서 IPC Toggle에 단축키 할당)
 
 3. **OBS** 설정
    - OBS 실행 → **소스** 영역에서 오디오 소스(마이크 등) 선택 → **필터** 클릭
@@ -895,7 +895,7 @@ OBS [DirectPipe Receiver VST 필터]
 2. **Enable IPC output in DirectPipe**
    - Run DirectPipe → click the **VST** button at the bottom (turns green)
    - Or: **Output** tab → check **"Enable VST Receiver Output"**
-   - Or: press **Ctrl+Shift+I**
+   - Or: user-defined hotkey (assign a key combo to IPC Toggle in Controls > Hotkeys)
 
 3. **Configure OBS**
    - Open OBS → select an audio source (e.g., mic) → click **Filters**
@@ -1012,7 +1012,7 @@ Open the Receiver plugin interface and select a buffer size from the **Buffer** 
 **켜는 방법 (5가지):**
 1. DirectPipe 메인 화면 하단의 **VST** 버튼 클릭
 2. **Output** 탭 → **"Enable VST Receiver Output"** 체크
-3. 키보드 단축키 **Ctrl+Shift+I**
+3. 사용자 정의 단축키 (Controls > Hotkeys에서 IPC Toggle에 단축키 할당)
 4. Stream Deck **IPC Toggle** 버튼
 5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
 
@@ -1031,7 +1031,7 @@ Open the Receiver plugin interface and select a buffer size from the **Buffer** 
 **How to enable (5 ways):**
 1. Click the **VST** button at the bottom of DirectPipe's main window
 2. **Output** tab → check **"Enable VST Receiver Output"**
-3. Hotkey **Ctrl+Shift+I**
+3. User-defined hotkey (assign a key combo to IPC Toggle in Controls > Hotkeys)
 4. Stream Deck **IPC Toggle** button
 5. HTTP API: `curl http://localhost:8766/api/ipc/toggle`
 
