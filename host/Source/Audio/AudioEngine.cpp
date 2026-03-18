@@ -907,9 +907,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         mmcssRegistered_.store(true, std::memory_order_relaxed);
         if (avSetMmThreadChar_ && avSetMmThreadPrio_) {
             DWORD taskIndex = 0;
-            HANDLE task = avSetMmThreadChar_(L"Pro Audio", &taskIndex);
-            if (task)
-                avSetMmThreadPrio_(task, 2);  // AVRT_PRIORITY_HIGH
+            mmcssTaskHandle_ = avSetMmThreadChar_(L"Pro Audio", &taskIndex);
+            if (mmcssTaskHandle_)
+                avSetMmThreadPrio_(mmcssTaskHandle_, 2);  // AVRT_PRIORITY_HIGH
         }
     }
 #endif
@@ -1087,10 +1087,13 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW"));
             avSetMmThreadPrio_ = reinterpret_cast<AvSetMmThreadPrioFn>(
                 GetProcAddress(avrt, "AvSetMmThreadPriority"));
+            avRevertMmThreadChar_ = reinterpret_cast<AvRevertMmThreadCharFn>(
+                GetProcAddress(avrt, "AvRevertMmThreadCharacteristics"));
             // Guard: if either function missing (corrupted DLL), null both to allow future retry
             if (!avSetMmThreadChar_ || !avSetMmThreadPrio_) {
                 avSetMmThreadChar_ = nullptr;
                 avSetMmThreadPrio_ = nullptr;
+                avRevertMmThreadChar_ = nullptr;
             }
         }
     }
@@ -1247,7 +1250,15 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             Log::audit("AUDIO", "Active output bits: " + device->getActiveOutputChannels().toString(2));
             Log::audit("AUDIO", "Input latency: " + juce::String(device->getInputLatencyInSamples()) + " samples");
             Log::audit("AUDIO", "Output latency: " + juce::String(device->getOutputLatencyInSamples()) + " samples");
-            Log::audit("AUDIO", "Desired devices: in='" + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
+            {
+                juce::String desIn, desOut;
+                {
+                    const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+                    desIn = desiredInputDevice_;
+                    desOut = desiredOutputDevice_;
+                }
+                Log::audit("AUDIO", "Desired devices: in='" + desIn + "' out='" + desOut + "'");
+            }
         }
     }
 
@@ -1269,6 +1280,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     workBuffer_.clear();
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
+    chainCrashed_.store(false, std::memory_order_relaxed);  // Reset crash flag — user can recover by removing the crashing plugin
     safetyLimiter_.prepareToPlay(currentSampleRate_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     latencyMonitor_.reset(currentSampleRate_, currentBufferSize_);
@@ -1306,6 +1318,14 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
 void AudioEngine::audioDeviceStopped()
 {
+#if defined(_WIN32)
+    // Revert MMCSS thread characteristics to avoid handle leak
+    if (mmcssTaskHandle_ && avRevertMmThreadChar_) {
+        avRevertMmThreadChar_(mmcssTaskHandle_);
+        mmcssTaskHandle_ = nullptr;
+    }
+#endif
+
     // Remember IPC state for re-init in audioDeviceAboutToStart,
     // then disable before shutdown to prevent audio callback from
     // calling writeAudio on a shutdown writer during device restart

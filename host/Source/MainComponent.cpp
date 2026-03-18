@@ -305,8 +305,8 @@ MainComponent::MainComponent(bool enableExternalControls)
             // Reload with factory defaults
             controlManager_->reloadConfig();
             if (settingsAutosaver_)
-                settingsAutosaver_->loadFromFile();
-            loadingSlot_ = false;
+                settingsAutosaver_->loadFromFile();  // manages loadingSlot_ internally (sets true then false)
+            // DO NOT set loadingSlot_ = false here — loadFromFile releases it at the right time
             refreshUI();
             if (presetSlotBar_)
                 presetSlotBar_->updateSlotButtonStates();

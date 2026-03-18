@@ -237,11 +237,15 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
             }
         }
         if (!s.plugins.empty()) {
-            bool allBypassed = true;
+            bool anyLoaded = false;
+            bool allLoadedBypassed = true;
             for (const auto& ps : s.plugins) {
-                if (ps.loaded && !ps.bypassed) { allBypassed = false; break; }
+                if (ps.loaded) {
+                    anyLoaded = true;
+                    if (!ps.bypassed) { allLoadedBypassed = false; break; }
+                }
             }
-            s.masterBypassed = allBypassed;
+            s.masterBypassed = anyLoaded && allLoadedBypassed;
         }
 
         s.chainPDCSamples = chain.getTotalChainPDC();

@@ -326,8 +326,11 @@ private:
     // read from RT callback. Safe: written once before any RT read, never modified after.
     using AvSetMmThreadCharFn = HANDLE(WINAPI*)(LPCWSTR, LPDWORD);
     using AvSetMmThreadPrioFn = BOOL(WINAPI*)(HANDLE, int);
-    AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;  // [Device thread write-once, RT thread read]
-    AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;  // [Device thread write-once, RT thread read]
+    using AvRevertMmThreadCharFn = BOOL(WINAPI*)(HANDLE);
+    AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;   // [Device thread write-once, RT thread read]
+    AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;   // [Device thread write-once, RT thread read]
+    AvRevertMmThreadCharFn avRevertMmThreadChar_ = nullptr; // [Device thread write-once, device thread read]
+    HANDLE mmcssTaskHandle_ = nullptr;                   // [RT thread write, device thread read]
 #endif
 
     // ─── Lock-free notification queue (RT write → Message read) ───

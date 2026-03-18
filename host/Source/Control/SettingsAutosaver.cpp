@@ -104,7 +104,7 @@ void SettingsAutosaver::loadFromFile()
             juce::Logger::writeToLog("[PRESET] Self-healing: reloading slot "
                 + juce::String::charToString(PresetManager::slotLabel(activeSlot)) + " from file");
             bool ok = presetMgr_.loadSlot(activeSlot);
-            if (!ok) partialLoad_ = true;
+            partialLoad_ = !ok;  // clear on success, set on failure
         }
 
         loadingSlot_ = false;
