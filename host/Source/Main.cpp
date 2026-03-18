@@ -410,9 +410,9 @@ private:
                 tooltip += app_.enableExternalControls_ ? " (Portable)" : " (Portable/Audio Only)";
             }
 
-            if (snapshot.activeSlot == 5)
+            if (snapshot.autoSlotActive)
                 tooltip += " [Auto]";
-            else {
+            else if (snapshot.activeSlot >= 0) {
                 char slotChar = 'A' + static_cast<char>(juce::jlimit(0, 4, snapshot.activeSlot));
                 tooltip += " [Slot " + juce::String::charToString(slotChar) + "]";
             }
@@ -456,8 +456,9 @@ private:
                     } else if (result == 2) {
                         juce::JUCEApplication::getInstance()->systemRequestedQuit();
                     } else if (result == 3) {
-                        directpipe::Platform::setAutoStartEnabled(
-                            !directpipe::Platform::isAutoStartEnabled());
+                        bool desired = !directpipe::Platform::isAutoStartEnabled();
+                        if (!directpipe::Platform::setAutoStartEnabled(desired))
+                            juce::Logger::writeToLog("[APP] Failed to change auto-start setting");
                     }
                 });
         }

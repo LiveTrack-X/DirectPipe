@@ -25,6 +25,7 @@
 #include "Log.h"
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <mutex>
 
 namespace directpipe {
@@ -51,8 +52,27 @@ static bool parseFloat(const std::string& s, float& outValue)
     errno = 0;
     float val = std::strtof(s.c_str(), &endptr);
     if (endptr == s.c_str() || *endptr != '\0' || errno == ERANGE) return false;
+    if (std::isnan(val) || std::isinf(val)) return false;
     outValue = val;
     return true;
+}
+
+/// Escape a string for safe JSON embedding — prevents response injection from URL segments.
+static std::string escapeJsonString(const std::string& s)
+{
+    std::string result;
+    result.reserve(s.size());
+    for (char c : s) {
+        switch (c) {
+            case '"':  result += "\\\""; break;
+            case '\\': result += "\\\\"; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            default:   result += c;
+        }
+    }
+    return result;
 }
 
 HttpApiServer::HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
@@ -341,7 +361,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
             return {400, R"({"error": "value out of range"})"};
         dispatcher_.setVolume(target, value);
         return {200, R"({"ok": true, "action": "set_volume", "target": ")" +
-               target + R"(", "value": )" +
+               escapeJsonString(target) + R"(", "value": )" +
                floatToString(value) + "}"};
     }
 
