@@ -29,6 +29,24 @@
 
 namespace directpipe {
 
+// ─── SEH crash guard for VST processBlock (Windows only) ─────────────────────
+// MSVC forbids __try/__except in functions that have C++ objects with destructors
+// on the stack (e.g. ScopedNoDenormals, AudioBuffer references). Extracting the
+// __try block into a plain-C-style helper avoids this compiler restriction.
+// try/catch(...) does NOT catch Windows SEH exceptions (access violations), so
+// this is the only way to guard against crashing plugins on Windows.
+#if defined(_WIN32)
+static bool processBlockSEH(VSTChain& chain, juce::AudioBuffer<float>& buffer, int numSamples)
+{
+    __try {
+        chain.processBlock(buffer, numSamples);
+        return true;
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+#endif
+
 AudioEngine::AudioEngine() = default;
 
 AudioEngine::~AudioEngine()
@@ -132,7 +150,11 @@ void AudioEngine::shutdown()
         deviceManager_.removeAudioCallback(this);
         deviceManager_.closeAudioDevice();
     }
-    sharedMemWriter_.shutdown();
+    // audioDeviceStopped() already called sharedMemWriter_.shutdown() via
+    // closeAudioDevice() above, but guard against the path where the device
+    // was never started (e.g. init failure) — only shut down if still connected.
+    if (sharedMemWriter_.isConnected())
+        sharedMemWriter_.shutdown();
     ipcEnabled_.store(false, std::memory_order_relaxed);
     monitorOutput_.shutdown();
     outputRouter_.shutdown();
@@ -195,6 +217,12 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
     // Clear device-loss state — user intentionally picked a new input device
     inputDeviceLost_.store(false, std::memory_order_relaxed);
     deviceLost_.store(false, std::memory_order_relaxed);
+    // Auto-unmute output if it was auto-muted due to device loss
+    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+        outputAutoMuted_.store(false, std::memory_order_relaxed);
+        if (!outputNone_.load(std::memory_order_relaxed))
+            outputMuted_.store(false, std::memory_order_relaxed);
+    }
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
     Log::info("AUDIO", "Input device set: " + deviceName);
@@ -907,9 +935,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         mmcssRegistered_.store(true, std::memory_order_relaxed);
         if (avSetMmThreadChar_ && avSetMmThreadPrio_) {
             DWORD taskIndex = 0;
-            mmcssTaskHandle_ = avSetMmThreadChar_(L"Pro Audio", &taskIndex);
-            if (mmcssTaskHandle_)
-                avSetMmThreadPrio_(mmcssTaskHandle_, 2);  // AVRT_PRIORITY_HIGH
+            HANDLE h = avSetMmThreadChar_(L"Pro Audio", &taskIndex);
+            mmcssTaskHandle_.store(h, std::memory_order_relaxed);
+            if (h)
+                avSetMmThreadPrio_(h, 2);  // AVRT_PRIORITY_HIGH
         }
     }
 #endif
@@ -1003,15 +1032,29 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 
     // 2. Process through VST plugin chain (inline, zero additional latency)
     //    Each plugin's bypass flag is atomic — can be toggled from any thread
-    try {
-        vstChain_.processBlock(buffer, numSamples);
-    } catch (...) {
-        // Plugin crash — silence output and stop processing on subsequent callbacks
+    //
+    // Windows: __try/__except catches SEH exceptions (access violations) that
+    //          try/catch(...) silently misses. The helper is extracted into a
+    //          separate function because MSVC forbids __try in functions with
+    //          C++ objects that have destructors on the stack.
+    // Other:   try/catch(...) is the best available mechanism.
+#if defined(_WIN32)
+    if (!processBlockSEH(vstChain_, buffer, numSamples)) {
         buffer.clear();
         chainCrashed_.store(true, std::memory_order_relaxed);
         pushNotification("Plugin crash detected \xe2\x80\x94 audio muted. Remove the problematic plugin to resume.",
                          NotificationLevel::Error);
     }
+#else
+    try {
+        vstChain_.processBlock(buffer, numSamples);
+    } catch (...) {
+        buffer.clear();
+        chainCrashed_.store(true, std::memory_order_relaxed);
+        pushNotification("Plugin crash detected \xe2\x80\x94 audio muted. Remove the problematic plugin to resume.",
+                         NotificationLevel::Error);
+    }
+#endif
 
     // CRITICAL: Steps 2.1-4 MUST execute in this exact order.
     // Safety Limiter (step 2.1) must run BEFORE all output paths (steps 2.5-4).
@@ -1280,7 +1323,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     workBuffer_.clear();
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
-    chainCrashed_.store(false, std::memory_order_relaxed);  // Reset crash flag — user can recover by removing the crashing plugin
+    // NOTE: chainCrashed_ is NOT reset here — device events (WASAPI session changes,
+    // ASIO buffer size change) fire audioDeviceAboutToStart without any chain change,
+    // which would silently re-enable a crashed chain. Instead, chainCrashed_ is cleared
+    // by clearChainCrash() which is called from onChainModified (plugin add/remove/slot switch).
     safetyLimiter_.prepareToPlay(currentSampleRate_);
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     latencyMonitor_.reset(currentSampleRate_, currentBufferSize_);
@@ -1320,9 +1366,10 @@ void AudioEngine::audioDeviceStopped()
 {
 #if defined(_WIN32)
     // Revert MMCSS thread characteristics to avoid handle leak
-    if (mmcssTaskHandle_ && avRevertMmThreadChar_) {
-        avRevertMmThreadChar_(mmcssTaskHandle_);
-        mmcssTaskHandle_ = nullptr;
+    HANDLE h = mmcssTaskHandle_.load(std::memory_order_relaxed);
+    if (h && avRevertMmThreadChar_) {
+        avRevertMmThreadChar_(h);
+        mmcssTaskHandle_.store(nullptr, std::memory_order_relaxed);
     }
 #endif
 

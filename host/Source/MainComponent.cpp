@@ -399,6 +399,10 @@ MainComponent::MainComponent(bool enableExternalControls)
     pluginChainEditor_->setLimiterCeiling(audioEngine_.getSafetyLimiter().getCeilingdB());
 
     pluginChainEditor_->onChainModified = [this] {
+        // Chain structure changed (plugin add/remove/reorder) — clear crash flag
+        // so audio resumes after the problematic plugin is removed.
+        audioEngine_.clearChainCrash();
+
         if (loadingSlot_ || partialLoad_) return;
         int slot = presetManager_->getActiveSlot();
         if (slot >= 0)

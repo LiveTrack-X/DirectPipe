@@ -225,6 +225,9 @@ public:
     std::function<void(const juce::String&)> onDeviceError;
     std::function<void()> onDeviceReconnected;
 
+    /** @brief Clear the chain-crash flag (call after chain structure change: plugin add/remove/slot switch). */
+    void clearChainCrash() { chainCrashed_.store(false, std::memory_order_relaxed); }
+
     /** Drain pending notifications (call from message thread timer). */
     bool popNotification(PendingNotification& out);
 
@@ -330,7 +333,7 @@ private:
     AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;   // [Device thread write-once, RT thread read]
     AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;   // [Device thread write-once, RT thread read]
     AvRevertMmThreadCharFn avRevertMmThreadChar_ = nullptr; // [Device thread write-once, device thread read]
-    HANDLE mmcssTaskHandle_ = nullptr;                   // [RT thread write, device thread read]
+    std::atomic<HANDLE> mmcssTaskHandle_{nullptr};        // [RT thread write, device thread read]
 #endif
 
     // ─── Lock-free notification queue (RT write → Message read) ───
