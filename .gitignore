@@ -42,6 +42,7 @@ dist/release-*/
 # Claude Code internal files
 .claude/
 CLAUDE.md
+docs/superpowers/
 
 # AI maintenance guides (per-module, not for public repo)
 host/Source/*/README.md
