@@ -35,6 +35,15 @@ All notable changes to DirectPipe will be documented in this file.
 - **WebSocket**: Sends RFC 6455 close frame (1009) before disconnecting oversized-message clients
 - **Settings**: importAll/importFullBackup now check platform compatibility internally
 - **Platform**: macOS/Linux AutoStart uses atomicWriteFile for crash-safe plist/desktop writes
+- **MIDI**: Guard LearnTimeout callAsync with alive_ flag — prevent use-after-free on rapid shutdown
+- **Audio RT**: Add release/acquire barrier for MMCSS cached function pointers (ARM memory ordering safety)
+- **Audio RT**: Guard partial GetProcAddress failure — null both pointers to allow retry
+- **VST**: Validate nodeId in openPluginEditor second lock scope — prevent TOCTOU use-after-free
+- **HTTP**: Close client sockets on HttpApiServer::stop() — prevent shutdown hang on blocked handlers
+- **WebSocket**: Close socket on handshake failure — prevent zombie connections in clients_ vector
+- **Cache**: Remove dangerous thread detach in PluginPreloadCache::cancelAndWait — leak instead of use-after-free
+- **IPC**: Add atomic detach guard to RingBuffer — prevent null deref on concurrent detach/write
+- **Audio**: Protect desiredDevice_ reads in audioDeviceAboutToStart with SpinLock (cross-thread safety)
 
 ---
 
