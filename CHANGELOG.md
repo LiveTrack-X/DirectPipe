@@ -81,6 +81,9 @@ All notable changes to DirectPipe will be documented in this file.
 - **Audio**: setInputDevice clears outputAutoMuted_ — prevents permanently stuck muted output after input device change
 - **Audio**: mmcssTaskHandle_ is now std::atomic<HANDLE> — prevents data race between RT and device threads on ARM
 - **Audio**: Guard SharedMemWriter::shutdown() against double call in AudioEngine::shutdown()
+- **Settings**: Add null guard on getDynamicObject() in ControlMapping::load() — prevent crash on corrupt config
+- **Audio**: Guard audioDeviceAboutToStart against BS=0 or SR=0 — prevent VST prepareToPlay with invalid params
+- **Audio**: Move crash notification from RT thread to 30Hz message-thread timer — eliminate heap alloc in crash handler
 
 ---
 
