@@ -16,9 +16,9 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 2. **Click [Auto]** → Noise removal + auto volume + filter applied instantly
 3. **To use in Discord/OBS**, set up output routing (virtual cable or Receiver)
 
-> VST 플러그인(음향 효과 소프트웨어)을 몰라도 괜찮습니다 — [Auto] 버튼이 전문가 수준의 마이크 처리를 자동으로 설정합니다.
+> VST 플러그인(음향 효과 소프트웨어)을 몰라도 괜찮습니다 — [Auto] 버튼 하나로 기본적인 마이크 보정이 완료됩니다. 더 세밀한 조정은 VST 플러그인으로.
 >
-> Don't know what VST plugins (audio effect software) are? No worries — the [Auto] button sets up professional mic processing automatically.
+> Don't know what VST plugins (audio effect software) are? No worries — the [Auto] button handles essential mic correction. Fine-tune further with VST plugins.
 
 ---
 

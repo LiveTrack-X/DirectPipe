@@ -48,8 +48,8 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 **DirectPipe는 누구를 위한 건가요? / Who is DirectPipe for?**
 
-> VST 플러그인을 몰라도 괜찮습니다. **[Auto] 버튼 하나면 충분합니다.**
-> Don't know what VST plugins are? No problem. **The [Auto] button is all you need.**
+> VST 플러그인을 몰라도 괜찮습니다. **[Auto] 버튼 하나로 기본적인 마이크 보정이 완료됩니다.** 더 세밀한 조정은 VST 플러그인으로.
+> Don't know what VST plugins are? No problem. **One click on [Auto] handles the essential mic correction.** Fine-tune further with VST plugins.
 
 🎙 **스트리머 / Streamers**
 OBS로 방송하면서 Stream Deck으로 실시간 이펙트 제어. **[Auto] 한 번이면 노이즈 제거 + 볼륨 안정화 완료.** Receiver VST2로 가상 케이블 없이 OBS 직접 연결.
@@ -74,7 +74,7 @@ Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. **Leave [Auto] on 
 
 1. **다운로드 & 실행** — [최신 버전 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → 압축 해제 → 실행 / [Download latest](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → Extract → Run
 2. **마이크 선택** — Audio 탭 → Input에서 USB 마이크 선택 / Audio tab → Select your USB mic as Input
-3. **[Auto] 클릭** — 노이즈 제거 + 자동 볼륨 + 저주파 필터 즉시 적용! / Click [Auto] — Noise removal + auto volume + filter applied instantly!
+3. **[Auto] 클릭** — 기본적인 마이크 보정(노이즈 제거 + 자동 볼륨 + 저주파 필터)이 즉시 적용! / Click [Auto] — Essential mic correction (noise removal + auto volume + low-cut filter) applied instantly!
 4. **끝!** 더 자세한 설정은 [Quick Start 가이드](docs/QUICKSTART.md) 참조 / **Done!** For detailed setup, see the [Quick Start guide](docs/QUICKSTART.md)
 
 ---

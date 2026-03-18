@@ -58,9 +58,9 @@ Audio 탭 / Audio Tab
 
 ## 3. [Auto] 클릭 — 바로 차이를 들어보세요! / Click [Auto] — Hear the Difference!
 
-> **VST 플러그인을 몰라도 괜찮습니다!** [Auto] 버튼 하나로 전문가 수준의 마이크 처리가 즉시 적용됩니다.
+> **VST 플러그인을 몰라도 괜찮습니다!** [Auto] 버튼 하나로 기본적인 마이크 보정이 즉시 적용됩니다. 더 세밀한 조정은 VST 플러그인으로.
 >
-> **Don't know what VST plugins are? No problem!** The [Auto] button applies professional mic processing instantly.
+> **Don't know what VST plugins are? No problem!** The [Auto] button handles essential mic correction instantly. Fine-tune further with VST plugins.
 
 1. 왼쪽 하단의 초록색 **[Auto]** 버튼 클릭 / Click the green **[Auto]** button at the bottom-left
 2. 끝! 3가지 내장 프로세서가 자동 구성됩니다 / Done! 3 built-in processors are configured automatically:
