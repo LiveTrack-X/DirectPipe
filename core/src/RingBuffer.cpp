@@ -91,7 +91,21 @@ bool RingBuffer::attachAsConsumer(void* memory)
 
     // Check if another consumer is already reading this buffer (SPSC violation).
     // We still connect (audio will likely be corrupted), but flag it for UI warning.
-    anotherConsumerWasActive_ = header_->consumer_active.load(std::memory_order_acquire);
+    if (header_->consumer_active.load(std::memory_order_acquire)) {
+        // Check if previous consumer is actually reading — if read_pos is far behind
+        // write_pos, assume the previous consumer crashed (stale flag)
+        uint32_t wp = static_cast<uint32_t>(header_->write_pos.load(std::memory_order_relaxed));
+        uint32_t rp = static_cast<uint32_t>(header_->read_pos.load(std::memory_order_relaxed));
+        uint32_t behind = wp - rp;  // unsigned diff, handles wrap
+        if (behind > header_->buffer_frames * 80 / 100) {
+            // Previous consumer is stale (not reading) — clear flag, proceed normally
+            anotherConsumerWasActive_ = false;
+        } else {
+            anotherConsumerWasActive_ = true;
+        }
+    } else {
+        anotherConsumerWasActive_ = false;
+    }
     header_->consumer_active.store(true, std::memory_order_release);
 
     return true;

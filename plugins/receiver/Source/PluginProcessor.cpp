@@ -51,6 +51,9 @@ void DirectPipeReceiverProcessor::prepareToPlay(double /*sampleRate*/, int sampl
 
     reconnectCounter_ = 0;
     tryConnect();
+
+    // Report buffering latency to the host DAW
+    setLatencySamples(static_cast<int>(getTargetFillFrames()));
 }
 
 void DirectPipeReceiverProcessor::releaseResources()
@@ -116,6 +119,10 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     // ── Clock drift compensation: skip excess when buffer is too full ──
     uint32_t targetFill = getTargetFillFrames();
+
+    // Update latency reporting when buffer preset changes (setLatencySamples is lock-free)
+    if (static_cast<int>(targetFill) != getLatencySamples())
+        setLatencySamples(static_cast<int>(targetFill));
     uint32_t highThreshold = getHighFillThreshold();
 
     if (blocksSinceConnect_ > kDriftCheckWarmup && available > highThreshold) {
@@ -131,8 +138,10 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     // ── Clock drift compensation: throttle reads when buffer is running low ──
+    // Dead-band: between lowThreshold/2 and lowThreshold, normal reading occurs
+    // without throttling — prevents oscillation between throttle and normal mode.
     uint32_t lowThreshold = getLowFillThreshold();
-    if (blocksSinceConnect_ > kDriftCheckWarmup && available > 0 && available < lowThreshold) {
+    if (blocksSinceConnect_ > kDriftCheckWarmup && available > 0 && available < lowThreshold / 2) {
         // Buffer running low — host clock is slightly slower than DAW clock.
         // Reduce read amount to leave a buffer cushion, preventing hard underrun.
         // The unread portion of the output buffer gets zero-padded (existing behavior),
@@ -274,7 +283,7 @@ void DirectPipeReceiverProcessor::applyFadeOut(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    // Generate a fade-out ramp
+    // Generate a fade-out ramp using saved buffer data (not just the last sample)
     for (int ch = 0; ch < numChannels; ++ch) {
         float* dest = buffer.getWritePointer(ch);
         float gain = fadeGain_;
@@ -283,14 +292,14 @@ void DirectPipeReceiverProcessor::applyFadeOut(juce::AudioBuffer<float>& buffer,
             if (gain <= 0.0f) {
                 dest[i] = 0.0f;
             } else {
-                // Use the last sample of the saved buffer as the "held" value
-                // and fade it out quickly
-                float lastSample = 0.0f;
+                float sample = 0.0f;
                 if (ch < lastOutputChannels_ && lastOutputSamples_ > 0) {
-                    lastSample = lastOutputBuffer_[
-                        static_cast<size_t>(ch) * lastOutputSamples_ + (lastOutputSamples_ - 1)];
+                    // Use saved buffer data, clamping index to available range
+                    int srcIdx = (std::min)(i, lastOutputSamples_ - 1);
+                    sample = lastOutputBuffer_[
+                        static_cast<size_t>(ch) * lastOutputSamples_ + srcIdx];
                 }
-                dest[i] = lastSample * gain;
+                dest[i] = sample * gain;
                 gain -= kFadeStep;
                 if (gain < 0.0f) gain = 0.0f;
             }
