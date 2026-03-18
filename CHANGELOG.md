@@ -4,7 +4,7 @@ All notable changes to DirectPipe will be documented in this file.
 
 ---
 
-## [4.0.1] - 2026-03-18
+## [4.0.1] - 2026-03-18 (Unreleased)
 
 ### Fixed
 - **NoiseRemoval**: Ring buffer uint32_t overflow causing permanent silence after ~25h continuous use

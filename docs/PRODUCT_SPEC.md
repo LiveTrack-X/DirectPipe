@@ -1,5 +1,7 @@
 # DirectPipe 제품 기획서 (Product Specification)
 
+> 이 문서는 **내부 개발 참조용** 역기획서입니다. 사용자 문서는 [USER_GUIDE.md](USER_GUIDE.md) 참조.
+
 > 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.1 기준)
 
 ---

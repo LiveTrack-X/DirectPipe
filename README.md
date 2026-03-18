@@ -21,7 +21,7 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.0.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.0.1) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
+- **Latest (최신)**: [v4.0.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
 - **Previous Stable**: [v3.10.3](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v3.10.3) — Windows 전용 / Windows only
 
 > **참고**: Windows는 안정(Stable), macOS는 베타, Linux는 실험적입니다. macOS/Linux 빌드는 실기기 테스트가 제한적입니다.
@@ -310,30 +310,9 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-자세한 내용은 [Build Guide](docs/BUILDING.md) 참조 / See Build Guide for details.
+플랫폼별 빌드 요구 사항, 옵션, CI 설정 등 자세한 내용은 [Build Guide](docs/BUILDING.md) 참조.
 
-### 요구 사항 / Requirements
-
-**Windows:**
-- Windows 10/11 (64-bit)
-- Visual Studio 2022 (C++ Desktop Development)
-- CMake 3.22+
-- ASIO SDK (`thirdparty/asiosdk/`) — ASIO 모드 사용 시 / for ASIO driver support (optional)
-
-**macOS (beta):**
-- macOS 10.15+ (Catalina 이상)
-- Xcode 14+ (Command Line Tools)
-- CMake 3.22+
-
-**Linux (experimental):**
-- GCC 9+ 또는 Clang 10+
-- CMake 3.22+
-- ALSA/JACK 개발 패키지 / ALSA/JACK development packages (`libasound2-dev`, `libjack-jackd2-dev`)
-- X11 개발 패키지 / X11 development packages
-
-**공통 / Common:**
-- JUCE 7.0.12 (CMake FetchContent 자동 다운로드 / auto-fetched)
-- VST2 SDK (`thirdparty/VST2_SDK/`) — VST2 포맷 사용 시 (optional)
+See [Build Guide](docs/BUILDING.md) for platform-specific requirements, build options, and CI setup.
 
 ## 프로젝트 구조 / Project Structure
 

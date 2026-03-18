@@ -1,5 +1,7 @@
 # DirectPipe Release Notes
 
+> 이 문서는 **사용자 대상** 릴리스 요약입니다. 개발자 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md) 참조.
+
 ## v4.0.1
 
 ### Bugfixes
@@ -39,7 +41,7 @@
 
 ### Code Architecture Refactoring
 
-- **MainComponent split**: Reduced `MainComponent.cpp` from ~1835 lines to ~729 lines by extracting 6 focused classes:
+- **MainComponent split**: Reduced `MainComponent.cpp` from ~1835 lines to ~729 lines by extracting 7 focused classes:
   - `ActionHandler` (`Control/`) — Centralized action event handling (moved from MainComponent's 200+ line switch-case)
   - `SettingsAutosaver` (`Control/`) — Dirty-flag + debounce auto-save logic
   - `PresetSlotBar` (`UI/`) — Preset slot A-E buttons, naming, right-click menu

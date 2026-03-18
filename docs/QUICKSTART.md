@@ -23,7 +23,7 @@
 > **Windows**: SmartScreen 경고가 나타나면 "추가 정보" → "실행" 클릭 (오픈소스라 코드 서명이 없어서 나타나는 정상적인 경고).
 > If SmartScreen warns, click "More info" → "Run anyway" (normal for unsigned open-source apps).
 >
-> **macOS**: Gatekeeper 경고 시 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 열기" 클릭. / If Gatekeeper blocks, go to System Settings → Privacy & Security → click "Open Anyway".
+> **macOS**: Gatekeeper 경고 시 Finder에서 DirectPipe.app **우클릭** → **열기** → **열기** 클릭. 또는: 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 열기". / If Gatekeeper blocks, **right-click** DirectPipe.app → **Open** → **Open**. Or: System Settings → Privacy & Security → "Open Anyway".
 >
 > **Linux**: 실행 권한 필요: `chmod +x DirectPipe`. / Make executable: `chmod +x DirectPipe`.
 
@@ -41,6 +41,8 @@
 > **왜 Driver를 선택하나요?** DirectPipe는 운영체제의 오디오 시스템(드라이버)을 통해 마이크에 접근합니다. 대부분의 경우 기본값이 자동 선택되어 있으니, Input에서 마이크만 고르면 됩니다.
 >
 > **Why select a Driver?** DirectPipe accesses your mic through your OS audio system (driver). In most cases the default is already selected — just pick your mic from the Input dropdown.
+>
+> 드라이버별 상세 비교: [플랫폼 가이드 — 오디오 드라이버](PLATFORM_GUIDE.md#오디오-드라이버--audio-drivers)
 
 ```
 Audio 탭 / Audio Tab
@@ -110,6 +112,8 @@ Audio 탭 / Audio Tab
    - macOS: `BlackHole 2ch`
    - Linux: PipeWire/JACK 해당 장치 / corresponding device
 
+> 상세 내용: [사용자 가이드 — 가상 오디오 케이블](USER_GUIDE.md#가상-오디오-케이블--virtual-audio-cable)
+
 ```
 USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
                                  ↓
@@ -128,6 +132,8 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
    - Linux: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 / or `~/.vst/`
 2. DirectPipe 하단 **VST** 버튼 클릭 (초록색 = IPC ON) / Click **VST** button at bottom (green = ON)
 3. OBS → 오디오 소스 → 필터 → VST 2.x → **DirectPipe Receiver** 선택 / Select in OBS VST filter
+
+> 플랫폼별 Receiver 설치 경로 상세: [플랫폼 가이드 — Receiver 설치](PLATFORM_GUIDE.md#receiver-설치--receiver-installation)
 
 ```
 USB 마이크 → DirectPipe
