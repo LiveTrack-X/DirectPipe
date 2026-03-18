@@ -41,9 +41,9 @@ Auto 체인은 이론이 아닌 실제 사용 패턴에서 출발했습니다:
 ## 2. 체인 구성과 순서
 
 ```
-Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain] → Output
-                                                              ↓
-                                                    [Safety Limiter] (글로벌)
+Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain] → [Safety Limiter] → Output
+                                                                  ↑
+                                                          글로벌 (Auto 체인 외부)
 ```
 
 ### 순서의 기술적 근거
