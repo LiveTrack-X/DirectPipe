@@ -175,11 +175,12 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // Reference: WebRTC AGC uses capacitorFast + capacitorSlow, max selection,
     //   then gain table lookup. No separate gain envelope follower.
 
-    // Aim 4dB below user target — compensate for systematic overshoot.
+    // Aim 6dB below user target — compensate for systematic overshoot.
     // Real-time open-loop AGC measures pre-gain input; the fast envelope + LUFS window
-    // combination still has ~3-4dB overshoot vs Luveler (closed-loop with look-ahead).
-    // This offset brings the average output in line with user expectation.
-    const float target  = targetLUFS_.load(std::memory_order_relaxed) - 4.0f;
+    // combination has ~4-6dB overshoot vs commercial levelers (closed-loop with look-ahead).
+    // 6dB offset brings the average output closer to what users expect from standard levelers.
+    // (Previously 4dB, but measured output was still 3-5dB above target.)
+    const float target  = targetLUFS_.load(std::memory_order_relaxed) - 6.0f;
     const float lowCorr = lowCorrect_.load(std::memory_order_relaxed);
     const float hiCorr  = highCorrect_.load(std::memory_order_relaxed);
     const float maxGain = maxGaindB_.load(std::memory_order_relaxed);
