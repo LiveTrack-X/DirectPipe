@@ -30,13 +30,15 @@ bool isAutoStartEnabled()
 }
 
 /// Escape a path for the Exec key in a .desktop file (XDG spec).
-/// Special characters (space, tab, $, `, \, ") must be escaped with backslash.
+/// Special characters (space, tab, $, `, \, ", &, |, ;, #, <, >, (, )) must be escaped with backslash.
 static juce::String escapeDesktopExec(const juce::String& path)
 {
     juce::String result;
     for (int i = 0; i < path.length(); ++i) {
         auto c = path[i];
-        if (c == ' ' || c == '\t' || c == '$' || c == '`' || c == '\\' || c == '"')
+        if (c == ' ' || c == '\t' || c == '$' || c == '`' || c == '\\' || c == '"'
+            || c == '&' || c == '|' || c == ';' || c == '#'
+            || c == '<' || c == '>' || c == '(' || c == ')')
             result += '\\';
         result += c;
     }
