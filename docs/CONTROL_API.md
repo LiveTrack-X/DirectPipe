@@ -287,21 +287,24 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
     "muted": false,
     "output_muted": false,
     "input_muted": false,
-    "active_slot": 0,
-    "auto_slot_active": false,
-    "slot_names": ["게임", "토크", "", "", "", "Auto"],
     "preset": "Streaming Vocal",
     "latency_ms": 5.2,
+    "monitor_latency_ms": 3.8,
     "level_db": -18.3,
     "cpu_percent": 3.1,
     "sample_rate": 48000,
     "buffer_size": 128,
-    "xrun_count": 0,
     "channel_mode": 2,
     "monitor_enabled": true,
+    "active_slot": 0,
+    "auto_slot_active": false,
     "recording": false,
     "recording_seconds": 0.0,
     "ipc_enabled": false,
+    "device_lost": false,
+    "monitor_lost": false,
+    "xrun_count": 0,
+    "slot_names": ["게임", "토크", "", "", "", "Auto"],
     "safety_limiter": {
       "enabled": true,
       "ceiling_dB": -0.3,
@@ -309,9 +312,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
       "is_limiting": false
     },
     "chain_pdc_samples": 0,
-    "chain_pdc_ms": 0.0,
-    "device_lost": false,
-    "monitor_lost": false
+    "chain_pdc_ms": 0.0
   }
 }
 ```
@@ -391,7 +392,9 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/midi/cc/:channel/:number/:value` | Inject MIDI CC for testing (ch 1-16, cc 0-127, val 0-127) / MIDI CC 테스트 주입 |
 | `GET /api/midi/note/:channel/:number/:velocity` | Inject MIDI Note for testing (ch 1-16, note 0-127, vel 0-127) / MIDI Note 테스트 주입 |
 
-**Success response:** `{ "ok": true, "action": "..." }`
+**Action success response:** `{ "ok": true, "action": "..." }`
+
+**Data query responses:** `/api/status` returns `{ "type": "state", "data": { ... } }`, `/api/perf` returns `{ "latencyMs": ..., ... }`, `/api/plugins` and `/api/plugin/:idx/params` return JSON arrays.
 
 **Error response:** `{ "error": "..." }`
 
@@ -407,14 +410,15 @@ Read timeout: 3 seconds. Only `GET` method is accepted for API calls (other meth
 
 | 시나리오 / Scenario | HTTP 상태 / Status | 응답 / Response |
 |---|---|---|
-| 존재하지 않는 엔드포인트 / Unknown endpoint | 404 | `{"error": "Not found"}` |
+| 존재하지 않는 엔드포인트 / Unknown endpoint | 404 | `{"error": "Not found"}` or `{"error": "Unknown endpoint"}` |
 | GET 외 메서드 (OPTIONS 제외) / Non-GET method (except OPTIONS) | 405 | `{"error": "Method not allowed"}` |
-| 범위 밖 플러그인 인덱스 / Plugin index out of range | 400 | `{"error": "Index out of range"}` |
-| 비숫자 값 입력 / Non-numeric value | 400 | `{"error": "Invalid value"}` |
-| 볼륨 범위 밖 (0.0~1.0) / Volume out of range | 400 | `{"error": "Value out of range"}` |
-| 리미터 ceiling 범위 밖 (-6.0~0.0) / Ceiling out of range | 400 | `{"error": "Value out of range"}` |
+| 잘못된 플러그인 인덱스 / Invalid plugin index | 400 | `{"error": "Invalid index"}` |
+| 비숫자 값 입력 / Non-numeric value | 400 | `{"error": "value must be a number"}` |
+| 볼륨 범위 밖 (0.0~1.0) / Volume out of range | 400 | `{"error": "value out of range"}` |
+| 리미터 ceiling 범위 밖 (-6.0~0.0) / Ceiling out of range | 400 | `{"error": "ceiling must be -6.0 to 0.0 dBFS"}` |
+| 존재하지 않는 플러그인 / Plugin not found | 404 | `{"error": "Plugin not found"}` |
 | 패닉 뮤트 중 차단된 액션 / Action blocked during panic mute | 200 | `{"ok": true}` (ActionHandler에서 무시됨 / silently ignored by ActionHandler) |
-| CORS preflight | 200 | Empty body + CORS headers |
+| CORS preflight | 204 | Empty body + CORS headers |
 
 > **Note**: 패닉 뮤트 중 대부분의 액션은 HTTP 200을 반환하지만 ActionHandler 내부에서 `engine_.isMuted()` 체크에 의해 무시됩니다. 차단 여부를 확인하려면 WebSocket 상태 브로드캐스트의 `muted` 필드를 모니터링하세요.
 >

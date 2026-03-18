@@ -1101,8 +1101,9 @@ AutoHotkey로 커스텀 핫키:
 | `GET /api/mute/panic` | 패닉 뮤트 / Panic mute toggle |
 | `GET /api/mute/toggle` | 출력 뮤트 토글 / Output mute toggle |
 | `GET /api/input-mute/toggle` | 입력 뮤트 토글 / Input mute toggle |
-| `GET /api/volume/:target/:value` | 볼륨 설정 (monitor 0-1, input 0-2) / Set volume |
+| `GET /api/volume/:target/:value` | 볼륨 설정 (monitor/output 0-1, input 0-2) / Set volume |
 | `GET /api/gain/:delta` | 입력 게인 조정 (선형, 예: 0.1 = +0.1) / Adjust input gain (linear) |
+| `GET /api/preset/:index` | 프리셋 로드 (0-5, A-E + Auto) / Load preset |
 | `GET /api/monitor/toggle` | 모니터 출력 토글 / Monitor toggle |
 | `GET /api/ipc/toggle` | IPC 출력 토글 / IPC toggle |
 | `GET /api/recording/toggle` | 녹음 토글 / Recording toggle |
