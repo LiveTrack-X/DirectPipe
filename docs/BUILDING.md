@@ -188,9 +188,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Total: **294+ tests** across 24 test groups (6 core + 18 host).
+Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Total: **295 tests** across 24 test groups (6 core + 18 host).
 
-두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 총 **294+ 테스트**, 24개 테스트 그룹 (코어 6 + 호스트 18).
+두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 총 **295 테스트**, 24개 테스트 그룹 (코어 6 + 호스트 18).
 
 ### directpipe-tests (Core)
 

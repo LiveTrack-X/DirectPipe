@@ -198,7 +198,7 @@ VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 
 |---------|--------|------|
 | **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz) + LPF (기본 OFF, 16kHz). 범위: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터, atomic 파라미터. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
 | **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거. 480-frame FIFO (~10ms 레이턴시). 48kHz only (비-48kHz = 패스스루, TODO: 리샘플링). 듀얼 모노 (2 RNNoise 인스턴스). x32767 스케일링 전처리, /32767 후처리. 2-pass FIFO (in-place 버퍼 안전). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 CLOSED (0.0), 5프레임 워밍업. VAD 게이트 홀드 타임 300ms (`kHoldSamples`=14400 @48kHz). 게이트 스무딩 20ms (`kGateSmooth`=0.9990). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD 임계값: Light 0.50, Standard 0.70 (기본값), Aggressive 0.90 |
-| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 (범위 -24~-6, 내부적으로 -4dB 오프셋 적용하여 오픈루프 오버슈트 보정). Low Correct 0.50 기본 (hold↔full correction 블렌드, 부스트). High Correct 0.90 기본 (hold↔full correction 블렌드, 컷). Max Gain 22 dB 기본. ITU-R BS.1770 K-weighting 사이드체인 (copy, 실제 오디오 미적용). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음), per-block linear ramp으로 click-free 전환. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 (0dB 리셋 아님), -65 dBFS 미만 시 바이패스. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) |
+| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 (범위 -24~-6, 내부적으로 -6dB 오프셋 적용하여 오픈루프 오버슈트 보정). Low Correct 0.50 기본 (hold↔full correction 블렌드, 부스트). High Correct 0.90 기본 (hold↔full correction 블렌드, 컷). Max Gain 22 dB 기본. ITU-R BS.1770 K-weighting 사이드체인 (copy, 실제 오디오 미적용). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음), per-block linear ramp으로 click-free 전환. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 (0dB 리셋 아님), -65 dBFS 미만 시 바이패스. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) |
 
 **[Auto] 버튼**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults.
 
@@ -479,7 +479,7 @@ rebuildGraph(bool suspend = true)
 
 | 항목 | 상세 |
 |------|------|
-| 포트 | 8766 (폴백: 8767~8770) |
+| 포트 | 8766 (폴백: 8767~8771) |
 | 방식 | GET-only |
 | CORS | `Access-Control-Allow-Origin: *` |
 | 타임아웃 | 3초 읽기 타임아웃 |
@@ -524,11 +524,11 @@ rebuildGraph(bool suspend = true)
 
 | 항목 | 상세 |
 |------|------|
-| 포트 | 8765 (폴백: 8766~8769) |
+| 포트 | 8765 (폴백: 8766~8770) |
 | 프로토콜 | RFC 6455 (커스텀 SHA-1 핸드셰이크) |
 | 헤더 | 대소문자 무시 (RFC 7230) |
 | 프레임 제한 | 1MB |
-| 최대 클라이언트 | 16개 |
+| 최대 클라이언트 | 32개 |
 | 데드 클라이언트 | `sendFrame` 실패 시 즉시 소켓 종료 |
 | 브로드캐스트 | 전용 스레드 (논블로킹). `clientsMutex_` 밖에서 thread join (데드락 방지) |
 
@@ -1231,7 +1231,7 @@ DirectPipe/
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉
 │       └── actions/                → 10개 SingletonAction 클래스
 │
-├── tests/                          → Google Test (core + host, 294+ tests)
+├── tests/                          → Google Test (core + host, 295 tests)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등
 └── dist/                           → 빌드 산출물 + .streamDeckPlugin

@@ -300,7 +300,7 @@ MainComponent Split (v3→v4):
   - Root: MainComponent, Main, **ActionResult.h**
 - `plugins/receiver/` -> Receiver VST2/VST3/AU plugin for OBS and DAWs (shared memory IPC consumer, configurable buffer size)
 - `com.directpipe.directpipe.sdPlugin/` -> Stream Deck plugin (Node.js, @elgato/streamdeck SDK v3)
-- `tests/` -> Google Test (core tests + host tests, **295 tests: 51 core (6 suites) + 244 host (23 suites)**)
+- `tests/` -> Google Test (core tests + host tests, **295 tests: 51 core (6 suites) + 244 host (18 suites)**)
 - `dist/` -> Packaged .streamDeckPlugin + marketplace assets
 
 **(bold = v3에 없고 v4에서 추가된 모듈)**

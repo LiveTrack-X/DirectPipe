@@ -57,7 +57,7 @@ namespace directpipe {
  *   3. Accumulate squared K-weighted samples in 0.4s ring buffer (EBU Momentary)
  *   4. Compute LUFS = -0.691 + 10*log10(mean_square)
  *   5. Dual-envelope: fast(10ms/200ms) + slow(LUFS), effective = max(fast, slow)
- *   6. Compute gain directly: correction = (target-4dB) - effective, blend by lowCorr/hiCorr
+ *   6. Compute gain directly: correction = (target-6dB) - effective, blend by lowCorr/hiCorr
  *   7. Apply gain to original audio with per-block linear ramp (click-free)
  *
  * Defaults: target -15 LUFS, lowCorr 0.50, hiCorr 0.90, maxGain 22dB, freeze -45dBFS
