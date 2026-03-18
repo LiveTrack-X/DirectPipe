@@ -14,6 +14,7 @@
 #if defined(__APPLE__)
 
 #include <JuceHeader.h>
+#include "../../Util/AtomicFileIO.h"
 
 namespace directpipe {
 namespace Platform {
@@ -39,7 +40,7 @@ bool isAutoStartEnabled()
     return getLaunchAgentFile().existsAsFile();
 }
 
-void setAutoStartEnabled(bool enable)
+bool setAutoStartEnabled(bool enable)
 {
     auto plistFile = getLaunchAgentFile();
 
@@ -47,7 +48,7 @@ void setAutoStartEnabled(bool enable)
         // Ensure LaunchAgents directory exists
         if (!plistFile.getParentDirectory().createDirectory()) {
             juce::Logger::writeToLog("[APP] Failed to create LaunchAgents directory");
-            return;
+            return false;
         }
 
         auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
@@ -71,11 +72,16 @@ void setAutoStartEnabled(bool enable)
               << "</dict>\n"
               << "</plist>\n";
 
-        if (!plistFile.replaceWithText(plist))
+        if (!atomicWriteFile(plistFile, plist)) {
             juce::Logger::writeToLog("[APP] Failed to write LaunchAgent plist");
+            return false;
+        }
+        return true;
     } else {
-        if (!plistFile.deleteFile())
+        bool ok = plistFile.deleteFile();
+        if (!ok)
             juce::Logger::writeToLog("[APP] Failed to delete LaunchAgent plist");
+        return ok;
     }
 }
 

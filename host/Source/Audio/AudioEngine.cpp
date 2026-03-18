@@ -928,8 +928,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // ── Fast path: panic muted → zero output, skip all processing ──
     if (muted) {
         for (int ch = 0; ch < numOutputChannels; ++ch)
-            std::memset(outputChannelData[ch], 0,
-                        sizeof(float) * static_cast<size_t>(numSamples));
+            if (outputChannelData[ch])
+                std::memset(outputChannelData[ch], 0,
+                            sizeof(float) * static_cast<size_t>(numSamples));
         inputLevel_.store(0.0f, std::memory_order_relaxed);
         outputLevel_.store(0.0f, std::memory_order_relaxed);
         latencyMonitor_.markCallbackEnd();
@@ -1013,6 +1014,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // 4. Apply output volume & copy to main output (AudioSettings Output device)
     float outVol = outputRouter_.getVolume(OutputRouter::Output::Main);
     for (int ch = 0; ch < numOutputChannels; ++ch) {
+        if (!outputChannelData[ch]) continue;
         if (ch < buffer.getNumChannels() && !outputMuted) {
             if (std::abs(outVol - 1.0f) < 0.001f) {
                 // Unity gain — direct copy (most common path)

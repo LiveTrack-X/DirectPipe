@@ -14,6 +14,7 @@
 #if defined(__linux__)
 
 #include <JuceHeader.h>
+#include "../../Util/AtomicFileIO.h"
 
 namespace directpipe {
 namespace Platform {
@@ -45,14 +46,14 @@ static juce::String escapeDesktopExec(const juce::String& path)
     return result;
 }
 
-void setAutoStartEnabled(bool enable)
+bool setAutoStartEnabled(bool enable)
 {
     auto desktopFile = getDesktopFile();
 
     if (enable) {
         if (!desktopFile.getParentDirectory().createDirectory()) {
             juce::Logger::writeToLog("[APP] Failed to create autostart directory");
-            return;
+            return false;
         }
 
         auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
@@ -66,11 +67,16 @@ void setAutoStartEnabled(bool enable)
               << "Terminal=false\n"
               << "X-GNOME-Autostart-enabled=true\n";
 
-        if (!desktopFile.replaceWithText(entry))
+        if (!atomicWriteFile(desktopFile, entry)) {
             juce::Logger::writeToLog("[APP] Failed to write autostart desktop entry");
+            return false;
+        }
+        return true;
     } else {
-        if (!desktopFile.deleteFile())
+        bool ok = desktopFile.deleteFile();
+        if (!ok)
             juce::Logger::writeToLog("[APP] Failed to delete autostart desktop entry");
+        return ok;
     }
 }
 

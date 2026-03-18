@@ -22,6 +22,7 @@
  */
 
 #include "SettingsExporter.h"
+#include "../Control/Log.h"
 #include "../Util/AtomicFileIO.h"
 
 namespace directpipe {
@@ -105,6 +106,13 @@ bool SettingsExporter::importAll(const juce::String& json,
 
     int version = root->getProperty("version");
     if (version < 1) return false;
+
+    // Block cross-platform backup restore
+    auto backupPlatform = getBackupPlatform(json);
+    if (!isPlatformCompatible(json)) {
+        Log::warn("APP", "Cross-platform backup restore blocked: " + backupPlatform);
+        return false;
+    }
 
     // Import audio/output settings (strip plugins to avoid overwriting VST chain)
     if (root->hasProperty("audioSettings")) {
@@ -190,6 +198,13 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
 
     int version = root->getProperty("version");
     if (version < 1) return false;
+
+    // Block cross-platform backup restore
+    auto backupPlatform = getBackupPlatform(json);
+    if (!isPlatformCompatible(json)) {
+        Log::warn("APP", "Cross-platform backup restore blocked: " + backupPlatform);
+        return false;
+    }
 
     // Import audio settings (including VST chain)
     if (root->hasProperty("audioSettings")) {

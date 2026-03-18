@@ -241,8 +241,13 @@ std::string WebSocketServer::readFrame(juce::StreamingSocket* client, uint8_t& o
             payloadLen = (payloadLen << 8) | ext[i];
     }
 
-    // Safety: reject frames > 1MB
-    if (payloadLen > 1024 * 1024) { opcodeOut = 0xFF; return {}; }
+    // Safety: reject frames > 1MB — send RFC 6455 close frame (1009 = Message Too Big)
+    if (payloadLen > 1024 * 1024) {
+        uint8_t closePayload[2] = { 0x03, 0xF1 };  // 1009 in network byte order
+        sendFrame(client, std::string(reinterpret_cast<char*>(closePayload), 2), 0x8);
+        opcodeOut = 0xFF;
+        return {};
+    }
 
     uint8_t mask[4] = {};
     if (masked) {

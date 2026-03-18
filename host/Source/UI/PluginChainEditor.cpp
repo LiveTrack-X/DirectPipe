@@ -56,6 +56,7 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
             pluginName = slot->name;
         else
             return;
+        int capturedIndex = rowIndex_;
         auto safeOwner = juce::Component::SafePointer<PluginChainEditor>(&owner_);
         auto options = juce::MessageBoxOptions()
             .withIconType(juce::MessageBoxIconType::QuestionIcon)
@@ -63,13 +64,24 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
             .withMessage("Remove \"" + pluginName + "\" from the chain?")
             .withButton("Remove")
             .withButton("Cancel");
-        juce::AlertWindow::showAsync(options, [safeOwner, pluginName](int result) {
+        juce::AlertWindow::showAsync(options, [safeOwner, pluginName, capturedIndex](int result) {
             if (result != 1 || !safeOwner) return;
-            // Re-find plugin by name (chain may have changed while dialog was open)
+            // Try captured index first — most reliable if chain hasn't changed
+            if (capturedIndex < safeOwner->vstChain_.getPluginCount()) {
+                if (auto* s = safeOwner->vstChain_.getPluginSlot(capturedIndex)) {
+                    if (s->name == pluginName) {
+                        safeOwner->vstChain_.removePlugin(capturedIndex);
+                        safeOwner->refreshList();
+                        return;
+                    }
+                }
+            }
+            // Fallback: name scan (chain may have shifted)
             for (int i = 0; i < safeOwner->vstChain_.getPluginCount(); ++i) {
                 if (auto* s = safeOwner->vstChain_.getPluginSlot(i)) {
                     if (s->name == pluginName) {
                         safeOwner->vstChain_.removePlugin(i);
+                        safeOwner->refreshList();
                         return;
                     }
                 }
@@ -462,6 +474,7 @@ void PluginChainEditor::removeSelectedPlugin()
         else
             pluginName = "Plugin " + juce::String(selected + 1);
 
+        int capturedIndex = selected;
         auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
         auto options = juce::MessageBoxOptions()
             .withIconType(juce::MessageBoxIconType::QuestionIcon)
@@ -469,13 +482,24 @@ void PluginChainEditor::removeSelectedPlugin()
             .withMessage("Remove \"" + pluginName + "\" from the chain?")
             .withButton("Remove")
             .withButton("Cancel");
-        juce::AlertWindow::showAsync(options, [safeThis, pluginName](int result) {
+        juce::AlertWindow::showAsync(options, [safeThis, pluginName, capturedIndex](int result) {
             if (result != 1 || !safeThis) return;
-            // Re-find plugin by name (chain may have changed while dialog was open)
+            // Try captured index first — most reliable if chain hasn't changed
+            if (capturedIndex < safeThis->vstChain_.getPluginCount()) {
+                if (auto* s = safeThis->vstChain_.getPluginSlot(capturedIndex)) {
+                    if (s->name == pluginName) {
+                        safeThis->vstChain_.removePlugin(capturedIndex);
+                        safeThis->refreshList();
+                        return;
+                    }
+                }
+            }
+            // Fallback: name scan (chain may have shifted)
             for (int i = 0; i < safeThis->vstChain_.getPluginCount(); ++i) {
                 if (auto* s = safeThis->vstChain_.getPluginSlot(i)) {
                     if (s->name == pluginName) {
                         safeThis->vstChain_.removePlugin(i);
+                        safeThis->refreshList();
                         return;
                     }
                 }

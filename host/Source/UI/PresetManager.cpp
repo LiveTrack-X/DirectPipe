@@ -378,8 +378,8 @@ std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
 std::vector<PresetManager::TargetPlugin> PresetManager::parseSlotFile(int slotIndex)
 {
     auto file = getSlotFile(slotIndex);
-    if (!file.existsAsFile()) return {};
-    auto json = file.loadFileAsString();
+    auto json = loadFileWithBackupFallback(file);
+    if (json.isEmpty()) return {};
     auto parsed = juce::JSON::parse(json);
     if (!parsed.isObject()) return {};
     auto* root = parsed.getDynamicObject();
