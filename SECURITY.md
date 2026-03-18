@@ -48,8 +48,8 @@ All network services bind to **localhost (127.0.0.1) only**. No remote access is
 **No authentication**: Since services are localhost-only, no auth is required. Any process on the same machine can access them.
 
 **연결 제한 / Connection Limits**:
-- WebSocket: 최대 16개 동시 연결 (초과 시 거부) / Max 16 concurrent connections (excess rejected)
-- HTTP: 최대 16개 동시 핸들러 (초과 시 거부) / Max 16 concurrent handlers (excess rejected)
+- WebSocket: 최대 32개 동시 연결 (초과 시 거부) / Max 32 concurrent connections (excess rejected)
+- HTTP: 최대 64개 동시 핸들러 (초과 시 거부) / Max 64 concurrent handlers (excess rejected). HTTP는 Connection: close 방식이므로 각 요청이 수 ms 내에 완료됨 / HTTP uses Connection: close, each request completes in milliseconds
 
 ### CORS 정책 / CORS Policy
 
