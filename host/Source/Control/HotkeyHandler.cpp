@@ -22,6 +22,7 @@
  */
 
 #include "HotkeyHandler.h"
+#include "Log.h"
 #include <algorithm>
 
 namespace directpipe {
@@ -379,8 +380,10 @@ void HotkeyHandler::initialize()
         this);
 
     if (!tap) {
-        juce::Logger::writeToLog(
-            "[HOTKEY] Failed to create event tap — hotkeys will not work");
+        Log::warn("HOTKEY", "Failed to create event tap — hotkeys will not work");
+        if (onError)
+            onError("Hotkeys require Accessibility permission. "
+                    "Grant in System Settings > Privacy > Accessibility.");
         initialized_ = true;  // Allow binding storage even without tap
         return;
     }

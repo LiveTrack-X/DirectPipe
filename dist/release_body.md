@@ -10,19 +10,19 @@
 
 ### 🎤 처음 사용자라면: [Auto] 버튼 하나로 시작하세요 / New? Start with one click
 
-> **VST 플러그인을 모르셔도 괜찮습니다.** DirectPipe를 실행하고 왼쪽 하단의 초록색 **[Auto]** 버튼을 누르세요. 3가지 내장 프로세서가 자동으로 구성됩니다:
+> **VST 플러그인을 모르셔도 괜찮습니다.** DirectPipe를 실행하고 Input Gain 슬라이더 옆의 **[Auto]** 버튼을 누르세요. 3가지 내장 프로세서가 자동으로 구성됩니다:
 >
-> 1. **배경 소음 제거** — 키보드, 에어컨, 팬 소리를 AI가 실시간 제거
-> 2. **음량 자동 조절** — 작게 말하면 올리고, 크게 말하면 줄여서 일정한 볼륨 유지
-> 3. **저주파 필터** — 마이크 험이나 진동 제거
+> 1. **저주파 필터** — 마이크 험이나 진동 제거
+> 2. **배경 소음 제거** — 키보드, 에어컨, 팬 소리를 AI가 실시간 제거
+> 3. **음량 자동 조절** — 작게 말하면 올리고, 크게 말하면 줄여서 일정한 볼륨 유지
 >
 > 추가 설정 없이 바로 방송/통화 품질이 개선됩니다. 나중에 세부 조정이 필요하면 각 프로세서를 클릭해서 파라미터를 변경할 수 있습니다.
 
-> **Don't know VST plugins? No problem.** Launch DirectPipe and click the green **[Auto]** button at the bottom-left. 3 built-in processors are configured automatically:
+> **Don't know VST plugins? No problem.** Launch DirectPipe and click the **[Auto]** button next to the Input Gain slider. 3 built-in processors are configured automatically:
 >
-> 1. **Noise Removal** — AI removes keyboard, AC, and fan noise in real-time
-> 2. **Auto Gain** — Boosts quiet speech, reduces loud speech for consistent volume
-> 3. **Low-cut Filter** — Removes microphone rumble and vibration
+> 1. **Low-cut Filter** — Removes microphone rumble and vibration
+> 2. **Noise Removal** — AI removes keyboard, AC, and fan noise in real-time
+> 3. **Auto Gain** — Boosts quiet speech, reduces loud speech for consistent volume
 >
 > Your broadcast/call quality improves immediately with zero configuration. Adjust individual parameters later by clicking each processor in the chain.
 

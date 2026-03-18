@@ -107,6 +107,9 @@ public:
      */
     void moveBinding(int fromIndex, int toIndex);
 
+    /// Called when hotkey system encounters a non-fatal error (macOS only: missing accessibility permission).
+    std::function<void(const juce::String&)> onError;
+
     /**
      * @brief Unregister all hotkeys.
      */

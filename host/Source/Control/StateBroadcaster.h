@@ -24,7 +24,6 @@
  * the broadcaster pushes the updated state to:
  * - GUI (repaint)
  * - WebSocket clients (Stream Deck)
- * - MIDI LED feedback
  */
 #pragma once
 
@@ -150,7 +149,7 @@ private:
     // [callAsync lifetime guard — shared_ptr captured by value in lambda, checked before accessing this]
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
-    uint32_t lastBroadcastHash_ = 0;                      // [Message thread only] Throttle: skip broadcast when scalar state is unchanged
+    uint32_t lastBroadcastHash_ = 0;                      // [Message thread only] Throttle: skip broadcast when state is unchanged
 };
 
 } // namespace directpipe

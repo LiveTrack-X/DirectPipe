@@ -75,7 +75,7 @@ private:
     void serverThread();                                   // [Server thread — accept loop, runs until running_==false]
     void clientThread(ClientConnection* conn);              // [Per-client thread — read loop, one per connection]
     void processMessage(const std::string& message);       // [Per-client thread → ActionDispatcher → Message thread]
-    void broadcastToClients(const std::string& message);   // [Broadcast thread — iterates clients_ under clientsMutex_]
+    void broadcastToClients(const std::string& message);   // [Broadcast thread — sweeps dead clients under clientsMutex_, writes outside lock]
     void sendDiscoveryBroadcast();                         // [Server thread]
 
     // RFC 6455 WebSocket helpers

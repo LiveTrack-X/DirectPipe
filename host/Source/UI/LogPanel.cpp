@@ -141,7 +141,11 @@ LogPanel::LogPanel()
     if (Platform::isAutoStartSupported()) {
         startupToggle_.setToggleState(Platform::isAutoStartEnabled(), juce::dontSendNotification);
         startupToggle_.onClick = [this] {
-            Platform::setAutoStartEnabled(startupToggle_.getToggleState());
+            if (!Platform::setAutoStartEnabled(startupToggle_.getToggleState())) {
+                // Revert toggle state on failure
+                startupToggle_.setToggleState(!startupToggle_.getToggleState(), juce::dontSendNotification);
+                juce::Logger::writeToLog("[APP] Failed to change auto-start setting");
+            }
         };
     } else {
         startupToggle_.setEnabled(false);

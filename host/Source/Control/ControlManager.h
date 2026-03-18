@@ -34,6 +34,7 @@
 #include "HttpApiServer.h"
 #include "ControlMapping.h"
 #include "../Audio/AudioEngine.h"
+#include "../UI/NotificationBar.h"
 
 #include <memory>
 
@@ -102,6 +103,9 @@ public:
      * False in audio-only mode (another instance owns external controls).
      */
     bool isExternalControlsActive() const { return externalControlsActive_; }
+
+    /// Called when a subsystem encounters a non-fatal warning (currently wired to HotkeyHandler::onError only).
+    std::function<void(const juce::String&, NotificationLevel)> onNotification;
 
 private:
     ActionDispatcher& dispatcher_;

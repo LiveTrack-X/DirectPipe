@@ -50,6 +50,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 |-------|------------|--------|-------|
 | AudioEngine | audioDeviceIOCallbackWithContext | RT (audio) | No alloc, no mutex, no logging |
 | AudioEngine | checkReconnection | Message (30Hz timer) | Timer callback |
+| AudioEngine | audioDeviceAboutToStart | Device thread | Non-atomic writes deferred via callAsync |
 | AudioEngine | setInputDevice/setOutputDevice | Message | May restart device |
 | VSTChain | processBlock | RT (audio) | NO chainLock_ |
 | VSTChain | addPlugin/removePlugin/movePlugin | Message | Holds chainLock_ |
@@ -99,11 +100,11 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 
 | Pattern | Description | Used By |
 |---------|-------------|---------|
-| `alive_` flag | `shared_ptr<atomic<bool>>`, destructor에서 false 설정, callAsync 람다에서 값 캡처 | ActionDispatcher, StateBroadcaster, VSTChain, UpdateChecker, AudioEngine, MonitorOutput, PluginScanner |
-| SafePointer | JUCE Component 포인터, 삭제 시 null, callAsync에서 UI 안전 | MainComponent, PluginChainEditor |
+| `alive_` flag | `shared_ptr<atomic<bool>>`, destructor에서 false 설정, callAsync 람다에서 값 캡처 | ActionDispatcher, StateBroadcaster, VSTChain, UpdateChecker, AudioEngine, MonitorOutput, PluginScanner, HttpApiServer, PresetManager |
+| SafePointer | JUCE Component 포인터, 삭제 시 null, callAsync에서 UI 안전 | MainComponent, PluginChainEditor, HotkeyTab, MidiTab, LogPanel, OutputPanel, PresetSlotBar, PluginScanner |
 | copy-before-iterate | 리스너 벡터 복사 후 락 밖에서 순회 (재진입 안전) | ActionDispatcher, StateBroadcaster |
 | ActionResult | `[[nodiscard]]` ok()/fail(msg) 구조화 에러 처리. 반환값 무시 시 컴파일 경고 | AudioEngine 디바이스 메서드, MonitorOutput |
-| atomicWriteFile | `[[nodiscard]]` .tmp → .bak → rename (crash-safe 파일 저장). 반환값 무시 시 컴파일 경고 | PresetManager, SettingsAutosaver, SettingsExporter |
+| atomicWriteFile | `[[nodiscard]]` .tmp → .bak → rename (crash-safe 파일 저장). 반환값 무시 시 컴파일 경고 | PresetManager, SettingsExporter, ControlMapping, OutputPanel |
 | generation counter | uint32_t atomic 카운터, 오래된 콜백 폐기 | VSTChain asyncGeneration_, PluginPreloadCache preloadGeneration_ |
 | AtomicGuard/BoolGuard | RAII 스코프 가드 — 생성 시 true, 소멸 시 false. early return 안전 (`Util/ScopedGuard.h`) | AudioEngine intentionalChange_/attemptingReconnection_, ActionHandler loadingSlot_ |
 | PluginIndex/SlotIndex | 강타입 인덱스 래퍼 — 서로 다른 인덱스 타입 혼동 시 컴파일 에러 (`Util/StrongIndex.h`) | VSTChain movePlugin |
@@ -157,22 +158,23 @@ MainComponent Split (v3→v4):
 - **SettingsAutosaver**: Dirty-flag pattern with 1-second debounce timer (~30Hz tick). `markDirty()` sets flag, `tick()` counts down cooldown, `saveNow()` for immediate save. Callback-based decoupling (`onPostLoad`, `onShowWindow`, `onRestorePanicMute`, `onFlushLogs`). `loadFromFile()` wraps `triggerPreload()` in `callAsync` (audio device must be fully started before preload).
 - **StatusUpdater**: Periodic UI status updates at ~30Hz. Caches all status values (mute states, latency, CPU, format, gain, outputVolume, xrunCount) to avoid redundant repaints. Updates level meters, mute button colours, status bar labels, input gain slider sync, and broadcasts full state to WebSocket clients. State broadcast includes `volumes.output` and `xrun_count` fields. Pointer-based UI binding via `setUI()`.
 - **PresetSlotBar**: A-E quick preset slot buttons. Slot naming with pipe delimiter (`A|게임`, max 8 chars). Right-click context menu (Rename/Copy/Delete/Export/Import). Callback-based (`onSlotSwitch`, `onDirty`, `onNotification`). Shared atomics `loadingSlot_`/`partialLoad_` by reference.
-- **UpdateChecker**: Separate class (was inline in v3 MainComponent). Background GitHub API polling for new releases. Semver comparison. Updates credit label text on newer version found. Click triggers update dialog with [Update Now] (Windows only) / [View on GitHub] (macOS/Linux) / [Later]. Uses `alive_` flag for async safety. **Platform-aware asset selection**: 1st pass matches platform tag (`Windows`+`.zip`, `macOS`+`.dmg`, `Linux`+`.tar.gz`), 2nd pass falls back to any `DirectPipe*.zip` (legacy releases), 3rd pass falls back to `DirectPipe*.exe`. See workspace `CLAUDE.md` Section 2 for full release asset naming rules.
+- **UpdateChecker**: Separate class (was inline in v3 MainComponent). Background GitHub API polling for new releases. Semver comparison. Updates credit label text on newer version found. Click triggers update dialog with [Update Now] (Windows only) / [View on GitHub] (macOS/Linux) / [Later]. Uses `alive_` flag for async safety. **Platform-aware asset selection**: 1st pass matches platform tag (`Windows`+`.zip`, `macOS`+`.dmg`, `Linux`+`.tar.gz`), 2nd pass falls back to any `DirectPipe*.zip` (legacy releases), 3rd pass falls back to `DirectPipe*.exe`. **SHA-256 verification**: downloads `checksums.sha256` from release, verifies downloaded file integrity (skipped if checksums file not found). **`escapePSQuote`**: escapes single quotes in PowerShell commands for paths with special characters. See workspace `CLAUDE.md` Section 2 for full release asset naming rules.
 - **HotkeyTab / MidiTab / StreamDeckTab**: Each Controls sub-tab is a separate .h/.cpp file (was all inline in v3 ControlSettingsPanel). HotkeyTab: BindingRow drag-and-drop, key recording. MidiTab: device selector, Learn mode, 3-step param popup. StreamDeckTab: WS/HTTP server status. ControlSettingsPanel is now a slim tabbed container (~75 lines).
 - **PluginLoadHelper**: `PluginLoadHelper.h` — helper for cross-platform VST loading.
 - **Platform/ abstraction layer**: Header-only interfaces with per-OS implementations.
   - `PlatformAudio.h` (inline): `getDefaultSharedDeviceType()` abstracts driver names across OS.
-  - `AutoStart.h` → Windows: Registry `HKCU\...\Run`. macOS: `~/Library/LaunchAgents/com.directpipe.host.plist`. Linux: `~/.config/autostart/directpipe.desktop` (XDG).
+  - `AutoStart.h` → `setAutoStartEnabled()` returns `bool` (false on failure). Windows: Registry `HKCU\...\Run`. macOS: `~/Library/LaunchAgents/com.directpipe.host.plist`. Linux: `~/.config/autostart/directpipe.desktop` (XDG).
   - `ProcessPriority.h` → Windows: HIGH_PRIORITY_CLASS + timeBeginPeriod(1) + Power Throttling disable. macOS: setpriority(-20) + pthread QoS. Linux: setpriority(-10).
   - `MultiInstanceLock.h` → Windows: Named Mutexes. macOS/Linux: JUCE InterProcessLock (file-based flock).
 
 ### Audio
-- **Built-in Processors**: BuiltinFilter (HPF+LPF), BuiltinNoiseRemoval (RNNoise+FIFO+VAD), BuiltinAutoGain (LUFS+Leveler). All inherit AudioProcessor, inserted into AudioProcessorGraph alongside VSTs. [Auto] button (green when active) = special preset slot (index 5, `PresetSlotBar::kAutoSlotIndex`, non-renameable, rotation-excluded) next to input gain slider; first click creates default (Filter+NR+AGC), subsequent clicks load saved state; right-click for Reset to Defaults. Factory Reset includes Auto slot (deletes `slot_Auto.dppreset` via wildcard, message says "(A-E + Auto)"). **BuiltinFilter**: HPF default ON 60Hz, LPF default OFF 16kHz. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0. **RNNoise**: requires x32767 scaling before, /32767 after. 2-pass FIFO for in-place buffer safety. Ring buffer output FIFO (modulo wrapping). 48kHz only (non-48kHz = passthrough, TODO: resampling). Dual-mono (2 RNNoise instances). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD gate hold time: 300ms (`kHoldSamples` = 14400 at 48kHz). Gate smoothing: 20ms (`kGateSmooth` = 0.9990). Gate starts CLOSED (0.0) with 5-frame warmup before VAD active. **AGC**: WebRTC-inspired dual-envelope level detection (fast 10ms/200ms + slow 0.4s LUFS, max selection) + direct gain computation (no IIR gain envelope). Target LUFS -15.0 default (range -24 to -6, internal -4dB offset for overshoot compensation). Low Correct 0.50 default = hold↔full correction blend (boost). High Correct 0.90 default = hold↔full correction blend (cut). Max Gain 22 dB default. Freeze Level -45 dBFS (per-block RMS gate, NOT LUFS): holds current gain during silence (NOT reset to 0dB), bypassed when < -65 dBFS. LUFS window 0.4s (EBU Momentary). lowCorr/hiCorr = blend between hold and full correction per block (NOT envelope speed). K-weighting: ITU-R BS.1770 sidechain (copy, not applied to actual audio). Incremental `runningSquareSum_` (O(blockSize) not O(windowSize)). **VAD thresholds**: Light 0.50, Standard 0.70 (default), Aggressive 0.90.
+- **Built-in Processors**: BuiltinFilter (HPF+LPF), BuiltinNoiseRemoval (RNNoise+FIFO+VAD), BuiltinAutoGain (LUFS+Leveler). All inherit AudioProcessor, inserted into AudioProcessorGraph alongside VSTs. [Auto] button (green when active) = special preset slot (index 5, `PresetSlotBar::kAutoSlotIndex`, non-renameable, rotation-excluded) next to input gain slider; first click creates default (Filter+NR+AGC), subsequent clicks load saved state; right-click for Reset to Defaults. Factory Reset includes Auto slot (deletes `slot_Auto.dppreset` via wildcard, message says "(A-E + Auto)"). **BuiltinFilter**: HPF default ON 60Hz, LPF default OFF 16kHz. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0. **RNNoise**: requires x32767 scaling before, /32767 after. 2-pass FIFO for in-place buffer safety. Ring buffer output FIFO uses `(write - read) > 0u` for uint32_t modular-safe drain. 48kHz only (non-48kHz = passthrough, TODO: resampling). Dual-mono (2 RNNoise instances). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD gate hold time: 300ms (`kHoldSamples` = 14400 at 48kHz). Gate smoothing: 20ms (`kGateSmooth` = 0.9990). Gate starts CLOSED (0.0) with 5-frame warmup before VAD active. **AGC**: WebRTC-inspired dual-envelope level detection (fast 10ms/200ms + slow 0.4s LUFS, max selection) + direct gain computation (no IIR gain envelope). Target LUFS -15.0 default (range -24 to -6, internal -4dB offset for overshoot compensation). Low Correct 0.50 default = hold↔full correction blend (boost). High Correct 0.90 default = hold↔full correction blend (cut). Max Gain 22 dB default. Freeze Level -45 dBFS (per-block RMS gate, NOT LUFS): holds current gain during silence (NOT reset to 0dB), bypassed when < -65 dBFS. LUFS window 0.4s (EBU Momentary). lowCorr/hiCorr = blend between hold and full correction per block (NOT envelope speed). K-weighting: ITU-R BS.1770 sidechain (copy, not applied to actual audio). Incremental `runningSquareSum_` (O(blockSize) not O(windowSize)). **VAD thresholds**: Light 0.50, Standard 0.70 (default), Aggressive 0.90.
 - **Audio drivers**: Windows: 5 types — DirectSound (legacy), Windows Audio (WASAPI Shared, recommended), Windows Audio (Low Latency), Windows Audio (Exclusive Mode), ASIO. macOS: CoreAudio. Linux: ALSA, JACK. `PlatformAudio::getDefaultSharedDeviceType()` abstracts driver names. Runtime switching. ASIO: single device, dynamic SR/BS, channel routing.
 - **Audio optimizations**: `timeBeginPeriod(1)` for 1ms timer resolution (matched by `timeEndPeriod` in shutdown). Power Throttling disabled for Intel hybrid CPUs. `ScopedNoDenormals` in audio callback. Muted fast-path (skip VST processing). RMS decimation (every 4th callback). Buffer page pre-touch in `audioDeviceAboutToStart`. **DPC latency countermeasures** (Windows): MMCSS "Pro Audio" thread registration at AVRT_PRIORITY_HIGH on audio callback thread (covers both WASAPI and ASIO; JUCE only registers WASAPI at AVRT_PRIORITY_NORMAL, and does NO MMCSS for ASIO). IPC `SetEvent` optimization (signal only when data written). LatencyMonitor callback overrun detection (`getCallbackOverrunCount()`).
 - **Device auto-reconnection**: Dual mechanism — `ChangeListener` on `deviceManager_` for immediate detection + 3s timer polling fallback (`checkReconnection`). Tracks `desiredInputDevice_`/`desiredOutputDevice_`. `deviceLost_` set by `audioDeviceError`, cleared by `audioDeviceAboutToStart`. `attemptReconnection()` preserves SR/BS/channel routing (ASIO safe). Re-entrancy guard (`attemptingReconnection_`). NotificationBar: Warning on disconnect, Info on reconnect. Monitor device uses same pattern independently (`monitorLost_` + own cooldown). **Per-direction loss**: `inputDeviceLost_` silences input in audio callback. `outputAutoMuted_` auto-mutes on device loss, auto-unmutes on restore. `reconnectMissCount_` after 5 failed attempts. AudioSettings combos show "DeviceName (Disconnected)" for lost devices.
 - **Driver type snapshot/restore**: `DriverTypeSnapshot` struct stores per-driver-type settings (input/output device, SR, BS, `outputNone`) in `driverSnapshots_` map. ASIO switch builds ordered `tryOrder` list (preferred → lastAsio → all remaining) and iterates all devices before reverting. `AudioSettings::onDriverTypeChanged` checks return value and syncs driver combo on failure.
 - **Device fallback protection**: `intentionalChange_` flag in AudioEngine prevents `audioDeviceAboutToStart` from treating JUCE auto-fallback as successful reconnection. MonitorOutput rejects JUCE auto-fallback devices. OutputPanel shows "Fallback: DeviceName" in orange. Settings export uses desired device names.
+- **audioDeviceAboutToStart thread safety**: Called on device thread. Non-atomic writes (`desiredInputDevice_`, `desiredOutputDevice_`, `reconnectMissCount_`, etc.) deferred to message thread via `callAsync` with `alive_` guard. MMCSS function pointers cached here (write-once, then read from RT callback). `mmcssRegistered_` reset to false for re-registration on new audio thread.
 - **Main output**: Processed audio written directly to outputChannelData. Works with WASAPI, ASIO, CoreAudio, ALSA, JACK.
 - **Output "None" mode**: `setOutputNone(bool)` / `isOutputNone()` — `outputNone_` atomic flag mutes output and locks OUT button. Cleared on driver type switch. `DriverTypeSnapshot` saves/restores per driver type.
 - **Monitor output**: Separate shared-mode AudioDeviceManager (WASAPI/CoreAudio/ALSA) + lock-free AudioRingBuffer for headphone monitoring. Independent of main driver type. Status indicator (Active/SampleRateMismatch/Error/No device). Auto-reconnection via `monitorLost_` atomic + 3s timer polling. Monitor underrun tracking via `underrunCount_` atomic counter. `getUnderrunCount()` accessor for diagnostics.
@@ -187,13 +189,13 @@ MainComponent Split (v3→v4):
 - **Plugin scanner search/sort**: Real-time text filter + column sorting (name/vendor/format).
 
 ### External Control
-- **Global hotkeys**: Windows: `RegisterHotKey` + message-only window. macOS: `CGEventTap` + `AXIsProcessTrustedWithOptions` auto-prompt (accessibility permission required). Linux: stub (not supported, use MIDI/WS/HTTP). `keyToString()` uses macOS symbols (⌃⌥⇧⌘) on Mac.
+- **Global hotkeys**: Windows: `RegisterHotKey` + message-only window. macOS: `CGEventTap` + `AXIsProcessTrustedWithOptions` auto-prompt (accessibility permission required). Linux: stub (not supported, use MIDI/WS/HTTP). `keyToString()` uses macOS symbols (⌃⌥⇧⌘) on Mac. `onError` callback fires on macOS when accessibility permission is missing (wired to ControlManager `onNotification`).
 - **Panic Mute**: Remembers pre-mute state (monitor, output mute, IPC), restores on unmute. Stops active recording on engage (does not auto-restart). During panic mute, all actions and external controls locked — only PanicMute/unmute can change state. Logic consolidated in `ActionHandler::doPanicMute()`. `input_muted` state field mirrors `muted` (no independent input mute).
-- **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup. Port 8765. UDP discovery broadcast (port 8767). `broadcastToClients` thread join outside `clientsMutex_` lock.
+- **WebSocket server**: RFC 6455 with custom SHA-1. Case-insensitive HTTP header matching (RFC 7230). Dead client cleanup. Port 8765. UDP discovery broadcast (port 8767). `broadcastToClients` releases `clientsMutex_` before socket writes (prevents shutdown hang); dead thread join outside lock.
 - **IPC Toggle**: `Action::IpcToggle` toggles IPC output. WebSocket/HTTP/MIDI mappable.
 - **Default hotkeys**: 11 defaults from `createDefaults()` — Panic Mute (Ctrl+Shift+M), Master Bypass (Ctrl+Shift+0), Plugin 1-3 Bypass (Ctrl+Shift+1~3), Input Mute (Ctrl+Shift+F6), Monitor Toggle (Ctrl+Shift+H), Preset Slot A-E (Ctrl+Shift+F1~F5). Users can change/add more via Controls > Hotkeys tab. Existing users keep their saved config (createDefaults() only runs on first launch).
-- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: volume/parameter values validated as numeric. Gain delta endpoint scales by 10× (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`), safety limiter toggle/ceiling (`/api/limiter/toggle`, `/api/limiter/ceiling/:value`), auto processors add (`/api/auto/add`).
-- **MIDI Learn cancel**: Cancel button in MidiTab. `stopLearn()` called on cancel.
+- **HTTP server**: GET-only REST API. CORS enabled with OPTIONS preflight support for browser clients. Port 8766. Proper HTTP status codes (404/405/400). Input validation: `parseFloat()` strict validation rejects strings like "abc0.5" that `getFloatValue()` silently converts. `escapeJsonString()` prevents response injection from URL segments. Gain delta endpoint scales by 10x (compensates ActionHandler's `*0.1f` hotkey step design). Endpoints include recording toggle, plugin parameter control, IPC toggle, output volume (`/api/volume/output/:value`), plugin list (`/api/plugins`), plugin parameters (`/api/plugin/:idx/params`), performance stats (`/api/perf`), safety limiter toggle/ceiling (`/api/limiter/toggle`, `/api/limiter/ceiling/:value`), auto processors add (`/api/auto/add`).
+- **MIDI Learn cancel**: Cancel button in MidiTab. `stopLearn()` called on cancel. Learn timeout (30s): timer callback clears learn state directly instead of calling `stopLearn()` — avoids destroying the timer from its own callback (use-after-free).
 - **MIDI HTTP API test endpoints**: `/api/midi/cc/:ch/:num/:val` and `/api/midi/note/:ch/:num/:vel`.
 - **MIDI plugin parameter mapping**: MidiTab 3-step popup flow.
 
@@ -229,14 +231,14 @@ MainComponent Split (v3→v4):
 - **callAsync lifetime guards**: `checkForUpdate` uses `SafePointer`; `VSTChain::replaceChainAsync`, `ActionDispatcher`, `StateBroadcaster` use `shared_ptr<atomic<bool>> alive_` flag pattern (captured by value in callAsync lambda, checked before accessing `this`). `PluginChainEditor::addPluginFromDescription` and `PluginScanner` use `SafePointer`. Prevents use-after-delete when background thread's callAsync fires after object destruction.
 - **MidiHandler `bindingsMutex_`**: `std::mutex` protects all access to `bindings_`. `getBindings()` returns a copy. Never hold across callbacks. dispatch OUTSIDE lock (deadlock prevention).
 - **Notification queue overflow guard**: `pushNotification` checks ring buffer capacity before write.
-- `loadingSlot_` (std::atomic<bool>) guard prevents recursive auto-save during slot loading
+- `loadingSlot_` (std::atomic<bool>) guard prevents recursive auto-save during bulk chain operations (slot loading, Auto slot setup, MasterBypass toggle, Clear All Presets, Factory Reset)
 - **VSTChain `chainLock_`**: mutable `CriticalSection` protects ALL chain access. Never held in `processBlock`. **Never call `writeToLog` inside `chainLock_`** — capture log string under lock, log after releasing (lock-ordering hazard with DirectPipeLogger `writeMutex_`).
 - **VSTChain `rebuildGraph(bool suspend = true)`**: `suspend=true` for node add/remove, `suspend=false` for bypass toggle. `getConnections()` copied before removal loop (iterator safety). `setPluginBypassed` syncs `node->setBypassed()` + `getBypassParameter()->setValueNotifyingHost()` + `rebuildGraph(false)`.
 - onChainChanged callback outside chainLock_ scope (deadlock prevention)
 - MidiBuffer pre-allocated in prepareToPlay, cleared after processBlock
 - VSTChain removes old I/O nodes before adding new ones in prepareToPlay
 - ActionDispatcher/StateBroadcaster: copy-before-iterate for reentrant safety
-- WebSocket broadcast on dedicated thread (non-blocking). `broadcastToClients` joins thread outside `clientsMutex_` lock (deadlock prevention).
+- WebSocket broadcast on dedicated thread (non-blocking). `broadcastToClients` sweeps dead clients under `clientsMutex_`, releases lock, then writes to live sockets. Dead thread join outside lock (deadlock prevention).
 - **VSTChain `asyncGeneration_`**: `uint32_t` atomic counter. Discards stale callbacks from superseded loads.
 - Update check thread properly joined (no detached threads)
 - AudioRingBuffer capacity must be power-of-2 (assertion enforced). `reset()` zeroes all channel data.
@@ -246,7 +248,7 @@ MainComponent Split (v3→v4):
 - **AudioEngine**: notification queue indices use `uint32_t` (overflow-safe)
 - **HTTP API**: proper status codes (404/405/400) — `processRequest` returns `pair<int, string>`
 - **LogPanel DirectPipeLogger**: ring buffer indices use `uint32_t` (overflow-safe)
-- **Tray tooltip**: `activeSlot` clamped to 0-4 range
+- **Tray tooltip**: `activeSlot` clamped to 0-4 range in state broadcast, with separate `autoSlotActive` field for Auto slot (index 5)
 - **SettingsExporter**: Two tiers — `exportAll/importAll` strips `plugins` key; `exportFullBackup/importFullBackup` includes everything. `getCurrentPlatform()`/`isPlatformCompatible()` for cross-OS protection.
 - **PluginPreloadCache `invalidateAll()`**: Non-blocking — bumps all `slotVersions_` + sets `cancelPreload_` + bumps `preloadGeneration_`. Does NOT join thread (COM STA deadlock). `cancelAndWait()` uses heap-allocated `shared_ptr` for join state.
 - **PluginPreloadCache `slotVersions_`**: Per-slot `atomic<uint32_t>` version counter. Bumped by `invalidateSlot`/`invalidateAll`. `preloadAllSlots` captures version at file-read time; cache store checks version match — discards stale data if slot was invalidated mid-preload.
@@ -261,6 +263,9 @@ MainComponent Split (v3→v4):
 - **MonitorOutput shutdown()**: Resets `actualSampleRate_`/`actualBufferSize_` to 0. `monitorLost_` set by `audioDeviceError`/`audioDeviceStopped`, cleared ONLY by `audioDeviceAboutToStart`.
 - **AudioEngine reconnection**: `desiredInputDevice_`/`desiredOutputDevice_` saved in `audioDeviceAboutToStart` and `setInputDevice`/`setOutputDevice`. `attemptReconnection` only updates device names in setup.
 - **Device combo click-to-refresh**: `addMouseListener(this, true)` on combos in constructor, `removeMouseListener` in destructor.
+- **No LoadLibraryA in RT callback**: Cache function pointers (e.g., MMCSS avrt.dll) in `audioDeviceAboutToStart` — never call LoadLibraryA from the audio callback.
+- **Don't destroy juce::Timer from its own timerCallback**: Use `callAsync` to defer `reset()` or destruction. Direct destruction causes use-after-free (JUCE Timer internals reference destroyed object after callback returns).
+- **broadcastToClients lock discipline**: Release `clientsMutex_` before socket writes — holding the lock during potentially-blocking I/O causes shutdown hangs.
 
 ## Modules
 - `core/` -> IPC library (RingBuffer, SharedMemory, Protocol, Constants). POSIX: shm_open + sem_open (macOS sem_trywait polling, Linux sem_timedwait). Windows: CreateFileMapping + CreateEvent.
@@ -298,13 +303,13 @@ MainComponent Split (v3→v4):
 - License: GPL v3 (JUCE GPL compatibility). JUCE_DISPLAY_SPLASH_SCREEN=0
 - Credit label "Created by LiveTrack" at bottom-right. Shows "NEW vX.Y.Z" in orange.
 - **AudioEngine `setBufferSize` auto-fallback**: If driver rejects requested size, finds closest device-supported size.
-- **XRun tracking thread safety**: `xrunResetRequested_` atomic flag. Non-atomic xrun history vars only on message thread.
+- **XRun tracking thread safety**: Two separate atomic flags — `xrunResetRequested_` (user action, full clear) and `xrunBaselineResync_` (device restart, baseline resync only). Non-atomic xrun history vars only on message thread.
 - **RMS decimation**: `rmsDecimationCounter_` (RT thread only, no atomic needed). Every 4th callback.
 - Portable mode: `portable.flag` next to exe -> config stored in `./config/`
 - **Multi-instance external control priority**: Platform::MultiInstanceLock abstraction. `acquireExternalControlPriority()` returns 1/0/-1.
 - **LogPanel Quit button**: Red "Quit" button in Settings tab.
 - Safety Limiter: default enabled, ceiling -0.3 dBFS. Settings persist in dppreset. Actions: SafetyLimiterToggle, SetSafetyLimiterCeiling (no panic mute guard).
-- RNNoise: BSD-3 (thirdparty/rnnoise/), 48kHz only (non-48kHz = passthrough, TODO: resampling), 480-frame FIFO (~10ms latency), dual-mono (2 instances). x32767 scaling before, /32767 after. 2-pass FIFO for in-place buffer safety. Ring buffer output FIFO (modulo wrapping). Gate starts CLOSED (0.0) with 5-frame warmup. VAD gate hold time 300ms (kHoldSamples=14400 at 48kHz). Gate smoothing 20ms (kGateSmooth=0.9990). `getLatencySamples()` = 480 via `setLatencySamples()`
+- RNNoise: BSD-3 (thirdparty/rnnoise/), 48kHz only (non-48kHz = passthrough, TODO: resampling), 480-frame FIFO (~10ms latency), dual-mono (2 instances). x32767 scaling before, /32767 after. 2-pass FIFO for in-place buffer safety. Ring buffer output FIFO uses `(write - read) > 0u` for uint32_t modular-safe drain. Gate starts CLOSED (0.0) with 5-frame warmup. VAD gate hold time 300ms (kHoldSamples=14400 at 48kHz). Gate smoothing 20ms (kGateSmooth=0.9990). `getLatencySamples()` = 480 via `setLatencySamples()`
 - AGC architecture: WebRTC-inspired dual-envelope level detection (fast 10ms/200ms + slow 0.4s LUFS, max selection) + direct gain computation (no IIR gain envelope). Defaults: target -15 LUFS (internal -4dB offset for overshoot compensation), low correct 0.50 (boost blend), high correct 0.90 (cut blend), max gain 22 dB, freeze level -45 dBFS (per-block RMS hold, NOT LUFS). LUFS window 0.4s (EBU Momentary). K-weighting ITU-R BS.1770 sidechain (copy, not applied to audio). Incremental runningSquareSum_ (O(blockSize)). Freeze holds current gain (NOT reset to 0dB)
 - BuiltinFilter: HPF default ON 60Hz, LPF default OFF 16kHz. isBusesLayoutSupported: mono + stereo. getLatencySamples() = 0
 - VAD thresholds: Light 0.50, Standard 0.70 (default), Aggressive 0.90
@@ -388,6 +393,30 @@ If any step fails, help fix the issue first, then re-run that step.
 - **원인**: `Component::SafePointer`를 BG 스레드에서 생성 → WeakReference 등록이 thread-safe 아님
 - **진단**: callAsync 람다에서 SafePointer 사용하는 코드 검색. BG 스레드의 `run()` 내부면 `alive_` 패턴으로 교체 필요
 - **참조**: Audio/README.md DANGER ZONE 15, Quick Reference > Reusable Patterns
+
+### LoadLibraryA in RT callback (RT 위반)
+- **증상**: 오디오 글리치, 높은 DPC 레이턴시 스파이크
+- **원인**: RT 오디오 콜백에서 `LoadLibraryA` 호출 (커널 호출, 힙 할당, 파일 I/O 가능)
+- **진단**: 오디오 콜백 코드 경로에서 `LoadLibrary` 호출 검색
+- **해결**: `audioDeviceAboutToStart`에서 함수 포인터 캐시, RT 콜백에서는 캐시된 포인터만 사용
+
+### Timer 자기 파괴 (use-after-free)
+- **증상**: 타이머 콜백 후 크래시, 특히 학습 타임아웃 시
+- **원인**: `juce::Timer`의 `timerCallback` 내부에서 타이머 소유 `unique_ptr`을 `reset()` → JUCE 내부가 파괴된 객체 참조
+- **진단**: Timer 콜백에서 `reset()`, `= nullptr`, 소멸자 호출 패턴 검색
+- **해결**: `callAsync`로 destruction 지연, 또는 Timer 콜백에서 상태만 변경하고 소유자가 나중에 정리
+
+### loadingSlot_ 누락으로 중간 상태 자동 저장
+- **증상**: 프리셋 전환/Master Bypass 중 중간 상태가 저장됨 (일부 플러그인만 bypass된 상태 등)
+- **원인**: 여러 플러그인을 순차 변경하는 bulk operation에서 `loadingSlot_` 가드 없이 실행 → SettingsAutosaver가 각 변경마다 dirty flag 설정
+- **진단**: `setPluginBypassed` 루프, `removePlugin` 루프 등에서 `AtomicGuard loadGuard(loadingSlot_)` 존재 확인
+- **해결**: `AtomicGuard loadGuard(loadingSlot_)` RAII 가드로 bulk operation 감싸기
+
+### broadcastToClients 락 보유 중 소켓 쓰기 (셧다운 행)
+- **증상**: 앱 종료 시 행 (hang), 특히 클라이언트 연결 중 종료
+- **원인**: `clientsMutex_` 보유 상태에서 `sendFrame` 호출 → 소켓 쓰기가 블로킹될 수 있음 → 다른 스레드가 lock 대기 → 교착
+- **진단**: `broadcastToClients`에서 락 범위 확인 — 소켓 쓰기가 락 안에 있으면 버그
+- **해결**: 락 안에서 live 클라이언트 목록만 복사, 락 해제 후 소켓 쓰기
 
 ## Maintenance Recipes
 

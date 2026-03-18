@@ -18,7 +18,7 @@
 
 /**
  * @file AudioEngine.h
- * @brief Core audio engine — WASAPI/ASIO input → VST chain → output routing
+ * @brief Core audio engine — audio input → VST chain → output routing
  *
  * Manages the audio device, VST plugin processing chain, and output
  * distribution to main output, monitor (headphones), IPC, and recorder.
@@ -63,9 +63,9 @@ struct DriverTypeSnapshot {
  * @brief Main audio processing engine.
  *
  * Coordinates:
- * 1. WASAPI Shared mode input from USB microphone (non-exclusive)
+ * 1. Audio input (WASAPI/ASIO on Windows, CoreAudio on macOS, ALSA/JACK on Linux)
  * 2. VST plugin chain processing with atomic bypass flags
- * 3. Output routing to monitor (headphones via separate WASAPI device)
+ * 3. Output routing to monitor (headphones via separate shared-mode device)
  * 4. Mono/Stereo channel mode selection
  */
 class AudioEngine : public juce::AudioIODeviceCallback,
@@ -263,7 +263,7 @@ private:
 
     // ─── Cross-thread atomics ───
     std::atomic<bool> ipcEnabled_{false};              // [Message write, RT read]
-    std::atomic<bool> ipcWasEnabled_{false};            // [Message thread only] Remembers IPC state across device stop/start
+    std::atomic<bool> ipcWasEnabled_{false};            // [Device thread only] Remembers IPC state across device stop/start
     bool ipcAllowed_ = true;                            // [Message thread only] false in audio-only multi-instance mode
 
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);  // [callAsync lifetime guard]
@@ -316,15 +316,15 @@ private:
     // ─── RT thread only ───
     juce::AudioBuffer<float> workBuffer_;               // [RT thread only]
     uint32_t rmsDecimationCounter_ = 0;                 // [RT thread only] RMS computed every 4th callback (no atomic needed)
-    std::atomic<bool> mmcssRegistered_{false};           // [RT thread only] One-time MMCSS registration flag (Windows)
+    std::atomic<bool> mmcssRegistered_{false};           // [Device thread reset, RT thread write+read] MMCSS registration flag (Windows)
 
 #if defined(_WIN32)
-    // Cached MMCSS function pointers — loaded in audioDeviceAboutToStart,
-    // called from RT callback without LoadLibraryA.
+    // Cached MMCSS function pointers — loaded once in audioDeviceAboutToStart (device thread),
+    // read from RT callback. Safe: written once before any RT read, never modified after.
     using AvSetMmThreadCharFn = HANDLE(WINAPI*)(LPCWSTR, LPDWORD);
     using AvSetMmThreadPrioFn = BOOL(WINAPI*)(HANDLE, int);
-    AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;
-    AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;
+    AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;  // [Device thread write-once, RT thread read]
+    AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;  // [Device thread write-once, RT thread read]
 #endif
 
     // ─── Lock-free notification queue (RT write → Message read) ───

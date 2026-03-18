@@ -18,7 +18,7 @@
 
 /**
  * @file MainComponent.cpp
- * @brief Main application component implementation (v3.2)
+ * @brief Main application component implementation
  */
 
 #include "MainComponent.h"

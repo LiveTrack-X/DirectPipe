@@ -135,6 +135,10 @@ private:
     static constexpr juce::uint32 kDimTextColour  = 0xFF8888AA;
     static constexpr juce::uint32 kWarningColour  = 0xFFFFAA33;
 
+#if JUCE_LINUX
+    juce::Label unsupportedLabel_;
+#endif
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HotkeyTab)
 };
 

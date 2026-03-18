@@ -50,6 +50,12 @@ void ControlManager::initialize(bool enableExternalControls)
     currentConfig_ = configStore_.load();
 
     if (enableExternalControls) {
+        // Wire hotkey error callback before initialize (fires during init on macOS)
+        hotkeyHandler_.onError = [this](const juce::String& msg) {
+            if (onNotification)
+                onNotification(msg, NotificationLevel::Warning);
+        };
+
         // Initialize hotkey handler
         hotkeyHandler_.initialize();
         hotkeyHandler_.loadFromMappings(currentConfig_.hotkeys);

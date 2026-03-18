@@ -39,11 +39,11 @@ bool isAutoStartEnabled()
     return exists;
 }
 
-void setAutoStartEnabled(bool enable)
+bool setAutoStartEnabled(bool enable)
 {
     HKEY hKey = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS)
-        return;
+        return false;
 
     if (enable) {
         auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
@@ -52,14 +52,21 @@ void setAutoStartEnabled(bool enable)
         auto result = RegSetValueExW(hKey, getRunValueName(), 0, REG_SZ,
                        reinterpret_cast<const BYTE*>(wPath),
                        static_cast<DWORD>((wcslen(wPath) + 1) * sizeof(wchar_t)));
-        if (result != ERROR_SUCCESS)
+        RegCloseKey(hKey);
+        if (result != ERROR_SUCCESS) {
             juce::Logger::writeToLog("[APP] Failed to write auto-start registry (error " + juce::String((int)result) + ")");
+            return false;
+        }
+        return true;
     } else {
         auto result = RegDeleteValueW(hKey, getRunValueName());
-        if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND)
+        RegCloseKey(hKey);
+        if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
             juce::Logger::writeToLog("[APP] Failed to delete auto-start registry (error " + juce::String((int)result) + ")");
+            return false;
+        }
+        return true;
     }
-    RegCloseKey(hKey);
 }
 
 bool isAutoStartSupported() { return true; }

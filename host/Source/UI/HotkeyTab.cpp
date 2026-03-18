@@ -205,6 +205,18 @@ HotkeyTab::HotkeyTab(ControlManager& manager, VSTChain* vstChain)
 
     refreshBindings();
 
+#if JUCE_LINUX
+    unsupportedLabel_.setText(
+        "Global hotkeys are not supported on Linux.\n"
+        "Use MIDI, WebSocket, or HTTP API for external control.",
+        juce::dontSendNotification);
+    unsupportedLabel_.setJustificationType(juce::Justification::centred);
+    unsupportedLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFF8888AA));
+    addAndMakeVisible(unsupportedLabel_);
+    viewport_.setVisible(false);
+    addButton_.setVisible(false);
+#endif
+
     // Poll for recording completion at 10 Hz
     startTimerHz(10);
 }
@@ -226,6 +238,10 @@ void HotkeyTab::paint(juce::Graphics& g)
 
 void HotkeyTab::resized()
 {
+#if JUCE_LINUX
+    unsupportedLabel_.setBounds(getLocalBounds().reduced(20));
+    return;
+#endif
     auto bounds = getLocalBounds().reduced(8);
     constexpr int rowH = 28;
     constexpr int gap  = 6;
