@@ -52,6 +52,24 @@ All notable changes to DirectPipe will be documented in this file.
 - **WebSocket**: Check sendFrame return on initial state delivery — disconnect on failure
 - **Preset**: Allow clearing slot name to empty (previously ghost name persisted in JSON)
 - **Settings**: Reset activeSlot to A on .dpbackup import (slot files not included in backup)
+- **Receiver**: Guard against processBlock before prepareToPlay — prevent infinite loop on empty buffer
+- **Receiver**: Reset lastOutputSamples_ in releaseResources — prevent stale fade-out data
+- **Receiver**: Add isBusesLayoutSupported for mono — fix OBS mono source left-channel-only output
+- **Receiver**: Report latency via setLatencySamples — enable DAW latency compensation
+- **Receiver**: Detect stale consumer_active after OBS crash — suppress false multi-consumer warning
+- **Receiver**: Add drift compensation hysteresis — reduce micro-gaps at Ultra Low preset
+- **Receiver**: Use saved buffer data in fade-out — eliminate click artifact on underrun
+- **Stream Deck**: Enable autoReconnect — recover from host restarts without UDP
+- **Stream Deck**: Clear stale state on reconnect — prevent displaying previous session data
+- **Stream Deck**: Handle activeSlot -1 and auto_slot_active — correct preset display
+- **Stream Deck**: Per-target volume override check — prevent unrelated targets from blocking
+- **Build**: Guard RNNoise x86 sources for ARM compatibility — fix Universal macOS build
+- **Build**: Conditional VST2 target in pre-release test — handle missing VST2 SDK
+- **Build**: Remove stale DeviceSelector.cpp/h files
+- **Audio**: Catch plugin processBlock exceptions — prevent app crash from third-party VST bugs
+- **Audio**: Add 48kHz warning when Auto button clicked at non-48kHz sample rate
+- **MIDI**: Overwrite duplicate CC bindings instead of creating duplicates
+- **Audio**: Notify user when monitor sample rate mismatches main device
 
 ---
 
