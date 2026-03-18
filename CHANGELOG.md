@@ -70,6 +70,12 @@ All notable changes to DirectPipe will be documented in this file.
 - **Audio**: Add 48kHz warning when Auto button clicked at non-48kHz sample rate
 - **MIDI**: Overwrite duplicate CC bindings instead of creating duplicates
 - **Audio**: Notify user when monitor sample rate mismatches main device
+- **Audio**: Reset chainCrashed_ flag on device restart — user can recover after removing crashing plugin
+- **Audio**: Revert MMCSS registration in audioDeviceStopped — prevent handle leak on device restart
+- **Audio**: Protect audit log desiredDevice_ reads with SpinLock
+- **Preset**: Fix onResetSettings loadingSlot_ timing — let loadFromFile manage the guard internally
+- **Settings**: Clear partialLoad_ on successful self-heal in loadFromFile
+- **State**: masterBypassed requires at least one loaded plugin — unloaded slots no longer trigger false bypass
 
 ---
 
