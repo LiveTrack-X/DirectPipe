@@ -37,7 +37,7 @@ const { PresetBarAction } = require("./actions/preset-bar");
 
 // ─── DirectPipe host connection ─────────────────────────────────────
 const DIRECTPIPE_WS_URL = "ws://localhost:8765";
-const dpClient = new DirectPipeClient(DIRECTPIPE_WS_URL, { autoReconnect: false });
+const dpClient = new DirectPipeClient(DIRECTPIPE_WS_URL, { autoReconnect: true });
 let currentState = null;
 
 // ─── Action instances ───────────────────────────────────────────────
