@@ -58,14 +58,23 @@ if(DIRECTPIPE_BUILD_HOST OR DIRECTPIPE_BUILD_RECEIVER)
         thirdparty/rnnoise/src/rnnoise_data.c
         thirdparty/rnnoise/src/rnnoise_tables.c
         thirdparty/rnnoise/src/parse_lpcnet_weights.c
-        thirdparty/rnnoise/src/x86/x86cpu.c
-        thirdparty/rnnoise/src/x86/x86_dnn_map.c
     )
+    # x86-specific RNNoise optimizations — skip on ARM (macOS M-series, Linux aarch64)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i686|x86")
+        target_sources(rnnoise PRIVATE
+            thirdparty/rnnoise/src/x86/x86cpu.c
+            thirdparty/rnnoise/src/x86/x86_dnn_map.c
+        )
+    endif()
     target_include_directories(rnnoise PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rnnoise/include
         ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rnnoise/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rnnoise/src/x86
     )
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i686|x86")
+        target_include_directories(rnnoise PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rnnoise/src/x86
+        )
+    endif()
     if(MSVC)
         target_compile_options(rnnoise PRIVATE /W0)
     else()
