@@ -37,7 +37,7 @@ GPL v3 (오픈소스)
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일)
 - `DirectPipe Receiver.dll` — Receiver 플러그인 (VST2/VST3/AU)
 - `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 플러그인 패키지
-- 릴리즈 ZIP: `DirectPipe-vX.Y.Z-win64.zip` (exe + dll), macOS: `.dmg`, Linux: `.AppImage`
+- 릴리즈: Windows `DirectPipe-vX.Y.Z-Windows.zip` (exe + dll + vst3), macOS `DirectPipe-vX.Y.Z-macOS.dmg`, Linux `DirectPipe-vX.Y.Z-Linux.tar.gz`
 
 ---
 
@@ -370,7 +370,7 @@ rebuildGraph(bool suspend = true)
 | Ctrl+Shift+F1~F5 | SwitchPresetSlot | 0~4 |
 
 **구현:**
-- Windows: `RegisterHotKey()` via 숨겨진 메시지 전용 윈도우 (`HWND_MESSAGE`). macOS: `CGEventTap`. Linux: X11 `XGrabKey`
+- Windows: `RegisterHotKey()` via 숨겨진 메시지 전용 윈도우 (`HWND_MESSAGE`). macOS: `CGEventTap` (접근성 권한 필요 — 미허용 시 `onError` 콜백으로 사용자 알림). Linux: 스텁 (미지원 — HotkeyTab에 "unsupported" 메시지 표시, MIDI/WebSocket/HTTP 대안 안내)
 - 앱 최소화/트레이 상태에서도 동작
 - 드래그앤드롭으로 순서 재정렬 (`moveBinding`)
 - 인플레이스 키 재할당 (`updateHotkey`)
@@ -486,8 +486,8 @@ rebuildGraph(bool suspend = true)
 | `GET /api/mute/toggle` | 마스터 뮤트 토글 | — |
 | `GET /api/volume/{target}/{value}` | 볼륨 설정 | target: monitor(0~1)/input(0~2)/output(0~1). 범위 초과 시 400 |
 | `GET /api/volume/output/{value}` | 출력 볼륨 설정 | 0~1 범위 |
-| `GET /api/preset/{index}` | 프리셋 로드 | 0~4 범위 |
-| `GET /api/slot/{index}` | 슬롯 전환 | 0~4 범위 |
+| `GET /api/preset/{index}` | 프리셋 로드 | 0~5 범위 (0-4=A-E, 5=Auto) |
+| `GET /api/slot/{index}` | 슬롯 전환 | 0~5 범위 (0-4=A-E, 5=Auto) |
 | `GET /api/gain/{delta}` | 입력 게인 조정 | float 델타 |
 | `GET /api/input-mute/toggle` | 입력 뮤트 토글 | — |
 | `GET /api/monitor/toggle` | 모니터 출력 토글 | — |
@@ -571,6 +571,7 @@ rebuildGraph(bool suspend = true)
     "channel_mode": 2,
     "monitor_enabled": true,
     "active_slot": 0,
+    "auto_slot_active": false,
     "slot_names": ["게임", "토크", "", "", "", "Auto"],
     "recording": false,
     "recording_seconds": 0.0,

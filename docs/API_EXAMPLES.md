@@ -78,9 +78,9 @@ curl http://127.0.0.1:8766/api/volume/monitor/1.0   # 최대
 # 입력 게인 설정 (0.0 ~ 2.0 배수)
 curl http://127.0.0.1:8766/api/volume/input/1.5
 
-# 입력 게인 조정 (dB 단위 증감)
-curl http://127.0.0.1:8766/api/gain/3     # +3dB
-curl http://127.0.0.1:8766/api/gain/-6    # -6dB
+# 입력 게인 조정 (선형, 예: 0.1 = +0.1 게인)
+curl http://127.0.0.1:8766/api/gain/0.3     # +0.3 linear gain
+curl http://127.0.0.1:8766/api/gain/-0.5    # -0.5 linear gain
 
 # ─── 모니터 / IPC ───
 # 모니터 출력 (헤드폰) 토글
@@ -1095,20 +1095,27 @@ AutoHotkey로 커스텀 핫키:
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/status` | 전체 상태 JSON / Full state JSON |
-| `GET /api/slot/:index` | 슬롯 전환 (0-4 = A-E) / Switch preset slot |
+| `GET /api/slot/:index` | 슬롯 전환 (0-5, A-E + Auto) / Switch preset slot |
 | `GET /api/bypass/:index/toggle` | 플러그인 바이패스 토글 / Toggle plugin bypass |
 | `GET /api/bypass/master` | 마스터 바이패스 / Master bypass toggle |
 | `GET /api/mute/panic` | 패닉 뮤트 / Panic mute toggle |
 | `GET /api/mute/toggle` | 출력 뮤트 토글 / Output mute toggle |
 | `GET /api/input-mute/toggle` | 입력 뮤트 토글 / Input mute toggle |
 | `GET /api/volume/:target/:value` | 볼륨 설정 (monitor 0-1, input 0-2) / Set volume |
-| `GET /api/gain/:delta` | 입력 게인 조정 (dB) / Adjust input gain |
+| `GET /api/gain/:delta` | 입력 게인 조정 (선형, 예: 0.1 = +0.1) / Adjust input gain (linear) |
 | `GET /api/monitor/toggle` | 모니터 출력 토글 / Monitor toggle |
 | `GET /api/ipc/toggle` | IPC 출력 토글 / IPC toggle |
 | `GET /api/recording/toggle` | 녹음 토글 / Recording toggle |
 | `GET /api/plugin/:p/param/:i/:v` | 플러그인 파라미터 설정 / Set plugin parameter |
 | `GET /api/midi/cc/:ch/:num/:val` | MIDI CC 테스트 / Test MIDI CC |
 | `GET /api/midi/note/:ch/:num/:vel` | MIDI Note 테스트 / Test MIDI Note |
+| `GET /api/plugins` | 로드된 플러그인 목록 / List loaded plugins |
+| `GET /api/plugin/:idx/params` | 플러그인 파라미터 목록 / List plugin parameters |
+| `GET /api/xrun/reset` | XRun 카운터 리셋 / Reset XRun counter |
+| `GET /api/perf` | 성능 통계 / Performance stats |
+| `GET /api/limiter/toggle` | Safety Limiter 토글 / Toggle safety limiter |
+| `GET /api/limiter/ceiling/:value` | 리미터 실링 설정 (-6.0~0.0) / Set limiter ceiling |
+| `GET /api/auto/add` | 내장 프로세서 추가 / Add auto processors |
 
 ---
 
@@ -1118,15 +1125,17 @@ AutoHotkey로 커스텀 핫키:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `plugins` | array | 플러그인 목록 `[{name, bypass, loaded}]` |
+| `plugins` | array | 플러그인 목록 `[{name, bypass, loaded, latency_samples, type}]` |
 | `volumes.input` | number | 입력 게인 배수 (0.0-2.0) |
 | `volumes.monitor` | number | 모니터 볼륨 (0.0-1.0) |
+| `volumes.output` | number | 출력 볼륨 (0.0-1.0) |
 | `master_bypassed` | bool | 전체 체인 바이패스 여부 |
 | `muted` | bool | 패닉 뮤트 활성 여부 |
 | `output_muted` | bool | 메인 출력 뮤트 여부 |
 | `input_muted` | bool | 입력 뮤트 여부 (`muted`와 동일 — 독립 입력 뮤트 없음) |
-| `active_slot` | number | 활성 프리셋 슬롯 (0-4 = A-E) |
-| `slot_names` | array | 슬롯 이름 배열 (5개, 빈 문자열 = 이름 없음) |
+| `active_slot` | number | 활성 프리셋 슬롯 (0-4 = A-E, -1 = 없음, 클램프) |
+| `auto_slot_active` | bool | Auto 프리셋 슬롯 선택 여부 |
+| `slot_names` | array | 슬롯 이름 배열 (6개: A-E + Auto, 빈 문자열 = 이름 없음) |
 | `preset` | string | 현재 프리셋 이름 |
 | `latency_ms` | number | 메인 레이턴시 (ms) |
 | `monitor_latency_ms` | number | 모니터 레이턴시 (ms) |
@@ -1134,11 +1143,15 @@ AutoHotkey로 커스텀 핫키:
 | `cpu_percent` | number | 오디오 CPU 사용률 (%) |
 | `sample_rate` | number | 샘플레이트 (Hz) |
 | `buffer_size` | number | 버퍼 크기 (samples) |
+| `xrun_count` | number | 60초 롤링 윈도우 XRun 카운트 |
 | `channel_mode` | number | 1=Mono, 2=Stereo |
 | `monitor_enabled` | bool | 모니터 출력 활성 여부 |
 | `recording` | bool | 녹음 중 여부 |
 | `recording_seconds` | number | 녹음 경과 시간 (초) |
 | `ipc_enabled` | bool | IPC (DirectPipe Receiver) 활성 여부 |
+| `safety_limiter` | object | Safety Limiter 상태 `{enabled, ceiling_dB, gain_reduction_dB, is_limiting}` |
+| `chain_pdc_samples` | number | 플러그인 체인 총 PDC (샘플) |
+| `chain_pdc_ms` | number | 플러그인 체인 총 PDC (ms) |
 | `device_lost` | bool | 메인 오디오 장치 분실 여부 |
 | `monitor_lost` | bool | 모니터 장치 분실 여부 |
 

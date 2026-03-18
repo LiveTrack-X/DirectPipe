@@ -283,10 +283,10 @@ bash tools/pre-release-test.sh
 
 ### 릴리스 프로세스 / Release Process
 
-1. GitHub에서 Release 생성 (v4는 반드시 `--prerelease`) / Create Release on GitHub (v4 must use `--prerelease`)
+1. GitHub에서 Release 생성 (`--latest` 플래그로 정식 릴리즈) / Create Release on GitHub (use `--latest` for official release)
 2. CI가 자동으로 4개 빌드 실행 / CI automatically runs 4 builds
 3. `upload-release` job이 모든 빌드 완료 후 asset 업로드 / `upload-release` job uploads after all builds pass
 4. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention
 
-> ⚠️ v4 릴리스는 반드시 `--prerelease`로 생성해야 v3 사용자의 자동 업데이터가 감지하지 않습니다. 자세한 내용은 최상위 `CLAUDE.md` Section 2 참조.
-> v4 releases must use `--prerelease` to prevent v3 users' auto-updater from detecting them. See top-level `CLAUDE.md` Section 2.
+> v4.0.0부터 `--latest`로 정식 릴리즈. v3 사용자의 자동 업데이터는 플랫폼 태그(`-Windows.zip` 등)로 올바른 바이너리를 다운로드하므로 안전합니다. 자세한 내용은 최상위 `CLAUDE.md` Section 2 참조.
+> Since v4.0.0, releases use `--latest`. v3 users' auto-updater safely downloads the correct binary via platform tags (`-Windows.zip`, etc.). See top-level `CLAUDE.md` Section 2.
