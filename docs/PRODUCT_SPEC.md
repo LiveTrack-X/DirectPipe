@@ -282,7 +282,7 @@ rebuildGraph(bool suspend = true)
 #### 구성
 | 항목 | 상세 |
 |------|------|
-| 장치 | 별도 WASAPI AudioDeviceManager (메인 드라이버와 독립) |
+| 장치 | 별도 AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) (메인 드라이버와 독립) |
 | 링 버퍼 | AudioRingBuffer: 4096 프레임, 스테레오, power-of-2 |
 | 상태 | `VirtualCableStatus` enum: NotConfigured, Active, Error, SampleRateMismatch |
 
@@ -483,12 +483,12 @@ rebuildGraph(bool suspend = true)
 | 타임아웃 | 3초 읽기 타임아웃 |
 | 응답 | JSON. 상태 코드: 200/400/404/405 |
 
-**엔드포인트 (22개):**
+**엔드포인트 (23개):**
 | 엔드포인트 | 액션 | 파라미터 검증 |
 |-----------|------|-------------|
 | `GET /api/status` | 전체 상태 JSON | — |
 | `GET /api/bypass/master` | 마스터 바이패스 토글 | — |
-| `GET /api/bypass/{index}` | 플러그인 바이패스 토글 | index 범위 검증 |
+| `GET /api/bypass/{index}/toggle` | 플러그인 바이패스 토글 | index 범위 검증 |
 | `GET /api/mute/panic` | 패닉 뮤트 | — |
 | `GET /api/mute/toggle` | 마스터 뮤트 토글 | — |
 | `GET /api/volume/{target}/{value}` | 볼륨 설정 | target: monitor(0~1)/input(0~2)/output(0~1). 범위 초과 시 400 |
@@ -640,7 +640,7 @@ rebuildGraph(bool suspend = true)
 **뮤트 버튼:**
 - OUT: 메인 출력 뮤트
 - MON: 모니터 뮤트
-- VST: 마스터 바이패스
+- VST: IPC 출력 토글
 - PANIC MUTE: 패닉 뮤트 (모든 출력 차단 + 컨트롤 잠금)
 
 #### 4.6.2 Audio 탭 (AudioSettings)

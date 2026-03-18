@@ -238,6 +238,16 @@ Adds built-in Filter + NoiseRemoval + AutoGain processors to the chain. Already-
 
 ---
 
+#### `xrun_reset` — Reset XRun Counter / XRun 카운터 리셋
+
+```json
+{ "type": "action", "action": "xrun_reset", "params": {} }
+```
+
+Resets the rolling 60-second XRun counter. Not blocked by panic mute. / 60초 롤링 XRun 카운터 리셋. 패닉 뮤트에 의해 차단되지 않음.
+
+---
+
 #### `safety_limiter_toggle` — Toggle Safety Limiter / Safety Limiter 토글
 
 ```json

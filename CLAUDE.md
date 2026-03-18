@@ -5,7 +5,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 
 크로스 플랫폼 실시간 VST2/VST3 호스트. Windows(안정), macOS(베타), Linux(실험적). 마이크 입력을 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치로 직접 전송, 별도 공유 모드 모니터 출력(헤드폰) 옵션. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
-> **v4.0.0은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서를 추가한 정식 릴리즈입니다.**
+> **v4.0.1은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서를 추가한 정식 릴리즈입니다.**
 > MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→295개 확장.
 
 ## Documentation Sync Rule (필수)
@@ -123,6 +123,12 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
+**Run tests independently:**
+```bash
+./build/tests/directpipe-host-tests_artefacts/Release/directpipe-host-tests.exe   # Host tests (244)
+./build/bin/Release/directpipe-tests.exe                                           # Core/IPC tests (51)
+```
+
 - **Portable test build**: Copy exe to `C:\Users\livet\Desktop\DirectPipe-v4-test\` (has `portable.flag` for isolation from v3)
 - **Stale build artifacts**: If HTTP API or other features behave unexpectedly after code changes, do a clean rebuild — incremental builds can silently link stale .obj files
 
@@ -207,7 +213,7 @@ MainComponent Split (v3→v4):
 ### UI & Settings
 - **Tabbed UI**: Audio/Monitor/Controls/Settings tabs in right column. Controls has 3 sub-tabs (each in separate file): HotkeyTab, MidiTab, StreamDeckTab. ControlSettingsPanel is the slim tabbed container (~75 lines).
 - **Auto-start**: Platform::AutoStart abstraction. Windows: Registry. macOS: LaunchAgent. Linux: XDG autostart. Toggle in tray menu + Settings tab.
-- **System tray**: Close -> tray (macOS/Windows) or minimize to taskbar (Linux, GNOME 42+ tray limitation). Right-click -> Show/Quit/auto-start toggle.
+- **System tray**: Close -> tray (macOS/Windows) or minimize to taskbar or system tray (Linux, DE 지원 시 트레이, 미지원 시 태스크바). Right-click -> Show/Quit/auto-start toggle.
 - **Settings export/import**: Two tiers: `.dpbackup` (settings only) and `.dpfullbackup` (everything). **Cross-OS protection**: Backup files include `platform` field (windows/macos/linux). `getCurrentPlatform()`/`getBackupPlatform()`/`isPlatformCompatible()` block cross-OS restore. Legacy backups without platform field accepted.
 - **In-app auto-updater**: Background thread fetches latest release from GitHub API. **Platform-aware asset selection** — prefers platform-tagged asset (e.g. `DirectPipe-...-Windows.zip`), falls back to legacy naming. Update Now (Windows): downloads ZIP/exe, batch script auto-restart. macOS/Linux: "View on GitHub" only (manual download). Post-update notification via `_updated.flag`. **릴리스 asset 네이밍 필수**: Windows=`.zip`, macOS=`.dmg`, Linux=`.tar.gz` — macOS/Linux를 `.zip`으로 배포하면 v3 구 업데이터가 잘못된 바이너리를 다운로드함.
 - **NotificationBar**: Color-coded (red/orange/purple). Auto-fades 3-8 seconds.
