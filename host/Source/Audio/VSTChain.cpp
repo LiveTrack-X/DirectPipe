@@ -738,6 +738,7 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 {
     juce::AudioProcessor* processorForEditor = nullptr;
     juce::String pluginName;
+    juce::AudioProcessorGraph::NodeID capturedNodeId{};
 
     // First lock scope: validate index, check existing window, extract plugin data
     {
@@ -761,6 +762,7 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
         if (!processorForEditor) return;
 
         pluginName = slot.name;
+        capturedNodeId = slot.nodeId;
     }
     // Lock released — safe to create GUI without risk of deadlock from plugin callbacks
 
@@ -783,14 +785,23 @@ void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
     };
 
     // Second lock scope: store the window in editorWindows_
+    // Use capturedNodeId to re-find the correct position — index may have shifted
+    // if removePlugin ran between the two lock scopes (TOCTOU prevention).
     {
         const juce::ScopedLock sl(chainLock_);
-        // Re-validate index (chain may have been modified while lock was released)
-        if (index >= 0 && index < static_cast<int>(chain_.size())) {
-            if (static_cast<size_t>(index) >= editorWindows_.size())
-                editorWindows_.resize(static_cast<size_t>(index) + 1);
-            editorWindows_[static_cast<size_t>(index)] = std::move(window);
+        int validIndex = -1;
+        for (size_t i = 0; i < chain_.size(); ++i) {
+            if (chain_[i].nodeId == capturedNodeId) {
+                validIndex = static_cast<int>(i);
+                break;
+            }
         }
+        if (validIndex >= 0) {
+            if (editorWindows_.size() <= static_cast<size_t>(validIndex))
+                editorWindows_.resize(static_cast<size_t>(validIndex) + 1);
+            editorWindows_[static_cast<size_t>(validIndex)] = std::move(window);
+        }
+        // else: plugin was removed during editor creation — window destructs here
     }
 }
 
