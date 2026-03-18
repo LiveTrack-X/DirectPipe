@@ -47,9 +47,9 @@ namespace directpipe {
  * Freeze gate uses per-block RMS (~2.7ms) to detect silence immediately.
  * During freeze, current gain is HELD (not reset to 0dB).
  *
- * ### Target Offset (-4dB)
- * Internal target is 4dB below user setting to compensate for systematic overshoot
- * from open-loop pre-gain measurement. Keeps output at or slightly below target.
+ * ### Target Offset (-6dB)
+ * Internal target is 6dB below user setting to compensate for systematic overshoot
+ * from open-loop pre-gain measurement. Keeps output closer to commercial levelers.
  *
  * Algorithm:
  *   1. Copy buffer to scratch (measurement only)
