@@ -360,7 +360,9 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - [Control API](docs/CONTROL_API.md) — WebSocket / HTTP API 레퍼런스 / API reference
 - [API Examples](docs/API_EXAMPLES.md) — 자동화 예제 (Python, AutoHotkey, OBS 연동, curl, PowerShell) / Automation examples
 - [Stream Deck Guide](docs/STREAMDECK_GUIDE.md) — Stream Deck 플러그인 / Stream Deck integration
+- [Product Spec](docs/PRODUCT_SPEC.md) — 제품 상세 기획서 / Detailed product specification (reverse-engineered from implementation)
 - [Logging Rules](docs/LOGRULE.md) — 로깅 형식 및 규칙 / Log format, categories, and audit mode
+- [Security](SECURITY.md) — 보안 정책 및 설계 / Security policy, architecture, and known limitations
 
 ## FAQ
 

@@ -1,6 +1,6 @@
 # DirectPipe 제품 기획서 (Product Specification)
 
-> 이 문서는 **내부 개발 참조용** 역기획서입니다. 사용자 문서는 [USER_GUIDE.md](USER_GUIDE.md) 참조.
+> 현재 구현된 모든 기능의 상세 동작 방식을 기술한 역기획서입니다. 사용법은 [User Guide](USER_GUIDE.md), 아키텍처 개요는 [Architecture](ARCHITECTURE.md) 참조.
 
 > 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.1 기준)
 
