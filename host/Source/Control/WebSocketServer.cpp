@@ -510,42 +510,40 @@ void WebSocketServer::processMessage(const std::string& message)
 
 void WebSocketServer::broadcastToClients(const std::string& message)
 {
-    // WARNING: clientsMutex_ 내에서 sendFrame 호출 — 느린 클라이언트가 블로킹 가능
     // WARNING: 죽은 클라이언트의 thread.join()은 반드시 clientsMutex_ 바깥에서 실행
     // (교착 방지: clientThread가 clientsMutex_ 잡으려 할 수 있음)
 
-    // Collect dead connections outside the lock to avoid blocking
+    std::vector<ClientConnection*> liveSnapshot;
     std::vector<std::unique_ptr<ClientConnection>> deadConns;
 
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
 
         // Sweep dead connections before broadcasting
-        auto it = std::remove_if(clients_.begin(), clients_.end(),
-            [&deadConns](std::unique_ptr<ClientConnection>& conn) {
-                if (!conn->socket || !conn->socket->isConnected()) {
-                    deadConns.push_back(std::move(conn));
-                    return true;
-                }
-                return false;
-            });
-        clients_.erase(it, clients_.end());
-
-        for (auto& conn : clients_) {
-            if (conn->socket && conn->socket->isConnected()) {
-                std::lock_guard<std::mutex> sl(conn->sendMutex);
-                if (!sendFrame(conn->socket.get(), message)) {
-                    // Write failed — close socket so next sweep removes it
-                    conn->socket->close();
-                }
+        for (auto it = clients_.begin(); it != clients_.end(); ) {
+            if (!(*it)->socket || !(*it)->socket->isConnected()) {
+                deadConns.push_back(std::move(*it));
+                it = clients_.erase(it);
+            } else {
+                liveSnapshot.push_back(it->get());
+                ++it;
             }
+        }
+    }
+    // clientsMutex_ released — socket writes cannot block other operations
+
+    for (auto* conn : liveSnapshot) {
+        std::lock_guard<std::mutex> sl(conn->sendMutex);
+        if (!sendFrame(conn->socket.get(), message)) {
+            // Write failed — close socket so next sweep removes it
+            conn->socket->close();
         }
     }
 
     // Join dead threads outside the lock (clientThread already decremented clientCount_)
-    for (auto& conn : deadConns) {
-        if (conn && conn->thread.joinable())
-            conn->thread.join();
+    for (auto& dead : deadConns) {
+        if (dead && dead->thread.joinable())
+            dead->thread.join();
     }
 }
 

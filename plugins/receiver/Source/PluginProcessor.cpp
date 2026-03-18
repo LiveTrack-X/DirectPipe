@@ -199,6 +199,7 @@ void DirectPipeReceiverProcessor::tryConnect()
     // Verify producer is active
     auto* header = static_cast<directpipe::DirectPipeHeader*>(sharedMemory_.getData());
     if (!header->producer_active.load(std::memory_order_acquire)) {
+        ringBuffer_.detach();   // Clear consumer_active flag before closing
         sharedMemory_.close();
         return;
     }

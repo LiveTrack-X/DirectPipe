@@ -81,6 +81,8 @@ static uint32_t quickStateHash(const AppState& s)
         h = h * 31u + static_cast<uint32_t>(p.latencySamples);
     for (const auto& p : s.plugins)
         h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(p.type));
+    for (const auto& p : s.plugins)
+        h = h * 31u + static_cast<uint32_t>(std::hash<std::string>{}(p.name));
     h = h * 31u + static_cast<uint32_t>(s.chainPDCSamples);
     hashFloat(s.chainPDCMs);
     for (const auto& n : s.slotNames)
