@@ -24,6 +24,7 @@
 #include "HttpApiServer.h"
 #include "Log.h"
 #include <algorithm>
+#include <cerrno>
 #include <mutex>
 
 namespace directpipe {
@@ -40,6 +41,18 @@ static int safeAtoi(const std::string& s)
 {
     if (s.empty() || s.size() > 9) return -1;  // max 999,999,999
     return std::atoi(s.c_str());
+}
+
+/// Strict float parsing — rejects strings like "abc0.5" that getFloatValue() silently converts to 0.0.
+static bool parseFloat(const std::string& s, float& outValue)
+{
+    if (s.empty() || s.size() > 20) return false;
+    char* endptr = nullptr;
+    errno = 0;
+    float val = std::strtof(s.c_str(), &endptr);
+    if (endptr == s.c_str() || *endptr != '\0' || errno == ERANGE) return false;
+    outValue = val;
+    return true;
 }
 
 HttpApiServer::HttpApiServer(ActionDispatcher& dispatcher, StateBroadcaster& broadcaster,
@@ -269,10 +282,9 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     // GET /api/limiter/ceiling/:value — set safety limiter ceiling (-6.0 ~ 0.0 dBFS)
     if (action == "limiter" && segments.size() >= 4 && segments[2] == "ceiling") {
-        auto valueStr = juce::String(segments[3]);
-        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("-0123456789.") < 0)
+        float value;
+        if (!parseFloat(segments[3], value))
             return {400, R"({"error": "value must be a number"})"};
-        float value = valueStr.getFloatValue();
         if (value < -6.0f || value > 0.0f)
             return {400, R"({"error": "ceiling must be -6.0 to 0.0 dBFS"})"};
         dispatcher_.dispatch({Action::SetSafetyLimiterCeiling, 0, value});
@@ -319,11 +331,10 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         const auto& target = segments[2];
         if (target != "monitor" && target != "input" && target != "output")
             return {400, "{\"error\": \"Unknown volume target, use monitor, input, or output\"}"};
-        // Validate numeric input — getFloatValue() silently returns 0.0 for non-numeric strings
-        auto valueStr = juce::String(segments[3]);
-        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.") < 0)
+        // Validate numeric input
+        float value;
+        if (!parseFloat(segments[3], value))
             return {400, R"({"error": "value must be a number"})"};
-        float value = valueStr.getFloatValue();
         // Input gain range is 0.0-2.0 (multiplier), others are 0.0-1.0
         float maxValue = (target == "input") ? 2.0f : 1.0f;
         if (value < 0.0f || value > maxValue)
@@ -350,10 +361,10 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     // InputGainAdjust handler applies *0.1f (designed for hotkey steps ±1),
     // so scale by 10 to get correct gain change.
     if (action == "gain" && segments.size() >= 3) {
-        auto valueStr = juce::String(segments[2]);
-        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.-") < 0)
+        float delta;
+        if (!parseFloat(segments[2], delta))
             return {400, R"({"error": "delta must be a number"})"};
-        float delta = valueStr.getFloatValue();
+
         if (delta < -2.0f || delta > 2.0f)
             return {400, "{\"error\": \"delta out of range (-2.0 to 2.0)\"}"};
         dispatcher_.inputGainAdjust(delta * 10.0f);
@@ -439,11 +450,11 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (pluginIndex < 0 || paramIndex < 0)
             return {400, R"({"error": "Invalid index"})"};
 
-        // Validate numeric input — getFloatValue() silently returns 0.0 for non-numeric strings
-        auto valueStr = juce::String(segments[5]);
-        if (valueStr.isEmpty() || valueStr.indexOfAnyOf("0123456789.") < 0)
+        // Validate numeric input
+        float value;
+        if (!parseFloat(segments[5], value))
             return {400, R"({"error": "value must be a number 0.0-1.0"})"};
-        float value = valueStr.getFloatValue();
+
         if (value < 0.0f || value > 1.0f)
             return {400, R"({"error": "value must be 0.0-1.0"})"};
         ActionEvent event;
