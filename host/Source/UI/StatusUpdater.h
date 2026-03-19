@@ -43,6 +43,7 @@ public:
     void setUI(juce::Label* latencyLabel, juce::Label* cpuLabel, juce::Label* formatLabel,
                juce::TextButton* inputMuteBtn, juce::TextButton* outputMuteBtn,
                juce::TextButton* monitorMuteBtn, juce::TextButton* vstMuteBtn,
+               juce::TextButton* panicMuteBtn,
                juce::Slider* inputGainSlider,
                LevelMeter* inputMeter, LevelMeter* outputMeter);
 
@@ -61,12 +62,14 @@ private:
     juce::TextButton* outputMuteBtn_ = nullptr;
     juce::TextButton* monitorMuteBtn_ = nullptr;
     juce::TextButton* vstMuteBtn_ = nullptr;
+    juce::TextButton* panicMuteBtn_ = nullptr;
     juce::Slider* inputGainSlider_ = nullptr;
     LevelMeter* inputMeter_ = nullptr;
     LevelMeter* outputMeter_ = nullptr;
 
     // Cached mute states
     bool cachedInputMuted_ = false;
+    bool cachedPanicActive_ = false;
     bool cachedOutputMuted_ = false;
     bool cachedMonitorMuted_ = false;
     bool cachedVstEnabled_ = false;

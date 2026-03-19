@@ -483,7 +483,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     actionHandler_->onPanicStateChanged = [this](bool muted) {
         panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
         panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                                juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+                                juce::Colour(muted ? 0xFF4CAF50u : 0xFF3A3A5Cu));
     };
     actionHandler_->onIpcStateChanged = [this](bool enabled) {
         if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
@@ -539,13 +539,13 @@ MainComponent::MainComponent(bool enableExternalControls)
     setupMuteBtn(outputMuteBtn_);
     setupMuteBtn(monitorMuteBtn_);
     setupMuteBtn(vstMuteBtn_);
-    vstMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
+    vstMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFF9800));
     outputMuteBtn_.onClick = [this] { actionHandler_->toggleOutputMute(); };
     monitorMuteBtn_.onClick = [this] { actionHandler_->toggleMonitorMute(); };
     vstMuteBtn_.onClick = [this] { actionHandler_->toggleIpcMute(); };
 
     // ── Panic Mute Button ──
-    panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
+    panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5C));
     panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     panicMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     panicMuteBtn_.onClick = [this] { actionHandler_->togglePanicMute(); };
@@ -615,6 +615,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     // Bind UI component pointers to StatusUpdater (all components created above)
     statusUpdater_->setUI(&latencyLabel_, &cpuLabel_, &formatLabel_,
                           &inputMuteBtn_, &outputMuteBtn_, &monitorMuteBtn_, &vstMuteBtn_,
+                          &panicMuteBtn_,
                           &inputGainSlider_, inputMeter_.get(), outputMeter_.get());
 
     // Start UI update timer (30 Hz)
@@ -958,7 +959,7 @@ void MainComponent::refreshUI()
     bool muted = audioEngine_.isMuted();
     panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                            juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
+                            juce::Colour(muted ? 0xFF4CAF50u : 0xFF3A3A5Cu));
 
     // IPC toggle state (Output tab = index 1)
     if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
@@ -973,8 +974,15 @@ void MainComponent::refreshUI()
 void MainComponent::updateAutoButtonVisual()
 {
     bool autoActive = (presetManager_ && presetManager_->getActiveSlot() == PresetSlotBar::kAutoSlotIndex);
-    autoProcessorBtn_.setColour(juce::TextButton::buttonColourId,
-        juce::Colour(autoActive ? 0xFF4CAF50 : 0xFF2A4035));
+    if (autoActive) {
+        autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFFC107));   // Yellow
+        autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::black);
+        autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
+    } else {
+        autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A4035));   // Dark
+        autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    }
 }
 
 // ─── Notification ─────────────────────────────────────────────────────────
