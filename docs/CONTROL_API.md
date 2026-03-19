@@ -138,6 +138,9 @@ Immediately mutes all outputs and stops active recording. Send again to unmute (
 >
 > **참고**: `input_mute_toggle`은 `panic_mute`와 동일합니다 — 독립적인 입력 뮤트는 없습니다. `input_muted` 상태 필드는 항상 `muted`와 같은 값입니다.
 
+> ⚠️ **네이밍 주의 / Naming caveat**: `input_mute_toggle`은 현재 `panic_mute`와 동일하게 동작합니다 (전체 출력 뮤트). 독립적인 입력 뮤트가 아닙니다. 이름이 오해를 유발할 수 있어 향후 `global_mute_toggle`로 변경 또는 deprecated 될 수 있습니다.
+> ⚠️ **Naming caveat**: `input_mute_toggle` currently behaves identically to `panic_mute` (mutes all outputs). It is NOT an independent input mute. The name may be misleading; it may be renamed to `global_mute_toggle` or deprecated in a future version.
+
 ---
 
 #### `monitor_toggle` — Toggle Monitor Output / 모니터 출력 토글
@@ -344,7 +347,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
 | `master_bypassed` | boolean | Entire chain bypassed / 전체 체인 Bypass |
 | `muted` | boolean | Panic mute active / 패닉 뮤트 상태 |
 | `output_muted` | boolean | Main output muted / 메인 출력 뮤트 |
-| `input_muted` | boolean | Input muted (mirrors `muted` — no independent input mute) / 입력 뮤트 (`muted`와 동일 — 독립 입력 뮤트 없음) |
+| `input_muted` | boolean | ⚠️ Input muted (mirrors `muted` — no independent input mute). May be renamed to `global_muted` or deprecated. / ⚠️ 입력 뮤트 (`muted`와 동일 — 독립 입력 뮤트 없음). 향후 `global_muted`로 변경 또는 deprecated 될 수 있음. |
 | `active_slot` | number | Active preset slot (0-4 = A-E, clamped) or -1 (none) / 활성 슬롯 (0-4로 클램프, -1은 없음) |
 | `auto_slot_active` | boolean | Whether the Auto preset slot is selected / Auto 프리셋 슬롯 선택 여부 |
 | `slot_names` | array | Slot names (6 strings (A-E + Auto), empty = unnamed) / 슬롯 이름 (6개 (A-E + Auto), 빈 문자열 = 이름 없음) |

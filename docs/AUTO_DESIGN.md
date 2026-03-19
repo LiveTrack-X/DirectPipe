@@ -1,9 +1,9 @@
 # [Auto] 설계 문서 — Design Principles & Parameter Rationale
 
-> DirectPipe의 [Auto] 버튼은 "VST를 모르는 사용자도 한 번에 방송 가능한 마이크 품질"을 목표로 설계되었습니다.
+> DirectPipe의 [Auto] 버튼은 "VST를 모르는 사용자도 한 번에 깨끗하고 안정적인 마이크 베이스라인"을 목표로 설계되었습니다.
 > 이 문서는 Auto 체인의 구성 원칙, 순서의 기술적 근거, 포함하지 않은 처리와 그 이유, 모든 파라미터의 선택 근거를 기록합니다.
 
-> The [Auto] button in DirectPipe is designed with the goal of "broadcast-ready microphone quality in one click, even for users who know nothing about VSTs."
+> The [Auto] button in DirectPipe is designed with the goal of "clean, stable, safe microphone baseline in one click, even for users who know nothing about VSTs."
 > This document records the design principles of the Auto chain, the technical rationale for processing order, what was intentionally excluded and why, and the reasoning behind every parameter choice.
 
 ---
@@ -36,6 +36,20 @@ Why we maintain this boundary:
 - Must be safe across all mic types: USB condenser, dynamic, headset, built-in, etc.
 - Incorrect automatic settings must never produce results "worse than doing nothing"
 - Users must be able to enable Auto and immediately start streaming/calling with no adjustments
+
+### Auto 슬롯의 상태성 / Auto Slot Statefulness
+
+[Auto]는 UI상 "기능 버튼"처럼 보이지만, 내부적으로는 **상태를 가진 특수 프리셋 슬롯(index 5)**입니다.
+
+[Auto] looks like a "function button" in the UI, but internally it is a **stateful special preset slot (index 5)**.
+
+- 첫 클릭: 기본 체인(Filter+NR+AGC) 생성 + 슬롯 5에 저장 / First click: creates default chain + saves to slot 5
+- 이후 클릭: **마지막 저장 상태** 복원 (사용자가 파라미터를 변경했으면 변경된 상태) / Subsequent clicks: restores **last saved state** (including user parameter changes)
+- 우클릭 → Reset to Defaults: 기본 체인으로 복원 / Right-click → Reset to Defaults: restores default chain
+
+이 설계의 이유: 사용자가 NR 강도나 AGC 타겟을 조정한 후 다른 슬롯(A-E)을 사용하다 Auto로 돌아올 때, **조정된 설정이 유지**되는 것이 더 자연스럽기 때문입니다.
+
+Design rationale: when users adjust NR strength or AGC target and then switch to other slots (A-E), returning to Auto should **preserve their adjustments** rather than resetting to defaults every time.
 
 ### 실전 세팅에서 출발한 배경 / Background: Derived from Real-World Setups
 
@@ -110,6 +124,16 @@ Reasons for separation:
 - Protecting only Auto would leave user-added VST clipping unguarded
 - Must catch momentary level jumps during preset switching, which is only meaningful after the full chain
 - Must allow independent on/off + ceiling control (independent from Auto)
+
+### 알려진 제한사항: 48kHz 전용 / Known Limitation: 48kHz Only
+
+Noise Removal(RNNoise)은 **48kHz에서만 동작**합니다. 비-48kHz 샘플레이트에서 [Auto]를 활성화하면 NR이 passthrough되어 소음 제거가 비활성화됩니다. 이 경우 경고 알림이 표시됩니다.
+
+Noise Removal (RNNoise) **only works at 48kHz**. Activating [Auto] at a non-48kHz sample rate causes NR to passthrough (noise removal disabled). A warning notification is shown in this case.
+
+이는 "원클릭이 항상 같은 결과를 보장"하는 Auto 철학과 충돌하는 지점입니다. 향후 내부 리샘플링(juce::LagrangeInterpolator) 구현으로 해결 예정입니다.
+
+This conflicts with Auto's "one click always gives the same result" philosophy. A future internal resampling implementation (juce::LagrangeInterpolator) is planned to resolve this.
 
 ---
 

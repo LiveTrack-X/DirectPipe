@@ -64,6 +64,20 @@ The HTTP API uses `Access-Control-Allow-Origin: *` to support browser-based clie
 > **참고**: CORS preflight 응답의 `Access-Control-Allow-Methods`에 `POST, PUT, DELETE`가 포함되어 있지만, 실제로는 GET과 OPTIONS만 처리됩니다. 향후 최소 권한 원칙에 따라 `GET, OPTIONS`로 제한하는 것을 검토 중입니다.
 > **Note**: The CORS preflight response includes `POST, PUT, DELETE` in `Access-Control-Allow-Methods`, but only GET and OPTIONS are actually handled. Restricting to `GET, OPTIONS` per least-privilege principle is under consideration.
 
+### GET-only REST API 설계 근거 / GET-only REST API Design Rationale
+
+모든 HTTP 엔드포인트가 GET으로 동작하는 이유:
+
+Why all HTTP endpoints use GET:
+
+- **curl/브라우저 호환**: `curl http://localhost:8766/api/mute/panic` 한 줄로 즉시 테스트 가능 / One-liner testing with curl or browser address bar
+- **OBS 브라우저 소스**: `fetch()` API로 즉시 호출 가능, CORS preflight 불필요 (simple request) / Instant invocation from OBS browser sources
+- **AutoHotkey/스크립트**: POST body 구성 없이 URL만으로 제어 가능 / Control via URL only, no POST body construction
+
+REST 의미론상 상태 변경은 POST가 맞지만, localhost 전용 + 단일 사용자 환경에서는 실용성을 우선했습니다. 향후 제품 성숙도가 올라가면 조회=GET, 변경=POST, 로컬 토큰 인증 분리를 검토합니다.
+
+Strictly speaking, state-changing actions should use POST per REST semantics, but for a localhost-only single-user tool, practicality was prioritized. As the product matures, separating GET (query) / POST (mutation) with local token auth is under consideration.
+
 ### IPC 공유 메모리 / IPC Shared Memory
 
 호스트 ↔ Receiver VST 간 오디오 전송은 OS 공유 메모리를 사용합니다.

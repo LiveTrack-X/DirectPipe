@@ -65,7 +65,7 @@ AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     addAndMakeVisible(advancedToggle_);
 
     // -- Low Correct slider (0-100%) --
-    lowCorrLabel_.setText("Low Correct:", juce::dontSendNotification);
+    lowCorrLabel_.setText("Low Correct (Boost):", juce::dontSendNotification);
     lowCorrLabel_.setColour(juce::Label::textColourId, juce::Colour(AGCColors::kDim));
     addAndMakeVisible(lowCorrLabel_);
 
@@ -84,7 +84,7 @@ AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     addAndMakeVisible(lowCorrSlider_);
 
     // -- High Correct slider (0-100%) --
-    highCorrLabel_.setText("High Correct:", juce::dontSendNotification);
+    highCorrLabel_.setText("High Correct (Cut):", juce::dontSendNotification);
     highCorrLabel_.setColour(juce::Label::textColourId, juce::Colour(AGCColors::kDim));
     addAndMakeVisible(highCorrLabel_);
 
@@ -161,7 +161,7 @@ void AGCEditPanel::resized()
 {
     auto area = getLocalBounds().reduced(10);
     const int rowH = 24;
-    const int labelW = 95;
+    const int labelW = 120;
 
     // Target LUFS row
     auto targetRow = area.removeFromTop(rowH);
