@@ -483,7 +483,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     actionHandler_->onPanicStateChanged = [this](bool muted) {
         panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
         panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                                juce::Colour(muted ? 0xFF4CAF50u : 0xFF3A3A5Cu));
+                                juce::Colour(muted ? 0xFF4CAF50u : 0xFFE53935u));
     };
     actionHandler_->onIpcStateChanged = [this](bool enabled) {
         if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
@@ -539,13 +539,13 @@ MainComponent::MainComponent(bool enableExternalControls)
     setupMuteBtn(outputMuteBtn_);
     setupMuteBtn(monitorMuteBtn_);
     setupMuteBtn(vstMuteBtn_);
-    vstMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFF9800));
+    vstMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
     outputMuteBtn_.onClick = [this] { actionHandler_->toggleOutputMute(); };
     monitorMuteBtn_.onClick = [this] { actionHandler_->toggleMonitorMute(); };
     vstMuteBtn_.onClick = [this] { actionHandler_->toggleIpcMute(); };
 
     // ── Panic Mute Button ──
-    panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5C));
+    panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
     panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     panicMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     panicMuteBtn_.onClick = [this] { actionHandler_->togglePanicMute(); };
@@ -725,7 +725,7 @@ void MainComponent::resized()
 
     // ── INPUT Section ──
     {
-        int btnW = 56;
+        int btnW = 72;
         int btnH = 24;
         inputSectionLabel_.setBounds(cx, y, cw - btnW - 4, 24);
         inputMuteBtn_.setBounds(cx + cw - btnW, y, btnW, btnH);
@@ -959,7 +959,7 @@ void MainComponent::refreshUI()
     bool muted = audioEngine_.isMuted();
     panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                            juce::Colour(muted ? 0xFF4CAF50u : 0xFF3A3A5Cu));
+                            juce::Colour(muted ? 0xFF4CAF50u : 0xFFE53935u));
 
     // IPC toggle state (Output tab = index 1)
     if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))

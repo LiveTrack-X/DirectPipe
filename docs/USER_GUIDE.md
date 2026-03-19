@@ -858,7 +858,7 @@ Press **Ctrl+Shift+M** once to instantly kill all outputs when unexpected noise,
 
 | 버튼 / Button | 상태 / State | 결과 / Result |
 |---|---|---|
-| **PANIC** | 🔴 활성 / Active | OUT + VST + MON **전부 즉시 뮤트 / all instantly muted** |
+| **PANIC** | 🟢 활성 / Active (`UNMUTE`) | OUT + VST + MON **전부 즉시 뮤트 / all instantly muted** |
 
 - 패닉 뮤트 중에는 OUT/MON/VST 버튼이 잠기고 대부분 외부 제어 액션이 차단됨 (예외: Input Mute/XRun Reset/Safety Limiter/Auto Processors Add)
 - **녹음 중이면 자동 중지** — 마이크 관련 출력이 전부 차단되므로 녹음도 함께 중지

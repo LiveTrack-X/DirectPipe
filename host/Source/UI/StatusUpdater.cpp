@@ -74,8 +74,8 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     // ── Mute indicator colours (cached to avoid redundant repaints) ──
     // Color scheme:
     //   INPUT:       GREEN (active) / RED (muted) — independent of panic
-    //   OUT/MON/VST: GREEN (active) / ORANGE (user muted) / RED (panic locked + disabled)
-    //   PANIC MUTE:  dark (ready) / GREEN + "UNMUTE" (panic active)
+    //   OUT/MON/VST: GREEN (active) / RED (user muted) / DARK RED (panic locked + disabled)
+    //   PANIC MUTE:  RED (ready) / GREEN + "UNMUTE" (panic active)
     {
         // INPUT button — 2 states, independent of panic
         bool inMuted = engine_.isInputMuted();
@@ -100,10 +100,10 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
 
             // OUT button — 3 states
             if (muted) {
-                outputMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
+                outputMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF8B1E1E));
                 outputMuteBtn_->setEnabled(false);
             } else if (outUserMuted) {
-                outputMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFF9800));
+                outputMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
                 outputMuteBtn_->setEnabled(true);
             } else {
                 outputMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
@@ -112,10 +112,10 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
 
             // MON button — 3 states
             if (muted) {
-                monitorMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
+                monitorMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF8B1E1E));
                 monitorMuteBtn_->setEnabled(false);
             } else if (monUserMuted) {
-                monitorMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFF9800));
+                monitorMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
                 monitorMuteBtn_->setEnabled(true);
             } else {
                 monitorMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
@@ -124,10 +124,10 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
 
             // VST button — 3 states (note: vstActive means IPC enabled = active)
             if (muted) {
-                vstMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
+                vstMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF8B1E1E));
                 vstMuteBtn_->setEnabled(false);
             } else if (!vstActive) {
-                vstMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFF9800));
+                vstMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
                 vstMuteBtn_->setEnabled(true);
             } else {
                 vstMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
@@ -141,7 +141,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
                     panicMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
                 } else {
                     panicMuteBtn_->setButtonText("PANIC MUTE");
-                    panicMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A3A5C));
+                    panicMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
                 }
             }
         }
