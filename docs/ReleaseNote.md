@@ -5,18 +5,18 @@
 
 ## v4.0.2
 
-### Highlights
+### Highlights / 주요 변경
 
-- **Independent Input Mute**: Added dedicated INPUT mute control (UI + HTTP/WS state broadcast). Input mute now silences microphone input only while keeping chain/output paths running.
-- **Panic Mute behavior clarified**: Panic still blocks output paths (OUT/MON/VST) and stops active recording, while preserving and restoring user mute states on unmute.
-- **State model update**: `active_slot` unified to `0-5` (`5=Auto`, `-1` when no active slot). `auto_slot_active` is deprecated for compatibility.
-- **XRun quality-of-life**: Fixed 60-second drift calculation and added click-to-reset for CPU/XRun label.
-- **SR-safe NR timing**: Noise Removal hold/smoothing timing now recalculates from runtime sample rate.
+- **Independent Input Mute / 독립 입력 뮤트**: INPUT 전용 뮤트를 추가/정리하여 입력만 무음 처리하고 체인/출력 경로는 유지합니다. Added dedicated INPUT mute behavior that silences mic input only while keeping chain/output paths running.
+- **Panic Mute Clarification / 패닉 동작 명확화**: Panic은 OUT/MON/VST 차단 + 녹음 자동 중지를 유지하고, 해제 시 사용자 뮤트 상태를 복원합니다. Panic still blocks OUT/MON/VST and stops active recording, then restores user mute states on unmute.
+- **State Model Update / 상태 모델 갱신**: `active_slot`을 `0-5`(`5=Auto`, `-1`=none)로 통합했고 `auto_slot_active`는 deprecated입니다. Unified `active_slot` to `0-5` with `-1` as none; `auto_slot_active` is now deprecated.
+- **XRun QoL / XRun 운용성 개선**: 60초 윈도우 드리프트를 수정하고 CPU/XRun 라벨 클릭 리셋을 추가했습니다. Fixed 60-second drift and added click-to-reset on CPU/XRun label.
+- **SR-safe NR timing / SR 안전 NR 타이밍**: NR hold/smoothing이 런타임 SR 기준으로 재계산됩니다. NR hold/smoothing now recalculates from runtime sample rate.
 
-### Upgrade Notes
+### Upgrade Notes / 업그레이드 안내
 
-- **API clients**: Prefer `active_slot` as the source of truth (`0-5` / `-1`). Keep `auto_slot_active` only for backward compatibility.
-- **Control integrations**: `input_muted` is independent from panic `muted`; do not assume mirrored state.
+- **API clients / API 연동**: `active_slot` (`0-5` / `-1`)을 기준으로 사용하고 `auto_slot_active`는 하위 호환용으로만 유지하세요. Prefer `active_slot` as source of truth and keep `auto_slot_active` only for backward compatibility.
+- **Control integrations / 제어 연동**: `input_muted`와 panic `muted`는 독립 상태입니다. `input_muted` is independent from panic `muted`; do not assume mirrored state.
 
 ---
 
