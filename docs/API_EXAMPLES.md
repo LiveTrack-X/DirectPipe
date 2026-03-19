@@ -124,11 +124,17 @@ state = response.json()
 data = state["data"]
 
 # 기본 정보 출력
-slot_index = data["active_slot"]
+slot_index = data.get("active_slot", -1)
+auto = data.get("auto_slot_active", False)
 slot_names = data.get("slot_names", ["", "", "", "", ""])
-slot_label = chr(65 + slot_index)  # 0→A, 1→B, ...
-slot_name = slot_names[slot_index]
-display = f"{slot_label}|{slot_name}" if slot_name else slot_label
+if auto:
+    display = "[Auto]"
+elif 0 <= slot_index <= 4:
+    slot_label = chr(65 + slot_index)  # 0→A, 1→B, ...
+    slot_name = slot_names[slot_index]
+    display = f"{slot_label}|{slot_name}" if slot_name else slot_label
+else:
+    display = "\u2014"
 
 print(f"Active Slot: {display}")
 print(f"Muted: {data['muted']}")
@@ -170,9 +176,16 @@ def switch_slot(index):
 
     # 전환 결과 확인
     status = requests.get(f"{BASE}/status").json()["data"]
-    actual = status["active_slot"]
+    actual = status.get("active_slot", -1)
+    auto = status.get("auto_slot_active", False)
     plugins = len(status["plugins"])
-    print(f"  Active: {chr(65 + actual)}, Plugins: {plugins}")
+    if auto:
+        display = "[Auto]"
+    elif 0 <= actual <= 4:
+        display = chr(65 + actual)
+    else:
+        display = "\u2014"
+    print(f"  Active: {display}, Plugins: {plugins}")
     return actual == index
 
 # 사용 예
@@ -225,11 +238,17 @@ async def monitor():
                 continue
 
             data = msg["data"]
-            slot = data["active_slot"]
+            slot = data.get("active_slot", -1)
+            auto = data.get("auto_slot_active", False)
             slot_names = data.get("slot_names", [""] * 5)
-            name = slot_names[slot]
-            label = chr(65 + slot)
-            display = f"{label}|{name}" if name else label
+            if auto:
+                display = "[Auto]"
+            elif 0 <= slot <= 4:
+                label = chr(65 + slot)
+                name = slot_names[slot]
+                display = f"{label}|{name}" if name else label
+            else:
+                display = "\u2014"
 
             plugins = data["plugins"]
             active_plugins = [p["name"] for p in plugins if not p["bypass"]]
@@ -518,11 +537,17 @@ async def on_message(message):
     if content == "!dp status":
         try:
             data = requests.get(f"{DP_BASE}/status", timeout=2).json()["data"]
-            slot = data["active_slot"]
+            slot = data.get("active_slot", -1)
+            auto = data.get("auto_slot_active", False)
             slot_names = data.get("slot_names", [""] * 5)
-            name = slot_names[slot]
-            label = chr(65 + slot)
-            display = f"{label}|{name}" if name else label
+            if auto:
+                display = "[Auto]"
+            elif 0 <= slot <= 4:
+                label = chr(65 + slot)
+                name = slot_names[slot]
+                display = f"{label}|{name}" if name else label
+            else:
+                display = "\u2014"
 
             plugins = [f"{'~~' if p['bypass'] else ''}{p['name']}{'~~' if p['bypass'] else ''}"
                       for p in data["plugins"]]

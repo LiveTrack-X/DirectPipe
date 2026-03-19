@@ -84,6 +84,7 @@ private:
     bool preMuteMonitorEnabled_ = false;
     bool preMuteOutputMuted_ = false;
     bool preMuteVstEnabled_ = false;
+    bool preMuteRecordingActive_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ActionHandler)
 };

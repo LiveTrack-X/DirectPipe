@@ -303,3 +303,13 @@ Trade-offs to be aware of when customizing parameters:
 | Ceiling ↑ (-0.3→0.0 dBFS) | 최대 볼륨 / Maximum volume | ISP 클리핑 가능 (DAC/코덱 의존적) / ISP clipping possible (DAC/codec dependent) |
 | Ceiling ↓ (-0.3→-3.0 dBFS) | 넉넉한 헤드룸 / Generous headroom | 체감 볼륨 감소, AGC 타겟과의 갭 증가 / Perceived volume decrease, increased gap from AGC target |
 | Disabled | 클리핑 방지 없음 / No clipping protection | **프리셋 전환 시 순간 피크로 클리핑 발생 가능 / Momentary peaks during preset switching may cause clipping** |
+
+### Panic Mute 중 Auto 동작 / Auto During Panic Mute
+
+[Auto]는 panic mute 중에도 체인을 변경할 수 있습니다. 이유:
+- 방송 중 panic 상태에서 Auto를 미리 세팅하고 해제 후 바로 사용
+- panic 중 출력이 차단되어 있으므로 체인 변경이 청각적 영향 없음
+
+[Auto] can modify the chain even during panic mute. Reason:
+- Allows pre-setting Auto during panic for immediate use after unmute
+- Output is blocked during panic, so chain changes have no audible impact

@@ -57,6 +57,7 @@ void ActionHandler::doPanicMute(bool mute)
         preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
         preMuteOutputMuted_ = engine_.isOutputMuted();
         preMuteVstEnabled_ = engine_.isIpcEnabled();
+        preMuteRecordingActive_ = engine_.getRecorder().isRecording();
         engine_.setOutputMuted(false);
         router.setEnabled(OutputRouter::Output::Monitor, false);
         engine_.setMonitorEnabled(false);
@@ -73,6 +74,10 @@ void ActionHandler::doPanicMute(bool mute)
         router.setEnabled(OutputRouter::Output::Monitor, preMuteMonitorEnabled_);
         engine_.setMonitorEnabled(preMuteMonitorEnabled_);
         if (preMuteVstEnabled_) engine_.setIpcEnabled(true);
+        if (preMuteRecordingActive_ && !engine_.getRecorder().isRecording()) {
+            if (onNotification)
+                onNotification("Recording stopped during panic mute", NotificationLevel::Info);
+        }
     }
     Log::info("ACTION", "Panic mute " + juce::String(mute ? "engaged" : "disengaged")
         + " — pre-mute state: monitor=" + juce::String(preMuteMonitorEnabled_ ? "on" : "off")
