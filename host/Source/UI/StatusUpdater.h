@@ -41,8 +41,9 @@ public:
 
     /** Bind UI component pointers. Must be called before tick(). */
     void setUI(juce::Label* latencyLabel, juce::Label* cpuLabel, juce::Label* formatLabel,
-               juce::TextButton* outputMuteBtn, juce::TextButton* monitorMuteBtn,
-               juce::TextButton* vstMuteBtn, juce::Slider* inputGainSlider,
+               juce::TextButton* inputMuteBtn, juce::TextButton* outputMuteBtn,
+               juce::TextButton* monitorMuteBtn, juce::TextButton* vstMuteBtn,
+               juce::Slider* inputGainSlider,
                LevelMeter* inputMeter, LevelMeter* outputMeter);
 
     /** Perform all periodic updates. Called every timer tick (~30Hz). */
@@ -56,6 +57,7 @@ private:
     juce::Label* latencyLabel_ = nullptr;
     juce::Label* cpuLabel_ = nullptr;
     juce::Label* formatLabel_ = nullptr;
+    juce::TextButton* inputMuteBtn_ = nullptr;
     juce::TextButton* outputMuteBtn_ = nullptr;
     juce::TextButton* monitorMuteBtn_ = nullptr;
     juce::TextButton* vstMuteBtn_ = nullptr;
@@ -64,6 +66,7 @@ private:
     LevelMeter* outputMeter_ = nullptr;
 
     // Cached mute states
+    bool cachedInputMuted_ = false;
     bool cachedOutputMuted_ = false;
     bool cachedMonitorMuted_ = false;
     bool cachedVstEnabled_ = false;

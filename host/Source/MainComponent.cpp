@@ -551,6 +551,15 @@ MainComponent::MainComponent(bool enableExternalControls)
     panicMuteBtn_.onClick = [this] { actionHandler_->togglePanicMute(); };
     addAndMakeVisible(panicMuteBtn_);
 
+    // ── Input Mute Button ──
+    inputMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));  // green = active
+    inputMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    inputMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    inputMuteBtn_.onClick = [this] {
+        dispatcher_.dispatch({Action::InputMuteToggle});
+    };
+    addAndMakeVisible(inputMuteBtn_);
+
     // ── Section Labels (left column only) ──
     auto setupLabel = [](juce::Label& label, const juce::String& text) {
         label.setText(text, juce::dontSendNotification);
@@ -604,7 +613,7 @@ MainComponent::MainComponent(bool enableExternalControls)
 
     // Bind UI component pointers to StatusUpdater (all components created above)
     statusUpdater_->setUI(&latencyLabel_, &cpuLabel_, &formatLabel_,
-                          &outputMuteBtn_, &monitorMuteBtn_, &vstMuteBtn_,
+                          &inputMuteBtn_, &outputMuteBtn_, &monitorMuteBtn_, &vstMuteBtn_,
                           &inputGainSlider_, inputMeter_.get(), outputMeter_.get());
 
     // Start UI update timer (30 Hz)
@@ -713,7 +722,12 @@ void MainComponent::resized()
     int y = ly;
 
     // ── INPUT Section ──
-    inputSectionLabel_.setBounds(cx, y, 100, 24);
+    {
+        int btnW = 56;
+        int btnH = 24;
+        inputSectionLabel_.setBounds(cx, y, cw - btnW - 4, 24);
+        inputMuteBtn_.setBounds(cx + cw - btnW, y, btnW, btnH);
+    }
     y += 26;
 
     // Input gain row: [Gain:] [slider] [Auto]

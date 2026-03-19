@@ -134,6 +134,7 @@ private:
     std::unique_ptr<StatusUpdater> statusUpdater_;
 
     // Mute indicators (clickable) + panic mute button
+    juce::TextButton inputMuteBtn_{"INPUT"};
     juce::TextButton outputMuteBtn_{"OUT"};
     juce::TextButton monitorMuteBtn_{"MON"};
     juce::TextButton vstMuteBtn_{"VST"};

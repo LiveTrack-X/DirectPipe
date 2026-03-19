@@ -36,13 +36,15 @@ StatusUpdater::StatusUpdater(AudioEngine& engine, StateBroadcaster& broadcaster)
 }
 
 void StatusUpdater::setUI(juce::Label* latencyLabel, juce::Label* cpuLabel, juce::Label* formatLabel,
-                          juce::TextButton* outputMuteBtn, juce::TextButton* monitorMuteBtn,
-                          juce::TextButton* vstMuteBtn, juce::Slider* inputGainSlider,
+                          juce::TextButton* inputMuteBtn, juce::TextButton* outputMuteBtn,
+                          juce::TextButton* monitorMuteBtn, juce::TextButton* vstMuteBtn,
+                          juce::Slider* inputGainSlider,
                           LevelMeter* inputMeter, LevelMeter* outputMeter)
 {
     latencyLabel_ = latencyLabel;
     cpuLabel_ = cpuLabel;
     formatLabel_ = formatLabel;
+    inputMuteBtn_ = inputMuteBtn;
     outputMuteBtn_ = outputMuteBtn;
     monitorMuteBtn_ = monitorMuteBtn;
     vstMuteBtn_ = vstMuteBtn;
@@ -69,6 +71,13 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
 
     // ── Mute indicator colours (cached to avoid redundant repaints) ──
     {
+        bool inMuted = engine_.isInputMuted();
+        if (inMuted != cachedInputMuted_) {
+            cachedInputMuted_ = inMuted;
+            inputMuteBtn_->setColour(juce::TextButton::buttonColourId,
+                inMuted ? juce::Colour(0xFFE53935) : juce::Colour(0xFF4CAF50));
+        }
+
         bool outMuted = engine_.isOutputMuted() || muted;
         if (outMuted != cachedOutputMuted_) {
             cachedOutputMuted_ = outMuted;
