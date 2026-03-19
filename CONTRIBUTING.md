@@ -29,7 +29,7 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## 테스트 / Testing
 
-- Google Test 기반 233+ 테스트 / 233+ tests
+- Google Test 기반 295 테스트 / 295 tests
 - `tools/pre-release-test.sh` — 빌드 + 단위 테스트 + API 테스트 / Build + unit tests + API tests
 - `tools/pre-release-dashboard.html` — 수동 테스트 대시보드 / Manual test dashboard
 

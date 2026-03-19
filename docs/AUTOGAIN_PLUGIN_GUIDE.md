@@ -122,6 +122,8 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout() {
             juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.90f),
         std::make_unique<juce::AudioParameterFloat>(
             "maxGain", "Max Gain (dB)",
+            // Range wider than host default (22dB) for DAW use cases.
+            // Above 30dB: risk of background noise amplification — see AUTO_DESIGN.md
             juce::NormalisableRange<float>(0.0f, 40.0f, 0.5f), 22.0f),
         std::make_unique<juce::AudioParameterFloat>(
             "freeze", "Freeze Level (dBFS)",

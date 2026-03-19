@@ -363,6 +363,9 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - [Product Spec](docs/PRODUCT_SPEC.md) — 제품 상세 기획서 / Detailed product specification (reverse-engineered from implementation)
 - [Logging Rules](docs/LOGRULE.md) — 로깅 형식 및 규칙 / Log format, categories, and audit mode
 - [Security](SECURITY.md) — 보안 정책 및 설계 / Security policy, architecture, and known limitations
+- [Testing](TESTING.md) — 테스트 가이드 (자동/수동 테스트 체크리스트) / Testing guide (automated and manual test checklists)
+- [Contributing](CONTRIBUTING.md) — 기여 가이드 / Contributor guidelines
+- [AutoGain Plugin Guide](docs/AUTOGAIN_PLUGIN_GUIDE.md) — AutoGain 독립 플러그인 분리 가이드 / AutoGain standalone plugin extraction guide
 
 ## FAQ
 
