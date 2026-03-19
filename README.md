@@ -179,7 +179,7 @@ External Control:
   | Ctrl+Shift+M | 패닉 뮤트 / Panic mute |
   | Ctrl+Shift+0 | 마스터 Bypass (전체 체인) / Master bypass |
   | Ctrl+Shift+1–3 | 플러그인 1-3 Bypass 토글 / Plugin 1-3 bypass |
-  | Ctrl+Shift+F6 | 입력 뮤트 (= 패닉 뮤트) / Input mute (= Panic Mute) |
+  | Ctrl+Shift+F6 | 입력만 뮤트 (체인/출력 유지) / Input-only mute (chain/output kept running) |
   | Ctrl+Shift+H | 모니터 토글 / Monitor toggle |
   | Ctrl+Shift+F1–F5 | 프리셋 슬롯 A-E / Preset slot A-E |
 
@@ -222,7 +222,7 @@ External Control:
   - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
   - **Settings**: 자동 시작 (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset(A-E + Auto 슬롯 포함)) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset (includes A-E + Auto slots))
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
-- **Panic Mute** — 전체 출력 즉시 뮤트 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 모든 액션 및 외부 제어 잠금 — Instant mute all + auto-stop recording, locks all actions and controls until unmuted (recording does not auto-restart)
+- **Panic Mute** — 전체 출력 즉시 차단 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 OUT/MON/VST 제어는 잠기고 대부분 액션이 차단되지만, Input Mute/XRun Reset/Safety Limiter/Auto Processors Add는 유지보수·준비 용도로 허용 — Instant kill all output paths + auto-stop recording, restores previous states on unmute (recording does not auto-restart). OUT/MON/VST controls are locked and most actions are blocked, while Input Mute/XRun Reset/Safety Limiter/Auto Processors Add remain available for maintenance/prep flows
 - **상태 바** — 레이턴시, CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. Auto-fade notifications
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 자동 교체 → 재시작 — In-app auto-updater with one-click update from GitHub releases
 - **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Windows: Malgun Gothic, macOS: Apple SD Gothic Neo, Linux: Noto Sans CJK KR — Korean/Chinese/Japanese device names rendered correctly with platform-specific CJK font support

@@ -52,9 +52,9 @@ struct AppState {
     float inputGain = 1.0f;
     float monitorVolume = 1.0f;
     bool masterBypassed = false;
-    bool muted = false;
-    bool outputMuted = false;
-    bool inputMuted = false;
+    bool muted = false;       // Panic mute state (output-path emergency lock)
+    bool outputMuted = false; // User mute state for main output path
+    bool inputMuted = false;  // Independent input-only mute (chain/output paths keep running)
     std::string currentPreset;
     float latencyMs = 0.0f;
     float monitorLatencyMs = 0.0f;

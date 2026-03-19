@@ -18,25 +18,28 @@ AudioEngine RT callback (audioDeviceIOCallbackWithContext)
  |     - Stereo: copy channels as-is
  |     - inputDeviceLost_: skip copy (use silence)
  |
- |  2. Input gain (SIMD via JUCE FloatVectorOperations)
- |
- |  3. RMS input level (decimated: every 4th callback)
- |
- v
+|  2. Input gain (SIMD via JUCE FloatVectorOperations)
+|     - inputMuted_: clear buffer to silence (input-only mute, chain keeps running)
+|
+|  3. RMS input level (decimated: every 4th callback)
+|
+v
 VSTChain.processBlock(workBuffer_)
- |  - AudioProcessorGraph inline processing
- |  - Plugin bypass via atomic flags
- |  - No additional latency
- |
- +---> AudioRecorder.writeBlock()         [lock-free FIFO -> BG writer thread]
- |
- +---> SharedMemWriter.writeAudio()       [if ipcEnabled_, lock-free ring buffer -> Receiver VST]
- |
- +---> OutputRouter.routeAudio()
- |      |
- |      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate WASAPI callback]
- |
- +---> outputChannelData (main output)    [direct memcpy, or zero if outputMuted_]
+|  - AudioProcessorGraph inline processing
+|  - Plugin bypass via atomic flags
+|  - No additional latency
+|
++---> SafetyLimiter.process()            [RT-safe feed-forward limiter, applied before ALL outputs]
+|
++---> AudioRecorder.writeBlock()         [lock-free FIFO -> BG writer thread]
+|
++---> SharedMemWriter.writeAudio()       [if ipcEnabled_, lock-free ring buffer -> Receiver VST]
+|
++---> OutputRouter.routeAudio()
+|      |
+|      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate WASAPI callback]
+|
++---> outputChannelData (main output)    [apply output volume, or zero if outputMuted_]
  |
  v
 RMS output level (decimated: every 4th callback)

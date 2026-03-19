@@ -199,6 +199,8 @@ void ActionHandler::handle(const ActionEvent& event)
             break;
 
         case Action::InputMuteToggle: {
+            // Intentionally allowed during panic mute: this only controls mic input
+            // and does not re-enable any blocked output path.
             bool current = engine_.isInputMuted();
             engine_.setInputMuted(!current);
             if (onDirty) onDirty();

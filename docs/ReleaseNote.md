@@ -3,6 +3,23 @@
 > 이 문서는 **사용자 대상** 릴리스 요약입니다. 개발자 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md) 참조.
 > This is a **user-facing** release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## v4.0.2
+
+### Highlights
+
+- **Independent Input Mute**: Added dedicated INPUT mute control (UI + HTTP/WS state broadcast). Input mute now silences microphone input only while keeping chain/output paths running.
+- **Panic Mute behavior clarified**: Panic still blocks output paths (OUT/MON/VST) and stops active recording, while preserving and restoring user mute states on unmute.
+- **State model update**: `active_slot` unified to `0-5` (`5=Auto`, `-1` when no active slot). `auto_slot_active` is deprecated for compatibility.
+- **XRun quality-of-life**: Fixed 60-second drift calculation and added click-to-reset for CPU/XRun label.
+- **SR-safe NR timing**: Noise Removal hold/smoothing timing now recalculates from runtime sample rate.
+
+### Upgrade Notes
+
+- **API clients**: Prefer `active_slot` as the source of truth (`0-5` / `-1`). Keep `auto_slot_active` only for backward compatibility.
+- **Control integrations**: `input_muted` is independent from panic `muted`; do not assume mirrored state.
+
+---
+
 ## v4.0.1
 
 ### Bugfixes
@@ -107,7 +124,7 @@
 - **RingBuffer availableWrite clamp**: Added `std::min` overflow guard matching `availableRead()`, preventing underflow if positions are transiently inconsistent.
 - **Receiver VST RT-safety**: Replaced `std::vector::resize()` in `saveLastOutput` (called from `processBlock`) with `jassert` — buffer is pre-allocated in `prepareToPlay`.
 - **Code deduplication**: Extracted identical `actionToDisplayName` (~40 lines) from `HotkeyTab.cpp` and `MidiTab.cpp` to shared `ActionDispatcher.h`.
-- **`input_muted` clarification**: `input_muted` state field mirrors `muted` (panic mute). `InputMuteToggle` action triggers `doPanicMute()` — there is no independent input mute.
+- **`input_muted` clarification**: `input_muted` is independent from `muted` (panic mute). `InputMuteToggle` mutes microphone input only while keeping the VST chain and output paths running.
 
 ### Docs
 

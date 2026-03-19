@@ -51,7 +51,7 @@ public:
     void toggleIpcMute();
     void togglePanicMute();
 
-    /** Restore panic mute lockout state after loading settings. */
+    /** Restore panic mute output-path lock state after loading settings (INPUT mute is independent). */
     void restorePanicMuteFromSettings();
 
     // ── UI sync callbacks (set by MainComponent) ──
@@ -80,7 +80,8 @@ private:
     std::atomic<bool>& loadingSlot_;
     std::atomic<bool>& partialLoad_;
 
-    // Panic mute: remember pre-mute state for restore on unmute
+    // Panic mute: remember pre-mute OUTPUT-path state for restore on unmute.
+    // Input mute is tracked separately by AudioEngine::inputMuted_.
     bool preMuteMonitorEnabled_ = false;
     bool preMuteOutputMuted_ = false;
     bool preMuteVstEnabled_ = false;

@@ -128,9 +128,7 @@ Mic Input  → VST Plugin Chain   → Output
 
 3가지 출력 경로는 모두 **독립적으로 켜기/끄기 및 볼륨 조절**이 가능하다. OUT/MON/VST 버튼 또는 외부 제어(핫키, MIDI, Stream Deck, HTTP API)로 각 경로를 개별 제어하여, 예를 들어 OBS 마이크만 끄고 Discord는 유지하거나 그 반대도 가능하다. Panic Mute(Ctrl+Shift+M)로 전체를 즉시 차단할 수 있으며, 해제 시 이전 ON/OFF 상태가 자동 복원된다.
 
-All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to individually control each path -- e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) instantly kills all outputs; previous ON/OFF states auto-restore on unmute.
-
-All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly and stops active recording; previous ON/OFF states auto-restore on unmute (recording does not auto-restart). During panic, all actions (bypass, volume, preset, gain, recording, plugin parameters) are blocked.
+All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly and stops active recording; previous ON/OFF states auto-restore on unmute (recording does not auto-restart). During panic, most actions (bypass, volume, preset, gain, recording, plugin parameters) are blocked; Input Mute/XRun Reset/Safety Limiter controls/AutoProcessorsAdd are allowed.
 
 | 경로 / Path | 설명 / Description | 기술 / Technology | 제어 / Control |
 |------|------|------|------|
@@ -827,13 +825,13 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 |------|------|
 | 동작 / Behavior | 즉시 모든 오디오 출력 뮤트 + 녹음 자동 중지 / Instantly mute all audio outputs + auto-stop recording |
 | 잠금 / Lock | 패닉 뮤트 중 OUT/MON/VST 버튼 잠금 / OUT/MON/VST buttons locked during panic mute |
-| 외부 제어 잠금 / External Control Lock | 핫키/MIDI/Stream Deck/HTTP 모두 잠금 — PanicMute 액션만 허용 / All locked — only PanicMute action allowed |
-| 액션 차단 / Action Blocking | 바이패스, 볼륨, 게인, 프리셋, 녹음, 플러그인 파라미터 등 모든 액션 차단 / All actions blocked: bypass, volume, gain, presets, recording, plugin parameters, etc. |
+| 외부 제어 잠금 / External Control Lock | 패닉 중 OUT/MON/VST 경로 제어 잠금, 대부분 액션 차단. 예외: InputMuteToggle/XRunReset/SafetyLimiterToggle/SetSafetyLimiterCeiling/AutoProcessorsAdd / OUT/MON/VST path controls locked and most actions blocked. Exceptions: InputMuteToggle/XRunReset/SafetyLimiterToggle/SetSafetyLimiterCeiling/AutoProcessorsAdd |
+| 액션 차단 / Action Blocking | 바이패스/볼륨/게인/프리셋/녹음/플러그인 파라미터 등 대부분 액션 차단 / Most actions blocked: bypass, volume, gain, presets, recording, plugin parameters |
 | 녹음 / Recording | 녹음 중이면 자동 중지 (해제 시 자동 재시작 안 함) / Auto-stops if recording (does not auto-restart on unmute) |
 | 모니터 상태 / Monitor State | 뮤트 전 모니터/출력/IPC 활성 상태 기억, 언뮤트 시 복원 / Remembers pre-mute monitor/output/IPC active state, restores on unmute |
 | 상태 지속 / State Persistence | 패닉 뮤트 상태가 재시작 후에도 유지됨 / Panic mute state persists across restarts |
 | 해제 / Release | PanicMute 액션으로만 해제 가능 / Can only be released by PanicMute action |
-| input_muted | `muted`와 동일 (독립 입력 뮤트 없음, InputMuteToggle = PanicMute) / Same as `muted` (no independent input mute, InputMuteToggle = PanicMute) |
+| input_muted | 독립 입력 뮤트 상태 (`muted`와 독립, 입력만 무음 처리) / Independent input mute state (independent from `muted`, input-only silence) |
 
 ---
 

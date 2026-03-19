@@ -182,14 +182,15 @@ MainComponent::onAction(event)
     v
 ActionHandler::handle(event)
     |
-    |  engine_.isMuted()? -> 차단 (PanicMute/InputMuteToggle 제외)
+    |  engine_.isMuted()? -> 차단 (예외: PanicMute/InputMuteToggle/XRunReset/
+    |                               SafetyLimiterToggle/SetSafetyLimiterCeiling/AutoProcessorsAdd)
     |
     +-- PluginBypass -> VSTChain::togglePluginBypassed
     +-- SetVolume -> OutputRouter::setVolume
     +-- LoadPreset -> PresetSlotBar::onSlotClicked
     +-- PanicMute -> doPanicMute(toggle)
     +-- RecordingToggle -> AudioRecorder::start/stop
-    +-- ... (15개 액션)
+    +-- ... (19개 액션)
 ```
 
 ---
@@ -223,7 +224,7 @@ ActionHandler::handle(event)
 
 4a. **WebSocket 소켓 수명 관리**: `clientThread`가 종료될 때 `conn->socket->close()`를 명시적 호출해야 `broadcastToClients`의 dead-client sweep(`isConnected()` 체크)이 즉시 감지함. 미호출 시 sweep이 dead client를 놓치고 실패한 write가 간헐적 연결 끊김으로 나타남. `clientCount_`는 소켓 close 후 decrement.
 
-5. **Panic mute 중 액션 차단**: `ActionHandler::handle()`에서 `engine_.isMuted()` 체크. PanicMute/InputMuteToggle만 통과, 나머지 모든 액션(PluginBypass, LoadPreset, RecordingToggle 등) 차단. 새 Action 추가 시 이 체크 누락하면 panic mute 우회.
+5. **Panic mute 중 액션 차단**: `ActionHandler::handle()`에서 `engine_.isMuted()` 체크. 대부분 액션(PluginBypass, LoadPreset, RecordingToggle 등) 차단. 예외 액션은 `PanicMute`, `InputMuteToggle`, `XRunReset`, `SafetyLimiterToggle`, `SetSafetyLimiterCeiling`, `AutoProcessorsAdd`. 새 Action 추가 시 이 가드/예외 집합을 명시적으로 검토하지 않으면 panic 정책 우회.
 
 6. **SettingsAutosaver `loadFromFile`에서 `triggerPreload` callAsync 래핑**: 오디오 디바이스가 완전히 시작된 후에 프리로드 시작. callAsync 없이 직접 호출하면 prepareToPlay 전에 플러그인 로딩 시도.
 

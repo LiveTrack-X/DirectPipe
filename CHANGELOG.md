@@ -4,7 +4,7 @@ All notable changes to DirectPipe will be documented in this file.
 
 ---
 
-## [4.0.2] - 2026-03-19 (Unreleased)
+## [4.0.2] - 2026-03-19
 
 ### Added
 - **Input Mute**: Independent input mute — silences microphone while VST chain continues processing (reverb tails fade naturally, AGC enters freeze). [INPUT] button in INPUT section, green=active / red=muted
@@ -15,11 +15,13 @@ All notable changes to DirectPipe will be documented in this file.
 - **State Model (breaking)**: `active_slot` now 0-5 (5=Auto). `auto_slot_active` deprecated
 - **Input Mute Toggle**: Now independent from Panic Mute
 - **`input_muted` state field**: Now independent from `muted`
+- **Mute Button UX**: INPUT/OUT/MON/VST/PANIC/AUTO button colors and labels now clearly distinguish normal/user-mute/panic-lock states (PANIC active shows `UNMUTE`)
 
 ### Fixed
 - **XRun**: 60-second window drift — now uses real elapsed time
 - **Panic**: Shows notification when recording was stopped during panic mute
 - **UI**: Freeze Level label LUFS → dBFS, AGC labels clarified (Boost/Cut)
+- **Noise Removal**: `holdSamples` and `gateSmooth` are now recalculated from runtime sample rate to preserve intended timing across SR changes
 
 ---
 

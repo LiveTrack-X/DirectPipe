@@ -777,12 +777,12 @@ In portable mode, multiple DirectPipe instances can run simultaneously. External
 
 **전체 출력을 즉시 뮤트**합니다. 갑자기 큰 소리가 나거나 피드백이 발생했을 때 사용하세요.
 
-- 패닉 뮤트 중에는 OUT/MON/VST 버튼과 **모든 외부 제어가 잠금**됩니다 / During panic mute, OUT/MON/VST buttons and **all external controls are locked**
+- 패닉 뮤트 중에는 OUT/MON/VST 버튼이 잠기고 대부분 외부 제어 액션이 차단됩니다. 단, Input Mute/XRun Reset/Safety Limiter/Auto Processors Add는 예외적으로 허용됩니다 / During panic mute, OUT/MON/VST buttons are locked and most external-control actions are blocked. Input Mute/XRun Reset/Safety Limiter/Auto Processors Add are intentional exceptions
 - **녹음 중이면 자동 중지**됩니다 (해제 시 자동 재시작 안 함) / **Active recording is automatically stopped** (does not auto-restart on unmute)
 - 해제하면 이전 상태(모니터 켜짐/꺼짐, 출력 뮤트 등)가 **자동 복원**됩니다 / Previous state (monitor on/off, output mute, etc.) is **auto-restored** on unmute
 - 단축키 / Shortcut: **Ctrl+Shift+M**
 
-Immediately mutes all outputs and stops active recording. During panic mute, all buttons and external controls are locked — only PanicMute/unmute can change state. Previous state is restored on unmute (recording does not auto-restart).
+Immediately kills all output paths and stops active recording. During panic mute, OUT/MON/VST controls are locked and most actions are blocked; Input Mute/XRun Reset/Safety Limiter/Auto Processors Add remain available. Previous state is restored on unmute (recording does not auto-restart).
 
 ### 활용 가이드 / Usage Guide
 
@@ -860,10 +860,10 @@ Press **Ctrl+Shift+M** once to instantly kill all outputs when unexpected noise,
 |---|---|---|
 | **PANIC** | 🔴 활성 / Active | OUT + VST + MON **전부 즉시 뮤트 / all instantly muted** |
 
-- 패닉 뮤트 중에는 OUT/MON/VST 버튼과 **모든 외부 제어가 잠금** — 실수로 해제 불가
+- 패닉 뮤트 중에는 OUT/MON/VST 버튼이 잠기고 대부분 외부 제어 액션이 차단됨 (예외: Input Mute/XRun Reset/Safety Limiter/Auto Processors Add)
 - **녹음 중이면 자동 중지** — 마이크 관련 출력이 전부 차단되므로 녹음도 함께 중지
 - 해제하면 이전 ON/OFF 상태가 **자동 복원** (예: VST만 OFF였다면 그 상태로 돌아감. 단, 녹음은 자동 재시작 안 함)
-- During panic mute, all buttons and external controls are **locked** — prevents accidental unmute
+- During panic mute, OUT/MON/VST buttons are locked and most external-control actions are blocked (exceptions: Input Mute/XRun Reset/Safety Limiter/Auto Processors Add)
 - **Active recording is automatically stopped** — all mic-related output is killed, so recording stops too
 - On unmute, previous ON/OFF states are **automatically restored** (recording does not auto-restart)
 
@@ -1003,7 +1003,7 @@ All shortcuts customizable in Controls > Hotkeys tab. **Drag-and-drop** to reord
 | Ctrl+Shift+M | 패닉 뮤트 / Panic mute |
 | Ctrl+Shift+0 | 마스터 Bypass (전체 체인) / Master bypass (entire chain) |
 | Ctrl+Shift+1~3 | 플러그인 1-3 Bypass 토글 / Plugin 1-3 bypass toggle |
-| Ctrl+Shift+F6 | 입력 뮤트 (= 패닉 뮤트) / Input mute (= Panic Mute) |
+| Ctrl+Shift+F6 | 입력만 뮤트 (체인/출력 유지) / Input-only mute (chain/output kept running) |
 | Ctrl+Shift+H | 모니터 토글 / Monitor toggle |
 | Ctrl+Shift+F1~F5 | 프리셋 슬롯 A~E / Preset slots A~E |
 

@@ -24,7 +24,8 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 │   │   ├── [MIDI] MidiTab              ← MIDI 디바이스/매핑
 │   │   └── [Stream Deck] StreamDeckTab ← WS/HTTP 서버 상태
 │   └── [Settings] LogPanel             ← 로그 뷰어 + 유지보수
-├── outputMuteBtn_ / monitorMuteBtn_ / vstMuteBtn_  ← 뮤트 인디케이터
+├── inputMuteBtn_                         ← 입력 전용 뮤트 버튼 (체인/출력 유지)
+├── outputMuteBtn_ / monitorMuteBtn_ / vstMuteBtn_  ← 출력 경로 뮤트 인디케이터
 ├── panicMuteBtn_                       ← 패닉 뮤트 버튼
 ├── statusUpdater_ (StatusUpdater)      ← 30Hz 주기 상태 업데이트 (비-컴포넌트)
 ├── updateChecker_ (UpdateChecker)      ← 업데이트 확인 (비-컴포넌트)
@@ -52,7 +53,7 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `PresetManager.h/cpp` | 프리셋 저장/로드 + 퀵 슬롯 A-E (체인 전용, 비동기 로드, 프리로드 캐시) |
 | `PresetSlotBar.h/cpp` | A-E + **Auto** 프리셋 슬롯 버튼 (6개). Auto 슬롯: 이름 고정, 순환 제외, 초기화 기능. 우클릭 컨텍스트 메뉴 |
 | `SettingsExporter.h/cpp` | 설정 내보내기/가져오기 — `.dpbackup` (설정만) / `.dpfullbackup` (전체) + 크로스-OS 보호 |
-| `StatusUpdater.h/cpp` | 30Hz 타이머 틱에서 UI 상태 업데이트 (뮤트/레이턴시/CPU/레벨/게인 동기화) |
+| `StatusUpdater.h/cpp` | 30Hz 타이머 틱에서 UI 상태 업데이트 (뮤트/레이턴시/CPU/레벨/게인 동기화). 색상 체계: INPUT(녹색/빨강), OUT/MON/VST(녹색/주황/패닉빨강), PANIC(활성 시 `UNMUTE`) |
 | `StreamDeckTab.h/cpp` | WebSocket/HTTP 서버 상태 표시 + Start/Stop 토글 |
 | `UpdateChecker.h/cpp` | 백그라운드 GitHub 릴리스 확인 + 업데이트 다이얼로그 + Windows 인앱 자동 업데이트 |
 | `FilterEditPanel.h/cpp` | 내장 Filter 설정 패널 (AudioProcessorEditor). HPF/LPF 프리셋 + 커스텀 슬라이더 |
