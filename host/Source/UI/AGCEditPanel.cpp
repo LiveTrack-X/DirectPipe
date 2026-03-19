@@ -119,7 +119,8 @@ AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     };
     addAndMakeVisible(maxGainSlider_);
 
-    // -- Freeze Level slider (-60 to -10 LUFS) --
+    // -- Freeze Level slider (-60 to -10 dBFS) --
+    // NOTE: Freeze uses per-block RMS (dBFS), NOT LUFS. See BuiltinAutoGain.cpp.
     freezeLabel_.setText("Freeze Level:", juce::dontSendNotification);
     freezeLabel_.setColour(juce::Label::textColourId, juce::Colour(AGCColors::kDim));
     addAndMakeVisible(freezeLabel_);
@@ -131,7 +132,7 @@ AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     freezeSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(AGCColors::kText));
     freezeSlider_.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(AGCColors::kSurface));
     freezeSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    freezeSlider_.setTextValueSuffix(" LUFS");
+    freezeSlider_.setTextValueSuffix(" dBFS");
     freezeSlider_.onValueChange = [this] {
         processor_.setFreezeLevel(static_cast<float>(freezeSlider_.getValue()));
     };
