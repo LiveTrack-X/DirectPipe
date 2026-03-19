@@ -288,5 +288,5 @@ bash tools/pre-release-test.sh
 3. `upload-release` job이 모든 빌드 완료 후 asset 업로드 / `upload-release` job uploads after all builds pass
 4. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention
 
-> v4.0.0부터 `--latest`로 정식 릴리즈. v3 사용자의 자동 업데이터는 플랫폼 태그(`-Windows.zip` 등)로 올바른 바이너리를 다운로드하므로 안전합니다. 자세한 내용은 최상위 `CLAUDE.md` Section 2 참조.
-> Since v4.0.0, releases use `--latest`. v3 users' auto-updater safely downloads the correct binary via platform tags (`-Windows.zip`, etc.). See top-level `CLAUDE.md` Section 2.
+> v4.0.0부터 `--latest`로 정식 릴리즈를 운용합니다. v3 사용자의 자동 업데이터는 플랫폼 태그(`-Windows.zip` 등)로 올바른 바이너리를 다운로드하므로 안전합니다. 운영 상세는 `docs/MAINTENANCE_RULES.md`를 참조하세요.
+> Since v4.0.0, releases use `--latest`. v3 users' auto-updater safely downloads the correct binary via platform tags (`-Windows.zip`, etc.). See `docs/MAINTENANCE_RULES.md` for operational details.

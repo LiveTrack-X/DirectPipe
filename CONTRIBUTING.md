@@ -13,7 +13,7 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 - `camelCase` for methods/variables, `PascalCase` for classes
 - `memberVariable_` trailing underscore for member variables
 - Bilingual comments: Korean first, English second (한국어 → 영어 순서)
-- RT audio callback: **no heap alloc, no mutex, no logging** (see `CLAUDE.md` Coding Rules)
+- RT audio callback: **no heap alloc, no mutex, no logging** (see `docs/MAINTENANCE_RULES.md`)
 
 ## Pull Request 규칙 / PR Guidelines
 
@@ -24,7 +24,7 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
    cmake --build build --config Release
    ctest --test-dir build -C Release --output-on-failure
    ```
-4. 새 Action 추가 시 `CLAUDE.md` Maintenance Recipes 체크리스트를 따르세요 / When adding new Actions, follow the Maintenance Recipes checklist in `CLAUDE.md`
+4. 새 Action 추가 시 `docs/MAINTENANCE_RULES.md` 체크리스트를 따르세요 / When adding new Actions, follow the checklist in `docs/MAINTENANCE_RULES.md`
 5. 문서 업데이트도 포함해 주세요 (해당 시) / Include documentation updates when applicable
 
 ## 테스트 / Testing
