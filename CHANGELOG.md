@@ -90,6 +90,22 @@ All notable changes to DirectPipe will be documented in this file.
 - **Security**: WebSocket 32-client limit with atomic check+increment under clientsMutex_ — fixes TOCTOU race
 - **AGC**: Internal LUFS offset increased from -4dB to -6dB — output level closer to commercial levelers
 
+### Added
+- **Input Mute**: Independent input mute — silences microphone while VST chain continues processing (reverb tails fade naturally, AGC enters freeze). [INPUT] button in INPUT section, green=active / red=muted. Separate from Panic Mute (which stops all processing)
+- **VSTChain.isStable()**: Additional auto-save safety net — defers save when chain is mid-load or unprepared, regardless of loadingSlot_ state
+- **XRun**: Click CPU/XRun label in status bar to manually reset XRun counter
+
+### Changed
+- **State Model**: `active_slot` now 0-5 (5=Auto) or -1. `auto_slot_active` deprecated (kept for backward compat, auto-derived from activeSlot==5)
+- **Input Mute Toggle**: Now independent from Panic Mute — toggles input only, does not affect outputs
+- **`input_muted` state field**: Now independent from `muted` — reports actual input mute state
+- **Panic unmute**: Shows notification when recording was stopped during panic
+- **XRun tracking**: Uses real elapsed time (juce::Time) instead of assumed 30Hz timer — fixes 60s window drift
+
+### Improved
+- **AGC UI**: Labels "Low Correct (Boost)" / "High Correct (Cut)" for clarity
+- **Freeze Level UI**: Label changed from "LUFS" to "dBFS" (actual unit is per-block RMS, not LUFS)
+
 ---
 
 ## [4.0.0] — Cross-Platform Release
