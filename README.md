@@ -365,7 +365,6 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - [Stream Deck Guide](docs/STREAMDECK_GUIDE.md) — Stream Deck 플러그인 / Stream Deck integration
 - [Product Spec](docs/PRODUCT_SPEC.md) — 제품 상세 기획서 / Detailed product specification (reverse-engineered from implementation)
 - [Logging Rules](docs/LOGRULE.md) — 로깅 형식 및 규칙 / Log format, categories, and audit mode
-- [Maintenance Rules](docs/MAINTENANCE_RULES.md) — 내부 운영 규칙 / Maintainer operations, release flow, and sync checklist
 - [Security](SECURITY.md) — 보안 정책 및 설계 / Security policy, architecture, and known limitations
 - [Testing](TESTING.md) — 테스트 가이드 (자동/수동 테스트 체크리스트) / Testing guide (automated and manual test checklists)
 - [Contributing](CONTRIBUTING.md) — 기여 가이드 / Contributor guidelines

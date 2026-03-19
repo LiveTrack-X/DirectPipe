@@ -47,6 +47,7 @@ docs/superpowers/
 # AI maintenance guides (per-module, not for public repo)
 host/Source/*/README.md
 host/Source/README.md
+docs/MAINTENANCE_RULES.md
 
 # Development plans
 DirectPipe-Development-Plan*.md
