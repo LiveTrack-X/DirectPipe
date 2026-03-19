@@ -203,6 +203,10 @@ void AudioEngine::setIpcEnabled(bool enabled)
         }
     } else {
         ipcEnabled_.store(false, std::memory_order_release);
+        // Clear the "restore on device restart" flag so that if the user
+        // toggles IPC OFF during a device stop/start cycle (e.g., buffer size
+        // change), audioDeviceAboutToStart won't re-enable it.
+        ipcWasEnabled_ = false;
         sharedMemWriter_.shutdown();
         Log::info("IPC", "Output disabled");
     }
