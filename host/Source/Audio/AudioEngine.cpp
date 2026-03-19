@@ -1247,7 +1247,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 }
                 // Only set desired SR/BS from device if user/settings haven't
                 // explicitly set them (first launch with no saved settings).
-                if (!srbsSet) {
+                // IMPORTANT: Check the CURRENT desiredSRBSSet_ (not the captured value)
+                // because importFromJSON/setBufferSize may have run between capture and
+                // this callAsync executing, setting desiredSRBSSet_ = true.
+                if (!desiredSRBSSet_) {
                     desiredSampleRate_ = sr;
                     desiredBufferSize_ = bs;
                 }
