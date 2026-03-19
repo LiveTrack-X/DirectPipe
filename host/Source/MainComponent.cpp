@@ -145,11 +145,13 @@ MainComponent::MainComponent(bool enableExternalControls)
     //    External controls (hotkeys, MIDI, Stream Deck) cycle only through A-E.
     //    Auto must be explicitly selected.
     //
-    // 5. When Auto is active, the A-E buttons are visually deselected and the
-    //    Auto button turns green (0xFF4CAF50). See updateAutoButtonVisual().
-    autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A4035));
-    autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-    autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    // 5. Auto button uses a two-step yellow scheme:
+    //    - Active Auto slot: bright yellow
+    //    - Inactive: darker "pressed" yellow
+    //    See updateAutoButtonVisual().
+    autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF7D6200));
+    autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
+    autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::black);
     autoProcessorBtn_.onClick = [this] {
         if (loadingSlot_) return;
 
@@ -483,7 +485,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     actionHandler_->onPanicStateChanged = [this](bool muted) {
         panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
         panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                                juce::Colour(muted ? 0xFF4CAF50u : 0xFFE53935u));
+                                juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
     };
     actionHandler_->onIpcStateChanged = [this](bool enabled) {
         if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
@@ -545,7 +547,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     vstMuteBtn_.onClick = [this] { actionHandler_->toggleIpcMute(); };
 
     // ── Panic Mute Button ──
-    panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE53935));
+    panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
     panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     panicMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     panicMuteBtn_.onClick = [this] { actionHandler_->togglePanicMute(); };
@@ -725,12 +727,12 @@ void MainComponent::resized()
 
     // ── INPUT Section ──
     {
-        int btnW = 72;
-        int btnH = 24;
-        inputSectionLabel_.setBounds(cx, y, cw - btnW - 4, 24);
+        int btnW = (cw - 4 * 2) / 3; // match OUT button width
+        int btnH = 30;               // match OUT/MON/VST button height
+        inputSectionLabel_.setBounds(cx, y, cw - btnW - 6, 24);
         inputMuteBtn_.setBounds(cx + cw - btnW, y, btnW, btnH);
     }
-    y += 26;
+    y += 32;
 
     // Input gain row: [Gain:] [slider] [Auto]
     {
@@ -959,7 +961,7 @@ void MainComponent::refreshUI()
     bool muted = audioEngine_.isMuted();
     panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId,
-                            juce::Colour(muted ? 0xFF4CAF50u : 0xFFE53935u));
+                            juce::Colour(muted ? 0xFF4CAF50u : 0xFFE05050u));
 
     // IPC toggle state (Output tab = index 1)
     if (auto* outPanel = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
@@ -975,13 +977,13 @@ void MainComponent::updateAutoButtonVisual()
 {
     bool autoActive = (presetManager_ && presetManager_->getActiveSlot() == PresetSlotBar::kAutoSlotIndex);
     if (autoActive) {
-        autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFFC107));   // Yellow
+        autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFFFC107));   // Bright yellow (active)
         autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::black);
         autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
     } else {
-        autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF2A4035));   // Dark
-        autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-        autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        autoProcessorBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF7D6200));   // Darker pressed yellow (inactive)
+        autoProcessorBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::black);
+        autoProcessorBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
     }
 }
 
