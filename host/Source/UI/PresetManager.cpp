@@ -227,12 +227,20 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
     }
 
-    // Audio settings (skip restart if device already has correct values)
-    if (root->hasProperty("sampleRate")) {
-        (void)engine_.setSampleRate(root->getProperty("sampleRate"));
-    }
-    if (root->hasProperty("bufferSize")) {
-        (void)engine_.setBufferSize(root->getProperty("bufferSize"));
+    // Audio settings (skip restart if device already has correct values).
+    // ASIO: the device owns SR/BS globally (changing it disrupts other apps).
+    // Accept whatever the ASIO device reports instead of forcing saved values.
+    bool isAsio = engine_.getCurrentDeviceType().containsIgnoreCase("ASIO");
+    if (isAsio) {
+        // Sync desired values FROM the device (not TO the device)
+        engine_.syncDesiredFromDevice();
+    } else {
+        if (root->hasProperty("sampleRate")) {
+            (void)engine_.setSampleRate(root->getProperty("sampleRate"));
+        }
+        if (root->hasProperty("bufferSize")) {
+            (void)engine_.setBufferSize(root->getProperty("bufferSize"));
+        }
     }
     if (root->hasProperty("inputGain")) {
         engine_.setInputGain(static_cast<float>((double)root->getProperty("inputGain")));

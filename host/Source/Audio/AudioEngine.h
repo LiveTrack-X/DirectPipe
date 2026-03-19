@@ -101,6 +101,8 @@ public:
     /** @brief Get the desired SR/BS (survives driver fallback). */
     double getDesiredSampleRate() const { return desiredSampleRate_; }
     int getDesiredBufferSize() const { return desiredBufferSize_; }
+    /** @brief Sync desiredSR/BS FROM the current device (for ASIO — device owns SR/BS globally). */
+    void syncDesiredFromDevice();
     // Dynamic capabilities (depends on current device type and device)
     juce::Array<double> getAvailableSampleRates() const;
     juce::Array<int> getAvailableBufferSizes() const;

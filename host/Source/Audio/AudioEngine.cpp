@@ -342,6 +342,30 @@ void AudioEngine::presetAudioParams(double sampleRate, int bufferSize)
         desiredSRBSSet_ = true;
 }
 
+void AudioEngine::syncDesiredFromDevice()
+{
+    // For ASIO: the device owns SR/BS globally (shared with all apps).
+    // Accept what the device reports instead of forcing saved values,
+    // which would restart the ASIO driver and disrupt other audio sources.
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    if (!device) return;
+
+    double sr = device->getCurrentSampleRate();
+    int bs = device->getCurrentBufferSizeSamples();
+
+    if (sr > 0) {
+        currentSampleRate_ = sr;
+        desiredSampleRate_ = sr;
+    }
+    if (bs > 0) {
+        currentBufferSize_ = bs;
+        desiredBufferSize_ = bs;
+    }
+    desiredSRBSSet_ = true;
+
+    Log::info("AUDIO", "Synced desired from device: SR=" + juce::String(sr) + " BS=" + juce::String(bs));
+}
+
 ActionResult AudioEngine::setBufferSize(int bufferSize)
 {
     // Skip restart if device already has the requested buffer size
@@ -649,10 +673,13 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     }
     intentionalChange_.store(false, std::memory_order_release);
 
-    // Update current SR/BS from actual device
+    // Update current + desired SR/BS from actual device after type switch.
+    // This ensures the snapshot-restored values are saved correctly on next exportToJSON.
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
         currentSampleRate_ = device->getCurrentSampleRate();
         currentBufferSize_ = device->getCurrentBufferSizeSamples();
+        desiredSampleRate_ = currentSampleRate_;
+        desiredBufferSize_ = currentBufferSize_;
     }
 
     // Clear reconnection state after intentional type switch.
@@ -1234,8 +1261,8 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             auto outName = setup.outputDeviceName;
             auto sr = setup.sampleRate;
             auto bs = setup.bufferSize;
-            bool srbsSet = desiredSRBSSet_;
-            juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs, srbsSet] {
+            bool isAsio = device->getTypeName().containsIgnoreCase("ASIO");
+            juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs, isAsio] {
                 if (!aliveFlag->load()) return;
                 reconnectMissCount_ = 0;
                 {
@@ -1245,12 +1272,15 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     if (outName.isNotEmpty())
                         desiredOutputDevice_ = outName;
                 }
-                // Only set desired SR/BS from device if user/settings haven't
-                // explicitly set them (first launch with no saved settings).
-                // IMPORTANT: Check the CURRENT desiredSRBSSet_ (not the captured value)
-                // because importFromJSON/setBufferSize may have run between capture and
-                // this callAsync executing, setting desiredSRBSSet_ = true.
-                if (!desiredSRBSSet_) {
+                if (isAsio) {
+                    // ASIO: device owns SR/BS globally. Always sync from device
+                    // so ASIO control panel changes are saved and don't disrupt
+                    // other apps on next restart.
+                    desiredSampleRate_ = sr;
+                    desiredBufferSize_ = bs;
+                    desiredSRBSSet_ = true;
+                } else if (!desiredSRBSSet_) {
+                    // Non-ASIO first launch: accept device defaults
                     desiredSampleRate_ = sr;
                     desiredBufferSize_ = bs;
                 }
