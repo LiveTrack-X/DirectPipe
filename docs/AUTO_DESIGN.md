@@ -187,8 +187,8 @@ Why 60Hz was chosen:
 |---|---|---|
 | **Strength** | **Standard** | Light(0.50)는 배경 소음이 남음, Aggressive(0.90)는 목소리 끝이 잘림 / Light (0.50) leaves background noise, Aggressive (0.90) clips voice tails |
 | **VAD threshold** | **0.70** | 일반 대화 속도에서 자연스러운 음성/비음성 구분. 0.60은 오탐 多, 0.80은 부드러운 발화 누락 / Natural voice/non-voice separation at normal speech pace. 0.60 has many false positives, 0.80 misses soft speech |
-| **Hold time** | **300ms** | 단어 사이 자연스러운 쉼(200-400ms)을 커버. 너무 짧으면 단어마다 끊김, 너무 길면 소음 통과 / Covers natural pauses between words (200-400ms). Too short causes per-word clipping, too long lets noise through |
-| **Gate smoothing** | **20ms** | 5ms는 클릭 발생, 50ms는 음절 시작이 뭉개짐. 20ms는 청각적으로 감지 불가한 페이드 / 5ms causes clicks, 50ms smears syllable onsets. 20ms is a perceptually undetectable fade |
+| **Hold time** | **300ms** | *(내부 상수, UI 미노출)* 단어 사이 자연스러운 쉼(200-400ms)을 커버. 너무 짧으면 단어마다 끊김, 너무 길면 소음 통과 / *(internal constant, not exposed in UI)* Covers natural pauses between words (200-400ms). Too short causes per-word clipping, too long lets noise through |
+| **Gate smoothing** | **20ms** | *(내부 상수, UI 미노출)* 5ms는 클릭 발생, 50ms는 음절 시작이 뭉개짐. 20ms는 청각적으로 감지 불가한 페이드 / *(internal constant, not exposed in UI)* 5ms causes clicks, 50ms smears syllable onsets. 20ms is a perceptually undetectable fade |
 
 Standard(0.70)를 기본으로 선택한 이유:
 - Light: 에어컨/팬 소리는 제거하지만 키보드 타이핑은 통과
@@ -211,6 +211,9 @@ Why Standard (0.70) was chosen as default:
 | **Max Gain** | **22dB** | 저게인 다이나믹 마이크(SM58 등)에서 조용히 말하면 -40 ~ -50 dBFS. 타겟 -21 LUFS(내부)까지 올리려면 ~20dB 부스트 필요. 22dB는 이를 커버하면서 과도한 증폭 방지 / Quiet speech on low-gain dynamic mics (SM58, etc.) reads -40 to -50 dBFS. ~20dB boost needed to reach internal target of -21 LUFS. 22dB covers this while preventing excessive amplification |
 | **Freeze Level** | **-45 dBFS** | 이 이하의 RMS는 무음/배경소음으로 판단하고 게인을 동결. -45 dBFS는 조용한 방에서 콘덴서 마이크의 셀프 노이즈(~-50 dBFS) 바로 위. 말이 끝난 후 소음을 증폭하지 않음 / RMS below this is treated as silence/background noise and gain is frozen. -45 dBFS is just above the self-noise of condenser mics in a quiet room (~-50 dBFS). Prevents noise amplification after speech ends |
 | **LUFS window** | **0.4s** | EBU R128 Momentary 표준. 0.4초는 한 음절~단어 단위의 레벨 변화에 반응. 3초(EBU Short-term)는 너무 느려서 문장 내 볼륨 변화를 못 잡음 / EBU R128 Momentary standard. 0.4s responds to syllable-to-word-level changes. 3s (EBU Short-term) is too slow to catch intra-sentence volume changes |
+
+> **추가 안전장치 / Additional safeguard**: Freeze Level(-45 dBFS) 외에 -65 dBFS 미만 시 게인 처리 자체를 완전 바이패스합니다. Freeze는 게인을 동결(유지)하지만, -65 미만은 게인 계산을 건너뜁니다.
+> In addition to Freeze Level (-45 dBFS), gain processing is completely bypassed below -65 dBFS. Freeze holds the current gain, but below -65 the gain computation is skipped entirely.
 
 Low/High Correct가 비대칭인 이유:
 - 부스트(50%)를 보수적으로 → 조용한 구간에서 소음 증폭 방지
@@ -253,7 +256,7 @@ Trade-offs to be aware of when customizing parameters:
 |---|---|---|
 | Light (0.50) | 부드러운 말 끝 보존 / Soft speech tails preserved | 키보드 타이핑 소리 통과 가능 / Keyboard typing noise may pass through |
 | Aggressive (0.90) | 강력한 소음 억제 / Strong noise suppression | **조용한 발화 끝이 잘릴 수 있음 / Quiet speech tails may be clipped** (녹음 시 주의 / use caution when recording) |
-| Hold time 단축 / Hold time shortened | 빠른 게이트 반응 / Faster gate response | 단어 사이에서 "숨소리 끊김" 현상 / "Breath cutoff" between words |
+| Hold time 단축 *(코드 수정 필요)* / Hold time shortened *(requires code change)* | 빠른 게이트 반응 / Faster gate response | 단어 사이에서 "숨소리 끊김" 현상 / "Breath cutoff" between words |
 
 ### Auto Gain
 

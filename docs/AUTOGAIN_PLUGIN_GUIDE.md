@@ -127,6 +127,8 @@ static juce::AudioProcessorValueTreeState::ParameterLayout createLayout() {
             juce::NormalisableRange<float>(0.0f, 40.0f, 0.5f), 22.0f),
         std::make_unique<juce::AudioParameterFloat>(
             "freeze", "Freeze Level (dBFS)",
+            // Host version uses -60 to -10. Plugin range narrowed to -60 to -20
+            // to prevent accidental near-zero freeze that would disable the gate.
             juce::NormalisableRange<float>(-60.0f, -20.0f, 0.5f), -45.0f),
     };
 }

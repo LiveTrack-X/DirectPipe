@@ -61,6 +61,9 @@ The HTTP API uses `Access-Control-Allow-Origin: *` to support browser-based clie
 
 **Known limitation**: This allows malicious websites to access the DirectPipe API through the user's browser (CSRF). Remote attacks are impossible (localhost-only), but indirect access via local browser is possible.
 
+> **참고**: CORS preflight 응답의 `Access-Control-Allow-Methods`에 `POST, PUT, DELETE`가 포함되어 있지만, 실제로는 GET과 OPTIONS만 처리됩니다. 향후 최소 권한 원칙에 따라 `GET, OPTIONS`로 제한하는 것을 검토 중입니다.
+> **Note**: The CORS preflight response includes `POST, PUT, DELETE` in `Access-Control-Allow-Methods`, but only GET and OPTIONS are actually handled. Restricting to `GET, OPTIONS` per least-privilege principle is under consideration.
+
 ### IPC 공유 메모리 / IPC Shared Memory
 
 호스트 ↔ Receiver VST 간 오디오 전송은 OS 공유 메모리를 사용합니다.

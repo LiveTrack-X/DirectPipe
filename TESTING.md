@@ -23,7 +23,7 @@ bash tools/pre-release-test.sh
 ### Step 2: GUI 대시보드 + AI 코드 리뷰
 
 **GUI 대시보드** — 브라우저에서 `tools/pre-release-dashboard.html` 열기:
-- API 자동 테스트 25개 (Run All 버튼)
+- API 자동 테스트 25개 (pre-release-dashboard.html 기준; test_api.js는 114개 체크 포함) / 25 auto API tests (from pre-release-dashboard.html; test_api.js contains 114 checks)
 - 수동 테스트 체크리스트 29개 (대시보드 체크박스; 전체 수동 테스트 목록은 하단 참조)
 - 결과 JSON 내보내기 (Export Report → Claude에 전달 가능)
 - localStorage에 체크 상태 저장
