@@ -172,12 +172,12 @@ Safe automatic EQ would require a microphone profile database, which conflicts w
 | **LPF** | **OFF, 16kHz** | 대부분의 마이크가 16kHz 이상을 자연히 감쇠. LPF를 켜면 에어/숨소리의 자연스러움이 줄어들 수 있음. 필요 시 사용자가 직접 활성화 / Most mics naturally attenuate above 16kHz. Enabling LPF can reduce the naturalness of air/breath sounds. Users can enable it manually if needed |
 
 60Hz를 선택한 이유:
-- 50Hz (유럽 전원) / 60Hz (미국/한국 전원) 험을 모두 제거
+- 50Hz (유럽 전원) / 60Hz (미국/한국 전원) 험을 크게 감쇄 (HPF -3dB 컷오프 기준; 실제로는 RNNoise가 잔류 험도 추가 제거)
 - 저음 남성 목소리 (85Hz fundamental)에 영향 없음
 - 키보드 타이핑의 저주파 충격 (~30-80Hz)도 제거
 
 Why 60Hz was chosen:
-- Removes both 50Hz (European power) and 60Hz (US/Korean power) hum
+- Significantly attenuates both 50Hz (European power) and 60Hz (US/Korean power) hum (-3dB at cutoff; RNNoise further suppresses residual hum)
 - Does not affect low-pitched male voices (85Hz fundamental)
 - Also removes low-frequency impact from keyboard typing (~30-80Hz)
 
@@ -211,6 +211,7 @@ Why Standard (0.70) was chosen as default:
 | **Max Gain** | **22dB** | 저게인 다이나믹 마이크(SM58 등)에서 조용히 말하면 -40 ~ -50 dBFS. 타겟 -21 LUFS(내부)까지 올리려면 ~20dB 부스트 필요. 22dB는 이를 커버하면서 과도한 증폭 방지 / Quiet speech on low-gain dynamic mics (SM58, etc.) reads -40 to -50 dBFS. ~20dB boost needed to reach internal target of -21 LUFS. 22dB covers this while preventing excessive amplification |
 | **Freeze Level** | **-45 dBFS** | 이 이하의 RMS는 무음/배경소음으로 판단하고 게인을 동결. -45 dBFS는 조용한 방에서 콘덴서 마이크의 셀프 노이즈(~-50 dBFS) 바로 위. 말이 끝난 후 소음을 증폭하지 않음 / RMS below this is treated as silence/background noise and gain is frozen. -45 dBFS is just above the self-noise of condenser mics in a quiet room (~-50 dBFS). Prevents noise amplification after speech ends |
 | **LUFS window** | **0.4s** | EBU R128 Momentary 표준. 0.4초는 한 음절~단어 단위의 레벨 변화에 반응. 3초(EBU Short-term)는 너무 느려서 문장 내 볼륨 변화를 못 잡음 / EBU R128 Momentary standard. 0.4s responds to syllable-to-word-level changes. 3s (EBU Short-term) is too slow to catch intra-sentence volume changes |
+| **Fast envelope** | **10ms attack / 200ms release** | *(내부 상수, UI 미노출)* 순간적으로 큰 소리를 즉시 감지 (10ms), 적당히 빠르게 복귀 (200ms). LUFS 윈도우보다 빠르게 반응하여 피크 보정. effectiveLevel = max(fast, slow) / *(internal constant, not exposed in UI)* Instantly detects loud sounds (10ms), recovers moderately fast (200ms). Responds faster than LUFS window for peak correction. effectiveLevel = max(fast, slow) |
 
 > **추가 안전장치 / Additional safeguard**: Freeze Level(-45 dBFS) 외에 -65 dBFS 미만 시 게인 처리 자체를 완전 바이패스합니다. Freeze는 게인을 동결(유지)하지만, -65 미만은 게인 계산을 건너뜁니다.
 > In addition to Freeze Level (-45 dBFS), gain processing is completely bypassed below -65 dBFS. Freeze holds the current gain, but below -65 the gain computation is skipped entirely.
