@@ -227,12 +227,19 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
     }
 
-    // Audio settings (skip restart if device already has correct values).
-    // ASIO: the device owns SR/BS globally (changing it disrupts other apps).
-    // Accept whatever the ASIO device reports instead of forcing saved values.
+    // ═══ SR/BS Restore: ASIO vs Non-ASIO ═══
+    //
+    // ASIO: device owns SR/BS globally. All apps sharing the device see the
+    // same SR/BS. Forcing our saved values would restart the ASIO driver and
+    // disrupt other audio sources (DAWs, media players, voice chat, etc.).
+    // → Accept the device's current SR/BS via syncDesiredFromDevice().
+    //
+    // Non-ASIO (WASAPI/CoreAudio/ALSA): SR/BS is per-app. Other apps are
+    // unaffected by our changes. Safe to force saved values.
+    // → Apply via setSampleRate/setBufferSize as before.
+    //
     bool isAsio = engine_.getCurrentDeviceType().containsIgnoreCase("ASIO");
     if (isAsio) {
-        // Sync desired values FROM the device (not TO the device)
         engine_.syncDesiredFromDevice();
     } else {
         if (root->hasProperty("sampleRate")) {

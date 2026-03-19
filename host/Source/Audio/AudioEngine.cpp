@@ -56,7 +56,31 @@ AudioEngine::~AudioEngine()
 
 bool AudioEngine::initialize()
 {
-    // Initialize device manager with default settings
+    // ═══ Startup Strategy: WASAPI-first, then driver switch ═══
+    //
+    // We always open with the system default driver (WASAPI on Windows) first,
+    // then switch to the saved driver type (e.g., ASIO) via importFromJSON.
+    //
+    // WHY NOT open ASIO directly?
+    //   - ASIO driver may not be installed, or the saved device may be unplugged.
+    //     Opening ASIO directly would fail, leaving the app with no audio at all.
+    //   - WASAPI is always available on Windows and provides a safe fallback.
+    //   - The WASAPI→ASIO transition takes ~100ms and is invisible to the user
+    //     (happens before the window is shown).
+    //
+    // ASIO SR/BS policy:
+    //   ASIO devices own SR/BS globally (shared across all apps on the device).
+    //   Forcing a saved BS on ASIO would restart the driver, disrupting other
+    //   audio sources (DAWs, media players, etc.).
+    //   → importFromJSON calls syncDesiredFromDevice() for ASIO instead of
+    //     setSampleRate/setBufferSize, accepting whatever the ASIO device reports.
+    //   → Non-ASIO drivers (WASAPI/CoreAudio/ALSA) use per-app SR/BS, so saved
+    //     values are safely forced via setSampleRate/setBufferSize.
+    //
+    // See also: importFromJSON in PresetManager.cpp (ASIO vs non-ASIO branch)
+    //           syncDesiredFromDevice() below (syncs desired from actual device)
+    //           audioDeviceAboutToStart callAsync (ASIO always syncs desired)
+    //
     auto result = deviceManager_.initialiseWithDefaultDevices(
         2,  // numInputChannels
         2   // numOutputChannels
@@ -344,9 +368,20 @@ void AudioEngine::presetAudioParams(double sampleRate, int bufferSize)
 
 void AudioEngine::syncDesiredFromDevice()
 {
-    // For ASIO: the device owns SR/BS globally (shared with all apps).
-    // Accept what the device reports instead of forcing saved values,
-    // which would restart the ASIO driver and disrupt other audio sources.
+    // Sync desiredSR/BS FROM the current audio device (not TO).
+    //
+    // Primary use case: ASIO devices.
+    // ASIO SR/BS is global — changing it restarts the driver and disrupts ALL apps
+    // sharing that device (DAWs, media players, etc.). Instead of forcing our saved
+    // values (which would cause an unnecessary driver restart), we accept whatever
+    // the ASIO device currently reports and save THAT as the desired value.
+    //
+    // Called from:
+    //   - importFromJSON (ASIO path): on startup, accept device's current SR/BS
+    //   - Could also be called after ASIO control panel changes SR/BS externally
+    //
+    // NOT used for WASAPI/CoreAudio/ALSA — those use per-app SR/BS, so forcing
+    // saved values is safe and expected (via setSampleRate/setBufferSize).
     auto* device = deviceManager_.getCurrentAudioDevice();
     if (!device) return;
 
@@ -673,8 +708,11 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     }
     intentionalChange_.store(false, std::memory_order_release);
 
-    // Update current + desired SR/BS from actual device after type switch.
-    // This ensures the snapshot-restored values are saved correctly on next exportToJSON.
+    // Update current + desired SR/BS from the ACTUAL device after type switch.
+    // The device may have opened at a different SR/BS than the snapshot requested
+    // (e.g., ASIO ignores our request and uses its global setting).
+    // Syncing desiredSR/BS ensures exportToJSON saves what's actually running,
+    // not the stale snapshot value that may have been rejected by the driver.
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
         currentSampleRate_ = device->getCurrentSampleRate();
         currentBufferSize_ = device->getCurrentBufferSizeSamples();
@@ -1273,14 +1311,21 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                         desiredOutputDevice_ = outName;
                 }
                 if (isAsio) {
-                    // ASIO: device owns SR/BS globally. Always sync from device
-                    // so ASIO control panel changes are saved and don't disrupt
-                    // other apps on next restart.
+                    // ASIO: device owns SR/BS globally (shared across all apps).
+                    // ALWAYS sync desiredSR/BS from the device, regardless of
+                    // desiredSRBSSet_. This ensures:
+                    //   1. ASIO control panel BS changes are saved to settings
+                    //   2. Next restart won't force an old BS, avoiding driver
+                    //      restart that disrupts other audio sources
+                    //   3. exportToJSON → getDesiredBufferSize() returns the
+                    //      actual ASIO value, not a stale saved value
                     desiredSampleRate_ = sr;
                     desiredBufferSize_ = bs;
                     desiredSRBSSet_ = true;
                 } else if (!desiredSRBSSet_) {
-                    // Non-ASIO first launch: accept device defaults
+                    // Non-ASIO first launch (no saved settings): accept device
+                    // defaults. Once settings are loaded (desiredSRBSSet_=true),
+                    // this branch is skipped and saved values are preserved.
                     desiredSampleRate_ = sr;
                     desiredBufferSize_ = bs;
                 }
