@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.0.1-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.0.2-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -21,7 +21,7 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.0.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
+- **Latest (최신)**: [v4.0.2 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
 
 > **참고**: Windows는 안정(Stable), macOS는 베타, Linux는 실험적입니다. macOS/Linux 빌드는 실기기 테스트가 제한적입니다.
 > **Note**: Windows is stable, macOS is beta, Linux is experimental. macOS/Linux builds have limited real-hardware testing.
