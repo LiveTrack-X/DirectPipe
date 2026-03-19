@@ -185,7 +185,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.outputVolume = router.getVolume(OutputRouter::Output::Main);
         s.muted = muted;
         s.outputMuted = engine_.isOutputMuted();
-        s.inputMuted = muted;
+        s.inputMuted = engine_.isInputMuted();
         s.masterBypassed = false;
         s.latencyMs = static_cast<float>(mainLatency);
         if (monEnabled) {
