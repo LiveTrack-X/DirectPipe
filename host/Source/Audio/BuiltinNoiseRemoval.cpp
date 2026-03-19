@@ -2,6 +2,7 @@
 // Copyright (C) 2025 LiveTrack
 #include "BuiltinNoiseRemoval.h"
 #include "../UI/NoiseRemovalEditPanel.h"
+#include <cmath>
 
 namespace directpipe {
 
@@ -72,6 +73,12 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
     gateGainR_ = 0.0f;
     holdCounterL_ = 0;
     holdCounterR_ = 0;
+
+    // Recalculate SR-dependent time constants
+    // holdSamples_: 300ms hold time in samples (prevents choppy gating between words)
+    // gateSmooth_: 20ms exponential smoothing coefficient (prevents audible gate clicks)
+    holdSamples_ = static_cast<int>(sampleRate * 0.300);  // 300ms regardless of SR
+    gateSmooth_ = static_cast<float>(std::exp(-1.0 / (sampleRate * 0.020)));  // 20ms time constant
 
     // Warm up RNNoise with silent frames so it learns the noise floor faster.
     //
@@ -165,16 +172,15 @@ void BuiltinNoiseRemoval::processChannel(
 {
     const float threshold = vadThreshold_.load(std::memory_order_relaxed);
 
-    // Gate smoothing coefficient: controls how fast the gate opens/closes.
-    // Derivation: for a 20ms time constant at 48kHz sample rate:
-    //   kGateSmooth = exp(-1 / (sampleRate * timeConstant))
-    //              = exp(-1 / (48000 * 0.020))
-    //              = exp(-1 / 960) ≈ 0.9990
+    // Gate smoothing coefficient (gateSmooth_): controls how fast the gate opens/closes.
+    // Derivation: for a 20ms time constant at sample rate SR:
+    //   gateSmooth_ = exp(-1 / (SR * 0.020))
+    //   At 48kHz: exp(-1/960) ≈ 0.9990, at 44.1kHz: exp(-1/882) ≈ 0.9989
     //
-    // NOTE: Was originally 5ms (0.9958) but that was too abrupt -- the gate
+    // NOTE: Was originally 5ms (0.9958 at 48kHz) but that was too abrupt -- the gate
     // opening/closing was audible as a "click" between words. 20ms gives a
     // smooth, natural fade that's imperceptible to listeners.
-    constexpr float kGateSmooth = 0.9990f;  // exp(-1/(48000*0.020)) ≈ 0.9990
+    // Recalculated from sample rate in prepareToPlay (member variable gateSmooth_).
 
     // IMPORTANT: RNNoise was trained on int16 audio data (range [-32767, +32767]).
     // JUCE provides float audio in [-1.0, +1.0]. We MUST scale up before processing
@@ -205,7 +211,7 @@ void BuiltinNoiseRemoval::processChannel(
             if (vad >= threshold) {
                 targetGate = 1.0f;
                 holdCounter = 0;  // reset hold
-            } else if (holdCounter < kHoldSamples) {
+            } else if (holdCounter < holdSamples_) {
                 targetGate = 1.0f;  // still in hold period — stay open
                 // Hold counter tracks time in SAMPLES, not frames. Since this decision runs once per
                 // RNNoise frame (480 samples), advance by kRNNFrameSize (not by 1).
@@ -226,7 +232,7 @@ void BuiltinNoiseRemoval::processChannel(
             // subtraction gives the correct count even after UINT32_MAX wraparound
             // (~25 hours at 48kHz).
             for (int j = 0; j < kRNNFrameSize; ++j) {
-                gateGain = kGateSmooth * gateGain + (1.0f - kGateSmooth) * targetGate;
+                gateGain = gateSmooth_ * gateGain + (1.0f - gateSmooth_) * targetGate;
                 outputFifo[static_cast<size_t>(outputFifoWrite % kFifoCapacity)] = rnnOut[j] * kInvScale * gateGain;
                 ++outputFifoWrite;
             }

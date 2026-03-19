@@ -187,7 +187,8 @@ private:
     // speech pause (e.g., between sentences or while thinking). Shorter hold times
     // (e.g., 100ms) cause choppy gating between words; longer (e.g., 1s) fails
     // to suppress noise during actual silence.
-    static constexpr int kHoldSamples = 48000 * 300 / 1000;  // 300ms at 48kHz = 14400 samples
+    int holdSamples_ = 14400;      // 300ms at 48kHz — recalculated in prepareToPlay
+    float gateSmooth_ = 0.9990f;   // 20ms gate smoothing at 48kHz — recalculated in prepareToPlay
     float gateGainL_ = 0.0f;   // starts closed (warmup)
     float gateGainR_ = 0.0f;
     int holdCounterL_ = 0;
