@@ -5,7 +5,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 
 크로스 플랫폼 실시간 VST2/VST3 호스트. Windows(안정), macOS(베타), Linux(실험적). 마이크 입력을 플러그인 체인으로 처리. 메인 출력은 AudioSettings Output 장치로 직접 전송, 별도 공유 모드 모니터 출력(헤드폰) 옵션. 외부 제어(단축키, MIDI, Stream Deck, HTTP API)와 빠른 프리셋 전환에 초점.
 
-> **v4.0.1은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서를 추가한 정식 릴리즈입니다.**
+> **v4.0.2은 v3.10.3에서 아키텍처 리팩토링 + 크로스플랫폼 확장 + 내장 프로세서를 추가한 정식 릴리즈입니다.**
 > MainComponent를 7개 focused module로 분할, Platform/ 추상화 레이어 도입, 테스트 52→295개 확장.
 
 ## Documentation Sync Rule (필수)
@@ -32,7 +32,7 @@ Cross-platform real-time VST2/VST3 host. Windows (stable), macOS (beta), Linux (
 8. Platform abstraction layer: `host/Source/Platform/` with per-OS implementations
 
 ## Tech Stack
-- C++17, JUCE 7.0.12, CMake 3.22+, project version 4.0.1
+- C++17, JUCE 7.0.12, CMake 3.22+, project version 4.0.2
 - **Windows**: WASAPI Shared + Low Latency + Exclusive Mode + ASIO (Steinberg ASIO SDK)
 - **macOS**: CoreAudio + AU hosting. Universal binary (arm64+x86_64). Deployment target 10.15
 - **Linux**: ALSA + JACK (PipeWire via JACK compat)
