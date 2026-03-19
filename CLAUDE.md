@@ -259,7 +259,7 @@ MainComponent Split (v3→v4):
 - **AudioEngine**: notification queue indices use `uint32_t` (overflow-safe)
 - **HTTP API**: proper status codes (404/405/400) — `processRequest` returns `pair<int, string>`
 - **LogPanel DirectPipeLogger**: ring buffer indices use `uint32_t` (overflow-safe)
-- **Tray tooltip**: `activeSlot` clamped to 0-4 range in state broadcast, with separate `autoSlotActive` field for Auto slot (index 5)
+- **Tray tooltip**: `activeSlot` passes through raw value 0-5 or -1 in state broadcast. `autoSlotActive` is deprecated (auto-derived from `activeSlot==5`, kept for backward compat). Tray tooltip checks `activeSlot == 5 || autoSlotActive` for Auto display.
 - **SettingsExporter**: Two tiers — `exportAll/importAll` strips `plugins` key; `exportFullBackup/importFullBackup` includes everything. `getCurrentPlatform()`/`isPlatformCompatible()` for cross-OS protection.
 - **PluginPreloadCache `invalidateAll()`**: Non-blocking — bumps all `slotVersions_` + sets `cancelPreload_` + bumps `preloadGeneration_`. Does NOT join thread (COM STA deadlock). `cancelAndWait()` uses heap-allocated `shared_ptr` for join state.
 - **PluginPreloadCache `slotVersions_`**: Per-slot `atomic<uint32_t>` version counter. Bumped by `invalidateSlot`/`invalidateAll`. `preloadAllSlots` captures version at file-read time; cache store checks version match — discards stale data if slot was invalidated mid-preload.
@@ -336,7 +336,7 @@ MainComponent Split (v3→v4):
 - Safety Limiter ceiling slider is in PluginChainEditor (above Add Plugin), not OutputPanel
 - MUTE buttons (OUT/MON/VST): height 30-32px
 - Receiver: `isBusesLayoutSupported` accepts mono + stereo output. `getLatencySamples()` = targetFillFrames (dynamic). Drift dead-band hysteresis between lowThreshold/2 and lowThreshold. Fade-out uses saved 64-sample buffer tail (not last sample value)
-- Stream Deck: `autoReconnect: true`, handles `activeSlot === -1` (no slot active) and `auto_slot_active` (Auto slot). Clears stale state on reconnect
+- Stream Deck: `autoReconnect: true`, handles `activeSlot === -1` (no slot active), `activeSlot === 5` (Auto, canonical), and `auto_slot_active` (deprecated fallback). Clears stale state on reconnect
 - Build: RNNoise x86 sources guarded for ARM (`CMAKE_SYSTEM_PROCESSOR` check). VST2 target conditional on SDK presence (`DIRECTPIPE_HAS_VST2`). `desiredDeviceLock_` SpinLock protects device name strings across threads
 - **v3 핫픽스 동기화**: v3에서 긴급 버그를 수정하면 반드시 이 v4에도 동기화해야 합니다. 단, v3 전용 코드(version ceiling 등)는 동기화 제외. 상세 절차는 `../HOTFIX_RELEASE_GUIDE.md` Phase 10 참조.
 

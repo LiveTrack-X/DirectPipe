@@ -1159,8 +1159,8 @@ AutoHotkey로 커스텀 핫키:
 | `muted` | bool | 패닉 뮤트 활성 여부 |
 | `output_muted` | bool | 메인 출력 뮤트 여부 |
 | `input_muted` | bool | 입력 뮤트 여부 (`muted`와 동일 — 독립 입력 뮤트 없음) |
-| `active_slot` | number | 활성 프리셋 슬롯 (0-4 = A-E, -1 = 없음, 클램프) |
-| `auto_slot_active` | bool | Auto 프리셋 슬롯 선택 여부 |
+| `active_slot` | number | 활성 프리셋 슬롯 (0-5 = A-E + Auto, -1 = 없음) |
+| `auto_slot_active` | bool | **Deprecated** — `active_slot == 5`에서 자동 파생. 하위 호환용. |
 | `slot_names` | array | 슬롯 이름 배열 (6개: A-E + Auto, 빈 문자열 = 이름 없음) |
 | `preset` | string | 현재 프리셋 이름 |
 | `latency_ms` | number | 메인 레이턴시 (ms) |

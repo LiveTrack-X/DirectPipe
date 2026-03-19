@@ -410,9 +410,9 @@ private:
                 tooltip += app_.enableExternalControls_ ? " (Portable)" : " (Portable/Audio Only)";
             }
 
-            if (snapshot.autoSlotActive)
+            if (snapshot.activeSlot == 5 || snapshot.autoSlotActive)
                 tooltip += " [Auto]";
-            else if (snapshot.activeSlot >= 0) {
+            else if (snapshot.activeSlot >= 0 && snapshot.activeSlot <= 4) {
                 char slotChar = 'A' + static_cast<char>(juce::jlimit(0, 4, snapshot.activeSlot));
                 tooltip += " [Slot " + juce::String::charToString(slotChar) + "]";
             }

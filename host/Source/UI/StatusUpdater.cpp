@@ -207,8 +207,8 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.monitorEnabled = router.isEnabled(OutputRouter::Output::Monitor);
         {
             int slot = pm ? pm->getActiveSlot() : -1;
-            s.activeSlot = (slot >= 0 && slot <= 4) ? slot : -1;
-            s.autoSlotActive = (slot == 5);  // PresetSlotBar::kAutoSlotIndex == 5
+            s.activeSlot = slot;  // 0-5 or -1, no clamping
+            s.autoSlotActive = (slot == 5);  // backward compat (deprecated)
         }
         s.recording = engine_.getRecorder().isRecording();
         s.recordingSeconds = engine_.getRecorder().getRecordedSeconds();

@@ -46,8 +46,9 @@ class PresetBarAction extends SingletonAction {
         if (!state?.data) return;
         const slotNames = state.data.slot_names || [];
         const activeSlot = state.data.active_slot;
-        const autoActive = state.data.auto_slot_active === true;
-        const labels = ["A", "B", "C", "D", "E"];
+        // activeSlot==5 is the canonical Auto indicator; auto_slot_active kept as fallback
+        const autoActive = activeSlot === 5 || state.data.auto_slot_active === true;
+        const labels = ["A", "B", "C", "D", "E", "Auto"];
 
         for (const action of this.actions) {
             let display;
@@ -62,7 +63,7 @@ class PresetBarAction extends SingletonAction {
                 display = "\u2014";
                 indicatorValue = 0;
             } else {
-                const label = labels[activeSlot] || "?";
+                const label = (activeSlot >= 0 && activeSlot < labels.length) ? labels[activeSlot] : "?";
                 const name = slotNames[activeSlot] || "";
                 display = name ? `${label}|${name}` : `Slot ${label}`;
                 indicatorValue = (activeSlot + 1) * 20;

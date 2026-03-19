@@ -23,7 +23,7 @@
 
 const { SingletonAction } = require("@elgato/streamdeck");
 
-const SLOT_LABELS = ["A", "B", "C", "D", "E"];
+const SLOT_LABELS = ["A", "B", "C", "D", "E", "Auto"];
 
 class PresetSwitchAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.preset-switch";
@@ -91,16 +91,17 @@ class PresetSwitchAction extends SingletonAction {
         if (!state?.data) return;
         const activeSlot = state.data.active_slot;
         const slotNames = state.data.slot_names || [];
-        const autoActive = state.data.auto_slot_active === true;
+        // activeSlot==5 is the canonical Auto indicator; auto_slot_active kept as fallback
+        const autoActive = activeSlot === 5 || state.data.auto_slot_active === true;
 
         if (settings?.slotIndex !== undefined && settings.slotIndex !== "cycle") {
             const idx = Number(settings.slotIndex);
-            const slotLabel = SLOT_LABELS[idx] || "?";
+            const slotLabel = (idx >= 0 && idx < SLOT_LABELS.length) ? SLOT_LABELS[idx] : "?";
             const slotName = slotNames[idx] || "";
             let isActive;
 
-            if (autoActive) {
-                // Auto slot active — no regular slot is highlighted
+            if (autoActive && idx !== 5) {
+                // Auto slot active — no regular slot (0-4) is highlighted
                 isActive = false;
             } else if (activeSlot === -1 || activeSlot === undefined || activeSlot === null) {
                 isActive = false;
@@ -121,7 +122,6 @@ class PresetSwitchAction extends SingletonAction {
             let activeName;
 
             if (autoActive) {
-                // Override display for cycle mode
                 label = "Auto";
                 activeName = "Auto";
             } else if (activeSlot === -1 || activeSlot === undefined || activeSlot === null) {
@@ -129,7 +129,9 @@ class PresetSwitchAction extends SingletonAction {
                 label = "\u2014";
                 activeName = "";
             } else {
-                label = SLOT_LABELS[activeSlot] || "?";
+                label = (activeSlot >= 0 && activeSlot < SLOT_LABELS.length)
+                    ? SLOT_LABELS[activeSlot]
+                    : "?";
                 activeName = slotNames[activeSlot] || "";
             }
 
