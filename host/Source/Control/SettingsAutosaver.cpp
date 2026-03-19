@@ -53,8 +53,8 @@ void SettingsAutosaver::tick()
     if (!dirty_ || cooldown_ <= 0) return;
 
     if (--cooldown_ == 0) {
-        // Defer save if chain is in transitional state (async loading)
-        if (loadingSlot_.load() || engine_.getVSTChain().isLoading()) {
+        // Defer save if chain is in transitional state (async loading or not yet prepared)
+        if (loadingSlot_.load() || !engine_.getVSTChain().isStable()) {
             if (++deferCount_ >= kMaxDeferCount) {
                 // Force save after ~15s of deferred attempts to prevent data loss
                 juce::Logger::writeToLog("[PRESET] Autosave forced after " + juce::String(kMaxDeferCount) + " deferred attempts");
@@ -74,9 +74,10 @@ void SettingsAutosaver::tick()
 
 void SettingsAutosaver::saveNow()
 {
-    // Skip saving during async chain load — chain is in transitional state
-    // (empty or partially loaded). Saving now would corrupt the active slot file.
-    if (loadingSlot_.load() || engine_.getVSTChain().isLoading())
+    // Skip saving during async chain load or before chain is prepared —
+    // chain is in transitional state (empty or partially loaded).
+    // Saving now would corrupt the active slot file.
+    if (loadingSlot_.load() || !engine_.getVSTChain().isStable())
         return;
 
     // Save current slot's chain state (captures plugin internal state)

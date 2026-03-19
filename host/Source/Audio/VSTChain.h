@@ -314,6 +314,10 @@ public:
     /** @brief True while async chain loading is in progress. */
     bool isLoading() const { return asyncLoading_.load(); }
 
+    /** @brief True when chain is fully prepared and not in the middle of an async load.
+     *  Used by SettingsAutosaver as an additional guard beyond loadingSlot_. */
+    bool isStable() const { return prepared_.load(std::memory_order_relaxed) && !asyncLoading_.load(std::memory_order_relaxed); }
+
     /** @brief Suspend/resume graph processing (for safe state changes). */
     void suspendProcessing(bool suspend) { graph_->suspendProcessing(suspend); }
 

@@ -338,6 +338,7 @@ MainComponent Split (v3→v4):
 - Receiver: `isBusesLayoutSupported` accepts mono + stereo output. `getLatencySamples()` = targetFillFrames (dynamic). Drift dead-band hysteresis between lowThreshold/2 and lowThreshold. Fade-out uses saved 64-sample buffer tail (not last sample value)
 - Stream Deck: `autoReconnect: true`, handles `activeSlot === -1` (no slot active), `activeSlot === 5` (Auto, canonical), and `auto_slot_active` (deprecated fallback). Clears stale state on reconnect
 - Build: RNNoise x86 sources guarded for ARM (`CMAKE_SYSTEM_PROCESSOR` check). VST2 target conditional on SDK presence (`DIRECTPIPE_HAS_VST2`). `desiredDeviceLock_` SpinLock protects device name strings across threads
+- **바이패스 테일 절단**: 리버브/딜레이 플러그인 바이패스 시 잔향 테일이 즉시 절단됨 (그래프 연결 해제 방식). 향후 입력만 dry 전환 + processBlock 유지 방식 검토 예정
 - **v3 핫픽스 동기화**: v3에서 긴급 버그를 수정하면 반드시 이 v4에도 동기화해야 합니다. 단, v3 전용 코드(version ceiling 등)는 동기화 제외. 상세 절차는 `../HOTFIX_RELEASE_GUIDE.md` Phase 10 참조.
 
 ## Pre-Release Workflow (MANDATORY)

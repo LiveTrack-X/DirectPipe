@@ -20,6 +20,8 @@ protected:
         configDir_.createDirectory();
 
         engine_ = std::make_unique<AudioEngine>();
+        // Prepare VSTChain so isStable() returns true (mirrors real runtime state)
+        engine_->getVSTChain().prepareToPlay(48000.0, 512);
         presetMgr_ = std::make_unique<PresetManager>(*engine_);
         autosaver_ = std::make_unique<SettingsAutosaver>(
             *presetMgr_, *engine_, loadingSlot_, partialLoad_);

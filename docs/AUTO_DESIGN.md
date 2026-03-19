@@ -135,6 +135,19 @@ Noise Removal (RNNoise) **only works at 48kHz**. Activating [Auto] at a non-48kH
 
 This conflicts with Auto's "one click always gives the same result" philosophy. A future internal resampling implementation (juce::LagrangeInterpolator) is planned to resolve this.
 
+### 권장 환경 / Recommended Environment
+
+Auto가 가장 효과적인 환경 / Environment where Auto works best:
+- 48kHz 샘플레이트 (NR 정상 동작) / 48kHz sample rate (NR fully active)
+- USB 콘덴서 마이크 또는 오디오 인터페이스 + 다이나믹 마이크 (적정 게인) / USB condenser mic or audio interface + dynamic mic (adequate gain)
+- 입과 마이크 거리 10-30cm / Mic distance 10-30cm from mouth
+- 배경 소음 -50 dBFS 이하 (조용한 방) / Background noise below -50 dBFS (quiet room)
+
+Auto가 덜 효과적인 환경 / Less effective environments:
+- 비-48kHz SR (NR 비활성 -- passthrough) / Non-48kHz SR (NR disabled -- passthrough)
+- 저게인 다이나믹 마이크 + 먼 거리 (Max Gain 22dB 한계 도달 가능) / Low-gain dynamic mic + far distance (may hit Max Gain 22dB ceiling)
+- 배경 소음 -40 dBFS 이상 (Freeze Level 무력화 가능) / Background noise above -40 dBFS (Freeze Level may not engage)
+
 ---
 
 ## 3. 포함하지 않은 것과 그 이유 / What Was Excluded and Why
@@ -258,6 +271,21 @@ Why Low/High Correct are asymmetric:
 | **Attack** | **0.1ms** | 사실상 즉시 반응. 리미터는 "절대 넘지 않게"가 목적이므로 빠를수록 좋음 / Effectively instant response. A limiter's purpose is "never exceed," so faster is better |
 | **Release** | **50ms** | 10ms는 펌핑(볼륨이 숨쉬는 것처럼 올라갔다 내려갔다), 200ms는 연속 피크에서 레벨이 너무 오래 눌림. 50ms는 투명하면서 충분히 빠른 복귀 / 10ms causes pumping (volume rises and falls like breathing), 200ms holds level down too long on consecutive peaks. 50ms is transparent with sufficiently fast recovery |
 | **Enabled** | **기본 ON / Default ON** | 클리핑은 어떤 상황에서도 바람직하지 않음. 성능 영향 거의 없음 (per-sample peak comparison only) / Clipping is undesirable in any situation. Virtually no performance impact (per-sample peak comparison only) |
+
+### AGC와 Safety Limiter의 상호작용 / AGC-Limiter Interaction
+
+극단적 시나리오: 조용한 말(-45 dBFS) → AGC +22dB 적용 중 → 갑자기 큰 소리(0 dBFS) 입력 → 출력이 순간적으로 +22 dBFS → Safety Limiter가 -0.3 dBFS로 즉시 제한.
+
+Extreme scenario: quiet speech (-45 dBFS) → AGC applying +22dB gain → sudden loud sound (0 dBFS) → momentary +22 dBFS output → Safety Limiter clamps to -0.3 dBFS instantly.
+
+이때 22dB 이상의 즉각적 게인 리덕션은 순간적 왜곡을 일으킬 수 있습니다. 이는 개방 루프 AGC + 피드포워드 리미터 조합의 구조적 한계입니다.
+
+A 22dB+ instant gain reduction can cause momentary distortion. This is a structural limitation of open-loop AGC + feed-forward limiter combination.
+
+완화 요소 / Mitigating factors:
+- -6dB 내부 오프셋으로 실제 게인이 22dB까지 올라갈 확률이 낮음 / -6dB internal offset makes +22dB gain unlikely in practice
+- fast envelope 10ms가 큰 소리를 빠르게 감지하여 다음 블록에서 게인 감소 / Fast envelope (10ms) detects loud sound quickly, reducing gain in the next block
+- per-block linear ramp으로 블록 경계 클릭 방지 / Per-block linear ramp prevents inter-block clicks
 
 ---
 
