@@ -302,7 +302,7 @@ private:
     int lastDeviceXRunCount_ = 0;                       // [Message thread only]
     int xrunHistory_[60] = {};                          // [Message thread only]
     int xrunHistoryIdx_ = 0;                            // [Message thread only]
-    double xrunAccumulatorTime_ = 0.0;                  // [Message thread only]
+    double lastXRunBucketTime_ = juce::Time::getMillisecondCounterHiRes() / 1000.0;  // [Message thread only]
 
     // ─── Device reconnection tracking (Message thread only, except atomics) ───
     juce::SpinLock desiredDeviceLock_;                   // Protects desiredInputDevice_ / desiredOutputDevice_

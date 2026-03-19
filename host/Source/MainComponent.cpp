@@ -579,6 +579,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     setupStatusLabel(latencyLabel_);
     setupStatusLabel(cpuLabel_);
+    cpuLabel_.addMouseListener(this, false);  // Click to reset XRun counter
     setupStatusLabel(formatLabel_);
     setupStatusLabel(portableLabel_);
 
@@ -813,6 +814,13 @@ void MainComponent::resized()
 
 void MainComponent::mouseDown(const juce::MouseEvent& e)
 {
+    // Click CPU label to reset XRun counter
+    if (e.eventComponent == &cpuLabel_) {
+        audioEngine_.requestXRunReset();
+        showNotification("XRun counter reset", NotificationLevel::Info);
+        return;
+    }
+
     // Right-click on Auto button shows context menu
     if (e.mods.isPopupMenu() && e.eventComponent == &autoProcessorBtn_) {
         juce::PopupMenu menu;

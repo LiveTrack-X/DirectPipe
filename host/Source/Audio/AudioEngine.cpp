@@ -856,7 +856,7 @@ void AudioEngine::updateXRunTracking()
         lastDeviceXRunCount_ = (xruns >= 0) ? xruns : 0;
         std::memset(xrunHistory_, 0, sizeof(xrunHistory_));
         xrunHistoryIdx_ = 0;
-        xrunAccumulatorTime_ = 0.0;
+        lastXRunBucketTime_ = juce::Time::getMillisecondCounterHiRes() / 1000.0;
         recentXRuns_.store(0, std::memory_order_relaxed);
         return;
     }
@@ -868,14 +868,16 @@ void AudioEngine::updateXRunTracking()
     if (delta < 0) delta = 0;  // Device was reset
     lastDeviceXRunCount_ = currentCount;
 
-    // Accumulate time (~33ms per call at 30Hz)
-    xrunAccumulatorTime_ += 1.0 / 30.0;
+    // Use real elapsed time for accurate 1-second bucket rotation
+    // (JUCE timers are not perfectly 30Hz — accumulated drift causes
+    //  the 60-slot window to take longer than 60 seconds)
+    double now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+    double elapsed = now - lastXRunBucketTime_;
 
-    // Every ~1 second, rotate the circular buffer
-    if (xrunAccumulatorTime_ >= 1.0) {
-        xrunAccumulatorTime_ -= 1.0;
+    if (elapsed >= 1.0) {
+        lastXRunBucketTime_ = now;
 
-        // Move to next slot, subtract the old value from total
+        // Move to next slot, clear old value
         xrunHistoryIdx_ = (xrunHistoryIdx_ + 1) % 60;
         xrunHistory_[xrunHistoryIdx_] = 0;
 
@@ -895,7 +897,6 @@ void AudioEngine::updateXRunTracking()
         for (int i = 0; i < 60; ++i)
             total += xrunHistory_[i];
         recentXRuns_.store(total, std::memory_order_relaxed);
-
     }
 }
 
