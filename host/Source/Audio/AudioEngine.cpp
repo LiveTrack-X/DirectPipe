@@ -1091,6 +1091,13 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         buffer.applyGain(gain);
     }
 
+    // Independent input mute: silence the buffer but keep processing
+    // (reverb tails fade naturally, AGC enters freeze, compressors release)
+    // Different from panic mute which skips processBlock entirely.
+    if (inputMuted_.load(std::memory_order_relaxed)) {
+        buffer.clear();
+    }
+
     // Measure input level (RMS) — decimated: every 4th callback (~23Hz at 48kHz/512smp).
     // UI timer runs at 30Hz so per-callback RMS is wasted work.
     const bool measureThisCallback = (++rmsDecimationCounter_ & 3) == 0;

@@ -141,7 +141,8 @@ void ActionHandler::togglePanicMute()
 
 // During panic mute, most actions are blocked by the engine_.isMuted() check.
 // Actions that BYPASS the mute guard (no isMuted check):
-//   - PanicMute/InputMuteToggle: they ARE the panic toggle
+//   - PanicMute: it IS the panic toggle
+//   - InputMuteToggle: independent input mute (silences mic, chain keeps running)
 //   - XRunReset: stateless counter reset, safe anytime
 //   - SafetyLimiterToggle/SetSafetyLimiterCeiling: safety feature, must always work
 //   - AutoProcessorsAdd: chain configuration, not live audio routing
@@ -194,9 +195,15 @@ void ActionHandler::handle(const ActionEvent& event)
         }
 
         case Action::PanicMute:
-        case Action::InputMuteToggle:
             doPanicMute(!engine_.isMuted());
             break;
+
+        case Action::InputMuteToggle: {
+            bool current = engine_.isInputMuted();
+            engine_.setInputMuted(!current);
+            if (onDirty) onDirty();
+            break;
+        }
 
         case Action::InputGainAdjust:
             // floatParam is a "step count" (±1 = ±0.1 linear gain on 0.0-2.0 scale).

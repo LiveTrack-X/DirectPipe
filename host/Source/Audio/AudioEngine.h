@@ -151,6 +151,9 @@ public:
     void setMuted(bool muted) { muted_.store(muted, std::memory_order_relaxed); }
     bool isMuted() const { return muted_.load(std::memory_order_relaxed); }
 
+    void setInputMuted(bool muted) { inputMuted_.store(muted, std::memory_order_relaxed); }
+    bool isInputMuted() const { return inputMuted_.load(std::memory_order_relaxed); }
+
     void setOutputMuted(bool muted) { outputMuted_.store(muted, std::memory_order_relaxed); }
     bool isOutputMuted() const { return outputMuted_.load(std::memory_order_relaxed); }
 
@@ -282,6 +285,7 @@ private:
     std::atomic<float> inputGain_{1.0f};                // [Message write, RT read]
     std::atomic<int> channelMode_{2};                   // [Message write, RT read]
     std::atomic<bool> muted_{false};                    // [Message write, RT read]
+    std::atomic<bool> inputMuted_{false};               // [Any thread write, RT read] Independent input mute — silences input, chain keeps running
     std::atomic<bool> outputMuted_{false};              // [Message write, RT read]
     std::atomic<bool> outputNone_{false};               // [Message write, RT read] "None" output device (persists)
 
