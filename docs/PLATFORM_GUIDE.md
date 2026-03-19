@@ -38,6 +38,14 @@ DirectPipe supports Windows, macOS, and Linux. Features and setup vary by platfo
 - **DirectSound** — 레거시, 사용 비추천
 - **ASIO** — 전문 오디오 인터페이스용, 최저 지연
 
+> **ASIO SR/BS 정책**: ASIO 장치는 SR(샘플레이트)/BS(버퍼 크기)를 전역으로 소유합니다 — 장치를 공유하는 모든 앱에 영향을 줍니다. DirectPipe는 시작 시 저장된 SR/BS를 ASIO에 강제하지 않고, 장치가 보고하는 현재 값을 수용합니다. 이유: SR/BS를 강제하면 ASIO 드라이버가 재시작되어 DAW, 미디어 플레이어 등 다른 앱의 오디오가 끊깁니다. ASIO 컨트롤 패널에서 BS를 변경하면 DirectPipe 설정에 자동으로 반영됩니다. WASAPI는 앱별 SR/BS이므로 저장된 값이 안전하게 적용됩니다 (다른 앱에 영향 없음).
+>
+> **시작 흐름**: WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 전환 시도. ASIO 실패 시 WASAPI에 남아있음.
+>
+> **ASIO SR/BS Policy**: ASIO devices own SR (sample rate) / BS (buffer size) globally — affects all apps sharing the device. On startup, DirectPipe does NOT force saved SR/BS on ASIO; instead it accepts whatever the device currently reports. Reason: forcing SR/BS would restart the ASIO driver, disrupting audio in DAWs, media players, and other apps. When BS is changed from the ASIO control panel, DirectPipe automatically saves the new value to settings. WASAPI uses per-app SR/BS, so saved values are safely applied (no impact on other apps).
+>
+> **Startup flow**: Opens WASAPI first (safe fallback) → loads saved driver type from settings → switches to ASIO. Falls back to WASAPI if ASIO fails.
+
 ### 핫키 / Hotkeys
 
 `RegisterHotKey` API로 시스템 전역 단축키 등록. 최소화/트레이 상태에서도 동작.
