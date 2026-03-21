@@ -136,6 +136,7 @@ LogPanel::LogPanel()
     appHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
     addAndMakeVisible(appHeaderLabel_);
 
+    startupToggle_.setButtonText(Platform::getAutoStartLabel());
     startupToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
     startupToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
     if (Platform::isAutoStartSupported()) {

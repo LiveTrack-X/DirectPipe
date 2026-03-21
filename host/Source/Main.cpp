@@ -438,12 +438,7 @@ private:
             menu.addItem(1, "Show Window");
             menu.addSeparator();
             if (directpipe::Platform::isAutoStartSupported()) {
-#if JUCE_MAC
-                const char* autoStartLabel = "Open at Login";
-#else
-                const char* autoStartLabel = "Start with System";
-#endif
-                menu.addItem(3, autoStartLabel,
+                menu.addItem(3, directpipe::Platform::getAutoStartLabel(),
                              true, directpipe::Platform::isAutoStartEnabled());
             }
             menu.addSeparator();

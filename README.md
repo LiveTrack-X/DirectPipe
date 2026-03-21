@@ -32,11 +32,11 @@
 
 **스트리머, 팟캐스터, 게이머, 보이스챗 사용자를 위한** 크로스 플랫폼 실시간 마이크 프로세서.
 
-USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. **VST 플러그인을 모르셔도 [Auto] 버튼 하나로 AI 노이즈 제거 + 자동 볼륨 조절 + 저주파 필터가 즉시 적용됩니다.** 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 즉시 전환할 수 있다.
+USB 마이크에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리하고, Discord · Zoom · OBS 등에 깨끗한 음성을 바로 전달한다. **VST 플러그인을 모르셔도 [Auto] 버튼 하나로 AI 노이즈 제거 + 자동 볼륨 조절 + 저주파 필터를 한 번에 추가할 수 있습니다.** 방송 중에도 Stream Deck 버튼 하나로 이펙트 전환, 볼륨 조절, 뮤트가 가능하며, 게임 중에는 단축키로, MIDI 컨트롤러로도 조작할 수 있다. DAW 없이도 전문적인 마이크 세팅을 간편하게 구성하고, 상황별 프리셋(A~E)으로 빠르게 전환할 수 있다.
 
 **Cross-platform real-time microphone processor for streamers, podcasters, gamers, and voice chat users.**
 
-Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deliver clean audio directly to Discord, Zoom, or OBS. **Don't know VST plugins? Just click the [Auto] button — AI noise removal + auto volume leveling + low-cut filter are applied instantly.** Switch effects, adjust volume, and mute with a single Stream Deck button while live — or use hotkeys during gameplay, MIDI controllers for hands-on mixing. Set up a professional mic chain without a DAW, and instantly switch between situation presets (A-E).
+Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deliver clean audio directly to Discord, Zoom, or OBS. **Don't know VST plugins? Just click the [Auto] button — AI noise removal + auto volume leveling + low-cut filter can be added in one step.** Switch effects, adjust volume, and mute with a single Stream Deck button while live — or use hotkeys during gameplay, MIDI controllers for hands-on mixing. Set up a professional mic chain without a DAW, and switch quickly between situation presets (A-E).
 
 > **Platform support**: Windows (WASAPI/ASIO), macOS (CoreAudio), Linux (ALSA/JACK). Windows는 안정 빌드, macOS는 베타, Linux는 실험적 지원.
 > Windows is the stable release. macOS is in beta. Linux support is experimental.
@@ -73,7 +73,7 @@ Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. **Leave [Auto] on 
 
 1. **다운로드 & 실행** — [최신 버전 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → 압축 해제 → 실행 / [Download latest](https://github.com/LiveTrack-X/DirectPipe/releases/latest) → Extract → Run
 2. **마이크 선택** — Audio 탭 → Input에서 USB 마이크 선택 / Audio tab → Select your USB mic as Input
-3. **[Auto] 클릭** — 기본적인 마이크 보정(노이즈 제거 + 자동 볼륨 + 저주파 필터)이 즉시 적용! / Click [Auto] — Essential mic correction (noise removal + auto volume + low-cut filter) applied instantly!
+3. **[Auto] 클릭** — 기본적인 마이크 보정(노이즈 제거 + 자동 볼륨 + 저주파 필터)을 한 번에 추가 / Click [Auto] — Add essential mic correction (noise removal + auto volume + low-cut filter) in one step
 4. **끝!** 더 자세한 설정은 [Quick Start 가이드](docs/QUICKSTART.md) 참조 / **Done!** For detailed setup, see the [Quick Start guide](docs/QUICKSTART.md)
 
 ---
@@ -88,7 +88,7 @@ Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. **Leave [Auto] on 
 
 - **설치 불필요** — Windows: 단일 .exe, macOS: .app 번들, Linux: 단일 바이너리. 인스톨러 없음 — Windows: single .exe, macOS: .app bundle, Linux: single binary. No installer needed
 - **5종 외부 제어** — 핫키 · MIDI · Stream Deck · HTTP · WebSocket을 한 프로그램에서 — All 5 control methods in one app
-- **프리셋 즉시 전환** — A-E 슬롯, 이름 지정, 끊김 없는 교체 — Named preset slots (A-E) with seamless switching
+- **빠른 프리셋 전환** — A-E 슬롯, 이름 지정, 같은 체인은 즉시, 다른 체인은 비동기 로딩으로 짧은 갭 최소화 — Named preset slots (A-E) with fast switching: instant for same-chain changes, async loading for different chains
 - **VST 출력 (DirectPipe Receiver, VST2/VST3/AU)** — 가상 케이블 없이 OBS/DAW 직접 연결 — Direct OBS/DAW connection without virtual cables
 - **오픈소스** — GPL v3, 누구나 기여 가능 — Open source, community-driven
 
@@ -168,7 +168,7 @@ External Control:
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
 - **Safety Limiter** — VST 체인 이후 전역 피드포워드 리미터. 기본 ceiling -0.3 dBFS, 예기치 않은 클리핑 방지 — Global feed-forward limiter after VST chain. Default ceiling -0.3 dBFS, prevents unexpected clipping
 - **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼(입력 게인 옆 특수 프리셋 슬롯)으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) insertable alongside VST plugins. [Auto] button (special preset slot next to input gain) adds all 3 at once
-- **Clock Drift Compensation** — Bidirectional IPC drift handling with hysteresis dead-band for stable long-duration streaming (auto buffer management prevents clicks/pops) / 히스테리시스 데드 밴드를 포함한 양방향 IPC 클록 드리프트 보상으로 장시간 스트리밍 안정성 보장 (자동 버퍼 관리로 끊김/팝 방지)
+- **Clock Drift Compensation** — Bidirectional IPC drift handling with hysteresis dead-band to improve long-duration streaming stability (auto buffer management helps reduce clicks/pops) / 히스테리시스 데드 밴드를 포함한 양방향 IPC 클록 드리프트 보상으로 장시간 스트리밍 안정성을 높이도록 설계됨 (자동 버퍼 관리로 끊김/팝 완화)
 
 ### 외부 제어 / External Control
 
@@ -701,7 +701,7 @@ Professional low-latency driver. Requires native ASIO driver from your audio int
 
 ---
 
-Plugin scanning runs in a **separate process**, so DirectPipe itself will never freeze or crash. Some plugins may take a while to scan (up to 5 minutes).
+Plugin scanning runs in a **separate process**, so a plugin scan crash should not take down the main DirectPipe app. Some plugins may take a while to scan (up to 5 minutes).
 
 - Plugins that cause crashes are automatically **blacklisted** and skipped in future scans
 - Scan log: Windows `%AppData%/DirectPipe/scanner-log.txt`, macOS `~/Library/Application Support/DirectPipe/scanner-log.txt`, Linux `~/.config/DirectPipe/scanner-log.txt`
@@ -724,7 +724,7 @@ Plugin scanning runs in a **separate process**, so DirectPipe itself will never 
 **Quick Preset Slots (A–E):**
 - Save your current plugin chain and settings to slots **A through E**
 - Click a slot button **(A/B/C/D/E)** → saves current state if empty, loads slot if occupied
-- If the plugins are the same, only parameters change (**instant switch**); different plugins use **async loading** (preloading cache enables seamless instant switching)
+- If the plugins are the same, only parameters change (**near-instant switch**); different plugins use **async loading** (preloading cache can shorten the transition)
 - **Right-click** slot → **Rename** (e.g., `A|Game`), **Copy**, **Delete**, **Export/Import** (`.dppreset`)
 - Use **Save/Load** buttons to save/load presets as .dppreset files
 
@@ -740,7 +740,7 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 - Main Output과는 별도의 오디오 장치를 사용하므로 **독립적으로 동작** (Windows: WASAPI, macOS: CoreAudio)
 - **MON** 버튼으로 켜기/끄기
 
-> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하기 때문에 **~15-20ms의 추가 지연**이 발생합니다. 이 지연은 듀얼 디바이스 구조의 한계입니다. 자기 목소리를 지연 없이 듣고 싶다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
+> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하므로, 장치/드라이버/버퍼 설정에 따라 보통 **추가 지연이 느껴질 수 있습니다**. 많은 환경에서 대략 `~15-20ms` 수준이지만 시스템에 따라 달라질 수 있습니다. 가장 낮은 모니터 지연이 필요하다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
 
 ---
 
@@ -750,7 +750,7 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 - Uses a separate audio device from the Main Output, so it **works independently** (Windows: WASAPI, macOS: CoreAudio)
 - Toggle on/off with the **MON** button
 
-> **Latency note**: Monitor output uses a separate audio device, which adds **~15-20ms of extra latency** due to the dual-device architecture. For zero-latency monitoring, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
+> **Latency note**: Monitor output uses a separate audio device, so you will usually hear some extra latency depending on the device, driver, and buffer settings. In many setups this is roughly `~15-20ms`, but it can vary by system. For the lowest monitor latency, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
 </details>
 
 <details>
@@ -823,7 +823,7 @@ Yes! Multiple control methods are available:
 
 **DirectPipe Receiver** is a plugin that lets **OBS, DAWs, and other hosts** receive DirectPipe's processed mic audio directly. Available in VST2, VST3, and AU formats (OBS only supports VST2).
 
-Normally, to route DirectPipe's processed audio to OBS, you need a **virtual audio cable** (VB-Cable, BlackHole, etc.). With the DirectPipe Receiver, you can receive audio directly via shared memory (IPC) — **no virtual cable needed**, simpler setup, lower latency.
+Normally, to route DirectPipe's processed audio to OBS, you need a **virtual audio cable** (VB-Cable, BlackHole, etc.). With the DirectPipe Receiver, you can receive audio directly via shared memory (IPC) — **no virtual cable needed**, usually simpler to set up, and often lower-latency or more predictable than virtual-cable routing depending on the host and driver setup.
 
 **DirectPipe Receiver vs. Virtual Cable 비교 / Comparison:**
 
@@ -1090,15 +1090,15 @@ DirectPipe only supports **64-bit VST2/VST3 plugins**. 32-bit plugins won't appe
 <details>
 <summary><b>프리셋 전환할 때 소리가 잠깐 끊겨요 / Brief audio gap when switching presets</b></summary>
 
-프리셋 전환 시 **~10-50ms의 매우 짧은 오디오 갭**이 발생할 수 있습니다. 이것은 **Keep-Old-Until-Ready** 메커니즘의 정상 동작입니다 — 새 플러그인 체인이 백그라운드에서 완전히 로드될 때까지 이전 체인이 계속 오디오를 처리하고, 준비가 되면 원자적으로 교체합니다.
+프리셋 전환 시 **매우 짧은 오디오 갭**이 발생할 수 있습니다. 같은 체인 전환이나 캐시 히트 상황에서는 흔히 `~10-50ms` 수준이지만, 플러그인 구성과 시스템 상태에 따라 더 길어질 수 있습니다. 이것은 **Keep-Old-Until-Ready** 메커니즘의 정상 동작입니다 — 새 플러그인 체인이 백그라운드에서 완전히 로드될 때까지 이전 체인이 계속 오디오를 처리하고, 준비가 되면 원자적으로 교체합니다.
 
-이 10-50ms 갭은 v3의 1-3초 무음 갭에서 크게 개선된 것입니다. 프리로드 캐시가 활성화되어 있으면 (다른 슬롯 플러그인을 미리 로드) 더 짧아질 수 있습니다.
+이 짧은 갭은 v3의 1-3초 무음 갭에서 크게 개선된 것입니다. 프리로드 캐시가 활성화되어 있으면 (다른 슬롯 플러그인을 미리 로드) 더 짧아질 수 있습니다.
 
 ---
 
-A **very brief audio gap (~10-50ms)** may occur during preset switches. This is normal **Keep-Old-Until-Ready** behavior — the old plugin chain continues processing audio while the new chain loads in the background, then swaps atomically when ready.
+A **very brief audio gap** may occur during preset switches. In same-chain or cache-hit cases this is often around `~10-50ms`, but it can be longer depending on the plugin set and system state. This is normal **Keep-Old-Until-Ready** behavior — the old plugin chain continues processing audio while the new chain loads in the background, then swaps atomically when ready.
 
-This 10-50ms gap is a major improvement over v3's 1-3 second mute gap. With the preload cache active (pre-loads other slots' plugins), the gap can be even shorter.
+This short gap is a major improvement over v3's 1-3 second mute gap. With the preload cache active (pre-loads other slots' plugins), the gap can be even shorter.
 </details>
 
 <details>

@@ -4,6 +4,13 @@ All notable changes to DirectPipe will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Auto-start label (cross-platform UI consistency)**: Unified tray menu and Settings toggle to use a single platform label source via `Platform::getAutoStartLabel()` (`Open at Login` on macOS, `Start with System` on others), removing Windows-specific hardcoded wording from the Settings toggle path.
+
+---
+
 ## [4.0.2] - 2026-03-19
 
 ### Added

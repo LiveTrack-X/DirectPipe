@@ -23,5 +23,15 @@ bool setAutoStartEnabled(bool enable);
 /** Whether this platform supports auto-start configuration. */
 bool isAutoStartSupported();
 
+/** Platform-appropriate UI label for auto-start toggle/menu item. */
+inline const char* getAutoStartLabel()
+{
+#if JUCE_MAC
+    return "Open at Login";
+#else
+    return "Start with System";
+#endif
+}
+
 } // namespace Platform
 } // namespace directpipe
