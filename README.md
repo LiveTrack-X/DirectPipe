@@ -26,7 +26,6 @@
 > **참고**: Windows는 안정(Stable), macOS는 베타, Linux는 실험적입니다. macOS/Linux 빌드는 실기기 테스트가 제한적입니다.
 > **Note**: Windows is stable, macOS is beta, Linux is experimental. macOS/Linux builds have limited real-hardware testing.
 
-[Report Audit Log](https://nas.flathome.net/sharing/tRHOHKwbS) -non Login required - 
 
 
 <p align="center">
