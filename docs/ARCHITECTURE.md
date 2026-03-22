@@ -10,7 +10,7 @@ DirectPipe는 마이크 입력을 VST 플러그인 체인으로 실시간 처리
 
 ```
 Mic ─→ Audio Driver ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─┐
-        (WASAPI/ASIO [Win],                                    │
+        (WASAPI/ASIO [Win],                        Global Safety Guard
          CoreAudio [macOS],                                    │
          ALSA/JACK [Linux])                                    │
                  ┌────────────────────────────────────────────┼────────────────────┐
