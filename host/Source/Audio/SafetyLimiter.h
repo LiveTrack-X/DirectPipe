@@ -18,7 +18,7 @@
 
 /**
  * @file SafetyLimiter.h
- * @brief Brickwall-style safety limiter with look-ahead and hard ceiling clamp.
+ * @brief Global safety guard (legacy class name: SafetyLimiter).
  *
  * Inserted after VST chain, before all output paths (Recording/IPC/Monitor/Main).
  * Prevents unexpected clipping from plugin parameter changes or preset switches.
@@ -27,14 +27,16 @@
 
 #include <JuceHeader.h>
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cmath>
 
 namespace directpipe {
 
 /**
- * @brief RT-safe brickwall limiter with atomic parameter control.
+ * @brief RT-safe global safety guard with atomic parameter control.
+ *
+ * Compatibility note:
+ *   Keep class/file/API name "SafetyLimiter" for legacy actions/state contracts.
  *
  * Thread Ownership (see Audio/README.md "Thread Model"):
  *   process()               [RT audio thread only]
@@ -46,7 +48,7 @@ class SafetyLimiter {
 public:
     SafetyLimiter();
 
-    /** Recalculate coefficients for new sample rate and reset look-ahead state. */
+    /** Recalculate coefficients for new sample rate and reset state. */
     void prepareToPlay(double sampleRate);
 
     /** Process audio buffer in-place. RT-safe: no alloc, no mutex, no logging. */
@@ -70,22 +72,11 @@ private:
     std::atomic<float> ceilingLinear_{0.9661f};  // dBtoLinear(-0.3)
     std::atomic<float> ceilingdB_{-0.3f};
 
-    // Envelope + delay state (RT audio thread only, non-atomic)
+    // Envelope state (RT audio thread only, non-atomic)
     float currentGain_ = 1.0f;
     float releaseCoeff_ = 0.0f;
-    int lookAheadSamples_ = 1;
-    int delaySize_ = 2;
-    int writePos_ = 0;
-
     static constexpr int kMaxChannels = 64;
-    // Brickwall safety window. This intentionally adds fixed output delay.
-    static constexpr float kLookAheadMs = 2.0f;
     static constexpr float kReleaseMs = 50.0f;
-    static constexpr int kMaxLookAheadSamples = 1024;
-    static constexpr int kMaxDelayBufferSize = kMaxLookAheadSamples + 1;
-
-    std::array<std::array<float, kMaxDelayBufferSize>, kMaxChannels> delayedSamples_{};
-    std::array<float, kMaxDelayBufferSize> peakRing_{};
 
     // UI feedback [written by RT, read by UI]
     std::atomic<float> gainReduction_dB_{0.0f};

@@ -13,7 +13,8 @@ class BuiltinAutoGain;
  *
  * Opened via createEditor() on BuiltinAutoGain.
  * Target LUFS slider + read-only current LUFS/Gain display + collapsible
- * advanced section with Low Correct, High Correct, and Max Gain sliders.
+ * advanced section with Low Correct, High Correct, Max Gain, Freeze Level,
+ * and Limiter Ceiling control.
  * Polls processor feedback at ~10 Hz via juce::Timer.
  *
  * Thread Ownership:
@@ -52,6 +53,9 @@ private:
     juce::Slider maxGainSlider_;
     juce::Label freezeLabel_;
     juce::Slider freezeSlider_;
+    juce::Label limiterCeilingLabel_;
+    juce::Slider limiterCeilingSlider_;
+    juce::Label limiterNoteLabel_;
 
     void timerCallback() override;
     void syncFromProcessor();

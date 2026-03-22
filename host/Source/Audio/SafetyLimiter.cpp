@@ -18,7 +18,7 @@
 
 /**
  * @file SafetyLimiter.cpp
- * @brief Brickwall-style safety limiter implementation
+ * @brief Global Safety Guard implementation (legacy class name retained)
  */
 
 #include "SafetyLimiter.h"
@@ -35,12 +35,6 @@ void SafetyLimiter::prepareToPlay(double sampleRate)
 {
     if (sampleRate <= 0.0) sampleRate = 48000.0;
 
-    lookAheadSamples_ = juce::jlimit(
-        1,
-        kMaxLookAheadSamples,
-        juce::roundToInt(static_cast<float>(sampleRate) * (kLookAheadMs * 0.001f)));
-    delaySize_ = lookAheadSamples_ + 1;
-
     releaseCoeff_ = std::exp(-1.0f / static_cast<float>(sampleRate * kReleaseMs * 0.001));
 
     resetState();
@@ -50,11 +44,6 @@ void SafetyLimiter::prepareToPlay(double sampleRate)
 void SafetyLimiter::resetState()
 {
     currentGain_ = 1.0f;
-    writePos_ = 0;
-
-    for (int ch = 0; ch < kMaxChannels; ++ch)
-        std::fill_n(delayedSamples_[ch].begin(), delaySize_, 0.0f);
-    std::fill_n(peakRing_.begin(), delaySize_, 0.0f);
 
     gainReduction_dB_.store(0.0f, std::memory_order_relaxed);
 }
@@ -82,44 +71,25 @@ void SafetyLimiter::process(juce::AudioBuffer<float>& buffer, int numSamples)
     float minGain = 1.0f;
 
     for (int i = 0; i < numSamples; ++i) {
-        float inputPeak = 0.0f;
-
-        // Capture current sample into delay ring and track full-channel peak.
+        float framePeak = 0.0f;
         for (int ch = 0; ch < numChannels; ++ch) {
             const float in = buffer.getSample(ch, i);
-            inputPeak = std::max(inputPeak, std::abs(in));
-            if (ch < processChannels)
-                delayedSamples_[ch][writePos_] = in;
-        }
-        peakRing_[writePos_] = inputPeak;
-
-        // Read from the delayed position so gain can react ahead of the emitted sample.
-        int readPos = writePos_ - lookAheadSamples_;
-        if (readPos < 0)
-            readPos += delaySize_;
-
-        // Peak over look-ahead window [readPos .. writePos].
-        float windowPeak = 0.0f;
-        int idx = readPos;
-        for (int k = 0; k <= lookAheadSamples_; ++k) {
-            windowPeak = std::max(windowPeak, peakRing_[idx]);
-            if (++idx >= delaySize_)
-                idx = 0;
+            framePeak = std::max(framePeak, std::abs(in));
         }
 
         float targetGain = 1.0f;
-        if (windowPeak > ceiling && windowPeak > 1.0e-9f)
-            targetGain = ceiling / windowPeak;
+        if (framePeak > ceiling && framePeak > 1.0e-9f)
+            targetGain = ceiling / framePeak;
 
-        // Instant attack for brickwall safety, smooth release for recovery.
+        // Zero-latency safety guard: instant attack, smooth release.
         if (targetGain < currentGain_)
             currentGain_ = targetGain;
         else
             currentGain_ = rCoeff * currentGain_ + (1.0f - rCoeff) * targetGain;
 
         for (int ch = 0; ch < processChannels; ++ch) {
-            float out = delayedSamples_[ch][readPos] * currentGain_;
-            // Fail-safe: enforce absolute sample ceiling even if envelope math under-shoots.
+            float out = buffer.getSample(ch, i) * currentGain_;
+            // Fail-safe: enforce absolute sample ceiling.
             out = juce::jlimit(-ceiling, ceiling, out);
             buffer.setSample(ch, i, out);
         }
@@ -133,9 +103,6 @@ void SafetyLimiter::process(juce::AudioBuffer<float>& buffer, int numSamples)
 
         if (currentGain_ < minGain)
             minGain = currentGain_;
-
-        if (++writePos_ >= delaySize_)
-            writePos_ = 0;
     }
 
     const float grDB = (minGain < 0.9999f)

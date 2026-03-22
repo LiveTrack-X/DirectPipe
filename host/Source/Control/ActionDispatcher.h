@@ -54,8 +54,8 @@ enum class Action {
     SetPluginParameter, ///< Set plugin parameter (intParam=pluginIndex, intParam2=paramIndex, floatParam=value 0.0~1.0)
     IpcToggle,          ///< Toggle IPC output (Receiver VST) on/off
     XRunReset,          ///< Reset xrun counter
-    SafetyLimiterToggle,       ///< Toggle safety limiter on/off
-    SetSafetyLimiterCeiling,   ///< Set safety limiter ceiling (floatParam = dB, -6.0~0.0)
+    SafetyLimiterToggle,       ///< Legacy name: toggles global Safety Guard on/off
+    SetSafetyLimiterCeiling,   ///< Legacy name: sets Safety Guard ceiling (floatParam = dB, -6.0~0.0)
     AutoProcessorsAdd,         ///< Add Filter+NoiseRemoval+AutoGain to chain
 };
 

@@ -131,7 +131,7 @@ DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
 ## 동작 원리 / How It Works
 
 ```
-Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─→ Safety Limiter ─┐
+Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─→ Global Safety Guard ─┐
                                                                                           │
                  ┌────────────────────────────────────────────────────────────────────────┼────────────────────┐
                  │                                                                        │                    │
@@ -166,8 +166,8 @@ External Control:
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
-- **Safety Limiter** — VST 체인 이후 전역 피드포워드 리미터. 기본 ceiling -0.3 dBFS, 예기치 않은 클리핑 방지 — Global feed-forward limiter after VST chain. Default ceiling -0.3 dBFS, prevents unexpected clipping
-- **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼(입력 게인 옆 특수 프리셋 슬롯)으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC) insertable alongside VST plugins. [Auto] button (special preset slot next to input gain) adds all 3 at once
+- **Safety Guard** — VST 체인 이후 전역 샘플-피크 가드(legacy API/action name: SafetyLimiter). zero-latency runtime, instant attack + smooth release + hard clamp, 기본 ceiling -0.3 dBFS — Global sample-peak guard after VST chain (legacy API/action name: SafetyLimiter). Zero-latency runtime with instant attack + smooth release + hard clamp, default ceiling -0.3 dBFS
+- **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼(입력 게인 옆 특수 프리셋 슬롯)으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter) insertable alongside VST plugins. [Auto] button (special preset slot next to input gain) adds all 3 at once
 - **Clock Drift Compensation** — Bidirectional IPC drift handling with hysteresis dead-band to improve long-duration streaming stability (auto buffer management helps reduce clicks/pops) / 히스테리시스 데드 밴드를 포함한 양방향 IPC 클록 드리프트 보상으로 장시간 스트리밍 안정성을 높이도록 설계됨 (자동 버퍼 관리로 끊김/팝 완화)
 
 ### 외부 제어 / External Control
@@ -222,7 +222,7 @@ External Control:
   - **Controls**: 3개 서브탭 — Hotkeys / MIDI / Stream Deck — 3 sub-tabs
   - **Settings**: 자동 시작 (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset(A-E + Auto 슬롯 포함)) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset (includes A-E + Auto slots))
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Start with Windows/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
-- **Panic Mute** — 전체 출력 즉시 차단 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 OUT/MON/VST 제어는 잠기고 대부분 액션이 차단되지만, Input Mute/XRun Reset/Safety Limiter/Auto Processors Add는 유지보수·준비 용도로 허용 — Instant kill all output paths + auto-stop recording, restores previous states on unmute (recording does not auto-restart). OUT/MON/VST controls are locked and most actions are blocked, while Input Mute/XRun Reset/Safety Limiter/Auto Processors Add remain available for maintenance/prep flows
+- **Panic Mute** — 전체 출력 즉시 차단 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 OUT/MON/VST 제어는 잠기고 대부분 액션이 차단되지만, Input Mute/XRun Reset/Safety Guard(legacy SafetyLimiter actions)/Auto Processors Add는 유지보수·준비 용도로 허용 — Instant kill all output paths + auto-stop recording, restores previous states on unmute (recording does not auto-restart). OUT/MON/VST controls are locked and most actions are blocked, while Input Mute/XRun Reset/Safety Guard (legacy SafetyLimiter actions)/Auto Processors Add remain available for maintenance/prep flows
 - **상태 바** — 레이턴시, CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. Auto-fade notifications
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 자동 교체 → 재시작 — In-app auto-updater with one-click update from GitHub releases
 - **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Windows: Malgun Gothic, macOS: Apple SD Gothic Neo, Linux: Noto Sans CJK KR — Korean/Chinese/Japanese device names rendered correctly with platform-specific CJK font support

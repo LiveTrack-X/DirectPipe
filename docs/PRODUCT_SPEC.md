@@ -116,7 +116,7 @@ Mic Input  → VST Plugin Chain   → Output
    - 예외 발생 시: 버퍼 클리어, `chainCrashed_` 플래그 설정, 이후 모든 콜백 무음 출력
      / On exception: clear buffer, set `chainCrashed_` flag, silent output for all subsequent callbacks
    - 메시지 스레드에서 지연 알림 (NotificationBar) / Deferred notification from message thread (NotificationBar)
-7. Safety Limiter 적용 (brickwall-style, 2ms look-ahead + instant attack + hard ceiling clamp / 50ms release) / Apply Safety Limiter (brickwall-style, 2ms look-ahead + instant attack + hard ceiling clamp / 50ms release)
+7. Global Safety Guard 적용 (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release) / Apply Global Safety Guard (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release)
 8. AudioRecorder에 lock-free 쓰기 (녹음 중일 때) / Lock-free write to AudioRecorder (when recording)
 9. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시) / IPC write to SharedMemWriter (when IPC enabled)
 10. OutputRouter → 모니터 출력 (별도 WASAPI 장치) / OutputRouter → monitor output (separate WASAPI device)
@@ -128,7 +128,7 @@ Mic Input  → VST Plugin Chain   → Output
 
 3가지 출력 경로는 모두 **독립적으로 켜기/끄기 및 볼륨 조절**이 가능하다. OUT/MON/VST 버튼 또는 외부 제어(핫키, MIDI, Stream Deck, HTTP API)로 각 경로를 개별 제어하여, 예를 들어 OBS 마이크만 끄고 Discord는 유지하거나 그 반대도 가능하다. Panic Mute(Ctrl+Shift+M)로 전체를 즉시 차단할 수 있으며, 해제 시 이전 ON/OFF 상태가 자동 복원된다.
 
-All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly and stops active recording; previous ON/OFF states auto-restore on unmute (recording does not auto-restart). During panic, most actions (bypass, volume, preset, gain, recording, plugin parameters) are blocked; Input Mute/XRun Reset/Safety Limiter controls/AutoProcessorsAdd are allowed.
+All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly and stops active recording; previous ON/OFF states auto-restore on unmute (recording does not auto-restart). During panic, most actions (bypass, volume, preset, gain, recording, plugin parameters) are blocked; Input Mute/XRun Reset/Safety Guard controls (legacy SafetyLimiter names)/AutoProcessorsAdd are allowed.
 
 | 경로 / Path | 설명 / Description | 기술 / Technology | 제어 / Control |
 |------|------|------|------|
@@ -182,17 +182,17 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | `cpuUsage_` | 콜백 시간 대비 처리 비율 (%) / Processing ratio relative to callback time (%) |
 | 스무딩 / Smoothing | 지수 이동 평균 / Exponential moving average, `kSmoothingFactor = 0.1` |
 
-#### 4.1.8 Safety Limiter
+#### 4.1.8 Global Safety Guard (legacy SafetyLimiter names)
 | 항목 / Item | 상세 / Details |
 |------|------|
-| 타입 / Type | 브릭월 스타일 리미터 (2ms look-ahead + hard ceiling clamp) / Brickwall-style limiter (2ms look-ahead + hard ceiling clamp) |
+| 타입 / Type | 전역 샘플-피크 Safety Guard (zero-latency runtime + hard ceiling clamp) / Global sample-peak Safety Guard (zero-latency runtime + hard ceiling clamp) |
 | 위치 / Position | VST 체인 이후, Recording/IPC/Monitor/Output 이전 / After VST chain, before Recording/IPC/Monitor/Output |
-| Look-ahead | 2ms (48kHz 기준 약 96 samples) / 2ms (~96 samples @48kHz) |
+| Look-ahead | 없음 (global stage는 zero-latency) / None (zero-latency in global stage) |
 | Attack | 즉시(instant, target gain 하강 시) / Instant (when target gain drops) |
 | Release | 50ms |
 | Ceiling 범위 / Ceiling Range | -6.0 ~ 0.0 dBFS (기본값 / default: -0.3 dBFS) |
 | 파라미터 / Parameters | `enabled` (atomic, 기본 / default true), `ceilingdB` (atomic) |
-| UI | PluginChainEditor: ceiling 슬라이더 (Add Plugin 위) + Safety Limiter 토글 버튼. 상태 바 [LIM] 표시 / ceiling slider (above Add Plugin) + Safety Limiter toggle button. Status bar [LIM] indicator |
+| UI | PluginChainEditor: ceiling 슬라이더 (Add Plugin 위) + Safety Guard 토글 버튼. 상태 바 [LIM] 표시 / ceiling slider (above Add Plugin) + Safety Guard toggle button. Status bar [LIM] indicator |
 | GR 피드백 / GR Feedback | atomic으로 UI에 전달 / Delivered to UI via atomic |
 
 #### 4.1.9 Plugin Latency Data (PDC)
@@ -212,11 +212,11 @@ VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 
 |---------|--------|------|
 | **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz / default ON, 60Hz) + LPF (기본 OFF, 16kHz / default OFF, 16kHz). 범위 / Range: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터 / IIR filters, atomic 파라미터 / atomic parameters. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
 | **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-frame FIFO (~10ms 레이턴시 / ~10ms latency). 48kHz only (비-48kHz = 패스스루 / non-48kHz = passthrough, TODO: 리샘플링 / resampling). 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, SR 기반 재계산 / SR-dependent). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, SR 기반 재계산 / SR-dependent). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
-| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC / LUFS-based AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 / default (범위 / range -24~-6, 내부적으로 -6dB 오프셋 적용하여 오픈루프 오버슈트 보정 / internal -6dB offset for open-loop overshoot compensation). Low Correct 0.50 기본 / default (hold↔full correction 블렌드, 부스트 / blend, boost). High Correct 0.90 기본 / default (hold↔full correction 블렌드, 컷 / blend, cut). Max Gain 22 dB 기본 / default. ITU-R BS.1770 K-weighting 사이드체인 / sidechain (copy, 실제 오디오 미적용 / not applied to actual audio). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음 / none), per-block linear ramp으로 click-free 전환 / for click-free transitions. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 / holds current gain on freeze (0dB 리셋 아님 / NOT reset to 0dB), -65 dBFS 미만 시 바이패스 / bypassed below -65 dBFS. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) / blend ratio between hold and full correction (NOT envelope speed) |
+| **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC / LUFS-based AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 / default (범위 / range -24~-6, 내부적으로 -6dB 오프셋 적용하여 오픈루프 오버슈트 보정 / internal -6dB offset for open-loop overshoot compensation). Low Correct 0.50 기본 / default (hold↔full correction 블렌드, 부스트 / blend, boost). High Correct 0.90 기본 / default (hold↔full correction 블렌드, 컷 / blend, cut). Max Gain 22 dB 기본 / default. ITU-R BS.1770 K-weighting 사이드체인 / sidechain (copy, 실제 오디오 미적용 / not applied to actual audio). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음 / none), per-block linear ramp으로 click-free 전환 / for click-free transitions. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 / holds current gain on freeze (0dB 리셋 아님 / NOT reset to 0dB), -65 dBFS 미만 시 바이패스 / bypassed below -65 dBFS. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) / blend ratio between hold and full correction (NOT envelope speed). Fixed post limiter: limiter ceiling only user-facing (default -1.0 dBTP), fixed internal lookahead 1ms + release 50ms, constant latency path, final hard clamp. |
 
-**[Auto] 버튼 / [Auto] Button**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults.
+**[Auto] 버튼 / [Auto] Button**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults. Auto Gain 내부에는 고정 post limiter가 포함됩니다.
 
-Special preset slot next to input gain slider (separate from A-E bar, index 5 `PresetSlotBar::kAutoSlotIndex`). Green when active. First click creates default chain (Filter + Noise Removal + Auto Gain), subsequent clicks load last saved state. Right-click → Reset to Defaults.
+Special preset slot next to input gain slider (separate from A-E bar, index 5 `PresetSlotBar::kAutoSlotIndex`). Green when active. First click creates default chain (Filter + Noise Removal + Auto Gain), subsequent clicks load last saved state. Right-click → Reset to Defaults. Auto Gain includes a fixed post limiter internally.
 
 **Auto 프리셋 슬롯 / Auto Preset Slot**: 6번째 프리셋 슬롯 (인덱스 5). 이름 변경 불가, Next/Previous 사이클에서 제외. Reset 시 Filter + NoiseRemoval + AutoGain 기본값 복원. Factory Reset 시 Auto 슬롯도 포함 삭제 (`slot_Auto.dppreset` 와일드카드 삭제, 메시지 "(A-E + Auto)").
 
@@ -382,8 +382,8 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | 14 | `SetPluginParameter` | 플러그인 파라미터 설정 / Set plugin parameter | intParam=플러그인 / plugin, intParam2=파라미터 / parameter, floatParam=0.0~1.0 |
 | 15 | `IpcToggle` | IPC 출력(DirectPipe Receiver) 토글 / Toggle IPC output (DirectPipe Receiver) | — |
 | 16 | `XRunReset` | XRun 카운터 리셋 / Reset XRun counter | — |
-| 17 | `SafetyLimiterToggle` | Safety Limiter on/off 토글 / Toggle Safety Limiter on/off | — (패닉 뮤트 가드 없음 / no panic mute guard) |
-| 18 | `SetSafetyLimiterCeiling` | Safety Limiter ceiling 설정 / Set Safety Limiter ceiling | floatParam = dB 값 / dB value (-6.0~0.0) (패닉 뮤트 가드 없음 / no panic mute guard) |
+| 17 | `SafetyLimiterToggle` | Safety Guard on/off 토글 (legacy action name) / Toggle Safety Guard on/off (legacy action name) | — (패닉 뮤트 가드 없음 / no panic mute guard) |
+| 18 | `SetSafetyLimiterCeiling` | Safety Guard ceiling 설정 (legacy action name) / Set Safety Guard ceiling (legacy action name) | floatParam = dB 값 / dB value (-6.0~0.0) (패닉 뮤트 가드 없음 / no panic mute guard) |
 | 19 | `AutoProcessorsAdd` | Auto 프로세서 추가 / Add Auto processors (Filter+NR+AGC) | — |
 
 #### 4.5.3 키보드 핫키 / Keyboard Hotkeys
@@ -531,8 +531,8 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | `GET /api/plugin/{idx}/params` | 플러그인 파라미터 목록 조회 / List plugin parameters | index 범위 검증 / index range validation |
 | `GET /api/plugin/{pIdx}/param/{paramIdx}/{value}` | 플러그인 파라미터 설정 / Set plugin parameter | 인덱스 + 값(0~1) 범위 검증 / index + value (0~1) range validation |
 | `GET /api/perf` | 성능 통계 조회 / Get performance stats | — |
-| `GET /api/limiter/toggle` | Safety Limiter on/off 토글 / Safety Limiter on/off toggle | — |
-| `GET /api/limiter/ceiling/{value}` | Safety Limiter ceiling 설정 / Set Safety Limiter ceiling | -6.0~0.0 범위 / range |
+| `GET /api/limiter/toggle` | Safety Guard on/off 토글 (legacy endpoint name) / Safety Guard on/off toggle (legacy endpoint name) | — |
+| `GET /api/limiter/ceiling/{value}` | Safety Guard ceiling 설정 (legacy endpoint name) / Set Safety Guard ceiling (legacy endpoint name) | -6.0~0.0 범위 / range |
 | `GET /api/auto/add` | Auto 프로세서 추가 / Add Auto processors (Filter+NR+AGC) | — |
 | `GET /api/midi/cc/{ch}/{num}/{val}` | MIDI CC 테스트 주입 / MIDI CC test injection | ch:1~16, num:0~127, val:0~127 |
 | `GET /api/midi/note/{ch}/{num}/{vel}` | MIDI Note 테스트 주입 / MIDI Note test injection | ch:1~16, num:0~127, vel:0~127 |
@@ -1209,7 +1209,7 @@ DirectPipe/
 │       │   ├── AudioRecorder.h/cpp     → WAV 녹음 / WAV recording (ThreadedWriter)
 │       │   ├── PluginPreloadCache.h/cpp → 슬롯 백그라운드 프리로드 / Slot background preloading
 │       │   ├── LatencyMonitor.h        → 실시간 레이턴시/CPU 측정 / Real-time latency/CPU measurement
-│       │   ├── SafetyLimiter.h/cpp     → RT-safe 브릭월 스타일 리미터 / RT-safe brickwall-style limiter
+│       │   ├── SafetyLimiter.h/cpp     → RT-safe 글로벌 Safety Guard (legacy naming) / RT-safe global Safety Guard (legacy naming)
 │       │   ├── DeviceState.h           → 장치 연결 상태 enum 상태 머신 / Device connection state enum state machine
 │       │   ├── BuiltinFilter.h/cpp     → HPF+LPF 오디오 프로세서 / HPF+LPF audio processor
 │       │   ├── BuiltinNoiseRemoval.h/cpp → RNNoise 기반 노이즈 제거 / RNNoise-based noise removal

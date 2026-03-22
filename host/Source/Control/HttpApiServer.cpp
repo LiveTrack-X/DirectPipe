@@ -308,13 +308,13 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         return {200, R"({"ok": true, "action": "xrun_reset"})"};
     }
 
-    // GET /api/limiter/toggle — toggle safety limiter on/off
+    // GET /api/limiter/toggle — legacy endpoint name, controls global Safety Guard
     if (action == "limiter" && segments.size() >= 3 && segments[2] == "toggle") {
         dispatcher_.dispatch({Action::SafetyLimiterToggle});
         return {200, R"({"ok": true, "action": "safety_limiter_toggle"})"};
     }
 
-    // GET /api/limiter/ceiling/:value — set safety limiter ceiling (-6.0 ~ 0.0 dBFS)
+    // GET /api/limiter/ceiling/:value — legacy endpoint name, sets Safety Guard ceiling (-6.0 ~ 0.0 dBFS)
     if (action == "limiter" && segments.size() >= 4 && segments[2] == "ceiling") {
         float value;
         if (!parseFloat(segments[3], value))

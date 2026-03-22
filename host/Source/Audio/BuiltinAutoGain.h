@@ -3,6 +3,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
 #include <atomic>
 #include <vector>
 
@@ -117,6 +118,8 @@ public:
 
     void setFreezeLevel(float lufs);
     float getFreezeLevel() const { return freezeLevel_.load(std::memory_order_relaxed); }
+    void setLimiterCeilingdBTP(float dBTP);
+    float getLimiterCeilingdBTP() const { return limiterCeilingdBTP_.load(std::memory_order_relaxed); }
 
     // -- UI feedback (read from any thread, written from RT thread) --
     float getCurrentLUFS() const { return currentLUFS_.load(std::memory_order_relaxed); }
@@ -129,6 +132,8 @@ private:
     std::atomic<float> highCorrect_{ 0.90f };    // cut correction blend (0.0=hold current gain, 1.0=full correction)
     std::atomic<float> maxGaindB_{ 22.0f };      // maximum boost/cut in dB (prevents extreme amplification)
     std::atomic<float> freezeLevel_{ -45.0f };   // dBFS -- per-block RMS below this = don't boost (silence/breath/keyboard)
+    std::atomic<float> limiterCeilingdBTP_{ -1.0f }; // dBTP-style post-limiter ceiling
+    std::atomic<float> limiterCeilingLinear_{ juce::Decibels::decibelsToGain(-1.0f) };
 
     // -- K-weighting filters (sidechain -- measurement only, RT thread) --
     juce::IIRFilter kStage1L_, kStage1R_;  // High shelf (+4dB at ~1681Hz)
@@ -161,6 +166,17 @@ private:
 
     double currentSR_ = 48000.0;
 
+    // -- Constant-latency post limiter (LUveler-style, RT thread only) --
+    int limiterLookAheadSamples_ = 1;
+    int limiterDelaySize_ = 2;
+    int limiterWritePos_ = 0;
+    float limiterCurrentGain_ = 1.0f;
+    float limiterReleaseCoeff_ = 0.0f;
+    bool limiterPrevInitialized_ = false;
+    std::array<float, 2> limiterPrevIn_{ 0.0f, 0.0f };
+    std::array<std::vector<float>, 2> limiterDelay_{};
+    std::vector<float> limiterPeakRing_;
+
     // -- Pre-allocated scratch buffer for K-weighting measurement (RT thread only) --
     juce::AudioBuffer<float> kWeightScratch_;
 
@@ -170,6 +186,7 @@ private:
 
     // -- Internal helpers --
     void updateKWeightingCoeffs();
+    float approxTruePeakFromPrevCurrent(float prev, float current) const;
 };
 
 } // namespace directpipe

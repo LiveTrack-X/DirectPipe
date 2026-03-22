@@ -93,7 +93,7 @@ private:
     VSTChain& vstChain_;
 
     juce::ListBox pluginList_{"VST Chain"};
-    juce::ToggleButton limiterButton_{"Safety Limiter"};
+    juce::ToggleButton limiterButton_{"Safety Guard"};
     juce::Slider limiterCeilingSlider_;
     juce::Label limiterGRLabel_;
     juce::TextButton addButton_{"+ Add Plugin"};

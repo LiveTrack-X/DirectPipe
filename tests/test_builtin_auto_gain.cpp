@@ -27,6 +27,14 @@ static float computeRMS(const juce::AudioBuffer<float>& buffer) {
     return (totalSamples > 0) ? std::sqrt(sum / static_cast<float>(totalSamples)) : 0.0f;
 }
 
+static float computePeakAbs(const juce::AudioBuffer<float>& buffer) {
+    float peak = 0.0f;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            peak = std::max(peak, std::abs(buffer.getSample(ch, i)));
+    return peak;
+}
+
 class BuiltinAutoGainTest : public ::testing::Test {
 protected:
     BuiltinAutoGain agc;
@@ -70,7 +78,8 @@ TEST_F(BuiltinAutoGainTest, DefaultState) {
     EXPECT_FLOAT_EQ(agc.getHighCorrect(), 0.90f);
     EXPECT_FLOAT_EQ(agc.getMaxGaindB(), 22.0f);
     EXPECT_FLOAT_EQ(agc.getFreezeLevel(), -45.0f);
-    EXPECT_EQ(agc.getLatencySamples(), 0);
+    EXPECT_FLOAT_EQ(agc.getLimiterCeilingdBTP(), -1.0f);
+    EXPECT_EQ(agc.getLatencySamples(), 48);
     EXPECT_EQ(agc.getName(), juce::String("AutoGain"));
 }
 
@@ -170,6 +179,7 @@ TEST_F(BuiltinAutoGainTest, StateRoundtrip) {
     agc.setHighCorrect(1.20f);
     agc.setMaxGaindB(18.0f);
     agc.setFreezeLevel(-50.0f);
+    agc.setLimiterCeilingdBTP(-1.4f);
 
     // Save state
     juce::MemoryBlock state;
@@ -184,8 +194,25 @@ TEST_F(BuiltinAutoGainTest, StateRoundtrip) {
     EXPECT_FLOAT_EQ(restored.getHighCorrect(), 1.20f);
     EXPECT_FLOAT_EQ(restored.getMaxGaindB(), 18.0f);
     EXPECT_FLOAT_EQ(restored.getFreezeLevel(), -50.0f);
+    EXPECT_FLOAT_EQ(restored.getLimiterCeilingdBTP(), -1.4f);
 }
 
-TEST_F(BuiltinAutoGainTest, ZeroLatency) {
-    EXPECT_EQ(agc.getLatencySamples(), 0);
+TEST_F(BuiltinAutoGainTest, FixedLimiterLatency) {
+    EXPECT_EQ(agc.getLatencySamples(), 48);
+}
+
+TEST_F(BuiltinAutoGainTest, PostLimiterCeilingClampsPeak) {
+    agc.setLimiterCeilingdBTP(-1.0f);
+    juce::MidiBuffer midi;
+    const float ceiling = juce::Decibels::decibelsToGain(-1.0f);
+    float maxSeen = 0.0f;
+
+    for (int b = 0; b < 16; ++b) {
+        juce::AudioBuffer<float> buf(2, kBlockSize);
+        fillSine(buf, 1000.0f, kSampleRate, 1.8f);
+        agc.processBlock(buf, midi);
+        maxSeen = std::max(maxSeen, computePeakAbs(buf));
+    }
+
+    EXPECT_LE(maxSeen, ceiling + 1.0e-4f);
 }

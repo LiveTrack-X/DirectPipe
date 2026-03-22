@@ -182,7 +182,7 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     pluginList_.setRowHeight(32);
     pluginList_.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xFF2A2A40));
 
-    // Safety Limiter toggle — above the action buttons
+    // Global Safety Guard toggle — above the action buttons (legacy action/API name: limiter)
     limiterButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xFFE0E0E0));
     limiterButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(0xFFFF6B6B));
     limiterButton_.onClick = [this] {
@@ -190,7 +190,7 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     };
     addAndMakeVisible(limiterButton_);
 
-    // Limiter ceiling slider — next to toggle
+    // Guard ceiling slider — next to toggle (legacy action/API name: limiter)
     limiterCeilingSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
     limiterCeilingSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 55, 20);
     limiterCeilingSlider_.setRange(-6.0, 0.0, 0.1);

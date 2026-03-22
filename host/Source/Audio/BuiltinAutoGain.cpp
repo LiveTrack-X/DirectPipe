@@ -50,6 +50,10 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     // Reset gain state
     currentGainLinear_ = 1.0f;
     fastEnvelope_ = -60.0f;
+    limiterCurrentGain_ = 1.0f;
+    limiterPrevInitialized_ = false;
+    limiterPrevIn_[0] = 0.0f;
+    limiterPrevIn_[1] = 0.0f;
 
     // Envelope follower coefficients:
     //   coeff = 1 - exp(-1 / (time_seconds * sampleRate))
@@ -62,7 +66,19 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     if (sampleRate > 0.0) {
         attackCoeff_  = 1.0f - std::exp(-1.0f / (0.5f  * static_cast<float>(sampleRate)));  // 500ms boost
         releaseCoeff_ = 1.0f - std::exp(-1.0f / (0.1f * static_cast<float>(sampleRate)));   // 100ms cut
+        limiterLookAheadSamples_ = juce::jmax(1, juce::roundToInt(static_cast<float>(sampleRate) * 0.001f)); // fixed 1ms
+        limiterDelaySize_ = limiterLookAheadSamples_ + 1;
+        limiterReleaseCoeff_ = std::exp(-1.0f / static_cast<float>(sampleRate * 0.05)); // fixed 50ms
+    } else {
+        limiterLookAheadSamples_ = 1;
+        limiterDelaySize_ = 2;
+        limiterReleaseCoeff_ = 0.0f;
     }
+    limiterWritePos_ = 0;
+    for (int ch = 0; ch < 2; ++ch)
+        limiterDelay_[ch].assign(static_cast<size_t>(limiterDelaySize_), 0.0f);
+    limiterPeakRing_.assign(static_cast<size_t>(limiterDelaySize_), 0.0f);
+    setLatencySamples(limiterLookAheadSamples_);
 
     // Reset UI feedback
     currentLUFS_.store(-60.0f, std::memory_order_relaxed);
@@ -277,7 +293,55 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     currentGainLinear_ = endGain;
 
-    // Step 8: Update UI feedback atomics
+    // Step 8: Constant-latency post limiter (LUveler-style).
+    // Compatibility note: AGC API/state names are unchanged; this is fixed internal safety stage.
+    const float limiterCeil = limiterCeilingLinear_.load(std::memory_order_relaxed);
+    const int postChannels = juce::jmin(numChannels, 2);
+    for (int i = 0; i < numSamples; ++i) {
+        float frameTPPeak = 0.0f;
+        for (int ch = 0; ch < postChannels; ++ch) {
+            const float current = buffer.getSample(ch, i);
+            const float prev = limiterPrevInitialized_ ? limiterPrevIn_[static_cast<size_t>(ch)] : current;
+            const float tpApprox = approxTruePeakFromPrevCurrent(prev, current);
+            frameTPPeak = juce::jmax(frameTPPeak, tpApprox);
+            limiterDelay_[static_cast<size_t>(ch)][static_cast<size_t>(limiterWritePos_)] = current;
+            limiterPrevIn_[static_cast<size_t>(ch)] = current;
+        }
+        limiterPrevInitialized_ = true;
+        limiterPeakRing_[static_cast<size_t>(limiterWritePos_)] = frameTPPeak;
+
+        int readPos = limiterWritePos_ - limiterLookAheadSamples_;
+        if (readPos < 0)
+            readPos += limiterDelaySize_;
+
+        float windowPeak = 0.0f;
+        int idx = readPos;
+        for (int k = 0; k <= limiterLookAheadSamples_; ++k) {
+            windowPeak = juce::jmax(windowPeak, limiterPeakRing_[static_cast<size_t>(idx)]);
+            if (++idx >= limiterDelaySize_)
+                idx = 0;
+        }
+
+        float targetLimGain = 1.0f;
+        if (windowPeak > limiterCeil && windowPeak > 1.0e-9f)
+            targetLimGain = limiterCeil / windowPeak;
+
+        if (targetLimGain < limiterCurrentGain_)
+            limiterCurrentGain_ = targetLimGain;
+        else
+            limiterCurrentGain_ = limiterReleaseCoeff_ * limiterCurrentGain_ + (1.0f - limiterReleaseCoeff_) * targetLimGain;
+
+        for (int ch = 0; ch < postChannels; ++ch) {
+            float out = limiterDelay_[static_cast<size_t>(ch)][static_cast<size_t>(readPos)] * limiterCurrentGain_;
+            out = juce::jlimit(-limiterCeil, limiterCeil, out); // hard clamp
+            buffer.setSample(ch, i, out);
+        }
+
+        if (++limiterWritePos_ >= limiterDelaySize_)
+            limiterWritePos_ = 0;
+    }
+
+    // Step 9: Update UI feedback atomics (AGC gain only, excludes post limiter gain)
     currentLUFS_.store(measuredLUFS, std::memory_order_relaxed);
     currentGaindB_.store(
         20.0f * std::log10(juce::jmax(endGain, 1.0e-6f)),
@@ -375,6 +439,13 @@ void BuiltinAutoGain::setFreezeLevel(float lufs)
     freezeLevel_.store(juce::jlimit(-60.0f, 0.0f, lufs), std::memory_order_relaxed);
 }
 
+void BuiltinAutoGain::setLimiterCeilingdBTP(float dBTP)
+{
+    dBTP = juce::jlimit(-2.0f, 0.0f, dBTP);
+    limiterCeilingdBTP_.store(dBTP, std::memory_order_relaxed);
+    limiterCeilingLinear_.store(juce::Decibels::decibelsToGain(dBTP), std::memory_order_relaxed);
+}
+
 // ─── State persistence (JSON) ──────────────────────────────────
 
 void BuiltinAutoGain::getStateInformation(juce::MemoryBlock& destData)
@@ -385,6 +456,7 @@ void BuiltinAutoGain::getStateInformation(juce::MemoryBlock& destData)
     obj->setProperty("highCorrect", static_cast<double>(getHighCorrect()));
     obj->setProperty("maxGaindB", static_cast<double>(getMaxGaindB()));
     obj->setProperty("freezeLevel", static_cast<double>(getFreezeLevel()));
+    obj->setProperty("limiterCeilingdBTP", static_cast<double>(getLimiterCeilingdBTP()));
 
     auto json = juce::JSON::toString(juce::var(obj.release()));
     destData.replaceWith(json.toRawUTF8(), json.getNumBytesAsUTF8());
@@ -405,7 +477,20 @@ void BuiltinAutoGain::setStateInformation(const void* data, int sizeInBytes)
             setMaxGaindB(static_cast<float>(static_cast<double>(obj->getProperty("maxGaindB"))));
         if (obj->hasProperty("freezeLevel"))
             setFreezeLevel(static_cast<float>(static_cast<double>(obj->getProperty("freezeLevel"))));
+        if (obj->hasProperty("limiterCeilingdBTP"))
+            setLimiterCeilingdBTP(static_cast<float>(static_cast<double>(obj->getProperty("limiterCeilingdBTP"))));
     }
+}
+
+float BuiltinAutoGain::approxTruePeakFromPrevCurrent(float prev, float current) const
+{
+    const float d = current - prev;
+    float peak = std::abs(prev);
+    peak = juce::jmax(peak, std::abs(prev + d * 0.25f));
+    peak = juce::jmax(peak, std::abs(prev + d * 0.50f));
+    peak = juce::jmax(peak, std::abs(prev + d * 0.75f));
+    peak = juce::jmax(peak, std::abs(current));
+    return peak;
 }
 
 } // namespace directpipe

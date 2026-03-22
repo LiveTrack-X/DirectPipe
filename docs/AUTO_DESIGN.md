@@ -71,7 +71,7 @@ The **3 commonly needed processes** across these 4 scenarios became the Auto cha
 ## 2. 체인 구성과 순서 / Chain Composition and Order
 
 ```
-Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain] → [Safety Limiter] → Output
+Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain] → [Post Limiter] → [Global Safety Guard] → Output
                                                                   ↑
                                                           글로벌 (Auto 체인 외부)
                                                           Global (outside Auto chain)
@@ -107,11 +107,20 @@ Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain] → [Safety Limi
 - 모든 보정이 끝난 최종 신호를 대상으로 레벨링 / Leveling is applied to the final signal after all corrections are complete
 - 게인 변경이 이전 처리에 영향을 주지 않음 (개방 루프) / Gain changes do not affect previous processing stages (open loop)
 
-#### Safety Limiter — 글로벌 분리 / Safety Limiter — Global Separation
+##### Auto Gain Post Limiter (Fixed Internal)
 
-Safety Limiter는 Auto 체인에 포함되지 않고 **모든 출력 경로 앞에 글로벌로** 배치됩니다.
+- Order: Auto Gain core -> Post Limiter (inside BuiltinAutoGain)
+- Advanced UI: Limiter Ceiling only (`-2.0..0.0 dBTP`, default `-1.0 dBTP`)
+- Fixed internal behavior: lookahead 1.0ms, release 50ms, constant delayed path
+- Detector: stereo-linked TP-style approximation (prev/current + 3 linear interpolation points)
+- Final stage: hard clamp
+- Note: Do not claim strict EBU true-peak compliance.
 
-The Safety Limiter is not part of the Auto chain — it is placed **globally before all output paths**.
+### Global Safety Guard — 글로벌 분리 / Global Safety Guard — Global Separation
+
+Global Safety Guard는 Auto 체인에 포함되지 않고 **모든 출력 경로 앞에 글로벌로** 배치됩니다.
+
+The Global Safety Guard is not part of the Auto chain — it is placed **globally before all output paths**.
 
 분리 이유:
 - VST 플러그인 체인 전체(Auto 프로세서 + 사용자 VST)를 보호해야 함
@@ -263,20 +272,20 @@ Why Low/High Correct are asymmetric:
 - Aggressive cut (90%) -> quickly suppresses loud sounds (sudden laughter, coughing)
 - This asymmetry is the key to "sounding natural while keeping volume stable"
 
-### Safety Limiter
+### Global Safety Guard
 
 | 파라미터 / Parameter | 값 / Value | 근거 / Rationale |
 |---|---|---|
 | **Ceiling** | **-0.3 dBFS** | 0.0은 디지털 풀스케일 → DAC에서 ISP(inter-sample peak) 클리핑 발생 가능. -0.3은 ISP 마진. -1.0은 스트리밍 권장이지만 기본값으로는 과도한 여유 / 0.0 is digital full-scale -> ISP (inter-sample peak) clipping possible at DAC. -0.3 provides ISP margin. -1.0 is recommended for streaming but excessive headroom as default |
-| **Attack** | **0.1ms** | 사실상 즉시 반응. 리미터는 "절대 넘지 않게"가 목적이므로 빠를수록 좋음 / Effectively instant response. A limiter's purpose is "never exceed," so faster is better |
+| **Runtime** | **Zero-latency** | 사실상 즉시 반응. 리미터는 "절대 넘지 않게"가 목적이므로 빠를수록 좋음 / Effectively instant response. A limiter's purpose is "never exceed," so faster is better |
 | **Release** | **50ms** | 10ms는 펌핑(볼륨이 숨쉬는 것처럼 올라갔다 내려갔다), 200ms는 연속 피크에서 레벨이 너무 오래 눌림. 50ms는 투명하면서 충분히 빠른 복귀 / 10ms causes pumping (volume rises and falls like breathing), 200ms holds level down too long on consecutive peaks. 50ms is transparent with sufficiently fast recovery |
 | **Enabled** | **기본 ON / Default ON** | 클리핑은 어떤 상황에서도 바람직하지 않음. 성능 영향 거의 없음 (per-sample peak comparison only) / Clipping is undesirable in any situation. Virtually no performance impact (per-sample peak comparison only) |
 
-### AGC와 Safety Limiter의 상호작용 / AGC-Limiter Interaction
+### AGC, Post Limiter, Global Safety Guard 상호작용 / AGC, Post Limiter, Global Safety Guard Interaction
 
-극단적 시나리오: 조용한 말(-45 dBFS) → AGC +22dB 적용 중 → 갑자기 큰 소리(0 dBFS) 입력 → 출력이 순간적으로 +22 dBFS → Safety Limiter가 -0.3 dBFS로 즉시 제한.
+극단적 시나리오: 조용한 말(-45 dBFS) → AGC +22dB 적용 중 → 갑자기 큰 소리(0 dBFS) 입력 → Auto Gain 내부 post limiter가 먼저 제한하고, 글로벌 Safety Guard가 최종 보호.
 
-Extreme scenario: quiet speech (-45 dBFS) → AGC applying +22dB gain → sudden loud sound (0 dBFS) → momentary +22 dBFS output → Safety Limiter clamps to -0.3 dBFS instantly.
+Extreme scenario: quiet speech (-45 dBFS) → AGC applying +22dB gain → sudden loud sound (0 dBFS) → Auto Gain internal post limiter limits first, then Global Safety Guard provides final protection.
 
 이때 22dB 이상의 즉각적 게인 리덕션은 순간적 왜곡을 일으킬 수 있습니다. 이는 개방 루프 AGC + 피드포워드 리미터 조합의 구조적 한계입니다.
 
@@ -321,10 +330,10 @@ Trade-offs to be aware of when customizing parameters:
 | Low/High 대칭 (50/50 또는 90/90) / Low/High symmetric (50/50 or 90/90) | 부스트와 컷이 같은 속도 / Boost and cut at same speed | **자연스러운 다이나믹 상실 / Loss of natural dynamics** — 말하기가 평탄하게 들림 / speech sounds flat |
 | Freeze Level ↑ (-45→-35 dBFS) | 더 많은 구간에서 게인 동결 / Gain frozen in more sections | **조용히 말하는 구간에서 게인이 올라가지 않음 / Gain does not rise during quiet speech** |
 | Freeze Level ↓ (-45→-55 dBFS) | 더 적은 구간에서 동결 / Gain frozen in fewer sections | 무음 구간에서 배경 소음 증폭 / Background noise amplified during silence |
-| Target LUFS ↑ (-15→-10) | 더 큰 출력 / Louder output | Safety Limiter가 빈번히 작동, 다이나믹 압축 / Safety Limiter activates frequently, dynamic compression |
+| Target LUFS ↑ (-15→-10) | 더 큰 출력 / Louder output | Post limiter/Global Safety Guard가 빈번히 작동, 다이나믹 압축 / Post limiter/Global Safety Guard activate frequently, dynamic compression |
 | Target LUFS ↓ (-15→-20) | 더 작은 출력 / Quieter output | 수신자 측에서 볼륨을 올려야 함 / Receivers need to turn up their volume |
 
-### Safety Limiter
+### Global Safety Guard
 
 | 변경 / Change | 결과 / Result | 주의 / Caution |
 |---|---|---|

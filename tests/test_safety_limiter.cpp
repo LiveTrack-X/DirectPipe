@@ -142,3 +142,11 @@ TEST_F(SafetyLimiterTest, ZeroDbCeilingNeverExceedsFullScale) {
     const float maxAbs = getMaxAbsSample(buf);
     EXPECT_LE(maxAbs, 1.0f + 1.0e-4f);
 }
+
+TEST_F(SafetyLimiterTest, ZeroLatencyGuardActsOnFirstSample) {
+    limiter.setCeiling(-6.0f);
+    auto buf = makeBuffer(1.5f, 16);
+    limiter.process(buf, buf.getNumSamples());
+    const float ceilingLinear = juce::Decibels::decibelsToGain(-6.0f);
+    EXPECT_LE(std::abs(buf.getSample(0, 0)), ceilingLinear + 1.0e-4f);
+}

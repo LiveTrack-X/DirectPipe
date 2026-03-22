@@ -18,7 +18,7 @@ namespace AGCColors {
 AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     : AudioProcessorEditor(processor), processor_(processor)
 {
-    setSize(300, 280);
+    setSize(300, 320);
 
     // -- Target LUFS --
     targetLabel_.setText("Target LUFS:", juce::dontSendNotification);
@@ -138,6 +138,29 @@ AGCEditPanel::AGCEditPanel(BuiltinAutoGain& processor)
     };
     addAndMakeVisible(freezeSlider_);
 
+    // -- Limiter Ceiling slider (-2.0 to 0.0 dBTP) --
+    limiterCeilingLabel_.setText("Limiter Ceiling:", juce::dontSendNotification);
+    limiterCeilingLabel_.setColour(juce::Label::textColourId, juce::Colour(AGCColors::kDim));
+    addAndMakeVisible(limiterCeilingLabel_);
+
+    limiterCeilingSlider_.setRange(-2.0, 0.0, 0.1);
+    limiterCeilingSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 55, 20);
+    limiterCeilingSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(AGCColors::kAccent));
+    limiterCeilingSlider_.setColour(juce::Slider::trackColourId, juce::Colour(AGCColors::kSurface));
+    limiterCeilingSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(AGCColors::kText));
+    limiterCeilingSlider_.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(AGCColors::kSurface));
+    limiterCeilingSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    limiterCeilingSlider_.setTextValueSuffix(" dBTP");
+    limiterCeilingSlider_.onValueChange = [this] {
+        processor_.setLimiterCeilingdBTP(static_cast<float>(limiterCeilingSlider_.getValue()));
+    };
+    addAndMakeVisible(limiterCeilingSlider_);
+
+    limiterNoteLabel_.setText("Post limiter uses fixed internal lookahead/release.", juce::dontSendNotification);
+    limiterNoteLabel_.setColour(juce::Label::textColourId, juce::Colour(AGCColors::kDim));
+    limiterNoteLabel_.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(limiterNoteLabel_);
+
     // Sync initial state
     syncFromProcessor();
     advancedToggle_.setToggleState(false, juce::dontSendNotification);
@@ -207,6 +230,16 @@ void AGCEditPanel::resized()
     auto freezeRow = area.removeFromTop(rowH);
     freezeLabel_.setBounds(freezeRow.removeFromLeft(labelW));
     freezeSlider_.setBounds(freezeRow);
+    area.removeFromTop(2);
+
+    // Limiter Ceiling row
+    auto limRow = area.removeFromTop(rowH);
+    limiterCeilingLabel_.setBounds(limRow.removeFromLeft(labelW));
+    limiterCeilingSlider_.setBounds(limRow);
+    area.removeFromTop(2);
+
+    auto noteRow = area.removeFromTop(rowH);
+    limiterNoteLabel_.setBounds(noteRow);
 }
 
 void AGCEditPanel::timerCallback()
@@ -233,6 +266,7 @@ void AGCEditPanel::syncFromProcessor()
     highCorrSlider_.setValue(processor_.getHighCorrect() * 100.0, juce::dontSendNotification);
     maxGainSlider_.setValue(processor_.getMaxGaindB(), juce::dontSendNotification);
     freezeSlider_.setValue(processor_.getFreezeLevel(), juce::dontSendNotification);
+    limiterCeilingSlider_.setValue(processor_.getLimiterCeilingdBTP(), juce::dontSendNotification);
 }
 
 void AGCEditPanel::updateAdvancedVisibility()
@@ -246,6 +280,9 @@ void AGCEditPanel::updateAdvancedVisibility()
     maxGainSlider_.setVisible(show);
     freezeLabel_.setVisible(show);
     freezeSlider_.setVisible(show);
+    limiterCeilingLabel_.setVisible(show);
+    limiterCeilingSlider_.setVisible(show);
+    limiterNoteLabel_.setVisible(show);
 }
 
 } // namespace directpipe
