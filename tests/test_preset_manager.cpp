@@ -241,6 +241,55 @@ TEST_F(PresetManagerTest, MissingKeysRecovery) {
     EXPECT_TRUE(plugins.isVoid());
 }
 
+TEST_F(PresetManagerTest, NonContiguousChannelMaskJsonRoundtrip) {
+    auto root = std::make_unique<juce::DynamicObject>();
+    root->setProperty("version", 4);
+    juce::Array<juce::var> inMask;
+    inMask.add(0);
+    inMask.add(2);
+    juce::Array<juce::var> outMask;
+    outMask.add(1);
+    outMask.add(3);
+    root->setProperty("inputChannelMask", inMask);
+    root->setProperty("outputChannelMask", outMask);
+
+    auto parsed = juce::JSON::parse(juce::JSON::toString(juce::var(root.release()), true));
+    ASSERT_TRUE(parsed.isObject());
+    auto* obj = parsed.getDynamicObject();
+    ASSERT_TRUE(obj->hasProperty("inputChannelMask"));
+    ASSERT_TRUE(obj->hasProperty("outputChannelMask"));
+    auto* in = obj->getProperty("inputChannelMask").getArray();
+    auto* out = obj->getProperty("outputChannelMask").getArray();
+    ASSERT_NE(in, nullptr);
+    ASSERT_NE(out, nullptr);
+    EXPECT_EQ(static_cast<int>((*in)[0]), 0);
+    EXPECT_EQ(static_cast<int>((*in)[1]), 2);
+    EXPECT_EQ(static_cast<int>((*out)[0]), 1);
+    EXPECT_EQ(static_cast<int>((*out)[1]), 3);
+}
+
+TEST_F(PresetManagerTest, InvalidMaskJsonRequiresSafeFallbackPath) {
+    juce::String json = R"({
+        "version": 4,
+        "deviceType": "ASIO",
+        "inputChannelMask": [999, -1],
+        "outputChannelMask": [9999]
+    })";
+    auto parsed = juce::JSON::parse(json);
+    ASSERT_TRUE(parsed.isObject());
+    auto* obj = parsed.getDynamicObject();
+    ASSERT_TRUE(obj->hasProperty("inputChannelMask"));
+    ASSERT_TRUE(obj->hasProperty("outputChannelMask"));
+}
+
+TEST_F(PresetManagerTest, LegacyJsonWithoutChannelMaskStillLoads) {
+    auto parsed = juce::JSON::parse(makeSettingsJSON(makeChainJSON(1, {false})));
+    ASSERT_TRUE(parsed.isObject());
+    auto* obj = parsed.getDynamicObject();
+    EXPECT_FALSE(obj->hasProperty("inputChannelMask"));
+    EXPECT_FALSE(obj->hasProperty("outputChannelMask"));
+}
+
 TEST_F(PresetManagerTest, SelfHealingFromSlotFile) {
     auto settings = tempDir_.getChildFile("settings.dppreset");
     auto slot0 = tempDir_.getChildFile("slot_0.dppreset");

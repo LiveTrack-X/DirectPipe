@@ -27,6 +27,38 @@
 #include "../Util/AtomicFileIO.h"
 
 namespace directpipe {
+namespace {
+juce::Array<juce::var> bigIntToIndexArray(const juce::BigInteger& mask)
+{
+    juce::Array<juce::var> out;
+    for (int i = mask.findNextSetBit(0); i >= 0; i = mask.findNextSetBit(i + 1))
+        out.add(i);
+    return out;
+}
+
+juce::BigInteger readMaskWithValidation(const juce::var& value, int maxChannels)
+{
+    juce::BigInteger mask;
+    if (auto* arr = value.getArray()) {
+        // ASIO masks may be non-contiguous; persist exact indices.
+        for (const auto& v : *arr) {
+            int idx = static_cast<int>(v);
+            if (idx >= 0 && idx < maxChannels)
+                mask.setBit(idx);
+        }
+    }
+    return mask;
+}
+
+void applySafeDefaultMask(juce::BigInteger& mask, int maxChannels)
+{
+    // Invalid/empty saved mask falls back to a safe first up-to-2 channels.
+    if (mask.isZero()) {
+        for (int i = 0; i < juce::jmin(2, maxChannels); ++i)
+            mask.setBit(i);
+    }
+}
+} // namespace
 
 PresetManager::PresetManager(AudioEngine& engine)
     : engine_(engine)
@@ -104,6 +136,13 @@ juce::String PresetManager::exportToJSON()
     root->setProperty("inputDevice", engine_.getDesiredInputDevice());
     root->setProperty("outputDevice", engine_.getDesiredOutputDevice());
     root->setProperty("outputNone", engine_.isOutputNone());
+    {
+        // Persist explicit channel masks in JSON.
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        engine_.getDeviceManager().getAudioDeviceSetup(setup);
+        root->setProperty("inputChannelMask", bigIntToIndexArray(setup.inputChannels));
+        root->setProperty("outputChannelMask", bigIntToIndexArray(setup.outputChannels));
+    }
 
     // VST Chain
     juce::Array<juce::var> plugins;
@@ -275,6 +314,36 @@ bool PresetManager::importFromJSON(const juce::String& json)
         juce::String outputDev = root->getProperty("outputDevice").toString();
         if (outputDev.isNotEmpty() && outputDev != "None")
             (void)engine_.setOutputDevice(outputDev);
+    }
+
+    if (root->hasProperty("inputChannelMask") || root->hasProperty("outputChannelMask")) {
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        auto& dm = engine_.getDeviceManager();
+        dm.getAudioDeviceSetup(setup);
+
+        int inChCount = 0;
+        int outChCount = 0;
+        if (auto* dev = dm.getCurrentAudioDevice()) {
+            inChCount = dev->getInputChannelNames().size();
+            outChCount = dev->getOutputChannelNames().size();
+        }
+
+        if (root->hasProperty("inputChannelMask")) {
+            auto inMask = readMaskWithValidation(root->getProperty("inputChannelMask"), inChCount);
+            applySafeDefaultMask(inMask, inChCount);
+            setup.useDefaultInputChannels = false;
+            setup.inputChannels = inMask;
+        }
+        if (root->hasProperty("outputChannelMask")) {
+            auto outMask = readMaskWithValidation(root->getProperty("outputChannelMask"), outChCount);
+            applySafeDefaultMask(outMask, outChCount);
+            setup.useDefaultOutputChannels = false;
+            setup.outputChannels = outMask;
+        }
+
+        auto maskResult = dm.setAudioDeviceSetup(setup, true);
+        if (maskResult.isNotEmpty())
+            juce::Logger::writeToLog("[PRESET] Channel mask restore failed: " + maskResult);
     }
 
     // VST Chain ??load plugins (with fast-path for identical chain)
