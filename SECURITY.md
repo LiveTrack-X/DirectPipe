@@ -8,7 +8,7 @@ If you discover a security vulnerability in DirectPipe, **please do NOT report i
 
 - **GitHub Security Advisory**: [Report a vulnerability](../../security/advisories/new)
 
-48시간 이내에 응답하겠습니다. / We will respond within 48 hours.
+
 
 ## 범위 / Scope
 
