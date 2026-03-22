@@ -17,8 +17,10 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 - **Auto-start label (cross-platform UI consistency)**: Unified tray menu and Settings toggle to use a single platform label source via `Platform::getAutoStartLabel()` (`Open at Login` on macOS, `Start with System` on others), removing Windows-specific hardcoded wording from the Settings toggle path.
 
 ### Fixed
-- **Safety Limiter brickwall behavior (v4)**: Reworked limiter to look-ahead brickwall style (2ms look-ahead, instant attack, release smoothing) and added a hard per-sample ceiling clamp so output does not exceed configured ceiling on fast transients.
-- **ASIO channel selection reset on driver/device switch**: Preserved per-driver input/output channel masks in `DriverTypeSnapshot` and restored them during driver type changes. ASIO device reselection now keeps existing channel routing instead of always resetting to channels 1-2.
+- **Safety Guard implanted**: Global stage now runs as zero-latency Safety Guard (legacy SafetyLimiter class/API/action/state names preserved).
+- **BuiltinAutoGain post limiter ADD to AGC**: Added constant-latency post limiter inside Auto Gain. Default ceiling -1.0 dBTP, fixed internal lookahead 1.0ms / release 50ms, constant delayed path, final hard clamp.TP-style detector uses prev/current + 3 linear interpolation points (no strict EBU true-peak compliance claim).
+
+- **ASIO channel selection reset on driver/device switch**: Preserved per-driver input/output hannel masks in `DriverTypeSnapshot` and restored them during driver type changes. ASIO device reselection now keeps existing channel routing instead of always resetting to channels 1-2.
 
 ---
 
