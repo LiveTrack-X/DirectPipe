@@ -139,9 +139,9 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 | `[MIDI]` | MidiHandler | MIDI device, learn, CC/Note trigger |
 | `[CONTROL]` | ControlManager | Control subsystem init/shutdown |
 
-**Rule**: 모든 로그는 `Log::info/warn/error/audit` API를 사용한다. 직접 `writeToLog` 호출 금지.
+**Rule**: 새로 작성되는 로그 코드는 `Log::info/warn/error/audit` API를 우선 사용한다. 레거시 `juce::Logger::writeToLog` 호출은 점진적으로 정리한다.
 
-**Rule**: All logs must use the `Log::info/warn/error/audit` API. Direct `writeToLog` calls are prohibited.
+**Rule**: New logging code should use the `Log::info/warn/error/audit` API. Legacy `juce::Logger::writeToLog` usage is being phased out.
 
 ---
 
@@ -188,7 +188,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 
 | 이벤트 / Event | INF/WRN/ERR | AUD (audit mode) |
 |--------|-------------|-------------------|
-| 서버 시작 / Server start | 포트 / Port | 시도한 포트 범위 / Attempted port range |
+| 서버 시작 / Server start | 포트 / Port | (없음) / (none) |
 | 클라이언트 연결 / Client connect | 총 클라이언트 수 / Total client count | 초기 state JSON 크기 / Initial state JSON size |
 | 핸드셰이크 실패 / Handshake failure | — | — |
 | 명령 수신 / Command received | action 이름 / Action name | **전체 메시지 payload / Full message payload** |
@@ -198,8 +198,12 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 
 | 이벤트 / Event | INF/WRN/ERR | AUD (audit mode) |
 |--------|-------------|-------------------|
-| 서버 시작 / Server start | 포트 / Port | 시도한 포트 범위 / Attempted port range |
+| 서버 시작 / Server start | 포트 / Port | (없음) / (none) |
 | 요청 처리 / Request handling | method, path, status code | **response body** (최대 200자 / max 200 chars) |
+
+> 참고: WS/HTTP의 "시도한 포트 범위"는 시작 실패 시 ERR 로그에서 확인할 수 있습니다. (예: `Failed to start on any port (tried 8765-8770)`)
+>
+> Note: attempted port ranges for WS/HTTP are emitted on startup failure ERR logs (e.g., `Failed to start on any port (tried 8765-8770)`).
 
 ### [REC] AudioRecorder
 
@@ -231,9 +235,9 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 
 ### 1. Session Header (앱 시작 시 / On App Start)
 
-앱 시작 직후 아래 정보를 순서대로 기록:
+앱 시작 직후 아래 정보를 가능한 범위에서 기록:
 
-Log the following information in order immediately after app startup:
+Log the following information at startup, in available order:
 
 ```
 INF [APP] DirectPipe v4.0.1 started
@@ -305,8 +309,7 @@ INF [VST] Preload complete: 3 slots cached (1250ms)
 ### 5. Session End / 세션 종료
 
 ```
-INF [APP] DirectPipe shutting down
-INF [APP] Session duration: 2h 15m 30s
+INF [APP] DirectPipe shutting down (session: 2h 15m 30s)
 ```
 
 크래시 시 이 메시지가 없으면 = 비정상 종료로 판단.
@@ -366,15 +369,15 @@ Log::info("AUDIO", "Device started: " + name);
 Log::error("AUDIO", "Failed to init device '" + name + "': " + result);
 ```
 
-**Rule**: 새 코드는 반드시 `Log::` API 사용. `juce::Logger::writeToLog` 직접 호출 금지.
+**Rule**: 새 코드는 `Log::` API 사용을 원칙으로 한다. 기존 레거시 `juce::Logger::writeToLog`는 점진적 교체 대상이다.
 
-**Rule**: New code must use the `Log::` API. Direct `juce::Logger::writeToLog` calls are prohibited.
+**Rule**: New code should use the `Log::` API. Existing legacy `juce::Logger::writeToLog` calls are migration targets.
 
 ---
 
 ## Rules Summary / 규칙 요약
 
-1. **`Log::` API 사용 필수** — `juce::Logger::writeToLog` 직접 호출 금지 / **`Log::` API required** — direct `writeToLog` calls prohibited
+1. **새 코드에서 `Log::` API 사용 원칙** — 레거시 `writeToLog`는 점진 교체 / **Prefer `Log::` API in new code** — legacy `writeToLog` is being migrated
 2. **모든 로그에 카테고리 태그 필수** — `[APP]`, `[AUDIO]`, etc. / **Category tag required on all logs**
 3. **모든 로그에 심각도 필수** — `ERR`, `WRN`, `INF`, `AUD` / **Severity required on all logs**
 4. **세션 헤더 필수** — 앱 시작 시 환경 정보 전부 기록 / **Session header required** — log all environment info at startup

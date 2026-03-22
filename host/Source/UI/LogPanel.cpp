@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2025 LiveTrack
+// Copyright (C) 2025-2026 LiveTrack
 //
 // This file is part of DirectPipe.
 //
@@ -29,9 +29,9 @@
 
 namespace directpipe {
 
-// ═════════════════════════════════════════════════════════════
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
 //  DirectPipeLogger
-// ═════════════════════════════════════════════════════════════
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
 
 DirectPipeLogger::DirectPipeLogger()
 {
@@ -125,13 +125,13 @@ void DirectPipeLogger::clearPending()
                    std::memory_order_relaxed);
 }
 
-// ═════════════════════════════════════════════════════════════
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
 //  LogPanel
-// ═════════════════════════════════════════════════════════════
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
 
 LogPanel::LogPanel()
 {
-    // ── Application section ──
+    // ?? Application section ??
     appHeaderLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
     appHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
     addAndMakeVisible(appHeaderLabel_);
@@ -153,6 +153,14 @@ LogPanel::LogPanel()
     }
     addAndMakeVisible(startupToggle_);
 
+    startToTrayToggle_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    startToTrayToggle_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+    startToTrayToggle_.onClick = [this] {
+        if (onStartMinimizedToTrayChanged)
+            onStartMinimizedToTrayChanged(startToTrayToggle_.getToggleState());
+    };
+    addAndMakeVisible(startToTrayToggle_);
+
     quitBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kRedColour));
     quitBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     quitBtn_.onClick = [] {
@@ -160,12 +168,12 @@ LogPanel::LogPanel()
     };
     addAndMakeVisible(quitBtn_);
 
-    // ── Settings Export/Import section ──
+    // ?? Settings Export/Import section ??
     settingsHeaderLabel_.setFont(juce::Font(13.0f, juce::Font::bold));
     settingsHeaderLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
     addAndMakeVisible(settingsHeaderLabel_);
 
-    // Log view — read-only multiline with monospaced font
+    // Log view ??read-only multiline with monospaced font
     logView_.setMultiLine(true, true);
     logView_.setReadOnly(true);
     logView_.setScrollbarsShown(true);
@@ -235,6 +243,16 @@ LogPanel::LogPanel()
     resetSettingsBtn_.onClick    = [this] { onResetSettingsClicked(); };
 }
 
+void LogPanel::setStartMinimizedToTrayEnabled(bool enabled)
+{
+    startToTrayToggle_.setToggleState(enabled, juce::dontSendNotification);
+}
+
+bool LogPanel::isStartMinimizedToTrayEnabled() const
+{
+    return startToTrayToggle_.getToggleState();
+}
+
 void LogPanel::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(kBgColour));
@@ -252,7 +270,7 @@ void LogPanel::resized()
     int w = bounds.getWidth();
     int y = bounds.getY();
 
-    // ── Application section ──
+    // ?? Application section ??
     appHeaderLabel_.setBounds(x, y, w, headerH);
     y += headerH + gap;
 
@@ -261,7 +279,10 @@ void LogPanel::resized()
     quitBtn_.setBounds(x + w - quitW, y, quitW, rowH);
     y += rowH + gap;
 
-    // ── Settings Export/Import section ──
+    startToTrayToggle_.setBounds(x, y, w, rowH);
+    y += rowH + gap;
+
+    // ?? Settings Export/Import section ??
     settingsHeaderLabel_.setBounds(x, y, w, headerH);
     y += headerH + gap;
 
@@ -270,7 +291,7 @@ void LogPanel::resized()
     loadSettingsBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
     y += rowH + gap;
 
-    // ── Log section ──
+    // ?? Log section ??
     logHeaderLabel_.setBounds(x, y, w / 2, headerH);
     auditModeToggle_.setBounds(x + w / 2, y, w / 2, headerH);
     y += headerH + gap;
@@ -290,7 +311,7 @@ void LogPanel::resized()
     clearLogBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
     y += rowH + gap * 2;
 
-    // ── Maintenance section ──
+    // ?? Maintenance section ??
     maintenanceLabel_.setBounds(x, y, w, headerH);
     y += headerH + gap;
 

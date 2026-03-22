@@ -144,3 +144,30 @@ TEST_F(SettingsAutosaverTest, DeferAndForce) {
     for (int i = 0; i < 30; ++i) autosaver_->tick();
     EXPECT_TRUE(file.existsAsFile());
 }
+
+TEST_F(SettingsAutosaverTest, PresetManagerRoundtripSupportsCustomAppSettings) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+
+    bool exportHookCalled = false;
+    bool importHookCalled = false;
+    bool restoredStartMinimizedToTray = false;
+
+    presetMgr_->onExportAppSettings = [&](juce::DynamicObject& root) {
+        exportHookCalled = true;
+        root.setProperty("startMinimizedToTray", true);
+    };
+    presetMgr_->onImportAppSettings = [&](const juce::DynamicObject& root) {
+        importHookCalled = true;
+        if (root.hasProperty("startMinimizedToTray"))
+            restoredStartMinimizedToTray = static_cast<bool>(root.getProperty("startMinimizedToTray"));
+    };
+
+    autosaver_->saveNow();
+    EXPECT_TRUE(file.existsAsFile());
+    EXPECT_TRUE(exportHookCalled);
+
+    autosaver_->loadFromFile();
+    EXPECT_TRUE(importHookCalled);
+    EXPECT_TRUE(restoredStartMinimizedToTray);
+}

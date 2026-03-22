@@ -1,13 +1,24 @@
 # Changelog
 
-All notable changes to DirectPipe will be documented in this file.
+Major notable changes to DirectPipe (maintained in this repository era, including v3.4.0+) are documented in this file.
 
 ---
 
 ## [Unreleased]
 
+---
+
+## [4.0.3] - 2026-03-22
+
+### Added
+- **Startup behavior option (tray launch)**: Added `Start Minimized to Tray` toggle to both Settings > Application and tray right-click menu, backed by `settings.dppreset` persistence so both entry points stay in sync.
+
 ### Changed
 - **Auto-start label (cross-platform UI consistency)**: Unified tray menu and Settings toggle to use a single platform label source via `Platform::getAutoStartLabel()` (`Open at Login` on macOS, `Start with System` on others), removing Windows-specific hardcoded wording from the Settings toggle path.
+
+### Fixed
+- **Safety Limiter brickwall behavior (v4)**: Reworked limiter to look-ahead brickwall style (2ms look-ahead, instant attack, release smoothing) and added a hard per-sample ceiling clamp so output does not exceed configured ceiling on fast transients.
+- **ASIO channel selection reset on driver/device switch**: Preserved per-driver input/output channel masks in `DriverTypeSnapshot` and restored them during driver type changes. ASIO device reselection now keeps existing channel routing instead of always resetting to channels 1-2.
 
 ---
 

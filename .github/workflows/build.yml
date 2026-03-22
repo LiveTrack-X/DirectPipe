@@ -16,10 +16,24 @@ env:
   BUILD_TYPE: Release
 
 jobs:
+  text-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check UTF-8 text integrity
+        run: python tools/check_text_integrity.py --repo-root .
   # ═══════════════════════════════════════════
   # Windows — DirectPipe.exe + Receiver VST2/VST3
   # ═══════════════════════════════════════════
   build-windows:
+    needs: [text-integrity]
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -100,6 +114,7 @@ jobs:
   # macOS — DirectPipe.app + Receiver VST2/VST3/AU (Universal Binary)
   # ═══════════════════════════════════════════
   build-macos:
+    needs: [text-integrity]
     runs-on: macos-14
     timeout-minutes: 45
 
@@ -174,6 +189,7 @@ jobs:
   # Linux — DirectPipe + Receiver VST2/VST3
   # ═══════════════════════════════════════════
   build-linux:
+    needs: [text-integrity]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -248,6 +264,7 @@ jobs:
   # Stream Deck Plugin — cross-platform Node.js package
   # ═══════════════════════════════════════════
   build-streamdeck:
+    needs: [text-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

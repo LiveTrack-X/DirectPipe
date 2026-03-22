@@ -116,7 +116,7 @@ Mic Input  → VST Plugin Chain   → Output
    - 예외 발생 시: 버퍼 클리어, `chainCrashed_` 플래그 설정, 이후 모든 콜백 무음 출력
      / On exception: clear buffer, set `chainCrashed_` flag, silent output for all subsequent callbacks
    - 메시지 스레드에서 지연 알림 (NotificationBar) / Deferred notification from message thread (NotificationBar)
-7. Safety Limiter 적용 (feed-forward, 0.1ms attack / 50ms release) / Apply Safety Limiter (feed-forward, 0.1ms attack / 50ms release)
+7. Safety Limiter 적용 (brickwall-style, 2ms look-ahead + instant attack + hard ceiling clamp / 50ms release) / Apply Safety Limiter (brickwall-style, 2ms look-ahead + instant attack + hard ceiling clamp / 50ms release)
 8. AudioRecorder에 lock-free 쓰기 (녹음 중일 때) / Lock-free write to AudioRecorder (when recording)
 9. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시) / IPC write to SharedMemWriter (when IPC enabled)
 10. OutputRouter → 모니터 출력 (별도 WASAPI 장치) / OutputRouter → monitor output (separate WASAPI device)
@@ -185,9 +185,10 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 #### 4.1.8 Safety Limiter
 | 항목 / Item | 상세 / Details |
 |------|------|
-| 타입 / Type | 피드포워드 리미터 (look-ahead 없음, PDC 기여 없음) / Feed-forward limiter (no look-ahead, no PDC contribution) |
+| 타입 / Type | 브릭월 스타일 리미터 (2ms look-ahead + hard ceiling clamp) / Brickwall-style limiter (2ms look-ahead + hard ceiling clamp) |
 | 위치 / Position | VST 체인 이후, Recording/IPC/Monitor/Output 이전 / After VST chain, before Recording/IPC/Monitor/Output |
-| Attack | 0.1ms |
+| Look-ahead | 2ms (48kHz 기준 약 96 samples) / 2ms (~96 samples @48kHz) |
+| Attack | 즉시(instant, target gain 하강 시) / Instant (when target gain drops) |
 | Release | 50ms |
 | Ceiling 범위 / Ceiling Range | -6.0 ~ 0.0 dBFS (기본값 / default: -0.3 dBFS) |
 | 파라미터 / Parameters | `enabled` (atomic, 기본 / default true), `ceilingdB` (atomic) |
@@ -1208,7 +1209,7 @@ DirectPipe/
 │       │   ├── AudioRecorder.h/cpp     → WAV 녹음 / WAV recording (ThreadedWriter)
 │       │   ├── PluginPreloadCache.h/cpp → 슬롯 백그라운드 프리로드 / Slot background preloading
 │       │   ├── LatencyMonitor.h        → 실시간 레이턴시/CPU 측정 / Real-time latency/CPU measurement
-│       │   ├── SafetyLimiter.h/cpp     → RT-safe 피드포워드 리미터 / RT-safe feed-forward limiter
+│       │   ├── SafetyLimiter.h/cpp     → RT-safe 브릭월 스타일 리미터 / RT-safe brickwall-style limiter
 │       │   ├── DeviceState.h           → 장치 연결 상태 enum 상태 머신 / Device connection state enum state machine
 │       │   ├── BuiltinFilter.h/cpp     → HPF+LPF 오디오 프로세서 / HPF+LPF audio processor
 │       │   ├── BuiltinNoiseRemoval.h/cpp → RNNoise 기반 노이즈 제거 / RNNoise-based noise removal

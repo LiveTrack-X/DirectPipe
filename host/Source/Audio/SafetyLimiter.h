@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2025 LiveTrack
+// Copyright (C) 2025-2026 LiveTrack
 //
 // This file is part of DirectPipe.
 //
@@ -18,7 +18,7 @@
 
 /**
  * @file SafetyLimiter.h
- * @brief Feed-forward safety limiter — RT-safe, no look-ahead.
+ * @brief Brickwall-style safety limiter with look-ahead and hard ceiling clamp.
  *
  * Inserted after VST chain, before all output paths (Recording/IPC/Monitor/Main).
  * Prevents unexpected clipping from plugin parameter changes or preset switches.
@@ -26,28 +26,30 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 
 namespace directpipe {
 
 /**
- * @brief RT-safe feed-forward limiter with atomic parameter control.
+ * @brief RT-safe brickwall limiter with atomic parameter control.
  *
- * Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
- *   process()               — [RT audio thread only]
- *   prepareToPlay()         — [Message thread] (JUCE convention)
- *   setEnabled/setCeiling() — [Any thread] (atomic writes)
- *   get* / isLimiting()     — [Any thread] (atomic reads)
+ * Thread Ownership (see Audio/README.md "Thread Model"):
+ *   process()               [RT audio thread only]
+ *   prepareToPlay()         [Message thread] (JUCE convention)
+ *   setEnabled/setCeiling() [Any thread] (atomic writes)
+ *   get* / isLimiting()     [Any thread] (atomic reads)
  */
 class SafetyLimiter {
 public:
     SafetyLimiter();
 
-    /** Recalculate envelope coefficients for new sample rate. */
+    /** Recalculate coefficients for new sample rate and reset look-ahead state. */
     void prepareToPlay(double sampleRate);
 
-    /** Process audio buffer in-place. RT-safe — no alloc, no mutex, no logging. */
+    /** Process audio buffer in-place. RT-safe: no alloc, no mutex, no logging. */
     void process(juce::AudioBuffer<float>& buffer, int numSamples);
 
     // Parameter setters (atomic, any thread)
@@ -61,20 +63,32 @@ public:
     bool isLimiting() const { return gainReduction_dB_.load(std::memory_order_relaxed) < -0.1f; }
 
 private:
+    void resetState();
+
     std::atomic<bool> enabled_{true};
+    std::atomic<bool> resetRequested_{true};
     std::atomic<float> ceilingLinear_{0.9661f};  // dBtoLinear(-0.3)
     std::atomic<float> ceilingdB_{-0.3f};
 
-    // Envelope state — RT audio thread only, non-atomic
+    // Envelope + delay state (RT audio thread only, non-atomic)
     float currentGain_ = 1.0f;
-    float attackCoeff_ = 0.0f;
     float releaseCoeff_ = 0.0f;
+    int lookAheadSamples_ = 1;
+    int delaySize_ = 2;
+    int writePos_ = 0;
 
-    // UI feedback — written by RT, read by UI
-    std::atomic<float> gainReduction_dB_{0.0f};
-
-    static constexpr float kAttackMs = 0.1f;
+    static constexpr int kMaxChannels = 64;
+    // Brickwall safety window. This intentionally adds fixed output delay.
+    static constexpr float kLookAheadMs = 2.0f;
     static constexpr float kReleaseMs = 50.0f;
+    static constexpr int kMaxLookAheadSamples = 1024;
+    static constexpr int kMaxDelayBufferSize = kMaxLookAheadSamples + 1;
+
+    std::array<std::array<float, kMaxDelayBufferSize>, kMaxChannels> delayedSamples_{};
+    std::array<float, kMaxDelayBufferSize> peakRing_{};
+
+    // UI feedback [written by RT, read by UI]
+    std::atomic<float> gainReduction_dB_{0.0f};
 };
 
 } // namespace directpipe

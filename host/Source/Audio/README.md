@@ -13,6 +13,8 @@ Mic (WASAPI/ASIO/CoreAudio/ALSA)
  v
 AudioEngine RT callback (audioDeviceIOCallbackWithContext)
  |
+ |  Fast path: panic mute active (`muted_`) -> zero output and return immediately
+ |
  |  1. inputChannelData -> workBuffer_ (pre-allocated 8ch)
  |     - Mono: sum all input channels -> ch0, duplicate to ch1
  |     - Stereo: copy channels as-is
@@ -27,9 +29,9 @@ v
 VSTChain.processBlock(workBuffer_)
 |  - AudioProcessorGraph inline processing
 |  - Plugin bypass via atomic flags
-|  - No additional latency
+|  - Inline processing (체인/플러그인 PDC 설정이 전체 지연에 반영됨)
 |
-+---> SafetyLimiter.process()            [RT-safe feed-forward limiter, applied before ALL outputs]
++---> SafetyLimiter.process()            [RT-safe brickwall limiter (look-ahead + hard clamp), applied before ALL outputs]
 |
 +---> AudioRecorder.writeBlock()         [lock-free FIFO -> BG writer thread]
 |
@@ -61,7 +63,7 @@ LatencyMonitor.markCallbackEnd()
 | `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
 | `PluginPreloadCache.h/cpp` | 프리셋 슬롯 전환용 플러그인 인스턴스 백그라운드 프리로딩. 캐시 hit 시 DLL 로딩 건너뜀 |
 | `PluginLoadHelper.h` | 크로스플랫폼 플러그인 인스턴스 생성 헬퍼 (header-only). macOS에서 AppKit 메인 스레드 디스패치 |
-| `SafetyLimiter.h/cpp` | RT-safe feed-forward limiter. Atomic params (enabled, ceiling). 0.1ms attack, 50ms release. GR feedback for UI |
+| `SafetyLimiter.h/cpp` | RT-safe brickwall limiter. Atomic params (enabled, ceiling). 2ms look-ahead, instant attack, 50ms release, hard ceiling clamp. GR feedback for UI |
 | `DeviceState.h` | 디바이스 연결 상태 열거형 (header-only). DeviceState enum + transition() + deviceStateToString() |
 | `BuiltinFilter.h/cpp` | 내장 HPF + LPF 필터 (AudioProcessor 상속). IIR 2차 버터워스. RT-safe. PDC 0 |
 | `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise 노이즈 제거 (AudioProcessor 상속). FIFO 480프레임, VAD 게이팅, dual-mono. PDC 480 samples |
@@ -78,8 +80,8 @@ LatencyMonitor.markCallbackEnd()
 | AudioEngine | `checkReconnection`, `updateXRunTracking` | `[Message thread]` | 30Hz 타이머에서 호출 |
 | AudioEngine | `audioDeviceError`, `audioDeviceStopped` | `[Device thread]` | JUCE 디바이스 스레드에서 호출 |
 | AudioEngine | `popNotification` (read) | `[Message thread]` | lock-free queue에서 소비 |
-| AudioEngine | `pushNotification` (write) | `[RT thread]` / `[Device thread]` | lock-free queue에 생산 |
-| VSTChain | `processBlock` | `[RT thread]` | chainLock_ 사용 안 함. atomic `chainDirty_`로 상태 확인 |
+| AudioEngine | `pushNotification` (write) | `[Device thread]` / `[Message thread]` | MPSC-safe queue에 생산 (RT 콜백에서는 호출하지 않음) |
+| VSTChain | `processBlock` | `[RT thread]` | chainLock_ 사용 안 함. 현재 render sequence를 lock-free로 처리 |
 | VSTChain | `addPlugin`, `removePlugin`, `movePlugin` | `[Message thread]` | `chainLock_` 보호. `rebuildGraph(true)` |
 | VSTChain | `setPluginBypassed` | `[Message thread]` | `chainLock_` + `rebuildGraph(false)` (suspend 없음) |
 | VSTChain | `replaceChainAsync` | `[Message thread]` -> `[BG thread]` -> `[Message thread]` | DLL 로딩은 BG, graph 삽입은 callAsync |
@@ -205,7 +207,7 @@ LatencyMonitor.markCallbackEnd()
 
 1. **RT 콜백에서 heap 할당/mutex 금지**: `audioDeviceIOCallbackWithContext`에서 `new`, `malloc`, `std::mutex::lock` 등 사용 시 glitch 발생. `workBuffer_`는 `audioDeviceAboutToStart`에서 사전 할당. `emptyMidi_`도 `prepareToPlay`에서 사전 할당.
 
-2. **VSTChain `chainLock_`를 `processBlock`에서 잡지 말 것**: RT 스레드에서 `chainLock_`를 잡으면 메시지 스레드의 플러그인 로딩과 데드락. `processBlock`은 atomic `chainDirty_` 플래그만 확인.
+2. **VSTChain `chainLock_`를 `processBlock`에서 잡지 말 것**: RT 스레드에서 `chainLock_`를 잡으면 메시지 스레드의 플러그인 로딩과 데드락. `processBlock`은 lock-free 경로를 유지해야 함.
 
 3. **VSTChain `chainLock_` 안에서 `writeToLog` 금지**: DirectPipeLogger의 `writeMutex_`와 lock ordering 충돌로 데드락. 로그 문자열은 lock 안에서 캡처하고, lock 해제 후 로깅.
 

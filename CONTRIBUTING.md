@@ -21,16 +21,18 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 2. 커밋 메시지: `type: description` 형식 (예: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`) / Commit message format: `type: description`
 3. 테스트 통과 확인 / Verify tests pass:
    ```bash
+   cmake -B build -DCMAKE_BUILD_TYPE=Release
    cmake --build build --config Release
    ctest --test-dir build -C Release --output-on-failure
    ```
-4. 새 Action 추가 시 테스트/문서 동기화 체크리스트를 함께 갱신하세요 (`TESTING.md`, `docs/ReleaseNote.md`) / When adding new Actions, update test/doc sync checklists (`TESTING.md`, `docs/ReleaseNote.md`)
-5. 문서 업데이트도 포함해 주세요 (해당 시) / Include documentation updates when applicable
+4. Action/API/상태 모델 변경 시 동기화 문서를 함께 갱신하세요 (`README.md`, `docs/USER_GUIDE.md`, `docs/PRODUCT_SPEC.md`, `docs/CONTROL_API.md`, `docs/ReleaseNote.md`, `TESTING.md`) / When changing Action/API/state model behavior, update sync docs (`README.md`, `docs/USER_GUIDE.md`, `docs/PRODUCT_SPEC.md`, `docs/CONTROL_API.md`, `docs/ReleaseNote.md`, `TESTING.md`)
+5. 유지보수 기준 문서인 `docs/MAINTENANCE_RULES.md`의 Behavior Sync Checklist를 기준으로 검토하세요 / Use `docs/MAINTENANCE_RULES.md` Behavior Sync Checklist as source of truth
+6. 문서 업데이트도 포함해 주세요 (해당 시) / Include documentation updates when applicable
 
 ## 테스트 / Testing
 
 - Google Test 기반 295 테스트 / 295 tests
-- `tools/pre-release-test.sh` — 빌드 + 단위 테스트 + API 테스트 / Build + unit tests + API tests
+- `tools/pre-release-test.sh` — 빌드 + 단위 테스트 + API 테스트 / Build + unit tests + API tests (Windows Git Bash 환경 기준)
 - `tools/pre-release-dashboard.html` — 수동 테스트 대시보드 / Manual test dashboard
 
 ## 버그 리포트 / Bug Reports

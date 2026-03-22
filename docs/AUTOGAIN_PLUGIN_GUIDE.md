@@ -8,6 +8,9 @@
 
 ## 현재 상태 / Current State
 
+이 문서는 **분리 설계 가이드**입니다. 현재 기본 CMake 타깃에는 `DirectPipeAutoGain` 독립 플러그인이 포함되어 있지 않습니다.
+This document is an **extraction design guide**. The default CMake targets do not currently include a standalone `DirectPipeAutoGain` plugin.
+
 `BuiltinAutoGain`은 이미 `juce::AudioProcessor`를 완전 구현:
 / `BuiltinAutoGain` already fully implements `juce::AudioProcessor`:
 

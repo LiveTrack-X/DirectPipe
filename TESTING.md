@@ -18,13 +18,13 @@ bash tools/pre-release-test.sh
 - API integration tests (앱 실행 중일 때)
 - Git status check
 
-옵션: `--skip-build`, `--skip-api`, `--version-only`
+옵션: `--skip-build`, `--skip-api`, `--api-only`, `--version-only`
 
 ### Step 2: GUI 대시보드 + AI 코드 리뷰
 
 **GUI 대시보드** — 브라우저에서 `tools/pre-release-dashboard.html` 열기:
-- API 자동 테스트 25개 (pre-release-dashboard.html 기준; test_api.js는 114개 체크 포함) / 25 auto API tests (from pre-release-dashboard.html; test_api.js contains 114 checks)
-- 수동 테스트 체크리스트 29개 (대시보드 체크박스; 전체 수동 테스트 목록은 하단 참조)
+- API 자동 테스트와 수동 체크리스트를 실행/기록 (개수는 대시보드 버전 및 테스트 스크립트 업데이트에 따라 달라질 수 있음) / Run and track API auto tests + manual checklist (counts may change with dashboard/script updates)
+- 현재 기준 개수는 대시보드 상단/섹션별 카운터를 우선 확인 / For current counts, trust dashboard counters first
 - 결과 JSON 내보내기 (Export Report → Claude에 전달 가능)
 - localStorage에 체크 상태 저장
 
@@ -67,7 +67,7 @@ node test_api.js
 
 ### 동작 방식
 1. 시작 시 현재 상태(볼륨, 슬롯, 뮤트, IPC, 바이패스 등) 스냅샷 저장
-2. 33개 섹션, 114개 체크 항목 순차 실행
+2. 섹션별 체크 항목을 순차 실행 (현재 `test_api.js` 기준 약 33개 섹션, 114개 체크)
 3. 테스트 완료 또는 에러 시 자동으로 원래 상태 복원 (`try/finally`)
 
 ### 테스트 섹션 (33개)
@@ -106,6 +106,10 @@ node test_api.js
 | 31 | Settings File | 1 |
 | 32 | Volume Precision | 2 |
 | 33 | Panic During Operations | 3 |
+
+> 참고: 위 숫자는 문서 작성 시점 기준입니다. 실제 실행에서는 환경(플러그인 유무, 장치 상태, SKIP 조건, 반복 실행 횟수)에 따라 PASS/SKIP 수치가 달라질 수 있습니다.
+>
+> Note: The numbers above reflect the document snapshot. Actual PASS/SKIP counts may vary by environment (plugin availability, device state, skip conditions, rerun loops).
 
 ### 주의사항
 - 플러그인이 로드된 상태(슬롯 A에 플러그인 있음)에서 실행해야 모든 항목이 PASS

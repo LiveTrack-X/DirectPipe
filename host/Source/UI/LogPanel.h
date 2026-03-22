@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2025 LiveTrack
+// Copyright (C) 2025-2026 LiveTrack
 //
 // This file is part of DirectPipe.
 //
@@ -66,7 +66,7 @@ private:
 };
 
 /**
- * @brief Log viewer tab — real-time log display, export, and maintenance actions.
+ * @brief Log viewer tab ??real-time log display, export, and maintenance actions.
  */
 class LogPanel : public juce::Component {
 public:
@@ -78,12 +78,15 @@ public:
 
     /** Call from MainComponent::timerCallback() at 30Hz. */
     void flushPendingLogs();
+    void setStartMinimizedToTrayEnabled(bool enabled);
+    bool isStartMinimizedToTrayEnabled() const;
 
-    /** Wired by MainComponent — called after Reset Settings deletes config files. */
+    /** Wired by MainComponent ??called after Reset Settings deletes config files. */
     std::function<void()> onResetSettings;
     std::function<void()> onSaveSettings;
     std::function<void()> onLoadSettings;
-    /** Wired by MainComponent — called after Clear All Presets deletes slot files. */
+    std::function<void(bool)> onStartMinimizedToTrayChanged;
+    /** Wired by MainComponent ??called after Clear All Presets deletes slot files. */
     std::function<void()> onPresetsCleared;
     std::function<void()> onFullBackup;
     std::function<void()> onFullRestore;
@@ -92,6 +95,7 @@ private:
     // Application section
     juce::Label appHeaderLabel_{"", "Application"};
     juce::ToggleButton startupToggle_{"Start with System"};
+    juce::ToggleButton startToTrayToggle_{"Start Minimized to Tray"};
     juce::TextButton quitBtn_{"Quit"};
 
     // Settings Export/Import section

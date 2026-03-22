@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2025 LiveTrack
+// Copyright (C) 2025-2026 LiveTrack
 //
 // This file is part of DirectPipe.
 //
@@ -82,7 +82,7 @@ public:
      */
     bool importFromJSON(const juce::String& json);
 
-    // ─── Quick Preset Slots (A..E) ───
+    // ??? Quick Preset Slots (A..E) ???
 
     static constexpr int kNumSlots = 6;  // A-E (0-4) + Auto (5)
 
@@ -161,7 +161,7 @@ public:
     void setSlotName(int slotIndex, const juce::String& name);
 
     /**
-     * @brief Get display label for slot button (e.g. "A" or "A|게임").
+     * @brief Get display label for slot button (e.g. "A" or "A|寃뚯엫").
      */
     juce::String getSlotDisplayName(int slotIndex) const;
 
@@ -197,6 +197,12 @@ public:
 
     /** @brief Get the preload cache (for shutdown cleanup). */
     PluginPreloadCache& getPreloadCache() { return preloadCache_; }
+
+    /** Optional hook for exporting app-level settings not owned by PresetManager. */
+    std::function<void(juce::DynamicObject& root)> onExportAppSettings;
+
+    /** Optional hook for importing app-level settings not owned by PresetManager. */
+    std::function<void(const juce::DynamicObject& root)> onImportAppSettings;
 
 private:
     struct TargetPlugin {

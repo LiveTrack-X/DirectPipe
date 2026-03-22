@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2025 LiveTrack
+// Copyright (C) 2025-2026 LiveTrack
 #include <gtest/gtest.h>
 #include "../host/Source/Audio/SafetyLimiter.h"
 
@@ -19,6 +19,16 @@ protected:
             for (int i = 0; i < numSamples; ++i)
                 buf.setSample(ch, i, value);
         return buf;
+    }
+
+    float getMaxAbsSample(const juce::AudioBuffer<float>& buffer) {
+        float peak = 0.0f;
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
+            for (int i = 0; i < buffer.getNumSamples(); ++i) {
+                peak = std::max(peak, std::abs(buffer.getSample(ch, i)));
+            }
+        }
+        return peak;
     }
 };
 
@@ -43,7 +53,7 @@ TEST_F(SafetyLimiterTest, BelowCeiling) {
 }
 
 TEST_F(SafetyLimiterTest, AboveCeiling) {
-    limiter.setCeiling(-6.0f);  // ceiling ≈ 0.5012
+    limiter.setCeiling(-6.0f);  // ceiling ??0.5012
     auto buf = makeBuffer(1.0f, 2048);
     limiter.process(buf, buf.getNumSamples());
     float lastSample = buf.getSample(0, buf.getNumSamples() - 1);
@@ -107,9 +117,28 @@ TEST_F(SafetyLimiterTest, EnvelopeRelease) {
     auto loud = makeBuffer(1.0f, 1024);
     limiter.process(loud, loud.getNumSamples());
     EXPECT_TRUE(limiter.isLimiting());
-    // Then: process quiet signal — limiter should gradually release
+    // Then: process quiet signal ??limiter should gradually release
     auto quiet = makeBuffer(0.1f, 4096);
     limiter.process(quiet, quiet.getNumSamples());
     // After release, signal should be close to original
     EXPECT_NEAR(quiet.getSample(0, quiet.getNumSamples() - 1), 0.1f, 0.02f);
+}
+
+TEST_F(SafetyLimiterTest, BrickwallCeilingNeverExceededOnHotSignal) {
+    limiter.setCeiling(-6.0f);
+    auto buf = makeBuffer(1.12f, 4096);
+    limiter.process(buf, buf.getNumSamples());
+
+    const float maxAbs = getMaxAbsSample(buf);
+    const float ceilingLinear = juce::Decibels::decibelsToGain(-6.0f);
+    EXPECT_LE(maxAbs, ceilingLinear + 1.0e-4f);
+}
+
+TEST_F(SafetyLimiterTest, ZeroDbCeilingNeverExceedsFullScale) {
+    limiter.setCeiling(0.0f);
+    auto buf = makeBuffer(1.5f, 2048);
+    limiter.process(buf, buf.getNumSamples());
+
+    const float maxAbs = getMaxAbsSample(buf);
+    EXPECT_LE(maxAbs, 1.0f + 1.0e-4f);
 }

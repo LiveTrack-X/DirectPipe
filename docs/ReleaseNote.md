@@ -3,6 +3,20 @@
 > 이 문서는 **사용자 대상** 릴리스 요약입니다. 개발자 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md) 참조.
 > This is a **user-facing** release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## v4.0.3
+
+### Highlights
+- **Start Minimized to Tray option**: Added a startup behavior toggle in both `Settings > Application` and the tray right-click menu. Both entry points stay synchronized via app settings.
+- **Cross-platform auto-start wording**: Unified auto-start labels to use a shared platform-aware source (`Open at Login` on macOS, `Start with System` on Windows/Linux) in both Settings and tray menu.
+- **Safety Limiter brickwall fix**: Upgraded limiter behavior to look-ahead brickwall style (2ms look-ahead + hard sample clamp) so fast transients stay under the configured ceiling.
+- **ASIO channel routing restore fix**: Driver-type switching now preserves input/output channel masks per driver snapshot, preventing ASIO channel selection from being reset unexpectedly.
+
+### Upgrade Notes
+- **No API/state model break**: This release does not introduce breaking changes to control API or state schema.
+- **Startup option apply timing**: `Start Minimized to Tray` applies on next process start. If DirectPipe is already running in tray, quit fully and relaunch to verify startup behavior.
+
+---
+
 ## v4.0.2
 
 ### Highlights / 주요 변경

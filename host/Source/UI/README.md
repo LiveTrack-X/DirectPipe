@@ -14,11 +14,11 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 ├── inputGainSlider_ (Slider)           ← 입력 게인 슬라이더
 ├── pluginChainEditor_ (PluginChainEditor)  ← VST 플러그인 체인 에디터
 │   └── PluginRowComponent (내부)           ← 드래그 앤 드롭 행
-├── presetSlotBar_ (PresetSlotBar)      ← A-E + Auto 프리셋 슬롯 버튼
+├── presetSlotBar_ (PresetSlotBar)      ← A-E 프리셋 슬롯 버튼 (Auto는 별도 INPUT 영역 버튼)
 ├── notificationBar_ (NotificationBar)  ← 상태바 알림 (에러/경고/정보)
 ├── rightTabs_ (TabbedComponent)        ← 우측 탭 패널
 │   ├── [Audio] audioSettings_ (AudioSettings)          ← 오디오 I/O 설정
-│   ├── [Output] outputPanel_ (OutputPanel)             ← 출력볼륨/모니터/IPC/녹음
+│   ├── [Output] outputPanel_ (OutputPanel)             ← 모니터/IPC/녹음
 │   ├── [Controls] controlSettingsPanel_ (ControlSettingsPanel)  ← 외부 제어 탭 컨테이너
 │   │   ├── [Hotkeys] HotkeyTab         ← 단축키 바인딩
 │   │   ├── [MIDI] MidiTab              ← MIDI 디바이스/매핑
@@ -40,18 +40,17 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 |------|------|
 | `AudioSettings.h/cpp` | 통합 오디오 I/O 설정 패널 (드라이버/디바이스/SR/BS/채널 모드) |
 | `ControlSettingsPanel.h/cpp` | Hotkey/MIDI/StreamDeck 서브탭을 감싸는 슬림 탭 컨테이너 (~75줄) |
-| `DeviceSelector.h/cpp` | 오디오 입력 디바이스/SR/BS 선택 컴포넌트 (레거시, AudioSettings로 대체됨) |
 | `DirectPipeLookAndFeel.h/cpp` | 다크 테마 룩앤필 + CJK 폰트 렌더링 (플랫폼별 폰트 선택) |
 | `HotkeyTab.h/cpp` | 단축키 바인딩 탭 — 액션-키 매핑, [Set] 녹음, 드래그 앤 드롭 순서 변경 |
 | `LevelMeter.h/cpp` | 실시간 오디오 레벨 미터 (RMS + 피크 홀드 + 클리핑) |
 | `LogPanel.h/cpp` | 실시간 로그 뷰어 + 유지보수 기능 (백업/복원/팩토리 리셋) + DirectPipeLogger |
 | `MidiTab.h/cpp` | MIDI 디바이스 선택 + CC/Note 매핑 + [Learn] 모드 + 3단계 플러그인 파라미터 팝업 |
 | `NotificationBar.h/cpp` | 비침입 상태바 알림 (빨강/주황/보라), 자동 페이드 3-8초 |
-| `OutputPanel.h/cpp` | **메인 출력 볼륨 (0-100%)** + 모니터 출력 (디바이스/볼륨/활성화) + VST Receiver IPC 토글 + 녹음 제어 |
+| `OutputPanel.h/cpp` | 모니터 출력 (디바이스/볼륨/활성화) + VST Receiver IPC 토글 + 녹음 제어 (메인 출력 볼륨은 AudioSettings에서 제어) |
 | `PluginChainEditor.h/cpp` | VST 플러그인 체인 에디터 — 추가/삭제/드래그 순서 변경/바이패스/네이티브 GUI |
 | `PluginScanner.h/cpp` | Out-of-process VST 스캐너 다이얼로그 (디렉토리 관리, 프로그레스, 검색/정렬) |
 | `PresetManager.h/cpp` | 프리셋 저장/로드 + 퀵 슬롯 A-E (체인 전용, 비동기 로드, 프리로드 캐시) |
-| `PresetSlotBar.h/cpp` | A-E + **Auto** 프리셋 슬롯 버튼 (6개). Auto 슬롯: 이름 고정, 순환 제외, 초기화 기능. 우클릭 컨텍스트 메뉴 |
+| `PresetSlotBar.h/cpp` | A-E 프리셋 슬롯 버튼 (5개). Auto 슬롯(index 5)은 별도 Auto 버튼과 연동되며 A-E 순환에서 제외. 우클릭 컨텍스트 메뉴 |
 | `SettingsExporter.h/cpp` | 설정 내보내기/가져오기 — `.dpbackup` (설정만) / `.dpfullbackup` (전체) + 크로스-OS 보호 |
 | `StatusUpdater.h/cpp` | 30Hz 타이머 틱에서 UI 상태 업데이트 (뮤트/레이턴시/CPU/레벨/게인 동기화). 색상 체계: INPUT(녹색/빨강), OUT/MON/VST(녹색/사용자뮤트빨강/패닉잠금진빨강), PANIC(대기=빨강, 활성=녹색 `UNMUTE`) |
 | `StreamDeckTab.h/cpp` | WebSocket/HTTP 서버 상태 표시 + Start/Stop 토글 |
@@ -83,7 +82,6 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `MidiTab` | `[Message thread]` | 내부 Timer로 Learn 모드 폴링 |
 | `StreamDeckTab` | `[Message thread]` | 내부 Timer로 서버 상태 폴링 |
 | `SettingsExporter` | `[Message thread]` | 정적 메서드만 제공, async FileChooser 사용 |
-| `DeviceSelector` | `[Message thread]` | ChangeListener |
 
 ---
 
@@ -100,7 +98,8 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `settingsAutosaver_` | MainComponent 생성자 | MainComponent (unique_ptr) | MainComponent 소멸자 | 콜백: onPostLoad, onShowWindow 등 |
 | `statusUpdater_` | MainComponent 생성자 | MainComponent (unique_ptr) | MainComponent 소멸자 | 30Hz tick, UI 포인터 바인딩 |
 | `updateChecker_` | MainComponent 생성자 | MainComponent (stack) | MainComponent 소멸자 | BG 스레드 GitHub API, alive_ 보호 |
-| UI 패널들 (audioSettings_, pluginChainEditor_ 등) | MainComponent 생성자 | rightTabs_ (release 후) | rightTabs_ 소멸자 | unique_ptr.release()로 TabbedComponent에 이전 |
+| 탭 UI 패널들 (audioSettings_, outputPanel_, controlSettingsPanel_) | MainComponent 생성자 | rightTabs_ (release 후) | rightTabs_ 소멸자 | unique_ptr.release()로 TabbedComponent에 이전 |
+| `pluginChainEditor_` | MainComponent 생성자 | MainComponent (unique_ptr) | MainComponent 소멸자 | 탭 소유 아님 (좌측 체인 영역) |
 | `outputPanelPtr_` | MainComponent 생성자 | SafePointer (비소유) | 자동 null (Component 삭제 시) | rightTabs_가 실제 소유 |
 
 ---

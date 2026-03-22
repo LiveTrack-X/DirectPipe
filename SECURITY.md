@@ -39,13 +39,17 @@ All network services bind to **localhost (127.0.0.1) only**. No remote access is
 
 | 서비스 / Service | 포트 / Port | 프로토콜 / Protocol | 용도 / Purpose |
 |---|---|---|---|
-| WebSocket | 8765 | TCP | 실시간 상태 브로드캐스트 + 명령 수신 / Real-time state broadcast + command input |
-| HTTP REST API | 8766 | TCP | GET-only REST API (상태 조회, 명령 실행) / Status query, command execution |
+| WebSocket | 기본 8765 (설정값 실패 시 +1..+5 포트 자동 시도) / default 8765 (auto-tries +1..+5 on bind failure) | TCP | 실시간 상태 브로드캐스트 + 명령 수신 / Real-time state broadcast + command input |
+| HTTP REST API | 기본 8766 (설정값 실패 시 +1..+5 포트 자동 시도) / default 8766 (auto-tries +1..+5 on bind failure) | TCP | GET-only REST API (상태 조회, 명령 실행) / Status query, command execution |
 | UDP Discovery | 8767 | UDP | Stream Deck 플러그인 자동 감지 / Stream Deck plugin auto-discovery |
 
 **인증 없음 (No Authentication)**: localhost 전용이므로 인증을 요구하지 않습니다. 같은 PC의 모든 프로세스가 접근 가능합니다.
 
 **No authentication**: Since services are localhost-only, no auth is required. Any process on the same machine can access them.
+
+**알려진 제한사항 (WebSocket)**: 핸드셰이크에서 Origin 검증이나 토큰 인증을 수행하지 않습니다. localhost에서 접속 가능한 로컬 프로세스는 모두 명령 전송이 가능합니다.
+
+**Known limitation (WebSocket)**: The handshake does not enforce Origin validation or token auth. Any local process that can connect to localhost can send commands.
 
 **연결 제한 / Connection Limits**:
 - WebSocket: 최대 32개 동시 연결 (초과 시 거부) / Max 32 concurrent connections (excess rejected)
@@ -124,8 +128,16 @@ The auto-updater checks the GitHub Releases API for new versions and downloads b
 
 ### 설정 백업 보안 / Settings Backup Security
 
-- **크로스 OS 보호**: 백업 파일에 플랫폼 정보가 포함되어 있으며, 다른 OS에서 복원 시 차단됩니다
+- **크로스 OS 보호**: `platform` 필드가 포함된 백업은 다른 OS에서 복원 시 차단됩니다. 단, **레거시 백업(플랫폼 필드 없음)은 호환성 때문에 허용될 수 있습니다**
 - **파일 무결성**: 모든 설정/프리셋 저장은 `atomicWriteFile()` 패턴 (.tmp → .bak → rename)을 사용하여 전원 중단 시에도 파일이 손상되지 않습니다
 
-- **Cross-OS protection**: Backup files include platform info; restore is blocked on different OS
+- **Cross-OS protection**: Backups with a `platform` field are blocked on different OS. **Legacy backups without a platform field may still be accepted for backward compatibility**
 - **File integrity**: All settings/preset saves use `atomicWriteFile()` pattern (.tmp → .bak → rename) for crash-safe writes
+
+### 로그 보안 주의 / Logging Security Note
+
+- Audit Mode를 켜면 HTTP 응답 일부, WebSocket payload, 장치/플러그인 상세 상태가 로그에 더 많이 기록됩니다.
+- 공유 PC/공개 스트리밍 환경에서는 로그 파일 공유 전에 민감 정보를 검토/마스킹하세요.
+
+- With Audit Mode enabled, logs may include extra HTTP response excerpts, WebSocket payloads, and detailed device/plugin state.
+- In shared PCs or public support channels, review/mask sensitive parts before sharing logs.

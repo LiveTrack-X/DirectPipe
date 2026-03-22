@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2025 LiveTrack
+// Copyright (C) 2025-2026 LiveTrack
 //
 // This file is part of DirectPipe.
 //
@@ -18,7 +18,7 @@
 
 /**
  * @file MainComponent.h
- * @brief Main application component — combines audio engine, control system, and UI
+ * @brief Main application component ??combines audio engine, control system, and UI
  */
 #pragma once
 
@@ -73,11 +73,15 @@ public:
     /** @brief Get the preset manager (for session logging). */
     PresetManager* getPresetManager() { return presetManager_.get(); }
 
+    bool isStartMinimizedToTrayOnLaunchEnabled() const { return startMinimizedToTrayOnLaunch_; }
+    void setStartMinimizedToTrayOnLaunch(bool enabled, bool markDirty = true);
+
     void mouseDown(const juce::MouseEvent& e) override;
 
 private:
     void timerCallback() override;
     void markSettingsDirty();
+    void syncStartMinimizedToTrayToggle();
     void updateAutoButtonVisual();
 
     // Audio engine (core)
@@ -107,7 +111,7 @@ private:
     juce::Slider inputGainSlider_;
     juce::Label inputGainLabel_{"", "Gain:"};
 
-    // Auto button (switches to Auto preset slot 5 — contains built-in processors)
+    // Auto button (switches to Auto preset slot 5 ??contains built-in processors)
     juce::TextButton autoProcessorBtn_{"Auto"};
 
     // Preset buttons
@@ -121,16 +125,17 @@ private:
     static constexpr int kStatusBarHeight = 30;
     static constexpr int kMeterWidth = 40;
 
-    // Quick preset slot bar (A..E) — delegated to PresetSlotBar
+    // Quick preset slot bar (A..E) ??delegated to PresetSlotBar
     std::unique_ptr<PresetSlotBar> presetSlotBar_;
 
-    // Action routing — delegated to ActionHandler
+    // Action routing ??delegated to ActionHandler
     std::unique_ptr<ActionHandler> actionHandler_;
 
-    // Settings auto-save — delegated to SettingsAutosaver
+    // Settings auto-save ??delegated to SettingsAutosaver
     std::unique_ptr<SettingsAutosaver> settingsAutosaver_;
+    bool startMinimizedToTrayOnLaunch_ = false;
 
-    // Status bar + mute indicators + broadcaster updates — delegated to StatusUpdater
+    // Status bar + mute indicators + broadcaster updates ??delegated to StatusUpdater
     std::unique_ptr<StatusUpdater> statusUpdater_;
 
     // Mute indicators (clickable) + panic mute button
@@ -164,7 +169,7 @@ private:
     NotificationBar notificationBar_;
     void showNotification(const juce::String& message, NotificationLevel level);
 
-    // Update check — delegated to UpdateChecker
+    // Update check ??delegated to UpdateChecker
     UpdateChecker updateChecker_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)

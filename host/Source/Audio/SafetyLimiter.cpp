@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2025 LiveTrack
+// Copyright (C) 2025-2026 LiveTrack
 //
 // This file is part of DirectPipe.
 //
@@ -18,7 +18,7 @@
 
 /**
  * @file SafetyLimiter.cpp
- * @brief Feed-forward safety limiter implementation
+ * @brief Brickwall-style safety limiter implementation
  */
 
 #include "SafetyLimiter.h"
@@ -27,23 +27,48 @@ namespace directpipe {
 
 SafetyLimiter::SafetyLimiter()
 {
-    // Initialize coefficients with 48kHz defaults. Without this, attack/release coefficients
-    // would be zero until the first prepareToPlay() call from audioDeviceAboutToStart().
-    // DO NOT remove — would leave uninitialized coefficients during early audio callbacks.
+    // Initialize coefficients/state with 48kHz defaults.
     prepareToPlay(48000.0);
 }
 
 void SafetyLimiter::prepareToPlay(double sampleRate)
 {
     if (sampleRate <= 0.0) sampleRate = 48000.0;
-    attackCoeff_  = std::exp(-1.0f / static_cast<float>(sampleRate * kAttackMs * 0.001));
+
+    lookAheadSamples_ = juce::jlimit(
+        1,
+        kMaxLookAheadSamples,
+        juce::roundToInt(static_cast<float>(sampleRate) * (kLookAheadMs * 0.001f)));
+    delaySize_ = lookAheadSamples_ + 1;
+
     releaseCoeff_ = std::exp(-1.0f / static_cast<float>(sampleRate * kReleaseMs * 0.001));
+
+    resetState();
+    resetRequested_.store(false, std::memory_order_relaxed);
+}
+
+void SafetyLimiter::resetState()
+{
     currentGain_ = 1.0f;
+    writePos_ = 0;
+
+    for (int ch = 0; ch < kMaxChannels; ++ch)
+        std::fill_n(delayedSamples_[ch].begin(), delaySize_, 0.0f);
+    std::fill_n(peakRing_.begin(), delaySize_, 0.0f);
+
     gainReduction_dB_.store(0.0f, std::memory_order_relaxed);
 }
 
 void SafetyLimiter::process(juce::AudioBuffer<float>& buffer, int numSamples)
 {
+    if (numSamples <= 0) {
+        gainReduction_dB_.store(0.0f, std::memory_order_relaxed);
+        return;
+    }
+
+    if (resetRequested_.exchange(false, std::memory_order_relaxed))
+        resetState();
+
     if (!enabled_.load(std::memory_order_relaxed)) {
         gainReduction_dB_.store(0.0f, std::memory_order_relaxed);
         return;
@@ -51,43 +76,82 @@ void SafetyLimiter::process(juce::AudioBuffer<float>& buffer, int numSamples)
 
     const float ceiling = ceilingLinear_.load(std::memory_order_relaxed);
     const int numChannels = buffer.getNumChannels();
-    const float aCoeff = attackCoeff_;
+    const int processChannels = std::min(numChannels, kMaxChannels);
     const float rCoeff = releaseCoeff_;
 
-    float peakGR = 1.0f;
+    float minGain = 1.0f;
 
     for (int i = 0; i < numSamples; ++i) {
-        // Peak detection across all channels
-        float peak = 0.0f;
+        float inputPeak = 0.0f;
+
+        // Capture current sample into delay ring and track full-channel peak.
         for (int ch = 0; ch < numChannels; ++ch) {
-            float s = std::abs(buffer.getSample(ch, i));
-            if (s > peak) peak = s;
+            const float in = buffer.getSample(ch, i);
+            inputPeak = std::max(inputPeak, std::abs(in));
+            if (ch < processChannels)
+                delayedSamples_[ch][writePos_] = in;
+        }
+        peakRing_[writePos_] = inputPeak;
+
+        // Read from the delayed position so gain can react ahead of the emitted sample.
+        int readPos = writePos_ - lookAheadSamples_;
+        if (readPos < 0)
+            readPos += delaySize_;
+
+        // Peak over look-ahead window [readPos .. writePos].
+        float windowPeak = 0.0f;
+        int idx = readPos;
+        for (int k = 0; k <= lookAheadSamples_; ++k) {
+            windowPeak = std::max(windowPeak, peakRing_[idx]);
+            if (++idx >= delaySize_)
+                idx = 0;
         }
 
-        // Compute target gain
-        float targetGain = (peak > ceiling) ? (ceiling / peak) : 1.0f;
+        float targetGain = 1.0f;
+        if (windowPeak > ceiling && windowPeak > 1.0e-9f)
+            targetGain = ceiling / windowPeak;
 
-        // Envelope follower
+        // Instant attack for brickwall safety, smooth release for recovery.
         if (targetGain < currentGain_)
-            currentGain_ = aCoeff * currentGain_ + (1.0f - aCoeff) * targetGain;
+            currentGain_ = targetGain;
         else
             currentGain_ = rCoeff * currentGain_ + (1.0f - rCoeff) * targetGain;
 
-        // Apply gain to all channels
-        for (int ch = 0; ch < numChannels; ++ch)
-            buffer.setSample(ch, i, buffer.getSample(ch, i) * currentGain_);
+        for (int ch = 0; ch < processChannels; ++ch) {
+            float out = delayedSamples_[ch][readPos] * currentGain_;
+            // Fail-safe: enforce absolute sample ceiling even if envelope math under-shoots.
+            out = juce::jlimit(-ceiling, ceiling, out);
+            buffer.setSample(ch, i, out);
+        }
 
-        if (currentGain_ < peakGR) peakGR = currentGain_;
+        // Fallback for channels beyond internal fixed capacity.
+        for (int ch = processChannels; ch < numChannels; ++ch) {
+            float out = buffer.getSample(ch, i) * currentGain_;
+            out = juce::jlimit(-ceiling, ceiling, out);
+            buffer.setSample(ch, i, out);
+        }
+
+        if (currentGain_ < minGain)
+            minGain = currentGain_;
+
+        if (++writePos_ >= delaySize_)
+            writePos_ = 0;
     }
 
-    // Update UI feedback (worst GR in this block, converted to dB)
-    float grDB = (peakGR < 0.9999f) ? (20.0f * std::log10(peakGR)) : 0.0f;
+    const float grDB = (minGain < 0.9999f)
+        ? (20.0f * std::log10(std::max(minGain, 1.0e-9f)))
+        : 0.0f;
     gainReduction_dB_.store(grDB, std::memory_order_relaxed);
 }
 
 void SafetyLimiter::setEnabled(bool enabled)
 {
-    enabled_.store(enabled, std::memory_order_relaxed);
+    const bool previous = enabled_.exchange(enabled, std::memory_order_relaxed);
+    if (previous != enabled)
+        resetRequested_.store(true, std::memory_order_relaxed);
+
+    if (!enabled)
+        gainReduction_dB_.store(0.0f, std::memory_order_relaxed);
 }
 
 void SafetyLimiter::setCeiling(float dB)

@@ -134,7 +134,7 @@ build/host/DirectPipe_artefacts/Release/DirectPipe.exe                          
 build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/*.dll           Receiver VST2
 build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/*.vst3         Receiver VST3
 build/bin/Release/directpipe-tests.exe                                          Core tests
-build/bin/Release/directpipe-host-tests.exe                                     Host tests
+build/tests/directpipe-host-tests_artefacts/Release/directpipe-host-tests.exe   Host tests
 ```
 
 ### macOS
@@ -154,7 +154,8 @@ build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/*.vst3         
 
 ### Common / 공통
 ```
-build/lib/Release/directpipe-core.*                                             Core IPC library
+build/lib/Release/directpipe-core.*                                             Core IPC library (multi-config generators)
+build/lib/directpipe-core.*                                                     Core IPC library (single-config generators)
 dist/com.directpipe.directpipe.streamDeckPlugin                                 Stream Deck plugin
 ```
 
@@ -232,7 +233,7 @@ Host test source files: `test_websocket_protocol.cpp`, `test_action_dispatcher.c
 
 ### GTest JSON Output / GTest JSON 출력
 
-`tools/pre-release-test.sh` generates GTest JSON output files (`test-results-core.json`, `test-results-host.json`) that can be loaded into the pre-release dashboard for visual test result inspection.
+`tools/pre-release-test.sh` generates GTest JSON output files (`core-test-results.json`, `host-test-results.json`) that can be loaded into the pre-release dashboard for visual test result inspection.
 
 `tools/pre-release-test.sh`는 GTest JSON 출력 파일을 생성하며, 프리릴리즈 대시보드에서 로드하여 시각적으로 테스트 결과를 확인할 수 있습니다.
 
@@ -247,6 +248,10 @@ cd build && ctest --config Release --output-on-failure
 # Generate JSON output for dashboard / 대시보드용 JSON 출력 생성
 bash tools/pre-release-test.sh
 ```
+
+> `tools/pre-release-test.sh`는 Windows Git Bash 기준으로 작성되어 있습니다 (`taskkill`, 고정 CMake 경로 등). macOS/Linux에서는 동일 흐름을 수동 명령으로 실행하는 것을 권장합니다.
+>
+> `tools/pre-release-test.sh` is written for Windows Git Bash (`taskkill`, fixed CMake path, etc.). On macOS/Linux, run equivalent steps manually.
 
 ---
 

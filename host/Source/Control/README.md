@@ -1,7 +1,7 @@
 # Control 모듈
 
 외부 제어 입력(단축키, MIDI, WebSocket, HTTP)을 통합 관리하고, ActionDispatcher를 통해 오디오 엔진/프리셋/UI에 전달하는 모듈.
-모든 제어 액션은 ActionDispatcher의 메시지 스레드 보장을 통해 일관되게 처리된다.
+대부분의 제어 액션은 ActionDispatcher의 메시지 스레드 보장을 통해 처리되며, 일부 무상태/스레드-세이프 경로(예: XRun reset)는 서버에서 직접 처리된다.
 
 ---
 
@@ -68,7 +68,7 @@ StateBroadcaster.updateState()
 | `HotkeyHandler.h/cpp` | 글로벌 키보드 단축키. Windows: `RegisterHotKey` + 메시지 창. macOS: `CGEventTap`. Linux: stub |
 | `MidiHandler.h/cpp` | MIDI CC/Note 매핑 및 Learn 모드. 핫플러그 감지. LED 피드백. `bindingsMutex_`로 바인딩 보호 |
 | `WebSocketServer.h/cpp` | RFC 6455 WebSocket 서버 (port 8765). Stream Deck 연동. UDP 디스커버리 (port 8767). 전용 broadcast 스레드 |
-| `HttpApiServer.h/cpp` | REST API 서버 (port 8766). GET-only. CORS/OPTIONS 지원. 상태 코드 404/405/400. 엔드포인트: volume, preset, gain, bypass, recording, ipc, panic, plugin param, **plugins (목록)**, **plugin/:idx/params**, **perf (성능)**, **xrun/reset**, **auto/add** |
+| `HttpApiServer.h/cpp` | REST API 서버 (port 8766). GET-only. CORS/OPTIONS 지원. 상태 코드 404/405/400. 엔드포인트: status/perf/xrun-reset, volume, preset/slot, gain, bypass, recording, ipc, panic/input-mute, plugin param, **plugins (목록)**, **plugin/:idx/params**, **auto/add**, MIDI test injection |
 | `StateBroadcaster.h/cpp` | 앱 상태 스냅샷 (`AppState`) 관리 및 브로드캐스트. 메시지 스레드 리스너 전달 보장 |
 | `Log.h/cpp` | 구조화 로깅 헬퍼. severity 레벨 (info/warn/error/audit), 카테고리 태그, RAII 타이머, 세션 헤더 |
 
@@ -200,8 +200,8 @@ ActionHandler::handle(event)
 | 증상 | 진단 경로 | 핵심 파일:위치 |
 |------|----------|--------------|
 | WS 클라이언트 간헐적 끊김 | clientThread 소켓 close 여부 -> broadcastToClients sweep 로직 -> sendFrame 실패 | `WebSocketServer.cpp:clientThread`, `broadcastToClients` |
-| WS 브로드캐스트 지연/행 | clientsMutex_ 보유 중 blocking write 확인 -> 느린 클라이언트 감지 | `WebSocketServer.cpp:broadcastToClients` |
-| 셧다운 시 행 | stop()이 clientsMutex_ 대기 -> broadcastToClients가 blocking write 중 | `WebSocketServer.cpp:stop()` |
+| WS 브로드캐스트 지연/행 | 느린 클라이언트에서 `sendFrame(write)` 블로킹 여부 확인 -> 연결 정리/네트워크 상태 점검 | `WebSocketServer.cpp:broadcastToClients` |
+| 셧다운 시 행 | `stop()`의 broadcast thread join이 블로킹 write에 걸렸는지 확인 | `WebSocketServer.cpp:stop()`, `broadcastToClients` |
 | 단축키 작동 안 함 | HotkeyHandler 등록 확인 -> Panic mute 상태 -> ActionHandler isMuted() 체크 | `HotkeyHandler.cpp`, `ActionHandler.cpp:handle` |
 | MIDI Learn 반응 없음 | learning_ atomic 상태 -> bindingsMutex_ 교착 -> learnTimer_ 타임아웃 | `MidiHandler.cpp:handleIncomingMidiMessage` |
 | HTTP API 404 | 엔드포인트 매칭 -> processRequest URL 파싱 | `HttpApiServer.cpp:processRequest` |
@@ -220,9 +220,9 @@ ActionHandler::handle(event)
 
 3. **ActionDispatcher/StateBroadcaster listener 순회 시 copy-before-iterate**: 리스너 콜백이 add/remove를 호출할 수 있으므로, 순회 전 리스너 목록을 복사. iterator invalidation 방지.
 
-4. **WebSocket `broadcastToClients` 스레드 join은 `clientsMutex_` 밖에서**: `clientsMutex_` 잡은 상태에서 broadcast 스레드 join하면, broadcast 스레드가 `clientsMutex_`를 기다리며 데드락. 또한 per-connection `sendMutex`로 동시 쓰기 방지 (broadcastToClients + clientThread pong/close 동시 전송 시 프레임 손상). `broadcastToClients`는 `clientsMutex_` 보유 중 blocking `sendFrame`을 호출하므로, 느린 클라이언트가 전체 브로드캐스트와 셧다운을 지연시킬 수 있음.
+4. **WebSocket broadcast 경로 락 규칙**: `broadcastToClients`는 `clientsMutex_`를 짧게 잡아 snapshot만 만든 뒤 해제하고, 실제 socket write는 lock 밖에서 수행한다. per-connection `sendMutex`를 유지해 프레임 손상을 막는다 (broadcast vs client pong/close 동시 전송 충돌 방지).
 
-4a. **WebSocket 소켓 수명 관리**: `clientThread`가 종료될 때 `conn->socket->close()`를 명시적 호출해야 `broadcastToClients`의 dead-client sweep(`isConnected()` 체크)이 즉시 감지함. 미호출 시 sweep이 dead client를 놓치고 실패한 write가 간헐적 연결 끊김으로 나타남. `clientCount_`는 소켓 close 후 decrement.
+4a. **WebSocket 소켓 수명 관리**: write 실패 시 `conn->socket->close()`로 dead client를 즉시 표시하고, `stop()`에서는 모든 client socket을 먼저 close한 뒤 thread를 join한다. 이 순서를 바꾸면 종료 지연/유령 연결이 남을 수 있다.
 
 5. **Panic mute 중 액션 차단**: `ActionHandler::handle()`에서 `engine_.isMuted()` 체크. 대부분 액션(PluginBypass, LoadPreset, RecordingToggle 등) 차단. 예외 액션은 `PanicMute`, `InputMuteToggle`, `XRunReset`, `SafetyLimiterToggle`, `SetSafetyLimiterCeiling`, `AutoProcessorsAdd`. 새 Action 추가 시 이 가드/예외 집합을 명시적으로 검토하지 않으면 panic 정책 우회.
 
@@ -236,9 +236,9 @@ ActionHandler::handle(event)
 
 10. **HttpApiServer gain delta 10x 스케일링**: `/api/gain/:delta` 엔드포인트는 delta에 10을 곱함. ActionHandler의 `InputGainAdjust`가 `*0.1f` 스텝 설계이므로, HTTP에서 직접 전달하면 1/10 크기로 적용됨.
 
-11. **JUCE `StreamingSocket::write` 블로킹**: `write()`는 커널 send 버퍼가 가득 차면 무한 블로킹 가능. 타임아웃 없음. `broadcastToClients`에서 `clientsMutex_` 보유 중 write 호출 시, 느린 클라이언트가 전체 서버를 블로킹. 셧다운 시 `stop()`이 `clientsMutex_` 대기 → 무한 행.
+11. **JUCE `StreamingSocket::write` 블로킹**: `write()`는 커널 send 버퍼가 가득 차면 장시간 블로킹될 수 있다 (타임아웃 없음). 현재 구현은 `clientsMutex_`는 해제한 뒤 write하지만, broadcast thread 자체는 지연될 수 있어 셧다운 시 join 지연 원인이 된다.
 
-12. **JUCE `StreamingSocket::isConnected` 한계**: TCP 연결의 OS 레벨 상태만 반영. 상대방이 `close()` 후에도 로컬에서 `isConnected()=true` 잠시 유지 가능 (TCP TIME_WAIT). `clientThread` 종료 시 명시적 `socket->close()` 호출 필수 — 이것이 `broadcastToClients` sweep의 dead client 감지 트리거.
+12. **JUCE `StreamingSocket::isConnected` 한계**: TCP 연결의 OS 레벨 상태만 반영한다. 상대방 `close()` 직후에도 로컬에서 잠시 true로 보일 수 있으므로, write 실패 시 명시적 `socket->close()`로 정리 트리거를 주고 sweep에서 제거해야 한다.
 
 13. **JUCE `InterProcessLock` POSIX 동작**: POSIX에서는 `fcntl`/`flock` 기반 파일 락 사용. 같은 프로세스 내에서 재진입(re-entrant) 동작은 OS/파일시스템에 따라 다름. `acquireExternalControlPriority()` 재호출 시 이전 락과 충돌 가능.
 
