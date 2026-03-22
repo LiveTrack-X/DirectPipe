@@ -71,11 +71,11 @@ The **3 commonly needed processes** across these 4 scenarios became the Auto cha
 ## 2. 체인 구성과 순서 / Chain Composition and Order
 
 ```
-Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain] → [Post Limiter] → [Global Safety Guard] → Output
-                                                                  ↑
-                                                          글로벌 (Auto 체인 외부)
-                                                          Global (outside Auto chain)
-```
+Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain / Limiter] → [Global Safety Guard] → Output
+                                                                                  ↑
+                                                                      글로벌 (Auto 체인 외부)
+                                                                      Global (outside Auto chain)
+```  
 
 ### 순서의 기술적 근거 / Technical Rationale for Order
 
