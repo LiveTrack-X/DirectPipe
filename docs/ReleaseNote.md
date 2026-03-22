@@ -5,15 +5,15 @@
 
 ## v4.0.3
 
-### Highlights
-- **Start Minimized to Tray option**: Added a startup behavior toggle in both `Settings > Application` and the tray right-click menu. Both entry points stay synchronized via app settings.
-- **Cross-platform auto-start wording**: Unified auto-start labels to use a shared platform-aware source (`Open at Login` on macOS, `Start with System` on Windows/Linux) in both Settings and tray menu.
-- **Safety Limiter brickwall fix**: Upgraded limiter behavior to look-ahead brickwall style (2ms look-ahead + hard sample clamp) so fast transients stay under the configured ceiling.
-- **ASIO channel routing restore fix**: Driver-type switching now preserves input/output channel masks per driver snapshot, preventing ASIO channel selection from being reset unexpectedly.
+### Highlights / 주요 변경
+- **Start Minimized to Tray 옵션 / option**: `Settings > Application`과 트레이 우클릭 메뉴 양쪽에 시작 동작 토글을 추가했고, 앱 설정으로 항상 동기화됩니다 / Added startup behavior toggle in both Settings and tray menu, synchronized through app settings.
+- **자동 시작 라벨 통일 / cross-platform auto-start wording**: Settings와 Tray 모두 동일한 플랫폼 라벨 소스를 사용합니다 (`Open at Login` on macOS, `Start with System` on Windows/Linux).
+- **세이프티 리미터 브릭월 개선 / Safety Limiter brickwall fix**: 2ms look-ahead + hard sample clamp 기반으로 순간 피크를 ceiling 아래로 더 안정적으로 제한합니다.
+- **ASIO 채널 라우팅 복원 개선 / ASIO channel restore fix**: 드라이버 전환 시 input/output channel mask를 스냅샷으로 보존해 ASIO 채널 선택이 초기화되지 않도록 수정했습니다.
 
-### Upgrade Notes
-- **No API/state model break**: This release does not introduce breaking changes to control API or state schema.
-- **Startup option apply timing**: `Start Minimized to Tray` applies on next process start. If DirectPipe is already running in tray, quit fully and relaunch to verify startup behavior.
+### Upgrade Notes / 업그레이드 안내
+- **No API/state model break / API·상태 모델 비호환 없음**: This release does not introduce breaking schema changes.
+- **적용 시점 / apply timing**: `Start Minimized to Tray`는 다음 프로세스 시작 시 적용됩니다. 트레이에서 실행 중이면 완전 종료 후 재실행해 확인하세요 / applies on next process start.
 
 ---
 

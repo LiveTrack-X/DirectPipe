@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.1 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.3 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.0.1)
+> Reverse spec — written based on currently implemented features (as of v4.0.3)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.0.1
+4.0.3
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -937,7 +937,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.0.1" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.0.3" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1054,7 +1054,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.0.1",
+  "appVersion": "4.0.3",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1077,7 +1077,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.0.1",
+  "appVersion": "4.0.3",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1259,7 +1259,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.1.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.3.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
