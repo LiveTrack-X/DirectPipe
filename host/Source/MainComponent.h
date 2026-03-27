@@ -75,6 +75,7 @@ public:
 
     bool isStartMinimizedToTrayOnLaunchEnabled() const { return startMinimizedToTrayOnLaunch_; }
     void setStartMinimizedToTrayOnLaunch(bool enabled, bool markDirty = true);
+    void syncAutoStartToggle();
 
     void mouseDown(const juce::MouseEvent& e) override;
 

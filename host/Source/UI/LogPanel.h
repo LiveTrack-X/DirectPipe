@@ -78,6 +78,7 @@ public:
 
     /** Call from MainComponent::timerCallback() at 30Hz. */
     void flushPendingLogs();
+    void setAutoStartEnabled(bool enabled);
     void setStartMinimizedToTrayEnabled(bool enabled);
     bool isStartMinimizedToTrayEnabled() const;
 

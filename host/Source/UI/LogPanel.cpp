@@ -248,6 +248,13 @@ void LogPanel::setStartMinimizedToTrayEnabled(bool enabled)
     startToTrayToggle_.setToggleState(enabled, juce::dontSendNotification);
 }
 
+void LogPanel::setAutoStartEnabled(bool enabled)
+{
+    if (!Platform::isAutoStartSupported())
+        return;
+    startupToggle_.setToggleState(enabled, juce::dontSendNotification);
+}
+
 bool LogPanel::isStartMinimizedToTrayEnabled() const
 {
     return startToTrayToggle_.getToggleState();

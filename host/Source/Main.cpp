@@ -477,6 +477,8 @@ private:
                         bool desired = !directpipe::Platform::isAutoStartEnabled();
                         if (!directpipe::Platform::setAutoStartEnabled(desired))
                             juce::Logger::writeToLog("[APP] Failed to change auto-start setting");
+                        if (auto* mc = app_.getMainComponent())
+                            mc->syncAutoStartToggle();
                     } else if (result == 4) {
                         app_.toggleStartMinimizedToTrayOnLaunch();
                     }

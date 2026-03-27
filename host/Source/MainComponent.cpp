@@ -24,6 +24,7 @@
 #include "MainComponent.h"
 #include "Control/ControlMapping.h"
 #include "UI/SettingsExporter.h"  // Used by onSaveSettings/onLoadSettings callbacks
+#include "Platform/AutoStart.h"
 #include <thread>
 
 
@@ -985,6 +986,13 @@ void MainComponent::syncStartMinimizedToTrayToggle()
         logComp->setStartMinimizedToTrayEnabled(startMinimizedToTrayOnLaunch_);
 }
 
+void MainComponent::syncAutoStartToggle()
+{
+    if (!rightTabs_) return;
+    if (auto* logComp = dynamic_cast<LogPanel*>(rightTabs_->getTabContentComponent(3)))
+        logComp->setAutoStartEnabled(Platform::isAutoStartEnabled());
+}
+
 void MainComponent::refreshUI()
 {
     inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
@@ -999,6 +1007,8 @@ void MainComponent::refreshUI()
 
     if (auto* outputComp = dynamic_cast<OutputPanel*>(rightTabs_->getTabContentComponent(1)))
         outputComp->refreshDeviceLists();
+
+    syncAutoStartToggle();
 
     bool muted = audioEngine_.isMuted();
     panicMuteBtn_.setButtonText(muted ? "UNMUTE" : "PANIC MUTE");
