@@ -31,7 +31,7 @@ VSTChain.processBlock(workBuffer_)
 |  - Plugin bypass via atomic flags
 |  - Inline processing (체인/플러그인 PDC 설정이 전체 지연에 반영됨)
 |
-+---> SafetyLimiter.process()            [RT-safe brickwall limiter (look-ahead + hard clamp), applied before ALL outputs]
++---> SafetyLimiter.process()            [RT-safe global Safety Guard (legacy name, zero-latency sample-peak guard + hard clamp), applied before ALL outputs]
 |
 +---> AudioRecorder.writeBlock()         [lock-free FIFO -> BG writer thread]
 |
@@ -63,7 +63,7 @@ LatencyMonitor.markCallbackEnd()
 | `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
 | `PluginPreloadCache.h/cpp` | 프리셋 슬롯 전환용 플러그인 인스턴스 백그라운드 프리로딩. 캐시 hit 시 DLL 로딩 건너뜀 |
 | `PluginLoadHelper.h` | 크로스플랫폼 플러그인 인스턴스 생성 헬퍼 (header-only). macOS에서 AppKit 메인 스레드 디스패치 |
-| `SafetyLimiter.h/cpp` | RT-safe brickwall limiter. Atomic params (enabled, ceiling). 2ms look-ahead, instant attack, 50ms release, hard ceiling clamp. GR feedback for UI |
+| `SafetyLimiter.h/cpp` | RT-safe global Safety Guard (legacy class name). Atomic params (enabled, ceiling). Zero-latency stereo-linked sample-peak guard, instant attack, 50ms release smoothing, hard ceiling clamp. GR feedback for UI |
 | `DeviceState.h` | 디바이스 연결 상태 열거형 (header-only). DeviceState enum + transition() + deviceStateToString() |
 | `BuiltinFilter.h/cpp` | 내장 HPF + LPF 필터 (AudioProcessor 상속). IIR 2차 버터워스. RT-safe. PDC 0 |
 | `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise 노이즈 제거 (AudioProcessor 상속). FIFO 480프레임, VAD 게이팅, dual-mono. PDC 480 samples |

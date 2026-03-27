@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2025 LiveTrack
 //
 // This file is part of DirectPipe.
@@ -26,6 +26,15 @@
 #include "../UI/PresetManager.h"
 
 namespace directpipe {
+namespace {
+bool presetDeclaresOutputMuted(const juce::File& file)
+{
+    auto parsed = juce::JSON::parse(file.loadFileAsString());
+    if (auto* root = parsed.getDynamicObject())
+        return root->hasProperty("outputMuted");
+    return false;
+}
+} // namespace
 
 SettingsAutosaver::SettingsAutosaver(PresetManager& presetMgr, AudioEngine& engine,
                                      std::atomic<bool>& loadingSlot,
@@ -74,14 +83,14 @@ void SettingsAutosaver::tick()
 
 void SettingsAutosaver::saveNow()
 {
-    // Skip saving during async chain load or before chain is prepared —
+    // Skip saving during async chain load or before chain is prepared:
     // chain is in transitional state (empty or partially loaded).
     // Saving now would corrupt the active slot file.
     if (loadingSlot_.load() || !engine_.getVSTChain().isStable())
         return;
 
     // Save current slot's chain state (captures plugin internal state)
-    // Skip slot save if partial load (some plugins failed) — preserve original slot file
+    // Skip slot save if partial load (some plugins failed): preserve original slot file
     int currentSlot = presetMgr_.getActiveSlot();
     if (currentSlot >= 0 && !partialLoad_.load())
         presetMgr_.saveSlot(currentSlot);
@@ -92,10 +101,14 @@ void SettingsAutosaver::saveNow()
 
 void SettingsAutosaver::loadFromFile()
 {
+    if (!engine_.isOutputNone())
+        engine_.setOutputMuted(true); // Startup guard: prevent transient default-driver output.
+
     auto file = PresetManager::getAutoSaveFile();
     if (file.existsAsFile()) {
         loadingSlot_ = true;
-        presetMgr_.loadPreset(file);
+        const bool loaded = presetMgr_.loadPreset(file);
+        const bool hasOutputMutedField = loaded && presetDeclaresOutputMuted(file);
 
         // Self-healing: if settings.dppreset had an empty/corrupt chain but the
         // active slot file is valid, reload chain from the slot file.
@@ -109,6 +122,10 @@ void SettingsAutosaver::loadFromFile()
         }
 
         loadingSlot_ = false;
+
+        // Legacy preset may omit outputMuted; use startup default (unmuted).
+        if ((!loaded || !hasOutputMutedField) && !engine_.isOutputNone())
+            engine_.setOutputMuted(false);
 
         // Restore panic mute lockout (monitor/IPC disabled while muted)
         if (onRestorePanicMute) onRestorePanicMute();
@@ -132,7 +149,10 @@ void SettingsAutosaver::loadFromFile()
         return;  // window will be shown by preload callback
     }
 
-    // No settings file → show window immediately
+    if (!engine_.isOutputNone())
+        engine_.setOutputMuted(false);
+
+    // No settings file: show window immediately
     auto showWindowCb = onShowWindow;
     juce::MessageManager::callAsync([showWindowCb]() {
         if (showWindowCb) showWindowCb();

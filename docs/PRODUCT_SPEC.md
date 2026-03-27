@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.3 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.4 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.0.3)
+> Reverse spec — written based on currently implemented features (as of v4.0.4)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.0.3
+4.0.4
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -162,7 +162,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 알림 / Notification | 연결 끊김 시 경고(주황), 재연결 시 정보(보라) NotificationBar 표시 / Warning (orange) on disconnect, Info (purple) on reconnect in NotificationBar |
 | 방향별 감지 / Per-Direction Detection | `inputDeviceLost_`: 입력 장치 분실 시 오디오 콜백에서 입력 무음 처리 (폴백 마이크 방지) / silences input in audio callback on input device loss (prevents fallback mic). `outputAutoMuted_`: 출력 장치 분실 시 자동 뮤트, 복원 시 자동 해제 / auto-mutes on output device loss, auto-unmutes on restore |
 | 재연결 실패 / Reconnection Failure | `reconnectMissCount_`: 5회 연속 실패(~15초) 후 현재 드라이버 장치를 수락하여 크로스 드라이버 stale name 무한 루프 방지 / after 5 consecutive failures (~15s), accepts current driver device to prevent cross-driver stale name infinite loop |
-| 드라이버 전환 복원 / Driver Switch Restore | `DriverTypeSnapshot`: 드라이버 타입별 설정(입출력 장치, SR, BS) 저장/복원 / saves/restores per-driver-type settings (input/output device, SR, BS). WASAPI↔ASIO 전환 시 이전 설정 자동 복원 / auto-restores previous settings on WASAPI↔ASIO switch |
+| 드라이버 전환 복원 / Driver Switch Restore | `DriverTypeSnapshot`: 드라이버 타입별 설정(입출력 장치, SR, BS, outputNone) 저장/복원 / saves/restores per-driver-type settings (input/output device, SR, BS, outputNone). 프리셋 JSON의 `inputChannelMask`/`outputChannelMask`(인덱스 배열)도 저장/복원하여 비연속 ASIO 라우팅 유지, invalid 인덱스는 안전 기본값으로 폴백 / preset JSON `inputChannelMask`/`outputChannelMask` (index arrays) also persist/restore non-contiguous ASIO routing, with safe fallback for invalid indices |
 | 모니터 독립 / Monitor Independence | 모니터 장치는 별도 패턴으로 독립 재연결 / Monitor device reconnects independently with its own pattern (`monitorLost_` + 자체 쿨다운 / own cooldown) |
 
 #### 4.1.6 XRun 모니터링 / XRun Monitoring
@@ -743,7 +743,7 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 #### 4.6.5 Settings 탭 / Settings Tab (LogPanel)
 
 **애플리케이션 섹션 / Application Section:**
-- 자동 시작 토글 / Auto-start toggle (Windows: "Start with Windows", macOS: "Start at Login", Linux: "Start on Login")
+- 자동 시작 토글 / Auto-start toggle (Windows/Linux: "Start with System", macOS: "Open at Login")
 
 **설정 섹션 / Settings Section:**
 - [Save Settings] 버튼 / button (`.dpbackup`)
@@ -937,7 +937,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.0.3" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.0.4" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1054,7 +1054,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.0.3",
+  "appVersion": "4.0.4",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1077,7 +1077,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.0.3",
+  "appVersion": "4.0.4",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1259,7 +1259,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.3.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.4.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

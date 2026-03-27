@@ -17,10 +17,9 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 - **Auto-start label (cross-platform UI consistency)**: Unified tray menu and Settings toggle to use a single platform label source via `Platform::getAutoStartLabel()` (`Open at Login` on macOS, `Start with System` on others), removing Windows-specific hardcoded wording from the Settings toggle path.
 
 ### Fixed
-- **Safety Guard implanted**: Global stage now runs as zero-latency Safety Guard (legacy SafetyLimiter class/API/action/state names preserved).
-- **BuiltinAutoGain post limiter ADD to AGC**: Added constant-latency post limiter inside Auto Gain. Default ceiling -1.0 dBTP, fixed internal lookahead 1.0ms / release 50ms, constant delayed path, final hard clamp.TP-style detector uses prev/current + 3 linear interpolation points (no strict EBU true-peak compliance claim).
-
-- **ASIO channel selection reset on driver/device switch**: Preserved per-driver input/output hannel masks in `DriverTypeSnapshot` and restored them during driver type changes. ASIO device reselection now keeps existing channel routing instead of always resetting to channels 1-2.
+- **Global Safety Guard runtime (legacy SafetyLimiter naming)**: Global stage now runs zero-latency sample-peak guard behavior (stereo-linked, instant attack, release smoothing, final hard clamp) with legacy class/API/action names preserved for compatibility.
+- **BuiltinAutoGain post limiter**: Added constant-latency post limiter after AGC (default `-1.0 dBTP`, fixed internal `1.0ms` lookahead + `50ms` release, constant delayed path, hard clamp). Advanced UI exposes `Limiter Ceiling` only.
+- **ASIO channel selection reset on driver/device switch**: Preserved per-driver input/output channel masks in `DriverTypeSnapshot`, and persisted explicit `inputChannelMask`/`outputChannelMask` index arrays in preset JSON for restart-safe restore (including non-contiguous routing). Invalid saved indices now fall back to safe defaults.
 
 ---
 

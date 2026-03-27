@@ -64,6 +64,7 @@ int fallbackChannelCount(int reportedCount, const juce::BigInteger& currentMask)
     if (reportedCount > 0)
         return reportedCount;
     const int fromMask = currentMask.findNextSetBit(0) >= 0 ? (currentMask.getHighestBit() + 1) : 0;
+    // Some drivers briefly report 0 channel names; prefer stereo-safe fallback.
     return juce::jmax(2, fromMask);
 }
 } // namespace
@@ -352,8 +353,39 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
 
         auto maskResult = dm.setAudioDeviceSetup(setup, true);
-        if (maskResult.isNotEmpty())
+        if (maskResult.isNotEmpty()) {
             juce::Logger::writeToLog("[PRESET] Channel mask restore failed: " + maskResult);
+            // Retry with minimal explicit masks, then driver defaults as final fallback.
+            auto retrySetup = setup;
+            bool hasExplicitMask = false;
+            if (root->hasProperty("inputChannelMask")) {
+                retrySetup.useDefaultInputChannels = false;
+                retrySetup.inputChannels.clear();
+                retrySetup.inputChannels.setBit(0);
+                hasExplicitMask = true;
+            }
+            if (root->hasProperty("outputChannelMask")) {
+                retrySetup.useDefaultOutputChannels = false;
+                retrySetup.outputChannels.clear();
+                retrySetup.outputChannels.setBit(0);
+                hasExplicitMask = true;
+            }
+
+            if (hasExplicitMask) {
+                auto retryResult = dm.setAudioDeviceSetup(retrySetup, true);
+                if (retryResult.isNotEmpty()) {
+                    juce::Logger::writeToLog("[PRESET] Channel mask minimal fallback failed: " + retryResult);
+                    auto defaultSetup = retrySetup;
+                    if (root->hasProperty("inputChannelMask"))
+                        defaultSetup.useDefaultInputChannels = true;
+                    if (root->hasProperty("outputChannelMask"))
+                        defaultSetup.useDefaultOutputChannels = true;
+                    auto defaultResult = dm.setAudioDeviceSetup(defaultSetup, true);
+                    if (defaultResult.isNotEmpty())
+                        juce::Logger::writeToLog("[PRESET] Channel mask default fallback failed: " + defaultResult);
+                }
+            }
+        }
     }
 
     // VST Chain ??load plugins (with fast-path for identical chain)

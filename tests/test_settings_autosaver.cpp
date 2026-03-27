@@ -171,3 +171,41 @@ TEST_F(SettingsAutosaverTest, PresetManagerRoundtripSupportsCustomAppSettings) {
     EXPECT_TRUE(importHookCalled);
     EXPECT_TRUE(restoredStartMinimizedToTray);
 }
+
+TEST_F(SettingsAutosaverTest, StartupGuardRestoresMuteWhenNoSettingsFile) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+
+    engine_->setOutputMuted(false);
+    autosaver_->loadFromFile();
+
+    EXPECT_FALSE(engine_->isOutputMuted());
+}
+
+TEST_F(SettingsAutosaverTest, StartupGuardRestoresMuteForLegacyPresetWithoutOutputMuted) {
+    auto file = getAutoSaveFile();
+    file.replaceWithText(R"({
+        "version": 4,
+        "deviceType": "Windows Audio",
+        "sampleRate": 48000.0,
+        "bufferSize": 512
+    })");
+
+    engine_->setOutputMuted(false);
+    autosaver_->loadFromFile();
+
+    EXPECT_FALSE(engine_->isOutputMuted());
+}
+
+TEST_F(SettingsAutosaverTest, StartupGuardKeepsExplicitOutputMutedFromPreset) {
+    auto file = getAutoSaveFile();
+    file.replaceWithText(R"({
+        "version": 4,
+        "outputMuted": true
+    })");
+
+    engine_->setOutputMuted(false);
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(engine_->isOutputMuted());
+}

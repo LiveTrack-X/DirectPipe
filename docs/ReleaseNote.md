@@ -9,7 +9,7 @@
 - **Start Minimized to Tray 옵션 / option**: `Settings > Application`과 트레이 우클릭 메뉴 양쪽에 시작 동작 토글을 추가했고, 앱 설정으로 항상 동기화됩니다 / Added startup behavior toggle in both Settings and tray menu, synchronized through app settings.
 - **자동 시작 라벨 통일 / cross-platform auto-start wording**: Settings와 Tray 모두 동일한 플랫폼 라벨 소스를 사용합니다 (`Open at Login` on macOS, `Start with System` on Windows/Linux).
 - **세이프티 가드 런타임 전환 / Safety Guard runtime update**: 글로벌 stage는 zero-latency sample-peak guard(instant attack + smooth release + hard clamp)로 동작하며, legacy SafetyLimiter API/action names are preserved.
-- **ASIO 채널 라우팅 복원 개선 / ASIO channel restore fix**: 드라이버 전환 시 input/output channel mask를 스냅샷으로 보존해 ASIO 채널 선택이 초기화되지 않도록 수정했습니다.
+- **ASIO 채널 라우팅 복원 개선 / ASIO channel restore fix**: 드라이버 전환 스냅샷 + 프리셋 JSON(`inputChannelMask`/`outputChannelMask`) 영속화로 ASIO 채널 선택(비연속 마스크 포함) 초기화를 방지하고, invalid 인덱스는 안전 기본값으로 폴백합니다.
 
 ### Upgrade Notes / 업그레이드 안내
 - **No API/state model break / API·상태 모델 비호환 없음**: This release does not introduce breaking schema changes.
@@ -100,7 +100,7 @@
 - **macOS support (Beta)**: CoreAudio driver, LaunchAgent auto-start, CGEventTap hotkeys (requires Accessibility permission), Gatekeeper instructions.
 - **Linux support (Experimental)**: ALSA/JACK drivers, XDG autostart, hotkey stub (use MIDI/HTTP/WebSocket instead).
 - **Cross-OS backup protection**: Backup files (`.dpbackup`, `.dpfullbackup`) now include a `platform` field. Restoring a backup from a different OS is blocked with a warning dialog.
-- **Platform-adaptive UI labels**: "Start with Windows" (Windows), "Start at Login" (macOS), "Start on Login" (Linux).
+- **Platform-adaptive UI labels**: "Start with System" (Windows/Linux), "Open at Login" (macOS).
 - **Plugin scanner cross-platform paths**: Scans OS-specific VST directories (Windows: `Program Files\...`, macOS: `/Library/Audio/Plug-Ins/...`, Linux: `/usr/lib/vst3/...`).
 - **Plugin file browser**: Platform-specific file filters (`.dll` on Windows, `.vst3/.vst/.component` on macOS, `.vst3/.so` on Linux).
 - **Preset deviceType validation**: Skips unavailable device types when importing presets (e.g., WASAPI preset on macOS).

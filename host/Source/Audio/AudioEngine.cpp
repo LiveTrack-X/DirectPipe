@@ -152,6 +152,10 @@ bool AudioEngine::initialize()
     outputRouter_.initialize(currentSampleRate_, currentBufferSize_);
     outputRouter_.setMonitorOutput(&monitorOutput_);
 
+    // Startup guard: keep output muted until settings restore completes.
+    if (!outputNone_.load(std::memory_order_relaxed))
+        outputMuted_.store(true, std::memory_order_relaxed);
+
     // Register as the audio callback
     deviceManager_.addAudioCallback(this);
 
