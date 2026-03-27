@@ -58,6 +58,14 @@ void applySafeDefaultMask(juce::BigInteger& mask, int maxChannels)
             mask.setBit(i);
     }
 }
+
+int fallbackChannelCount(int reportedCount, const juce::BigInteger& currentMask)
+{
+    if (reportedCount > 0)
+        return reportedCount;
+    const int fromMask = currentMask.findNextSetBit(0) >= 0 ? (currentMask.getHighestBit() + 1) : 0;
+    return juce::jmax(2, fromMask);
+}
 } // namespace
 
 PresetManager::PresetManager(AudioEngine& engine)
@@ -327,6 +335,8 @@ bool PresetManager::importFromJSON(const juce::String& json)
             inChCount = dev->getInputChannelNames().size();
             outChCount = dev->getOutputChannelNames().size();
         }
+        inChCount = fallbackChannelCount(inChCount, setup.inputChannels);
+        outChCount = fallbackChannelCount(outChCount, setup.outputChannels);
 
         if (root->hasProperty("inputChannelMask")) {
             auto inMask = readMaskWithValidation(root->getProperty("inputChannelMask"), inChCount);
