@@ -29,7 +29,7 @@
 
 namespace directpipe {
 
-// ??? SEH crash guard for VST processBlock (Windows only) ?????????????????????
+// SEH crash guard for VST processBlock (Windows only)
 // MSVC forbids __try/__except in functions that have C++ objects with destructors
 // on the stack (e.g. ScopedNoDenormals, AudioBuffer references). Extracting the
 // __try block into a plain-C-style helper avoids this compiler restriction.
@@ -56,25 +56,25 @@ AudioEngine::~AudioEngine()
 
 bool AudioEngine::initialize()
 {
-    // ?먥븧??Startup Strategy: WASAPI-first, then driver switch ?먥븧??
+    // Startup strategy: initialize with a safe default driver, then restore saved type.
     //
     // We always open with the system default driver (WASAPI on Windows) first,
     // then switch to the saved driver type (e.g., ASIO) via importFromJSON.
     //
-    // WHY NOT open ASIO directly?
+    // WHY NOT open ASIO directly
     //   - ASIO driver may not be installed, or the saved device may be unplugged.
     //     Opening ASIO directly would fail, leaving the app with no audio at all.
     //   - WASAPI is always available on Windows and provides a safe fallback.
-    //   - The WASAPI?묨SIO transition takes ~100ms and is invisible to the user
+    //   - The WASAPI-to-ASIO transition takes ~100ms and is invisible to the user
     //     (happens before the window is shown).
     //
     // ASIO SR/BS policy:
     //   ASIO devices own SR/BS globally (shared across all apps on the device).
     //   Forcing a saved BS on ASIO would restart the driver, disrupting other
     //   audio sources (DAWs, media players, etc.).
-    //   ??importFromJSON calls syncDesiredFromDevice() for ASIO instead of
+    // importFromJSON calls syncDesiredFromDevice() for ASIO instead of
     //     setSampleRate/setBufferSize, accepting whatever the ASIO device reports.
-    //   ??Non-ASIO drivers (WASAPI/CoreAudio/ALSA) use per-app SR/BS, so saved
+    // Non-ASIO drivers (WASAPI/CoreAudio/ALSA) use per-app SR/BS, so saved
     //     values are safely forced via setSampleRate/setBufferSize.
     //
     // See also: importFromJSON in PresetManager.cpp (ASIO vs non-ASIO branch)
@@ -92,7 +92,7 @@ bool AudioEngine::initialize()
     }
 
     // Sync member atomics from the device that initialiseWithDefaultDevices started.
-    // Avoid calling setAudioDeviceSetup here ??it would restart the device (e.g. ASIO
+    // Avoid calling setAudioDeviceSetup here it would restart the device (e.g. ASIO
     // resets buffer size to its default on restart). importFromJSON will apply the
     // correct SR/BS/channel routing via setBufferSize/setInputDevice/etc.
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
@@ -180,7 +180,7 @@ void AudioEngine::shutdown()
     }
     // audioDeviceStopped() already called sharedMemWriter_.shutdown() via
     // closeAudioDevice() above, but guard against the path where the device
-    // was never started (e.g. init failure) ??only shut down if still connected.
+    // was never started (e.g. init failure) only shut down if still connected.
     if (sharedMemWriter_.isConnected())
         sharedMemWriter_.shutdown();
     ipcEnabled_.store(false, std::memory_order_relaxed);
@@ -246,7 +246,7 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
-    // Clear device-loss state ??user intentionally picked a new input device
+    // Clear device-loss state user intentionally picked a new input device
     inputDeviceLost_.store(false, std::memory_order_relaxed);
     deviceLost_.store(false, std::memory_order_relaxed);
     // Auto-unmute output if it was auto-muted due to device loss
@@ -297,7 +297,7 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
-    // Clear device-loss state ??user intentionally picked a new output device
+    // Clear device-loss state user intentionally picked a new output device
     if (outputAutoMuted_.load(std::memory_order_relaxed)) {
         outputAutoMuted_.store(false, std::memory_order_relaxed);
         outputMuted_.store(false, std::memory_order_relaxed);
@@ -381,7 +381,7 @@ void AudioEngine::syncDesiredFromDevice()
     // Sync desiredSR/BS FROM the current audio device (not TO).
     //
     // Primary use case: ASIO devices.
-    // ASIO SR/BS is global ??changing it restarts the driver and disrupts ALL apps
+    // ASIO SR/BS is global changing it restarts the driver and disrupts ALL apps
     // sharing that device (DAWs, media players, etc.). Instead of forcing our saved
     // values (which would cause an unnecessary driver restart), we accept whatever
     // the ASIO device currently reports and save THAT as the desired value.
@@ -390,7 +390,7 @@ void AudioEngine::syncDesiredFromDevice()
     //   - importFromJSON (ASIO path): on startup, accept device's current SR/BS
     //   - Could also be called after ASIO control panel changes SR/BS externally
     //
-    // NOT used for WASAPI/CoreAudio/ALSA ??those use per-app SR/BS, so forcing
+    // NOT used for WASAPI/CoreAudio/ALSA those use per-app SR/BS, so forcing
     // saved values is safe and expected (via setSampleRate/setBufferSize).
     auto* device = deviceManager_.getCurrentAudioDevice();
     if (!device) return;
@@ -560,14 +560,14 @@ juce::StringArray AudioEngine::getSharedModeOutputDevices()
     return PlatformAudio::getSharedModeOutputDevices(deviceManager_);
 }
 
-// ??? Device type management ?????????????????????????????????????????????????
+// Device type management
 
 ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice)
 {
     auto currentType = getCurrentDeviceType();
     if (currentType == typeName) {
         desiredDeviceType_ = typeName;
-        // Already on ASIO but possibly wrong device ??switch to preferred
+        // Already on ASIO but possibly wrong device switch to preferred
         if (typeName.containsIgnoreCase("ASIO") && preferredAsioDevice.isNotEmpty()) {
             juce::AudioDeviceManager::AudioDeviceSetup cur;
             deviceManager_.getAudioDeviceSetup(cur);
@@ -748,15 +748,15 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
 
     // Clear reconnection state after intentional type switch.
     // Without this, audioDeviceAboutToStart would see stale desired names
-    // (e.g. ASIO "TOPPING") vs actual WASAPI names ??"fallback detected" ??infinite loop.
+    // (e.g. ASIO "TOPPING") vs actual WASAPI names "fallback detected" infinite loop.
     deviceLost_.store(false, std::memory_order_relaxed);
     inputDeviceLost_.store(false, std::memory_order_relaxed);
     if (outputAutoMuted_.load(std::memory_order_relaxed)) {
         outputAutoMuted_.store(false, std::memory_order_relaxed);
         outputMuted_.store(false, std::memory_order_relaxed);
     }
-    // Clear "None" output state ??new driver type has its own output device.
-    // Without this, OUT mute button stays locked after WASAPI "None" ??ASIO switch.
+    // Clear "None" output state new driver type has its own output device.
+    // Without this, OUT mute button stays locked after WASAPI "None" ASIO switch.
     if (outputNone_.load(std::memory_order_relaxed)) {
         outputNone_.store(false, std::memory_order_relaxed);
         outputMuted_.store(false, std::memory_order_relaxed);
@@ -865,14 +865,14 @@ void AudioEngine::updateXRunTracking()
     if (!device) return;
 
     // Device restart (WASAPI session event, internal JUCE recovery, etc.)
-    // ??only resync the baseline counter so delta calculation stays correct.
+    // only resync the baseline counter so delta calculation stays correct.
     //   History is preserved so XRun display doesn't vanish on device restart.
     if (xrunBaselineResync_.exchange(false, std::memory_order_acquire)) {
         int xruns = device->getXRunCount();
         lastDeviceXRunCount_ = (xruns >= 0) ? xruns : 0;
     }
 
-    // User-initiated full reset (Action::XRunReset) ??clear everything.
+    // User-initiated full reset (Action::XRunReset) clear everything.
     if (xrunResetRequested_.exchange(false, std::memory_order_acquire)) {
         int xruns = device->getXRunCount();
         lastDeviceXRunCount_ = (xruns >= 0) ? xruns : 0;
@@ -891,7 +891,7 @@ void AudioEngine::updateXRunTracking()
     lastDeviceXRunCount_ = currentCount;
 
     // Use real elapsed time for accurate 1-second bucket rotation
-    // (JUCE timers are not perfectly 30Hz ??accumulated drift causes
+    // (JUCE timers are not perfectly 30Hz accumulated drift causes
     //  the 60-slot window to take longer than 60 seconds)
     double now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
     double elapsed = now - lastXRunBucketTime_;
@@ -996,9 +996,9 @@ int AudioEngine::getActiveOutputChannelOffset() const
     return setup.outputChannels.findNextSetBit(0);
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-// Real-time audio callback ??NO allocations, NO locks, NO I/O
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ============================================================================
+// Real-time audio callback NO allocations, NO locks, NO I/O
+// ============================================================================
 
 void AudioEngine::audioDeviceIOCallbackWithContext(
     const float* const* inputChannelData,
@@ -1008,12 +1008,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     int numSamples,
     const juce::AudioIODeviceCallbackContext& /*context*/)
 {
-    // ?먥븧??RT AUDIO CALLBACK ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-    // RULES: ???좊떦 湲덉? | mutex 湲덉? | writeToLog 湲덉? | ?덉쇅 throw 湲덉?
+    // RT audio callback rules:
+    // RULES: no allocation | no mutex | no writeToLog | no throw
     // Pre-allocated: workBuffer_, emptyMidi_ | Atomics: relaxed ordering
-    // ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧
+    // Keep this path deterministic and lock-free.
 
-    // RT thread only ??must NOT be called from the message thread
+    // RT thread only must NOT be called from the message thread
     jassert(!juce::MessageManager::getInstanceWithoutCreating()
             || !juce::MessageManager::getInstance()->isThisTheMessageThread());
 
@@ -1035,7 +1035,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     }
 #endif
 
-    // Flush denormalized floats to zero ??prevents 10-100x CPU spikes
+    // Flush denormalized floats to zero prevents 10-100x CPU spikes
     // when VST plugins process near-silence (reverb tails, compressor release, etc.)
     juce::ScopedNoDenormals noDenormals;
 
@@ -1048,7 +1048,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 
     numSamples = juce::jmin(numSamples, workBuffer_.getNumSamples());
 
-    // ?? Fast path: panic muted ??zero output, skip all processing ??
+    // Fast path: panic muted zero output, skip all processing
     if (muted) {
         for (int ch = 0; ch < numOutputChannels; ++ch)
             if (outputChannelData[ch])
@@ -1060,7 +1060,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         return;
     }
 
-    // ?? Plugin crash guard: chain crashed previously ??silence all outputs ??
+    // Plugin crash guard: chain crashed previously silence all outputs
     if (chainCrashed_.load(std::memory_order_relaxed)) {
         for (int ch = 0; ch < numOutputChannels; ++ch)
             if (outputChannelData[ch])
@@ -1079,7 +1079,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     for (int ch = 0; ch < workChannels; ++ch)
         juce::FloatVectorOperations::clear(buffer.getWritePointer(ch), numSamples);
 
-    // Input device lost ??use silence instead of fallback device input.
+    // Input device lost use silence instead of fallback device input.
     // Work buffer already cleared above, so just skip the copy.
     if (!inputDeviceLost_.load(std::memory_order_relaxed)) {
         if (chMode == 1) {
@@ -1121,7 +1121,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         buffer.clear();
     }
 
-    // Measure input level (RMS) ??decimated: every 4th callback (~23Hz at 48kHz/512smp).
+    // Measure input level (RMS) decimated: every 4th callback (~23Hz at 48kHz/512smp).
     // UI timer runs at 30Hz so per-callback RMS is wasted work.
     const bool measureThisCallback = (++rmsDecimationCounter_ & 3) == 0;
     if (measureThisCallback && buffer.getNumChannels() > 0) {
@@ -1130,7 +1130,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     }
 
     // 2. Process through VST plugin chain (inline, zero additional latency)
-    //    Each plugin's bypass flag is atomic ??can be toggled from any thread
+    // Each plugin's bypass flag is atomic can be toggled from any thread
     //
     // Windows: __try/__except catches SEH exceptions (access violations) that
     //          try/catch(...) silently misses. The helper is extracted into a
@@ -1152,10 +1152,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 #endif
 
     // CRITICAL: Steps 2.1-4 MUST execute in this exact order.
-    // Safety Limiter (step 2.1) must run BEFORE all output paths (steps 2.5-4).
+    // Safety Guard (legacy SafetyLimiter) must run BEFORE all output paths (steps 2.5-4).
     // Reordering would cause un-limited audio to be recorded/broadcast/monitored.
 
-    // 2.1. Safety Limiter ??clip prevention for all output paths (RT-safe)
+    // 2.1. Safety Guard clip prevention for all output paths (RT-safe)
     safetyLimiter_.process(buffer, numSamples);
 
     // 2.5. Write processed audio to recorder (lock-free)
@@ -1175,7 +1175,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         if (!outputChannelData[ch]) continue;
         if (ch < buffer.getNumChannels() && !outputMuted) {
             if (std::abs(outVol - 1.0f) < 0.001f) {
-                // Unity gain ??direct copy (most common path)
+                // Unity gain direct copy (most common path)
                 std::memcpy(outputChannelData[ch], buffer.getReadPointer(ch),
                             sizeof(float) * static_cast<size_t>(numSamples));
             } else if (outVol > 0.001f) {
@@ -1184,7 +1184,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
                 for (int i = 0; i < numSamples; ++i)
                     outputChannelData[ch][i] = src[i] * outVol;
             } else {
-                // Volume ~0 ??silence
+                // Volume ~0 silence
                 std::memset(outputChannelData[ch], 0,
                             sizeof(float) * static_cast<size_t>(numSamples));
             }
@@ -1194,7 +1194,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         }
     }
 
-    // Measure output level ??same decimation as input
+    // Measure output level same decimation as input
     if (measureThisCallback && buffer.getNumChannels() > 0) {
         float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
         if (buffer.getNumChannels() > 1)
@@ -1205,17 +1205,17 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     latencyMonitor_.markCallbackEnd();
 }
 
-// ??? Device Start/Reconnection Handler ??????????????????????????????
-// ??肄쒕갚? ?붾컮?댁뒪 ?ㅻ젅?쒖뿉???몄텧??(Message ?ㅻ젅???꾨떂!)
-// intentionalChange_: true硫??ъ슜???섎룄 蹂寃? false硫?JUCE ?먮룞 ?대갚 媛??
-// desiredInputDevice_/desiredOutputDevice_: ?ъ슜?먭? ?먮옒 ?좏깮???붾컮?댁뒪 蹂댁〈
-// ?대갚 媛먯?: ?ㅼ젣 ?붾컮?댁뒪 ??desired ??deviceLost_ ?좎?, ?ъ뿰寃??湲?
-// ????????????????????????????????????????????????????????????????????
+// Device Start/Reconnection Handler
+// Device start/reconnection handler notes:
+// Called on the device thread (not the message thread).
+// intentionalChange_: true means user-requested device change; false means auto event.
+// desiredInputDevice_/desiredOutputDevice_: preserve user-selected target devices.
+// ===========================================================================
 void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
 
-    // Reset MMCSS flag ??new device means new audio thread, re-registration needed
+    // Reset MMCSS flag new device means new audio thread, re-registration needed
     mmcssRegistered_.store(false, std::memory_order_release);
 
 #if defined(_WIN32)
@@ -1268,7 +1268,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         bool wasLost = deviceLost_.load(std::memory_order_relaxed);
 
         if ((inputMismatch || outputMismatch) && wasLost) {
-            // Real fallback after device error ??keep deviceLost_ true,
+            // Real fallback after device error keep deviceLost_ true,
             // don't overwrite desired names so checkReconnection restores them
             Log::warn("AUDIO", "Fallback detected: in='" + setup.inputDeviceName
                        + "' out='" + setup.outputDeviceName
@@ -1276,16 +1276,16 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                        + "' out='" + desiredOut + "')");
 
             // Per-direction loss tracking:
-            // Input lost ??silence input in audio callback (don't use fallback mic)
+            // Input lost silence input in audio callback (don't use fallback mic)
             inputDeviceLost_.store(inputMismatch, std::memory_order_relaxed);
-            // Output lost ??auto-mute output (VST chain + monitor unaffected)
+            // Output lost auto-mute output (VST chain + monitor unaffected)
             if (outputMismatch && !outputAutoMuted_.load(std::memory_order_relaxed)) {
                 outputMuted_.store(true, std::memory_order_relaxed);
                 outputAutoMuted_.store(true, std::memory_order_relaxed);
             }
 
             // Restore any device that JUCE changed but is still available.
-            // e.g. output unplugged ??JUCE fallback changes both ??restore input + BS/SR.
+            // e.g. output unplugged JUCE fallback changes both restore input + BS/SR.
             juce::MessageManager::callAsync([this, alive = alive_,
                 desiredIn, desiredOut,
                 desiredSR = desiredSampleRate_, desiredBS = desiredBufferSize_] {
@@ -1316,7 +1316,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     + juce::String(desiredBS) + " SR=" + juce::String(desiredSR) + ")");
             });
         } else {
-            // Atomics ??safe from any thread
+            // Atomics safe from any thread
             deviceLost_.store(false, std::memory_order_relaxed);
             inputDeviceLost_.store(false, std::memory_order_relaxed);
             // Auto-unmute output if it was auto-muted due to device loss
@@ -1326,7 +1326,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 if (!outputNone_.load(std::memory_order_relaxed))
                     outputMuted_.store(false, std::memory_order_relaxed);
             }
-            // Non-atomic [Message thread only] variables ??must write on
+            // Non-atomic [Message thread only] variables must write on
             // message thread to avoid data race with device thread.
             auto aliveFlag = alive_;
             auto inName = setup.inputDeviceName;
@@ -1351,7 +1351,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     //   1. ASIO control panel BS changes are saved to settings
                     //   2. Next restart won't force an old BS, avoiding driver
                     //      restart that disrupts other audio sources
-                    //   3. exportToJSON ??getDesiredBufferSize() returns the
+                    // 3. exportToJSON getDesiredBufferSize() returns the
                     //      actual ASIO value, not a stale saved value
                     desiredSampleRate_ = sr;
                     desiredBufferSize_ = bs;
@@ -1421,7 +1421,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     // Signal message-thread to resync xrun baseline counter (avoids data race
     // between device thread writing and message-thread timer reading).
-    // NOTE: Do NOT clear recentXRuns_ or history here ??device restarts (WASAPI
+    // NOTE: Do NOT clear recentXRuns_ or history here device restarts (WASAPI
     // session events, internal JUCE recovery) would erase legitimate XRun display.
     // Only the user-initiated XRunReset action clears history.
     xrunBaselineResync_.store(true, std::memory_order_release);
@@ -1437,7 +1437,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     workBuffer_.clear();
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
-    // NOTE: chainCrashed_ is NOT reset here ??device events (WASAPI session changes,
+    // NOTE: chainCrashed_ is NOT reset here device events (WASAPI session changes,
     // ASIO buffer size change) fire audioDeviceAboutToStart without any chain change,
     // which would silently re-enable a crashed chain. Instead, chainCrashed_ is cleared
     // by clearChainCrash() which is called from onChainModified (plugin add/remove/slot switch).
@@ -1518,7 +1518,7 @@ void AudioEngine::audioDeviceError(const juce::String& errorMessage)
     deviceLost_.store(true, std::memory_order_relaxed);
 }
 
-// ??? Device reconnection ????????????????????????????????????????????????????
+// Device reconnection
 
 void AudioEngine::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
 {
@@ -1527,12 +1527,12 @@ void AudioEngine::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
         attemptReconnection();
 }
 
-// ??? Dual-Mechanism Reconnection ????????????????????????????????????
-// 1李? ChangeListener on deviceManager_ (利됱떆 媛먯?)
-// 2李? 3s ??대㉧ ?대쭅 (ChangeListener ?꾨씫 ???대갚)
-// reconnectMissCount_: 5???ㅽ뙣 ???꾩옱 ?붾컮?댁뒪 ?섏슜 (臾댄븳 猷⑦봽 諛⑹?)
-// WARNING: desiredInputDevice_/desiredOutputDevice_??Message thread only
-// ????????????????????????????????????????????????????????????????????
+// Dual-Mechanism Reconnection
+// 1) Immediate ChangeListener callback on deviceManager_ (fast detection).
+// 2) 3s timer polling fallback (covers missed ChangeListener events).
+// reconnectMissCount_: after repeated misses, accept current device to avoid loop.
+// WARNING: desiredInputDevice_/desiredOutputDevice_Message thread only
+// ===========================================================================
 void AudioEngine::checkReconnection()
 {
     jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
@@ -1588,7 +1588,7 @@ void AudioEngine::checkReconnection()
     if (monitorOutput_.getStatus() != VirtualCableStatus::SampleRateMismatch)
         monitorSRMismatchNotified_ = false;
 
-    // Chain crash notification (moved off RT thread ??detected here on message thread)
+    // Chain crash notification (moved off RT thread detected here on message thread)
     if (chainCrashed_.load(std::memory_order_relaxed) && !chainCrashNotified_.load(std::memory_order_relaxed)) {
         chainCrashNotified_.store(true, std::memory_order_relaxed);
         pushNotification("Plugin crash detected \xe2\x80\x94 chain bypassed. Remove the problematic plugin.", NotificationLevel::Error);
@@ -1628,13 +1628,13 @@ void AudioEngine::attemptReconnection()
     if (!inputOk || !outputOk) {
         ++reconnectMissCount_;
         if (reconnectMissCount_ >= kMaxReconnectMisses) {
-            // Output genuinely lost (physically unplugged) ??keep waiting, don't accept fallback
+            // Output genuinely lost (physically unplugged) keep waiting, don't accept fallback
             if (outputAutoMuted_.load(std::memory_order_relaxed)) {
                 reconnectMissCount_ = 0;
                 Log::audit("AUDIO", "Reconnection: output device lost, continuing to wait for '"
                     + desiredOutputDevice_ + "'");
             } else {
-                // Stale cross-driver names ??accept current driver's devices to break the loop
+                // Stale cross-driver names accept current driver's devices to break the loop
                 Log::warn("AUDIO", "Reconnection: desired devices not found after "
                     + juce::String(kMaxReconnectMisses) + " attempts, accepting current devices");
                 juce::AudioDeviceManager::AudioDeviceSetup curSetup;
@@ -1678,7 +1678,7 @@ void AudioEngine::attemptReconnection()
         result = deviceManager_.setAudioDeviceSetup(setup, true);
     }
     if (result.isEmpty()) {
-        // Explicitly clear ??audioDeviceAboutToStart may keep it true
+        // Explicitly clear audioDeviceAboutToStart may keep it true
         // due to ASIO device name mismatch (single device vs desired I/O names)
         deviceLost_.store(false, std::memory_order_relaxed);
         inputDeviceLost_.store(false, std::memory_order_relaxed);
@@ -1700,11 +1700,11 @@ void AudioEngine::attemptReconnection()
     // BoolGuard resets attemptingReconnection_ on scope exit
 }
 
-// ??? Notification queue ?????????????????????????????????????????????????????
+// Notification queue
 
 // NOTE: notifQueue_[slot] assignment copies a juce::String (heap allocation).
 // This is acceptable because pushNotification is only called from the device
-// error thread (audioDeviceError) and message thread ??never from the RT
+// error thread (audioDeviceError) and message thread never from the RT
 // audio callback. If a future caller needs to push from the RT callback,
 // switch to a fixed-size char array or pre-allocated string pool.
 void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)
@@ -1717,7 +1717,7 @@ void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel le
         if (w - r >= static_cast<uint32_t>(kNotifQueueSize)) return;  // Queue full, drop
         if (notifWriteIdx_.compare_exchange_weak(w, w + 1, std::memory_order_acq_rel))
             break;
-        // CAS failed ??another producer advanced w, retry with updated w
+        // CAS failed another producer advanced w, retry with updated w
     }
     auto slot = w % static_cast<uint32_t>(kNotifQueueSize);
     notifQueue_[slot] = {msg, level};

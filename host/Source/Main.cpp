@@ -32,20 +32,20 @@
 #include "Control/StateBroadcaster.h"
 #include "Control/Log.h"
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ============================================================================
 // Platform abstractions (AutoStart, ProcessPriority, MultiInstanceLock)
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ============================================================================
 
 #include "Platform/AutoStart.h"
 #include "Platform/ProcessPriority.h"
 #include "Platform/MultiInstanceLock.h"
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ============================================================================
 // Out-of-process plugin scanner mode
 // When launched with "--scan <searchPaths> <outputFile> <pedalFile>",
 // DirectPipe acts as a headless scanner process.
 // If a bad plugin crashes the scanner, only this child process dies.
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ============================================================================
 
 static int runScannerMode(const juce::StringArray& args)
 {
@@ -161,7 +161,7 @@ static int runScannerMode(const juce::StringArray& args)
     return 0;
 }
 
-// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// ============================================================================
 
 class DirectPipeApplication : public juce::JUCEApplication {
 public:
@@ -186,7 +186,7 @@ public:
 
         sessionStartMs_ = juce::Time::getMillisecondCounter();
 
-        // Check for scanner mode (before session header ??scanner has its own logging)
+        // Check for scanner mode (before session header scanner has its own logging)
         if (args.size() >= 1 && args[0] == "--scan") {
             scannerMode_ = true;
             int result = runScannerMode(args);
@@ -200,7 +200,7 @@ public:
         ::signal(SIGPIPE, SIG_IGN);  // Writing to a closed socket must not crash
 
         // SIGTERM: clean shutdown (save settings, unmap SHM, close servers).
-        // JUCE only handles SIGINT on Linux ??SIGTERM from systemd/kill goes unhandled,
+        // JUCE only handles SIGINT on Linux SIGTERM from systemd/kill goes unhandled,
         // causing abrupt termination without cleanup.
         ::signal(SIGTERM, [](int) {
             if (auto* app = juce::JUCEApplicationBase::getInstance())
@@ -232,7 +232,7 @@ public:
         int controlResult = directpipe::Platform::acquireExternalControlPriority(
             directpipe::ControlMappingStore::isPortableMode());
         if (controlResult < 0) {
-            // A portable instance already owns external controls ??block normal mode
+            // A portable instance already owns external controls block normal mode
             juce::AlertWindow::showMessageBoxAsync(
                 juce::MessageBoxIconType::WarningIcon,
                 "DirectPipe",
@@ -324,7 +324,7 @@ public:
         if (mainWindow_) {
 #if JUCE_LINUX
             // GNOME 42+ removed legacy XEmbed system tray support.
-            // Minimize to taskbar instead of hiding ??ensures the window
+            // Minimize to taskbar instead of hiding ensures the window
             // is always recoverable even without a tray icon (AppIndicator).
             mainWindow_->setMinimised(true);
 #else
@@ -359,7 +359,7 @@ private:
     bool enableExternalControls_ = true;
     juce::int64 sessionStartMs_ = 0;
 
-    // ??? System Tray Icon ?????????????????????????????????????????
+    // System Tray Icon
     class DirectPipeTrayIcon : public juce::SystemTrayIconComponent,
                                public directpipe::StateListener,
                                public juce::Timer {
@@ -492,7 +492,7 @@ private:
         std::atomic<bool> stateDirty_{false};
     };
 
-    // ??? Main Window ??????????????????????????????????????????????
+    // Main Window
     class MainWindow : public juce::DocumentWindow {
     public:
         MainWindow(const juce::String& name, DirectPipeApplication& app,
@@ -509,7 +509,7 @@ private:
             setResizable(true, true);
             setResizeLimits(600, 800, 1400, 1200);
             centreWithSize(getWidth(), getHeight());
-            // setVisible deferred ??MainComponent shows window after initial load completes
+            // setVisible deferred MainComponent shows window after initial load completes
             // NOTE: Process priority already set by Platform::setHighPriority() in initialise()
         }
 

@@ -76,7 +76,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     controlManager_->initialize(enableExternalControls);
     dispatcher_.addListener(this);
 
-    // ?? Audio Settings ??
+    // Audio Settings
     audioSettings_ = std::make_unique<AudioSettings>(audioEngine_);
     audioSettings_->onSettingsChanged = [this] {
         markSettingsDirty();
@@ -96,17 +96,17 @@ MainComponent::MainComponent(bool enableExternalControls)
         showNotification(msg, NotificationLevel::Error);
     };
 
-    // ?? Plugin Chain Editor ??
+    // Plugin Chain Editor
     pluginChainEditor_ = std::make_unique<PluginChainEditor>(audioEngine_.getVSTChain());
     addAndMakeVisible(*pluginChainEditor_);
 
-    // ?? Level Meters ??
+    // Level Meters
     inputMeter_ = std::make_unique<LevelMeter>("INPUT");
     outputMeter_ = std::make_unique<LevelMeter>("OUTPUT");
     addAndMakeVisible(*inputMeter_);
     addAndMakeVisible(*outputMeter_);
 
-    // ?? Input Gain Slider ??
+    // Input Gain Slider
     inputGainLabel_.setColour(juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible(inputGainLabel_);
 
@@ -114,7 +114,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     inputGainSlider_.setRange(0.0, 2.0, 0.01);
     inputGainSlider_.setValue(1.0);
     inputGainSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 50, 20);
-    // Direct engine call ??intentionally bypasses ActionDispatcher.
+    // Direct engine call intentionally bypasses ActionDispatcher.
     // The slider sends continuous values on every mouse drag; routing through
     // ActionDispatcher would flood the event system and add latency.
     // Note: this means the gain slider is NOT blocked by panic mute
@@ -125,7 +125,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     addAndMakeVisible(inputGainSlider_);
 
-    // ?? Auto Button (switches to Auto preset slot, index 5) ??
+    // Auto Button (switches to Auto preset slot, index 5)
     //
     // ## Auto Slot Architecture
     //
@@ -142,7 +142,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     // 3. Right-click: Shows a context menu with "Reset Auto to Defaults" option
     //    that recreates the default 3-processor chain (see mouseDown handler below).
     //
-    // 4. Auto slot is EXCLUDED from Next/Previous preset cycling (A?묪?묬?묭?묮?묨).
+    // 4. Auto slot is EXCLUDED from Next/Previous preset cycling (A-E only).
     //    External controls (hotkeys, MIDI, Stream Deck) cycle only through A-E.
     //    Auto must be explicitly selected.
     //
@@ -158,7 +158,7 @@ MainComponent::MainComponent(bool enableExternalControls)
 
         int autoIdx = PresetSlotBar::kAutoSlotIndex;
 
-        // Already on Auto slot ??just save current state
+        // Already on Auto slot just save current state
         if (presetManager_ && presetManager_->getActiveSlot() == autoIdx) {
             if (!partialLoad_.load())
                 presetManager_->saveSlot(autoIdx);
@@ -243,7 +243,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     autoProcessorBtn_.addMouseListener(this, false);
     addAndMakeVisible(autoProcessorBtn_);
 
-    // ?? Output Panel ??
+    // Output Panel
     outputPanel_ = std::make_unique<OutputPanel>(audioEngine_);
     outputPanel_->onSettingsChanged = [this] { markSettingsDirty(); };
     outputPanel_->onError = [this](const juce::String& msg) {
@@ -256,7 +256,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     outputPanelPtr_ = outputPanel_.get();
 
-    // ?? Control Settings Panel ??
+    // Control Settings Panel
     controlSettingsPanel_ = std::make_unique<ControlSettingsPanel>(
         *controlManager_, &audioEngine_.getVSTChain());
 
@@ -265,7 +265,7 @@ MainComponent::MainComponent(bool enableExternalControls)
         markSettingsDirty();
     };
 
-    // ?? Right-column Tabbed Panel ??
+    // Right-column Tabbed Panel
     rightTabs_ = std::make_unique<juce::TabbedComponent>(juce::TabbedButtonBar::TabsAtTop);
     rightTabs_->setTabBarDepth(30);
     rightTabs_->setOutline(0);
@@ -276,7 +276,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     rightTabs_->addTab("Output",   tabBg, outputPanel_.release(), true);
     rightTabs_->addTab("Controls", tabBg, controlSettingsPanel_.release(), true);
 
-    // ?? Settings Panel (formerly Log + General) ??
+    // Settings Panel (formerly Log + General)
     {
         auto settingsPanel = std::make_unique<LogPanel>();
         settingsPanel->setStartMinimizedToTrayEnabled(startMinimizedToTrayOnLaunch_);
@@ -314,7 +314,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             setStartMinimizedToTrayOnLaunch(false, false);
             if (settingsAutosaver_)
                 settingsAutosaver_->loadFromFile();  // manages loadingSlot_ internally (sets true then false)
-            // DO NOT set loadingSlot_ = false here ??loadFromFile releases it at the right time
+            // DO NOT set loadingSlot_ = false here loadFromFile releases it at the right time
             refreshUI();
             if (presetSlotBar_)
                 presetSlotBar_->updateSlotButtonStates();
@@ -382,7 +382,7 @@ MainComponent::MainComponent(bool enableExternalControls)
         rightTabs_->addTab("Settings", tabBg, settingsPanel.release(), true);
     }
 
-    // Release unique_ptrs ??TabbedComponent now owns these components (passed via .release() above).
+    // Release unique_ptrs TabbedComponent now owns these components (passed via .release() above).
     // Calling .reset() on an already-released unique_ptr is a no-op, but makes ownership explicit.
     audioSettings_.reset();
     outputPanel_.reset();
@@ -390,7 +390,7 @@ MainComponent::MainComponent(bool enableExternalControls)
 
     addAndMakeVisible(*rightTabs_);
 
-    // ?? Preset Manager ??
+    // Preset Manager
     presetManager_ = std::make_unique<PresetManager>(audioEngine_);
     presetManager_->onExportAppSettings = [this](juce::DynamicObject& root) {
         root.setProperty("startMinimizedToTray", startMinimizedToTrayOnLaunch_);
@@ -416,7 +416,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     pluginChainEditor_->setLimiterCeiling(audioEngine_.getSafetyLimiter().getCeilingdB());
 
     pluginChainEditor_->onChainModified = [this] {
-        // Chain structure changed (plugin add/remove/reorder) ??clear crash flag
+        // Chain structure changed (plugin add/remove/reorder) clear crash flag
         // so audio resumes after the problematic plugin is removed.
         audioEngine_.clearChainCrash();
 
@@ -480,7 +480,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     addAndMakeVisible(loadPresetBtn_);
 
-    // ?? Quick Preset Slot Buttons (A..E) ??
+    // Quick Preset Slot Buttons (A..E)
     presetSlotBar_ = std::make_unique<PresetSlotBar>(
         *presetManager_, audioEngine_, *pluginChainEditor_, loadingSlot_, partialLoad_);
     presetSlotBar_->onSettingsDirty = [this] { markSettingsDirty(); };
@@ -490,7 +490,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     addAndMakeVisible(*presetSlotBar_);
 
-    // ?? Action Handler (routes ActionEvents to engine/UI) ??
+    // Action Handler (routes ActionEvents to engine/UI)
     actionHandler_ = std::make_unique<ActionHandler>(
         audioEngine_, *presetManager_, *presetSlotBar_, loadingSlot_, partialLoad_);
     actionHandler_->onDirty = [this] { markSettingsDirty(); };
@@ -524,7 +524,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             autoProcessorBtn_.onClick();
     };
 
-    // ?? Settings Autosaver (dirty-flag + debounce + save/load) ??
+    // Settings Autosaver (dirty-flag + debounce + save/load)
     settingsAutosaver_ = std::make_unique<SettingsAutosaver>(
         *presetManager_, audioEngine_, loadingSlot_, partialLoad_);
     settingsAutosaver_->onRestorePanicMute = [this] {
@@ -553,10 +553,10 @@ MainComponent::MainComponent(bool enableExternalControls)
         }
     };
 
-    // ?? Status Updater (mute indicators, status bar, broadcaster) ??
+    // Status Updater (mute indicators, status bar, broadcaster)
     statusUpdater_ = std::make_unique<StatusUpdater>(audioEngine_, broadcaster_);
 
-    // ?? Mute Status Indicators (clickable) ??
+    // Mute Status Indicators (clickable)
     auto setupMuteBtn = [this](juce::TextButton& btn) {
         btn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));
         btn.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -570,14 +570,14 @@ MainComponent::MainComponent(bool enableExternalControls)
     monitorMuteBtn_.onClick = [this] { actionHandler_->toggleMonitorMute(); };
     vstMuteBtn_.onClick = [this] { actionHandler_->toggleIpcMute(); };
 
-    // ?? Panic Mute Button ??
+    // Panic Mute Button
     panicMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
     panicMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     panicMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     panicMuteBtn_.onClick = [this] { actionHandler_->togglePanicMute(); };
     addAndMakeVisible(panicMuteBtn_);
 
-    // ?? Input Mute Button ??
+    // Input Mute Button
     inputMuteBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF4CAF50));  // green = active
     inputMuteBtn_.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     inputMuteBtn_.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -586,7 +586,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
     addAndMakeVisible(inputMuteBtn_);
 
-    // ?? Section Labels (left column only) ??
+    // Section Labels (left column only)
     auto setupLabel = [](juce::Label& label, const juce::String& text) {
         label.setText(text, juce::dontSendNotification);
         label.setFont(juce::Font(16.0f, juce::Font::bold));
@@ -597,7 +597,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     addAndMakeVisible(inputSectionLabel_);
     addAndMakeVisible(vstSectionLabel_);
 
-    // ?? Status Bar Labels ??
+    // Status Bar Labels
     auto setupStatusLabel = [this](juce::Label& label) {
         label.setFont(juce::Font(13.0f));
         label.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
@@ -634,7 +634,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     creditLink_.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(creditLink_);
 
-    // ?? Notification Bar (overlays status bar labels on error) ??
+    // Notification Bar (overlays status bar labels on error)
     addAndMakeVisible(notificationBar_);
     notificationBar_.setVisible(false);
 
@@ -705,7 +705,7 @@ MainComponent::~MainComponent()
     setLookAndFeel(nullptr);
 }
 
-// ??? Action handling ????????????????????????????????????????????????????????
+// Action handling
 
 void MainComponent::onAction(const ActionEvent& event)
 {
@@ -718,7 +718,7 @@ void MainComponent::handleAction(const ActionEvent& event)
     actionHandler_->handle(event);
 }
 
-// ??? Paint ??????????????????????????????????????????????????????????????????
+// Paint
 
 void MainComponent::paint(juce::Graphics& g)
 {
@@ -729,14 +729,14 @@ void MainComponent::paint(juce::Graphics& g)
     g.fillRect(0, getHeight() - kStatusBarHeight, getWidth(), kStatusBarHeight);
 }
 
-// ??? Layout ?????????????????????????????????????????????????????????????????
+// Layout
 
 void MainComponent::resized()
 {
     auto bounds = getLocalBounds().reduced(10);
     int halfW = bounds.getWidth() / 2 - 5;
 
-    // ?먥븧??Left Column: Input Meter (left edge) + Controls ?먥븧??
+    // Left Column: Input Meter (left edge) + Controls
     int lx = bounds.getX();
     int ly = bounds.getY();
 
@@ -749,7 +749,7 @@ void MainComponent::resized()
     int cw = halfW - kMeterWidth - 8;
     int y = ly;
 
-    // ?? INPUT Section ??
+    // INPUT Section
     {
         int btnW = (cw - 4 * 2) / 3; // match OUT button width
         int btnH = 30;               // match OUT/MON/VST button height
@@ -769,7 +769,7 @@ void MainComponent::resized()
     }
     y += 30;
 
-    // ?? VST CHAIN Section ??
+    // VST CHAIN Section
     {
         // Layout: [LABEL] [Save][Load]
         int lblW = 70;
@@ -786,7 +786,7 @@ void MainComponent::resized()
     }
     y += 26;
 
-    // Quick preset slot buttons (A..E) ??layout handled by PresetSlotBar::resized()
+    // Quick preset slot buttons (A..E) layout handled by PresetSlotBar::resized()
     presetSlotBar_->setBounds(cx, y, cw, 26);
     y += 30;
 
@@ -811,7 +811,7 @@ void MainComponent::resized()
     // PANIC MUTE button (below indicators: 30px height + 4px gap)
     panicMuteBtn_.setBounds(cx, bottomY + 30 + 4, cw, 32);
 
-    // ?먥븧??Right Column: Tabbed Panel + Output Meter ?먥븧??
+    // Right Column: Tabbed Panel + Output Meter
     int rx = bounds.getX() + halfW + 10;
     int rw = bounds.getWidth() - halfW - 10;
     int ry = bounds.getY();
@@ -824,7 +824,7 @@ void MainComponent::resized()
     // Tabbed panel (leaves space for output meter)
     rightTabs_->setBounds(rx, ry, rw - 50, tabH);
 
-    // ?? Status Bar ??
+    // Status Bar
     int statusY = getHeight() - kStatusBarHeight + 3;
     int creditW = 200;
     int infoW = getWidth() - creditW - 10;  // all space minus credit area
@@ -837,7 +837,7 @@ void MainComponent::resized()
     notificationBar_.setBounds(0, statusY - 3, getWidth(), kStatusBarHeight);
 }
 
-// ??? Auto button right-click menu ???????????????????????????????????????????
+// Auto button right-click menu
 
 void MainComponent::mouseDown(const juce::MouseEvent& e)
 {
@@ -908,11 +908,11 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
     juce::Component::mouseDown(e);
 }
 
-// ??? Timer ??????????????????????????????????????????????????????????????????
+// Timer
 
 void MainComponent::timerCallback()
 {
-    // ?? Drain notification queue ??
+    // Drain notification queue
     {
         PendingNotification notif;
         while (audioEngine_.popNotification(notif))
@@ -929,11 +929,11 @@ void MainComponent::timerCallback()
         }
     }
 
-    // ?? Flush log entries to Log tab ??
+    // Flush log entries to Log tab
     if (auto* logComp = dynamic_cast<LogPanel*>(rightTabs_->getTabContentComponent(3)))
         logComp->flushPendingLogs();
 
-    // ?? Status bar, mute indicators, level meters, broadcaster ??
+    // Status bar, mute indicators, level meters, broadcaster
     statusUpdater_->tick(presetManager_.get(), PresetManager::kNumSlots);
 
     // Sync Auto button visual (active/inactive)
@@ -960,7 +960,7 @@ void MainComponent::timerCallback()
     settingsAutosaver_->tick();
 }
 
-// ??? Settings dirty flag ?????????????????????????????????????????????????????
+// Settings dirty flag
 
 void MainComponent::markSettingsDirty()
 {
@@ -1023,7 +1023,7 @@ void MainComponent::refreshUI()
     updateAutoButtonVisual();
 }
 
-// ??? Auto Button Visual ???????????????????????????????????????????????????
+// Auto Button Visual
 
 void MainComponent::updateAutoButtonVisual()
 {
@@ -1039,7 +1039,7 @@ void MainComponent::updateAutoButtonVisual()
     }
 }
 
-// ??? Notification ?????????????????????????????????????????????????????????
+// Notification
 
 void MainComponent::showNotification(const juce::String& message, NotificationLevel level)
 {

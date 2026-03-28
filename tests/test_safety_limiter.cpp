@@ -53,7 +53,7 @@ TEST_F(SafetyLimiterTest, BelowCeiling) {
 }
 
 TEST_F(SafetyLimiterTest, AboveCeiling) {
-    limiter.setCeiling(-6.0f);  // ceiling ??0.5012
+    limiter.setCeiling(-6.0f);  // ceiling ~0.5012
     auto buf = makeBuffer(1.0f, 2048);
     limiter.process(buf, buf.getNumSamples());
     float lastSample = buf.getSample(0, buf.getNumSamples() - 1);
@@ -117,7 +117,7 @@ TEST_F(SafetyLimiterTest, EnvelopeRelease) {
     auto loud = makeBuffer(1.0f, 1024);
     limiter.process(loud, loud.getNumSamples());
     EXPECT_TRUE(limiter.isLimiting());
-    // Then: process quiet signal ??limiter should gradually release
+    // Then: process quiet signal - limiter should gradually release
     auto quiet = makeBuffer(0.1f, 4096);
     limiter.process(quiet, quiet.getNumSamples());
     // After release, signal should be close to original

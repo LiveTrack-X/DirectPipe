@@ -260,11 +260,11 @@ private:
 
     static float calculateRMS(const float* data, int numSamples);
 
-    // ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
-    // Thread Ownership ??蹂寃???Audio/README.md "Thread Model" ?뚯씠釉붾룄 ?낅뜲?댄듃??寃?
-    // ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+    // ============================================================================
+    // Thread Ownership - update Audio/README.md "Thread Model" when this changes.
+    // ============================================================================
 
-    // ??? Subsystems (owned, thread-safe internally) ???
+    // Subsystems (owned, thread-safe internally)
     juce::AudioDeviceManager deviceManager_;
     VSTChain vstChain_;
     OutputRouter outputRouter_;
@@ -274,7 +274,7 @@ private:
     SafetyLimiter safetyLimiter_;
     SharedMemWriter sharedMemWriter_;
 
-    // ??? Cross-thread atomics ???
+    // Cross-thread atomics
     std::atomic<bool> ipcEnabled_{false};              // [Message write, RT read]
     std::atomic<bool> ipcWasEnabled_{false};            // [Device callbacks only] Remembers IPC state across device stop/start
     bool ipcAllowed_ = true;                            // [Message thread only] false in audio-only multi-instance mode
@@ -294,10 +294,10 @@ private:
     std::atomic<double> currentSampleRate_{48000.0};    // [Message write, RT read]
     std::atomic<int> currentBufferSize_{480};            // [Message write, RT read]
 
-    // ??? XRun tracking (Message thread only, except atomics) ???
+    // XRun tracking (Message thread only, except atomics)
     // Two separate flags avoid a data race between device thread and message thread:
-    //   xrunBaselineResync_: device restart ??resync lastDeviceXRunCount_ only (preserve history)
-    //   xrunResetRequested_: user action   ??full clear (history + display)
+    // xrunBaselineResync_: device restart resync lastDeviceXRunCount_ only (preserve history)
+    // xrunResetRequested_: user action full clear (history + display)
     std::atomic<int> recentXRuns_{0};                   // [Message write, UI read]
     std::atomic<bool> xrunBaselineResync_{false};       // [Device thread write, Message read]
     std::atomic<bool> xrunResetRequested_{false};       // [Any thread write, Message read]
@@ -306,7 +306,7 @@ private:
     int xrunHistoryIdx_ = 0;                            // [Message thread only]
     double lastXRunBucketTime_ = juce::Time::getMillisecondCounterHiRes() / 1000.0;  // [Message thread only]
 
-    // ??? Device reconnection tracking (Message thread only, except atomics) ???
+    // Device reconnection tracking (Message thread only, except atomics)
     juce::SpinLock desiredDeviceLock_;                   // Protects desiredInputDevice_ / desiredOutputDevice_
     juce::String desiredInputDevice_;                   // [Protected by desiredDeviceLock_]
     juce::String desiredOutputDevice_;                  // [Protected by desiredDeviceLock_]
@@ -329,7 +329,7 @@ private:
     bool inputWasLost_ = false;                         // [Message thread only] Edge detection for input device loss notification
     bool outputWasAutoMuted_ = false;                   // [Message thread only] Edge detection for output auto-mute notification
 
-    // ??? RT thread only ???
+    // RT thread only
     juce::AudioBuffer<float> workBuffer_;               // [RT thread only]
     uint32_t rmsDecimationCounter_ = 0;                 // [RT thread only] RMS computed every 4th callback (no atomic needed)
     std::atomic<bool> chainCrashed_{false};              // [RT write, Message read] Plugin processBlock exception ??silence output
@@ -337,7 +337,7 @@ private:
     std::atomic<bool> mmcssRegistered_{false};           // [Device thread reset, RT thread write+read] MMCSS registration flag (Windows)
 
 #if defined(_WIN32)
-    // Cached MMCSS function pointers ??loaded once in audioDeviceAboutToStart (device thread),
+    // Cached MMCSS function pointers loaded once in audioDeviceAboutToStart (device thread),
     // read from RT callback. Safe: written once before any RT read, never modified after.
     using AvSetMmThreadCharFn = HANDLE(WINAPI*)(LPCWSTR, LPDWORD);
     using AvSetMmThreadPrioFn = BOOL(WINAPI*)(HANDLE, int);
@@ -348,7 +348,7 @@ private:
     std::atomic<HANDLE> mmcssTaskHandle_{nullptr};        // [RT thread write, Device callback read]
 #endif
 
-    // ??? Lock-free notification queue (RT write ??Message read) ???
+    // Lock-free notification queue (RT write Message read)
     static constexpr int kNotifQueueSize = 8;
     PendingNotification notifQueue_[kNotifQueueSize];
     std::atomic<bool> notifReady_[kNotifQueueSize]{};   // [RT write, Message read] per-slot ready flag

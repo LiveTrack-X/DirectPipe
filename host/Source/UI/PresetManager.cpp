@@ -278,16 +278,16 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
     }
 
-    // ?먥븧??SR/BS Restore: ASIO vs Non-ASIO ?먥븧??
+    // SR/BS restore policy: ASIO vs Non-ASIO
     //
     // ASIO: device owns SR/BS globally. All apps sharing the device see the
     // same SR/BS. Forcing our saved values would restart the ASIO driver and
     // disrupt other audio sources (DAWs, media players, voice chat, etc.).
-    // ??Accept the device's current SR/BS via syncDesiredFromDevice().
+    // Accept the device's current SR/BS via syncDesiredFromDevice().
     //
     // Non-ASIO (WASAPI/CoreAudio/ALSA): SR/BS is per-app. Other apps are
     // unaffected by our changes. Safe to force saved values.
-    // ??Apply via setSampleRate/setBufferSize as before.
+    // Apply via setSampleRate/setBufferSize as before.
     //
     bool isAsio = engine_.getCurrentDeviceType().containsIgnoreCase("ASIO");
     if (isAsio) {
@@ -388,7 +388,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
     }
 
-    // VST Chain ??load plugins (with fast-path for identical chain)
+    // VST Chain load plugins (with fast-path for identical chain)
     if (root->hasProperty("plugins")) {
         auto* pluginsArray = root->getProperty("plugins").getArray();
         if (pluginsArray) {
@@ -448,7 +448,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
     if (root->hasProperty("auditMode"))
         Log::setAuditMode(static_cast<bool>(root->getProperty("auditMode")));
 
-    // Safety Limiter (v4.1.0+ ??missing key = defaults)
+    // Safety Guard state (legacy "safetyLimiter" key; missing key = defaults)
     if (auto* limiterObj = root->getProperty("safetyLimiter").getDynamicObject()) {
         auto& limiter = engine_.getSafetyLimiter();
         if (limiterObj->hasProperty("enabled"))
@@ -463,7 +463,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
     return true;
 }
 
-// ??? Shared chain helpers ????????????????????????????????????????????????????
+// Shared chain helpers
 
 std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
     const juce::Array<juce::var>* pluginsArray)
@@ -647,7 +647,7 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
     }
 }
 
-// ??? Chain-only export/import ????????????????????????????????????????????????
+// Chain-only export/import
 
 juce::String PresetManager::exportChainToJSON()
 {
@@ -713,7 +713,7 @@ bool PresetManager::importChainFromJSON(const juce::String& json)
         applySlowPath(targets, chain);
     }
 
-    // Bypass state validation ??force-sync runtime state to match saved state
+    // Bypass state validation force-sync runtime state to match saved state
     // (addresses v3.10.1 bypass corruption bug)
     for (size_t i = 0; i < targets.size() && static_cast<int>(i) < chain.getPluginCount(); ++i) {
         if (auto* slot = chain.getPluginSlot(static_cast<int>(i))) {
@@ -731,7 +731,7 @@ bool PresetManager::importChainFromJSON(const juce::String& json)
     return true;
 }
 
-// ??? Quick Preset Slots ?????????????????????????????????????????????????????
+// Quick Preset Slots
 
 juce::File PresetManager::getSlotFile(int slotIndex)
 {
@@ -788,7 +788,7 @@ bool PresetManager::saveSlot(int slotIndex)
 
     // atomicWriteFile: writes to .tmp, renames original to .bak, renames .tmp to target.
     // Crash-safe: power failure at any point leaves either the original or .bak intact.
-    // DO NOT replace with file.replaceWithText() ??that can lose data on crash.
+    // DO NOT replace with file.replaceWithText() that can lose data on crash.
     bool ok = atomicWriteFile(file, json);
     if (ok) {
         activeSlot_ = slotIndex;
@@ -938,8 +938,8 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         return;
     }
 
-    // Cache path: pre-loaded instances available ??instant swap (~10-50ms)
-    // Check cache BEFORE cancelAndWait ??preload thread may still be populating it.
+    // Cache path: pre-loaded instances available instant swap (~10-50ms)
+    // Check cache BEFORE cancelAndWait preload thread may still be populating it.
     // replaceChainWithPreloaded does NOT use formatManager, so no concurrent access risk.
     {
         auto* device = engine_.getDeviceManager().getCurrentAudioDevice();
@@ -969,7 +969,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
             }
         }
         if (cached) {
-            // Request preload stop (non-blocking) ??thread will finish current plugin then exit
+            // Request preload stop (non-blocking) thread will finish current plugin then exit
             preloadCache_.requestCancel();
 
             std::vector<VSTChain::PreloadedPlugin> preloaded;
@@ -1010,7 +1010,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
                     if (onComplete) onComplete(allLoaded);
                 });
 
-            // Defer preload restart ??triggerPreload is non-blocking (old thread
+            // Defer preload restart triggerPreload is non-blocking (old thread
             // joined on new preload thread, not message thread).
             auto alivePreload = alive_;
             juce::MessageManager::callAsync([this, alivePreload]() {
@@ -1022,7 +1022,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         }
     }
 
-    // Slow path: cache miss ??need formatManager on background thread
+    // Slow path: cache miss need formatManager on background thread
     Log::audit("PRESET", "Cache miss for slot " + juce::String(slotIndex) + " - using async load path");
     // Suppress deferred triggerPreloads from earlier cache-hit switches.
     // Without this, those deferred callAsyncs start new preload threads
@@ -1064,7 +1064,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         requests.push_back(std::move(req));
     }
 
-    // Async load (non-blocking ??plugins loaded on background thread)
+    // Async load (non-blocking plugins loaded on background thread)
     juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex))
         + ": full reload (" + juce::String(requests.size()) + " plugins)");
 
@@ -1100,7 +1100,7 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
     auto srcFile = getSlotFile(fromSlot);
     auto dstFile = getSlotFile(toSlot);
 
-    // Empty source ??clear destination
+    // Empty source clear destination
     if (!srcFile.existsAsFile()) {
         if (dstFile.existsAsFile())
             dstFile.deleteFile();
@@ -1198,7 +1198,7 @@ void PresetManager::invalidatePreloadCache()
     preloadCache_.invalidateAll();
 }
 
-// ??? Slot Names ?????????????????????????????????????????????????????????????
+// Slot Names
 
 juce::String PresetManager::getSlotName(int slotIndex) const
 {
@@ -1258,7 +1258,7 @@ void PresetManager::loadSlotNames()
     }
 }
 
-// ??? Slot Export/Import ?????????????????????????????????????????????????????
+// Slot Export/Import
 
 void PresetManager::exportSlot(int slotIndex)
 {
