@@ -25,18 +25,28 @@ const { SingletonAction } = require("@elgato/streamdeck");
 
 class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
-    _armed = false;
+    _inFlight = false;
+    _inFlightSince = 0;
+    _inFlightTimeoutMs = 1200;
+    _expectedMuted = null;
 
     onKeyDown(_ev) {
-        this._armed = true;
-    }
+        const now = Date.now();
+        if (this._inFlight && now - this._inFlightSince < this._inFlightTimeoutMs) return;
 
-    onKeyUp(_ev) {
-        if (!this._armed) return;
-        this._armed = false;
-        const { dpClient } = require("../plugin");
+        const { dpClient, getCurrentState } = require("../plugin");
+        const state = getCurrentState();
+        if (state?.data) {
+            this._expectedMuted = state.data.muted !== true;
+        } else {
+            this._expectedMuted = null;
+        }
+        this._inFlight = true;
+        this._inFlightSince = now;
         dpClient.sendAction("panic_mute");
     }
+
+    onKeyUp(_ev) {}
 
     onWillAppear(ev) {
         const { getCurrentState } = require("../plugin");
@@ -51,10 +61,21 @@ class PanicMuteAction extends SingletonAction {
     }
 
     onWillDisappear(_ev) {
-        this._armed = false;
+        this._inFlight = false;
+        this._expectedMuted = null;
     }
 
     updateAllFromState(state) {
+        if (state?.data && this._inFlight) {
+            const now = Date.now();
+            const isMuted = state.data.muted === true;
+            const acknowledged = this._expectedMuted === null || isMuted === this._expectedMuted;
+            const timedOut = now - this._inFlightSince >= this._inFlightTimeoutMs;
+            if (acknowledged || timedOut) {
+                this._inFlight = false;
+                this._expectedMuted = null;
+            }
+        }
         for (const action of this.actions) {
             this._updateDisplay(action, state);
         }
@@ -67,6 +88,8 @@ class PanicMuteAction extends SingletonAction {
     }
 
     setDisconnectedState() {
+        this._inFlight = false;
+        this._expectedMuted = null;
         for (const action of this.actions) {
             action.setTitle("Disconnected");
             if (typeof action.setState === "function") action.setState(0);
