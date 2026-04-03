@@ -26,7 +26,9 @@ const { SingletonAction } = require("@elgato/streamdeck");
 class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
     _lastToggleAt = 0;
-    _toggleDebounceMs = 250;
+    _toggleDebounceMs = 700;
+    _expectedMuted = null;
+    _suppressUntil = 0;
 
     onKeyDown(ev) {
         const now = Date.now();
@@ -35,11 +37,15 @@ class PanicMuteAction extends SingletonAction {
 
         const { dpClient, getCurrentState } = require("../plugin");
         const state = getCurrentState();
+        const nextMuted = state?.data ? state.data.muted !== true : null;
         // Optimistic local toggle so the first press updates immediately.
         if (state?.data) {
-            state.data.muted = state.data.muted !== true;
+            state.data.muted = nextMuted;
             this.updateAllFromState(state);
+            this._expectedMuted = nextMuted;
+            this._suppressUntil = now + 1200;
         }
+        // Plugin-only fix path: keep legacy toggle action for host compatibility.
         dpClient.sendAction("panic_mute");
     }
 
@@ -56,6 +62,15 @@ class PanicMuteAction extends SingletonAction {
     }
 
     updateAllFromState(state) {
+        if (this._expectedMuted !== null && state?.data) {
+            const now = Date.now();
+            const muted = state.data.muted === true;
+            if (muted !== this._expectedMuted && now < this._suppressUntil) {
+                // Ignore transient/stale state briefly after local toggle.
+                return;
+            }
+            this._expectedMuted = null;
+        }
         for (const action of this.actions) {
             this._updateDisplay(action, state);
         }
