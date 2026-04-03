@@ -27,7 +27,13 @@ class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
 
     onKeyDown(ev) {
-        const { dpClient } = require("../plugin");
+        const { dpClient, getCurrentState } = require("../plugin");
+        const state = getCurrentState();
+        // Optimistic local toggle so the first press updates immediately.
+        if (state?.data) {
+            state.data.muted = state.data.muted !== true;
+            this.updateAllFromState(state);
+        }
         dpClient.sendAction("panic_mute");
     }
 

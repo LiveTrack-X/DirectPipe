@@ -44,10 +44,19 @@ class VolumeControlAction extends SingletonAction {
     _localOverrideUntil = new Map();
     /** @type {Map<string, object>} action.id -> cached settings (avoid async getSettings) */
     _settingsCache = new Map();
+    
+    _resolveSettings(ev) {
+        const payloadSettings = ev?.payload?.settings;
+        if (payloadSettings && Object.keys(payloadSettings).length > 0) {
+            this._settingsCache.set(ev.action.id, payloadSettings);
+            return payloadSettings;
+        }
+        return this._settingsCache.get(ev.action.id) ?? {};
+    }
 
     onKeyDown(ev) {
         const { dpClient, getCurrentState } = require("../plugin");
-        const settings = ev.payload.settings ?? {};
+        const settings = this._resolveSettings(ev);
         const target = settings.target || "monitor";
         const mode = settings.mode || "mute";
 
@@ -68,13 +77,14 @@ class VolumeControlAction extends SingletonAction {
 
     onDialDown(ev) {
         const { dpClient } = require("../plugin");
-        const target = ev.payload.settings?.target || "monitor";
+        const settings = this._resolveSettings(ev);
+        const target = settings.target || "monitor";
         dpClient.sendAction("toggle_mute", { target });
     }
 
     onDialRotate(ev) {
         const { dpClient, getCurrentState } = require("../plugin");
-        const settings = ev.payload.settings ?? {};
+        const settings = this._resolveSettings(ev);
         const target = settings.target || "monitor";
         const ticks = ev.payload.ticks || 0;
         const delta = ticks * 0.05;
