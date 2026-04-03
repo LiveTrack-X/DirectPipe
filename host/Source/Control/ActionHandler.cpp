@@ -195,7 +195,13 @@ void ActionHandler::handle(const ActionEvent& event)
         }
 
         case Action::PanicMute:
-            doPanicMute(!engine_.isMuted());
+            if (event.stringParam == "set") {
+                const bool targetMuted = (event.intParam != 0);
+                if (targetMuted != engine_.isMuted())
+                    doPanicMute(targetMuted);
+            } else {
+                doPanicMute(!engine_.isMuted());
+            }
             break;
 
         case Action::InputMuteToggle: {

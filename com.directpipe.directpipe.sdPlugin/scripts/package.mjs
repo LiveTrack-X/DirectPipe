@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU General Public License
 // along with DirectPipe. If not, see <https://www.gnu.org/licenses/>.
 
-#!/usr/bin/env node
 /**
  * Package Stream Deck plugin as .streamDeckPlugin file.
  * Creates a ZIP with correct folder structure: com.directpipe.directpipe.sdPlugin/

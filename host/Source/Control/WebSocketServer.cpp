@@ -487,6 +487,11 @@ void WebSocketServer::processMessage(const std::string& message)
         event.intParam = params ? static_cast<int>(params->getProperty("index")) : 0;
     } else if (actionStr == "panic_mute") {
         event.action = Action::PanicMute;
+        // Optional explicit-set mode for idempotent clients.
+        if (params && params->hasProperty("muted")) {
+            event.stringParam = "set";
+            event.intParam = static_cast<bool>(params->getProperty("muted")) ? 1 : 0;
+        }
     } else if (actionStr == "input_gain") {
         event.action = Action::InputGainAdjust;
         event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("delta"))) : 1.0f;

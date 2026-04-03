@@ -62,6 +62,10 @@ static bool parseActionMessage(const std::string& message, ActionEvent& event)
         event.intParam = params ? static_cast<int>(params->getProperty("index")) : 0;
     } else if (actionStr == "panic_mute") {
         event.action = Action::PanicMute;
+        if (params && params->hasProperty("muted")) {
+            event.stringParam = "set";
+            event.intParam = static_cast<bool>(params->getProperty("muted")) ? 1 : 0;
+        }
     } else if (actionStr == "input_gain" || actionStr == "input_gain_adjust") {
         event.action = Action::InputGainAdjust;
         event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("delta"))) : 1.0f;
@@ -169,6 +173,15 @@ TEST_F(WebSocketProtocolTest, ParsePanicMuteAction) {
 
     ASSERT_TRUE(parseActionMessage(msg, event));
     EXPECT_EQ(event.action, Action::PanicMute);
+}
+
+TEST_F(WebSocketProtocolTest, ParsePanicMuteSetAction) {
+    std::string msg = R"({"type":"action","action":"panic_mute","params":{"muted":true}})";
+
+    ASSERT_TRUE(parseActionMessage(msg, event));
+    EXPECT_EQ(event.action, Action::PanicMute);
+    EXPECT_EQ(event.stringParam, "set");
+    EXPECT_EQ(event.intParam, 1);
 }
 
 TEST_F(WebSocketProtocolTest, ParseInputGainAction) {

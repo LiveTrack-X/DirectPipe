@@ -127,3 +127,29 @@ TEST_F(ActionHandlerTest, OutputMuteToggleViaHandle) {
     handler_->handle(evt);
     EXPECT_FALSE(engine_->isOutputMuted());
 }
+
+TEST_F(ActionHandlerTest, PanicMuteSetModeIgnoresDuplicateEngage) {
+    engine_->setMonitorEnabled(true);
+    engine_->getOutputRouter().setEnabled(OutputRouter::Output::Monitor, true);
+
+    ActionEvent setOn;
+    setOn.action = Action::PanicMute;
+    setOn.stringParam = "set";
+    setOn.intParam = 1;
+
+    ActionEvent setOff;
+    setOff.action = Action::PanicMute;
+    setOff.stringParam = "set";
+    setOff.intParam = 0;
+
+    handler_->handle(setOn);
+    EXPECT_TRUE(engine_->isMuted());
+
+    // Duplicate "set on" should be ignored and must not overwrite restore snapshot.
+    handler_->handle(setOn);
+    EXPECT_TRUE(engine_->isMuted());
+
+    handler_->handle(setOff);
+    EXPECT_FALSE(engine_->isMuted());
+    EXPECT_TRUE(engine_->isMonitorEnabled());
+}
