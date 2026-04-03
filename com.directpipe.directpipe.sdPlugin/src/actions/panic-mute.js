@@ -25,8 +25,14 @@ const { SingletonAction } = require("@elgato/streamdeck");
 
 class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
+    _lastToggleAt = 0;
+    _toggleDebounceMs = 250;
 
     onKeyDown(ev) {
+        const now = Date.now();
+        if (now - this._lastToggleAt < this._toggleDebounceMs) return;
+        this._lastToggleAt = now;
+
         const { dpClient, getCurrentState } = require("../plugin");
         const state = getCurrentState();
         // Optimistic local toggle so the first press updates immediately.
