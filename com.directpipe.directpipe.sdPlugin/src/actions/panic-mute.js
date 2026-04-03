@@ -25,20 +25,19 @@ const { SingletonAction } = require("@elgato/streamdeck");
 
 class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
-    _pressedActions = new Set();
+    _lastToggleAt = 0;
+    _toggleDebounceMs = 120;
 
     onKeyDown(ev) {
-        const keyId = this._getActionId(ev);
-        if (this._pressedActions.has(keyId)) return;
-        this._pressedActions.add(keyId);
+        const now = Date.now();
+        if (now - this._lastToggleAt < this._toggleDebounceMs) return;
+        this._lastToggleAt = now;
 
         const { dpClient } = require("../plugin");
         dpClient.sendAction("panic_mute");
     }
 
-    onKeyUp(ev) {
-        this._pressedActions.delete(this._getActionId(ev));
-    }
+    onKeyUp(_ev) {}
 
     onWillAppear(ev) {
         const { getCurrentState } = require("../plugin");
@@ -52,9 +51,7 @@ class PanicMuteAction extends SingletonAction {
         if (state) this._updateDisplay(ev.action, state);
     }
 
-    onWillDisappear(ev) {
-        this._pressedActions.delete(this._getActionId(ev));
-    }
+    onWillDisappear(_ev) {}
 
     updateAllFromState(state) {
         for (const action of this.actions) {
@@ -90,9 +87,6 @@ class PanicMuteAction extends SingletonAction {
         action.setTitle(isMuted ? "MUTED" : "MUTE");
     }
 
-    _getActionId(ev) {
-        return ev?.action?.id || "panic-mute-singleton";
-    }
 }
 
 PanicMuteAction.UUID = "com.directpipe.directpipe.panic-mute";
