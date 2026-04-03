@@ -25,24 +25,17 @@ const { SingletonAction } = require("@elgato/streamdeck");
 
 class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
-    _pressLocked = false;
-    _pressLockUntil = 0;
-    _pressLockTimeoutMs = 1000;
+    _armed = false;
 
-    onKeyDown(ev) {
-        const now = Date.now();
-        // One toggle per press cycle; recover automatically if key-up is missed.
-        if (this._pressLocked && now < this._pressLockUntil) return;
-        this._pressLocked = true;
-        this._pressLockUntil = now + this._pressLockTimeoutMs;
-
-        const { dpClient } = require("../plugin");
-        dpClient.sendAction("panic_mute");
+    onKeyDown(_ev) {
+        this._armed = true;
     }
 
     onKeyUp(_ev) {
-        this._pressLocked = false;
-        this._pressLockUntil = 0;
+        if (!this._armed) return;
+        this._armed = false;
+        const { dpClient } = require("../plugin");
+        dpClient.sendAction("panic_mute");
     }
 
     onWillAppear(ev) {
@@ -58,15 +51,10 @@ class PanicMuteAction extends SingletonAction {
     }
 
     onWillDisappear(_ev) {
-        this._pressLocked = false;
-        this._pressLockUntil = 0;
+        this._armed = false;
     }
 
     updateAllFromState(state) {
-        if (this._pressLocked && Date.now() >= this._pressLockUntil) {
-            this._pressLocked = false;
-            this._pressLockUntil = 0;
-        }
         for (const action of this.actions) {
             this._updateDisplay(action, state);
         }
