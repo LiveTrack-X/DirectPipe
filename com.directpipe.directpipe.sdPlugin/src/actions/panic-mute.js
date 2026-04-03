@@ -25,27 +25,17 @@ const { SingletonAction } = require("@elgato/streamdeck");
 
 class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
-    _lastToggleAt = 0;
-    _toggleDebounceMs = 700;
-    _expectedMuted = null;
-    _suppressUntil = 0;
+    _pressedActions = new Set();
 
     onKeyDown(ev) {
-        const now = Date.now();
-        if (now - this._lastToggleAt < this._toggleDebounceMs) return;
-        this._lastToggleAt = now;
+        this._pressedActions.add(ev.action.id);
+    }
 
-        const { dpClient, getCurrentState } = require("../plugin");
-        const state = getCurrentState();
-        const nextMuted = state?.data ? state.data.muted !== true : null;
-        // Optimistic local toggle so the first press updates immediately.
-        if (state?.data) {
-            state.data.muted = nextMuted;
-            this.updateAllFromState(state);
-            this._expectedMuted = nextMuted;
-            this._suppressUntil = now + 1200;
-        }
-        // Plugin-only fix path: keep legacy toggle action for host compatibility.
+    onKeyUp(ev) {
+        if (!this._pressedActions.has(ev.action.id)) return;
+        this._pressedActions.delete(ev.action.id);
+
+        const { dpClient } = require("../plugin");
         dpClient.sendAction("panic_mute");
     }
 
@@ -61,16 +51,11 @@ class PanicMuteAction extends SingletonAction {
         if (state) this._updateDisplay(ev.action, state);
     }
 
+    onWillDisappear(ev) {
+        this._pressedActions.delete(ev.action.id);
+    }
+
     updateAllFromState(state) {
-        if (this._expectedMuted !== null && state?.data) {
-            const now = Date.now();
-            const muted = state.data.muted === true;
-            if (muted !== this._expectedMuted && now < this._suppressUntil) {
-                // Ignore transient/stale state briefly after local toggle.
-                return;
-            }
-            this._expectedMuted = null;
-        }
         for (const action of this.actions) {
             this._updateDisplay(action, state);
         }
