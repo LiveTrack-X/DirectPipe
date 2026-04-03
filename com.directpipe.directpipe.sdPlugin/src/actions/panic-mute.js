@@ -28,15 +28,16 @@ class PanicMuteAction extends SingletonAction {
     _pressedActions = new Set();
 
     onKeyDown(ev) {
-        this._pressedActions.add(ev.action.id);
-    }
-
-    onKeyUp(ev) {
-        if (!this._pressedActions.has(ev.action.id)) return;
-        this._pressedActions.delete(ev.action.id);
+        const keyId = this._getActionId(ev);
+        if (this._pressedActions.has(keyId)) return;
+        this._pressedActions.add(keyId);
 
         const { dpClient } = require("../plugin");
         dpClient.sendAction("panic_mute");
+    }
+
+    onKeyUp(ev) {
+        this._pressedActions.delete(this._getActionId(ev));
     }
 
     onWillAppear(ev) {
@@ -52,7 +53,7 @@ class PanicMuteAction extends SingletonAction {
     }
 
     onWillDisappear(ev) {
-        this._pressedActions.delete(ev.action.id);
+        this._pressedActions.delete(this._getActionId(ev));
     }
 
     updateAllFromState(state) {
@@ -87,6 +88,10 @@ class PanicMuteAction extends SingletonAction {
             action.setState(isMuted ? 1 : 0);
         }
         action.setTitle(isMuted ? "MUTED" : "MUTE");
+    }
+
+    _getActionId(ev) {
+        return ev?.action?.id || "panic-mute-singleton";
     }
 }
 
