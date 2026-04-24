@@ -71,11 +71,23 @@ public:
     /** @brief Called when limiter ceiling slider changes. Wired by MainComponent. */
     std::function<void(float)> onLimiterCeilingChanged;
 
+    /** @brief Called when Safety Volume toggle is clicked. Wired by MainComponent. */
+    std::function<void(bool)> onSafetyVolumeToggled;
+
+    /** @brief Called when safety headroom slider changes. Wired by MainComponent. */
+    std::function<void(float)> onSafetyHeadroomChanged;
+
     /** @brief Update limiter button state (called from timer/external control). */
     void setLimiterState(bool enabled);
 
     /** @brief Update limiter ceiling slider value (called from timer/external control). */
     void setLimiterCeiling(float dB);
+
+    /** @brief Update Safety Volume toggle state (called from timer/external control). */
+    void setSafetyVolumeState(bool enabled);
+
+    /** @brief Update safety headroom slider value (called from timer/external control). */
+    void setSafetyHeadroom(float dB);
 
     /** @brief Update limiter gain reduction display (called from timer). */
     void setLimiterGR(float dB);
@@ -96,6 +108,8 @@ private:
     juce::ToggleButton limiterButton_{"Safety Guard"};
     juce::Slider limiterCeilingSlider_;
     juce::Label limiterGRLabel_;
+    juce::ToggleButton safetyVolumeButton_{"Safety Volume"};
+    juce::Slider safetyHeadroomSlider_;
     juce::TextButton addButton_{"+ Add Plugin"};
     juce::TextButton scanButton_{"Scan..."};
     juce::TextButton removeButton_{"Remove"};

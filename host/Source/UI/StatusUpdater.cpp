@@ -265,6 +265,8 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         auto& limiter = engine_.getSafetyLimiter();
         s.limiterEnabled = limiter.isEnabled();
         s.limiterCeilingdB = limiter.getCeilingdB();
+        s.safetyHeadroomEnabled = engine_.isSafetyHeadroomEnabled();
+        s.safetyHeadroomdB = engine_.getSafetyHeadroomdB();
         s.limiterGainReduction = limiter.getCurrentGainReduction();
         s.limiterActive = limiter.isLimiting();
 

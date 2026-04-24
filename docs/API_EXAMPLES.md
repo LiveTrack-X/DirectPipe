@@ -293,7 +293,9 @@ async def send_action(action, params=None):
 
 # 사용 예
 asyncio.run(send_action("switch_preset_slot", {"slot": 2}))     # 슬롯 C
-asyncio.run(send_action("panic_mute"))                           # 패닉 뮤트
+asyncio.run(send_action("panic_mute", {"muted": True}))          # 패닉 ON (명시적 set)
+asyncio.run(send_action("panic_mute", {"muted": False}))         # 패닉 OFF (명시적 set)
+asyncio.run(send_action("panic_mute"))                           # 레거시 토글 (호환)
 asyncio.run(send_action("set_volume", {"target": "monitor", "value": 0.8}))
 asyncio.run(send_action("plugin_bypass", {"index": 0}))
 asyncio.run(send_action("recording_toggle"))
@@ -1139,8 +1141,8 @@ AutoHotkey로 커스텀 핫키:
 | `GET /api/plugin/:idx/params` | 플러그인 파라미터 목록 / List plugin parameters |
 | `GET /api/xrun/reset` | XRun 카운터 리셋 / Reset XRun counter |
 | `GET /api/perf` | 성능 통계 / Performance stats |
-| `GET /api/limiter/toggle` | Safety Limiter 토글 / Toggle safety limiter |
-| `GET /api/limiter/ceiling/:value` | 리미터 실링 설정 (-6.0~0.0) / Set limiter ceiling |
+| `GET /api/limiter/toggle` | Safety Guard 토글 (legacy limiter endpoint) / Toggle Safety Guard (legacy limiter endpoint) |
+| `GET /api/limiter/ceiling/:value` | Safety Guard ceiling 설정 (-6.0~0.0, legacy limiter endpoint) / Set Safety Guard ceiling (legacy limiter endpoint) |
 | `GET /api/auto/add` | 내장 프로세서 추가 / Add auto processors |
 
 ---
@@ -1175,7 +1177,7 @@ AutoHotkey로 커스텀 핫키:
 | `recording` | bool | 녹음 중 여부 |
 | `recording_seconds` | number | 녹음 경과 시간 (초) |
 | `ipc_enabled` | bool | IPC (DirectPipe Receiver) 활성 여부 |
-| `safety_limiter` | object | Safety Limiter 상태 `{enabled, ceiling_dB, gain_reduction_dB, is_limiting}` |
+| `safety_limiter` | object | Safety Guard / Safety Volume 상태 `{enabled, ceiling_dB, headroom_enabled, headroom_dB, gain_reduction_dB, is_limiting}` |
 | `chain_pdc_samples` | number | 플러그인 체인 총 PDC (샘플) |
 | `chain_pdc_ms` | number | 플러그인 체인 총 PDC (ms) |
 | `device_lost` | bool | 메인 오디오 장치 분실 여부 |

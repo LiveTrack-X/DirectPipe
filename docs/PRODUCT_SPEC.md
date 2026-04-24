@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.4 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.5 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.0.4)
+> Reverse spec — written based on currently implemented features (as of v4.0.5)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.0.4
+4.0.5
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -116,8 +116,8 @@ Mic Input  → VST Plugin Chain   → Output
    - 예외 발생 시: 버퍼 클리어, `chainCrashed_` 플래그 설정, 이후 모든 콜백 무음 출력
      / On exception: clear buffer, set `chainCrashed_` flag, silent output for all subsequent callbacks
    - 메시지 스레드에서 지연 알림 (NotificationBar) / Deferred notification from message thread (NotificationBar)
-7. Global Safety Guard 적용 (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release) / Apply Global Safety Guard (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release)
-8. AudioRecorder에 lock-free 쓰기 (녹음 중일 때) / Lock-free write to AudioRecorder (when recording)
+7. Global Safety Guard 적용 + Safety Volume 최종 트림 (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release) / Apply Global Safety Guard + Safety Volume final trim (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release)
+8. AudioRecorder에 RT-safe try-lock 쓰기 (녹음 중일 때, teardown 경합 시 drop) / RT-safe try-lock write to AudioRecorder (drop during teardown contention)
 9. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시) / IPC write to SharedMemWriter (when IPC enabled)
 10. OutputRouter → 모니터 출력 (별도 WASAPI 장치) / OutputRouter → monitor output (separate WASAPI device)
 11. 메인 출력: outputChannelData에 직접 memcpy / Main output: direct memcpy to outputChannelData
@@ -135,7 +135,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | **Main Output** | 메인 출력 (스피커/가상 케이블) / Main output (speakers/virtual cable) | AudioSettings의 Output 장치에 직접 쓰기. WASAPI/ASIO 모두 지원 / Direct write to AudioSettings Output device. Both WASAPI/ASIO supported | OUT 버튼, ToggleMute, SetVolume |
 | **Monitor Output** | 헤드폰 모니터링 (자기 목소리 확인) / Headphone monitoring (hear your own voice) | 별도 WASAPI AudioDeviceManager + lock-free AudioRingBuffer (4096 프레임, 스테레오, power-of-2) / Separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer (4096 frames, stereo, power-of-2) | MON 버튼, MonitorToggle, SetVolume |
 | **IPC Output** | OBS용 DirectPipe Receiver / DirectPipe Receiver for OBS | SharedMemory 기반 IPC. 공유 메모리 이름: `Local\\DirectPipeAudio`. 인터리브 float 형식. POSIX sem/shm 퍼미션 0600 (owner-only) / SharedMemory-based IPC. Shared memory name: `Local\\DirectPipeAudio`. Interleaved float format. POSIX sem/shm permissions 0600 (owner-only) | VST 버튼, IpcToggle |
-| **Recording** | WAV 녹음 (VST 체인 이후) / WAV recording (after VST chain) | AudioRecorder, lock-free ThreadedWriter | REC 버튼, RecordingToggle |
+| **Recording** | WAV 녹음 (VST 체인, Safety Guard, Safety Volume 이후) / WAV recording (after VST chain, Safety Guard, and Safety Volume) | AudioRecorder, ThreadedWriter, RT try-lock/drop during teardown | REC 버튼, RecordingToggle |
 
 #### 4.1.4 오디오 최적화 / Audio Optimizations
 | 최적화 / Optimization | 상세 / Details |
@@ -186,13 +186,13 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 타입 / Type | 전역 샘플-피크 Safety Guard (zero-latency runtime + hard ceiling clamp) / Global sample-peak Safety Guard (zero-latency runtime + hard ceiling clamp) |
-| 위치 / Position | VST 체인 이후, Recording/IPC/Monitor/Output 이전 / After VST chain, before Recording/IPC/Monitor/Output |
+| 위치 / Position | VST 체인 이후, Safety Volume 및 Recording/IPC/Monitor/Output 이전 / After VST chain, before Safety Volume and Recording/IPC/Monitor/Output |
 | Look-ahead | 없음 (global stage는 zero-latency) / None (zero-latency in global stage) |
 | Attack | 즉시(instant, target gain 하강 시) / Instant (when target gain drops) |
 | Release | 50ms |
 | Ceiling 범위 / Ceiling Range | -6.0 ~ 0.0 dBFS (기본값 / default: -0.3 dBFS) |
-| 파라미터 / Parameters | `enabled` (atomic, 기본 / default true), `ceilingdB` (atomic) |
-| UI | PluginChainEditor: ceiling 슬라이더 (Add Plugin 위) + Safety Guard 토글 버튼. 상태 바 [LIM] 표시 / ceiling slider (above Add Plugin) + Safety Guard toggle button. Status bar [LIM] indicator |
+| 파라미터 / Parameters | `enabled` (atomic, 기본 / default true), `ceilingdB` (atomic), `safetyHeadroomEnabled` (atomic, default true), `safetyHeadroomdB` (atomic, default -0.3) |
+| UI | PluginChainEditor: Safety Guard 토글 + ceiling 슬라이더 + Safety Volume 토글 + Safety Volume 슬라이더. 상태 바 [LIM] 표시 / Safety Guard toggle + ceiling slider + Safety Volume toggle + Safety Volume slider. Status bar [LIM] indicator |
 | GR 피드백 / GR Feedback | atomic으로 UI에 전달 / Delivered to UI via atomic |
 
 #### 4.1.9 Plugin Latency Data (PDC)
@@ -569,7 +569,7 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | `set_volume` | `{"target": "monitor", "value": 0.75}` |
 | `toggle_mute` | `{"target": ""}` |
 | `load_preset` | `{"index": 0}` |
-| `panic_mute` | — |
+| `panic_mute` | `{"muted": true}` (optional, explicit set mode) / optional; omitted = legacy toggle |
 | `input_gain` | `{"delta": 1.0}` |
 | `switch_preset_slot` | `{"slot": 0}` |
 | `input_mute_toggle` | — |
@@ -615,7 +615,7 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
     "xrun_count": 0,
     "chain_pdc_samples": 128,
     "chain_pdc_ms": 2.67,
-    "safety_limiter": {"enabled": true, "ceiling_dB": -0.3, "gain_reduction_dB": 0.0, "is_limiting": false}
+    "safety_limiter": {"enabled": true, "ceiling_dB": -0.3, "headroom_enabled": true, "headroom_dB": -0.3, "gain_reduction_dB": 0.0, "is_limiting": false}
   }
 }
 ```
@@ -937,7 +937,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.0.4" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.0.5" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1018,6 +1018,12 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "channelMode": 2,
   "ipcEnabled": false,
   "outputMuted": false,
+  "safetyLimiter": {
+    "enabled": true,
+    "ceiling_dB": -0.3,
+    "headroom_enabled": true,
+    "headroom_dB": -0.3
+  },
   "plugins": [
     {
       "name": "FabFilter Pro-Q",
@@ -1054,7 +1060,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.0.4",
+  "appVersion": "4.0.5",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1077,7 +1083,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.0.4",
+  "appVersion": "4.0.5",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1259,7 +1265,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.4.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.5.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

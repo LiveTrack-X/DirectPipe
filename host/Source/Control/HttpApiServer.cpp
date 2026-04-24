@@ -322,7 +322,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (value < -6.0f || value > 0.0f)
             return {400, R"({"error": "ceiling must be -6.0 to 0.0 dBFS"})"};
         dispatcher_.dispatch({Action::SetSafetyLimiterCeiling, 0, value});
-        return {200, R"({"ok": true, "action": "set_limiter_ceiling", "value": )" +
+        return {200, R"({"ok": true, "action": "set_safety_limiter_ceiling", "value": )" +
                std::to_string(static_cast<double>(value)) + "}"};
     }
 

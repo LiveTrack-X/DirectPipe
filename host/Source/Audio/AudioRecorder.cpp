@@ -106,7 +106,8 @@ void AudioRecorder::writeBlock(const juce::AudioBuffer<float>& buffer, int numSa
 
     if (!recording_.load(std::memory_order_acquire)) return;
 
-    const juce::SpinLock::ScopedLockType sl(writerLock_);
+    const juce::SpinLock::ScopedTryLockType sl(writerLock_);
+    if (!sl.isLocked()) return;  // Drop during teardown instead of spinning the RT thread.
     if (!threadedWriter_) return;
 
     threadedWriter_->write(buffer.getArrayOfReadPointers(), numSamples);

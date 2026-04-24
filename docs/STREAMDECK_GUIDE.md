@@ -100,6 +100,7 @@ const DIRECTPIPE_WS_URL = "ws://localhost:8770";
 **UUID:** `com.directpipe.directpipe.panic-mute`
 
 - **Press** — Toggle panic mute on all outputs / 전체 출력 뮤트 토글
+- **Action payload** — Sends explicit desired state when current state is known (`{"muted": true/false}`), falls back to legacy toggle when unknown. / 현재 상태를 알 수 있을 때는 명시적 목표 상태(`{"muted": true/false}`)를 전송하고, 미확정 상태에서는 레거시 토글로 폴백
 
 **Display:** State 0 = "MUTE" (normal), State 1 = "MUTED" (red indicator) / 상태 표시
 
@@ -289,7 +290,7 @@ Dual-app setup with VB-Cable (Discord) + DirectPipe Receiver (OBS) + Monitor (he
 
 ### SDK Version / SDK 버전
 
-Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.0.4.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.0.4.0. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.0.5.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.0.5.0. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket 클라이언트 / WebSocket Client (`websocket-client.js`)
 

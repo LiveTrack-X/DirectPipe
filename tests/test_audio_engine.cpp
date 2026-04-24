@@ -103,6 +103,23 @@ TEST_F(AudioEngineTest, SampleRatePropagation) {
 
 // ─── DeviceState state machine tests (pure function, no device needed) ───
 
+TEST_F(AudioEngineTest, SafetyHeadroomDefaultAndClamp) {
+    EXPECT_TRUE(engine_->isSafetyHeadroomEnabled());
+    EXPECT_NEAR(engine_->getSafetyHeadroomdB(), -0.3f, 0.001f);
+
+    engine_->setSafetyHeadroomdB(-12.0f);
+    EXPECT_NEAR(engine_->getSafetyHeadroomdB(), -6.0f, 0.001f);
+
+    engine_->setSafetyHeadroomdB(1.0f);
+    EXPECT_NEAR(engine_->getSafetyHeadroomdB(), 0.0f, 0.001f);
+
+    engine_->setSafetyHeadroomEnabled(false);
+    EXPECT_FALSE(engine_->isSafetyHeadroomEnabled());
+
+    engine_->setSafetyHeadroomEnabled(true);
+    EXPECT_TRUE(engine_->isSafetyHeadroomEnabled());
+}
+
 TEST(DeviceStateTest, RunningToInputLost) {
     auto next = transition(DeviceState::Running, DeviceEvent::InputError);
     EXPECT_EQ(next, DeviceState::InputLost);

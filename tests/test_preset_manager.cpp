@@ -290,6 +290,78 @@ TEST_F(PresetManagerTest, LegacyJsonWithoutChannelMaskStillLoads) {
     EXPECT_FALSE(obj->hasProperty("outputChannelMask"));
 }
 
+TEST_F(PresetManagerTest, SafetyLimiterHeadroomFieldRoundtrip) {
+    auto limiter = std::make_unique<juce::DynamicObject>();
+    limiter->setProperty("enabled", true);
+    limiter->setProperty("ceiling_dB", -0.3);
+    limiter->setProperty("headroom_enabled", true);
+    limiter->setProperty("headroom_dB", -0.3);
+
+    auto root = std::make_unique<juce::DynamicObject>();
+    root->setProperty("version", 4);
+    root->setProperty("safetyLimiter", juce::var(limiter.release()));
+
+    auto parsed = juce::JSON::parse(juce::JSON::toString(juce::var(root.release()), true));
+    ASSERT_TRUE(parsed.isObject());
+    auto* obj = parsed.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    ASSERT_TRUE(obj->hasProperty("safetyLimiter"));
+    auto* limiterObj = obj->getProperty("safetyLimiter").getDynamicObject();
+    ASSERT_NE(limiterObj, nullptr);
+    ASSERT_TRUE(limiterObj->hasProperty("headroom_enabled"));
+    EXPECT_TRUE(static_cast<bool>(limiterObj->getProperty("headroom_enabled")));
+    ASSERT_TRUE(limiterObj->hasProperty("headroom_dB"));
+    EXPECT_NEAR(static_cast<double>(limiterObj->getProperty("headroom_dB")), -0.3, 0.0001);
+}
+
+TEST_F(PresetManagerTest, SafetyLimiterHeadroomExportImportRoundtrip) {
+    AudioEngine sourceEngine;
+    PresetManager sourceManager(sourceEngine);
+    sourceEngine.setSafetyHeadroomEnabled(false);
+    sourceEngine.setSafetyHeadroomdB(-1.7f);
+
+    auto json = sourceManager.exportToJSON();
+    auto parsed = juce::JSON::parse(json);
+    ASSERT_TRUE(parsed.isObject());
+    auto* limiterObj = parsed.getDynamicObject()->getProperty("safetyLimiter").getDynamicObject();
+    ASSERT_NE(limiterObj, nullptr);
+    EXPECT_FALSE(static_cast<bool>(limiterObj->getProperty("headroom_enabled")));
+    EXPECT_NEAR(static_cast<double>(limiterObj->getProperty("headroom_dB")), -1.7, 0.0001);
+
+    AudioEngine targetEngine;
+    PresetManager targetManager(targetEngine);
+    ASSERT_TRUE(targetManager.importFromJSON(json));
+    EXPECT_FALSE(targetEngine.isSafetyHeadroomEnabled());
+    EXPECT_NEAR(targetEngine.getSafetyHeadroomdB(), -1.7f, 0.001f);
+}
+
+TEST_F(PresetManagerTest, LegacySafetyLimiterJsonWithoutHeadroomStillLoads) {
+    juce::String json = R"({
+        "version": 4,
+        "safetyLimiter": {
+            "enabled": true,
+            "ceiling_dB": -0.3
+        }
+    })";
+    auto parsed = juce::JSON::parse(json);
+    ASSERT_TRUE(parsed.isObject());
+    auto* obj = parsed.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    auto* limiterObj = obj->getProperty("safetyLimiter").getDynamicObject();
+    ASSERT_NE(limiterObj, nullptr);
+    EXPECT_FALSE(limiterObj->hasProperty("headroom_enabled"));
+    EXPECT_FALSE(limiterObj->hasProperty("headroom_dB"));
+
+    AudioEngine targetEngine;
+    PresetManager targetManager(targetEngine);
+    targetEngine.setSafetyHeadroomEnabled(false);
+    targetEngine.setSafetyHeadroomdB(-2.0f);
+
+    ASSERT_TRUE(targetManager.importFromJSON(json));
+    EXPECT_TRUE(targetEngine.isSafetyHeadroomEnabled());
+    EXPECT_NEAR(targetEngine.getSafetyHeadroomdB(), -0.3f, 0.001f);
+}
+
 TEST_F(PresetManagerTest, SelfHealingFromSlotFile) {
     auto settings = tempDir_.getChildFile("settings.dppreset");
     auto slot0 = tempDir_.getChildFile("slot_0.dppreset");

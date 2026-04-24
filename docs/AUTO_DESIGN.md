@@ -71,7 +71,7 @@ The **3 commonly needed processes** across these 4 scenarios became the Auto cha
 ## 2. 체인 구성과 순서 / Chain Composition and Order
 
 ```
-Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain / Limiter] → [Global Safety Guard] → Output
+Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain / Limiter] → [Global Safety Guard] → [Safety Volume] → Output
                                                                                   ↑
                                                                       글로벌 (Auto 체인 외부)
                                                                       Global (outside Auto chain)
@@ -120,7 +120,7 @@ Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain / Limiter] → [G
 
 Global Safety Guard는 Auto 체인에 포함되지 않고 **모든 출력 경로 앞에 글로벌로** 배치됩니다.
 
-The Global Safety Guard is not part of the Auto chain — it is placed **globally before all output paths**.
+The Global Safety Guard is not part of the Auto chain — it is placed globally before Safety Volume and all output paths.
 
 분리 이유:
 - VST 플러그인 체인 전체(Auto 프로세서 + 사용자 VST)를 보호해야 함
@@ -285,7 +285,7 @@ Why Low/High Correct are asymmetric:
 
 극단적 시나리오: 조용한 말(-45 dBFS) → AGC +22dB 적용 중 → 갑자기 큰 소리(0 dBFS) 입력 → Auto Gain 내부 post limiter가 먼저 제한하고, 글로벌 Safety Guard가 최종 보호.
 
-Extreme scenario: quiet speech (-45 dBFS) → AGC applying +22dB gain → sudden loud sound (0 dBFS) → Auto Gain internal post limiter limits first, then Global Safety Guard provides final protection.
+Extreme scenario: quiet speech (-45 dBFS) → AGC applying +22dB gain → sudden loud sound (0 dBFS) → Auto Gain internal post limiter limits first, Global Safety Guard clamps peaks, then Safety Volume applies final headroom trim.
 
 이때 22dB 이상의 즉각적 게인 리덕션은 순간적 왜곡을 일으킬 수 있습니다. 이는 개방 루프 AGC + 피드포워드 리미터 조합의 구조적 한계입니다.
 

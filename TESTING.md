@@ -173,9 +173,9 @@ node test_api.js
 - [ ] [Auto] 우클릭 → Reset to Defaults → 기본 체인 복원 확인 / Right-click [Auto] → Reset to Defaults → verify chain restored
 - [ ] 다른 슬롯(A-E) 선택 → Auto 비활성화 확인 / Select slot A-E → verify Auto deactivated
 
-### Safety Limiter
-- [ ] Safety Limiter ON/OFF 토글 → 반영 확인 / Toggle Safety Limiter → verify state reflected
-- [ ] Safety Limiter Ceiling 변경 (-0.3 → -3.0) → 반영 확인 / Change ceiling → verify applied
+### Safety Guard (legacy SafetyLimiter)
+- [ ] Safety Guard ON/OFF 토글 → 반영 확인 / Toggle Safety Guard → verify state reflected
+- [ ] Safety Guard Ceiling 변경 (-0.3 → -3.0) → 반영 확인 / Change ceiling → verify applied
 - [ ] 클리핑 신호 입력 시 [LIM] 상태바 표시 확인 / Input clipping signal → verify [LIM] indicator in status bar
 
 ### 프리셋 슬롯 (Keep-Old-Until-Ready)

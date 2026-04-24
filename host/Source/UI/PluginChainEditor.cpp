@@ -212,6 +212,34 @@ PluginChainEditor::PluginChainEditor(VSTChain& vstChain)
     limiterGRLabel_.setFont(juce::Font(10.0f));
     addAndMakeVisible(limiterGRLabel_);
 
+    // Safety Volume (final output trim after Safety Guard).
+    safetyVolumeButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xFFE0E0E0));
+    safetyVolumeButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(0xFFFF6B6B));
+    safetyVolumeButton_.setToggleState(true, juce::dontSendNotification);
+    safetyVolumeButton_.onClick = [this] {
+        const bool enabled = safetyVolumeButton_.getToggleState();
+        safetyHeadroomSlider_.setEnabled(enabled);
+        if (onSafetyVolumeToggled)
+            onSafetyVolumeToggled(enabled);
+    };
+    addAndMakeVisible(safetyVolumeButton_);
+
+    safetyHeadroomSlider_.setSliderStyle(juce::Slider::LinearHorizontal);
+    safetyHeadroomSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 55, 20);
+    safetyHeadroomSlider_.setRange(-6.0, 0.0, 0.1);
+    safetyHeadroomSlider_.setValue(-0.3, juce::dontSendNotification);
+    safetyHeadroomSlider_.setTextValueSuffix(" dB");
+    safetyHeadroomSlider_.setColour(juce::Slider::thumbColourId, juce::Colour(0xFFFF6B6B));
+    safetyHeadroomSlider_.setColour(juce::Slider::trackColourId, juce::Colour(0xFFFF6B6B).withAlpha(0.4f));
+    safetyHeadroomSlider_.setColour(juce::Slider::backgroundColourId, juce::Colour(0xFF2A2A40).brighter(0.1f));
+    safetyHeadroomSlider_.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xFFE0E0E0));
+    safetyHeadroomSlider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    safetyHeadroomSlider_.onValueChange = [this] {
+        if (onSafetyHeadroomChanged)
+            onSafetyHeadroomChanged(static_cast<float>(safetyHeadroomSlider_.getValue()));
+    };
+    addAndMakeVisible(safetyHeadroomSlider_);
+
     addAndMakeVisible(addButton_);
     addAndMakeVisible(scanButton_);
     addAndMakeVisible(removeButton_);
@@ -264,6 +292,19 @@ void PluginChainEditor::setLimiterCeiling(float dB)
         limiterCeilingSlider_.setValue(static_cast<double>(dB), juce::dontSendNotification);
 }
 
+void PluginChainEditor::setSafetyVolumeState(bool enabled)
+{
+    if (safetyVolumeButton_.getToggleState() != enabled)
+        safetyVolumeButton_.setToggleState(enabled, juce::dontSendNotification);
+    safetyHeadroomSlider_.setEnabled(enabled);
+}
+
+void PluginChainEditor::setSafetyHeadroom(float dB)
+{
+    if (std::abs(static_cast<float>(safetyHeadroomSlider_.getValue()) - dB) > 0.05f)
+        safetyHeadroomSlider_.setValue(static_cast<double>(dB), juce::dontSendNotification);
+}
+
 void PluginChainEditor::setLimiterGR(float dB)
 {
     if (dB < -0.1f)
@@ -286,16 +327,24 @@ void PluginChainEditor::resized()
 {
     auto bounds = getLocalBounds();
 
-    // Bottom bar: limiter toggle + ceiling slider + action buttons
+    // Bottom bar: limiter row + headroom row + action buttons
     auto buttonBar = bounds.removeFromBottom(30);
+    auto headroomBar = bounds.removeFromBottom(24);
     auto limiterBar = bounds.removeFromBottom(26);
-    int toggleW = 120;
+    const int toggleW = 120;
+    const int grLabelW = 60;
+    const int limiterSliderW = juce::jmax(80, limiterBar.getWidth() - toggleW - grLabelW);
+    const int headroomSliderW = juce::jmax(80, headroomBar.getWidth() - toggleW - grLabelW);
+
     limiterButton_.setBounds(limiterBar.getX(), limiterBar.getY(), toggleW, limiterBar.getHeight());
-    int grLabelW = 60;
     limiterCeilingSlider_.setBounds(limiterBar.getX() + toggleW, limiterBar.getY(),
-                                    limiterBar.getWidth() - toggleW - grLabelW, limiterBar.getHeight());
-    limiterGRLabel_.setBounds(limiterBar.getRight() - grLabelW, limiterBar.getY(),
+                                    limiterSliderW, limiterBar.getHeight());
+    limiterGRLabel_.setBounds(limiterBar.getX() + toggleW + limiterSliderW, limiterBar.getY(),
                               grLabelW, limiterBar.getHeight());
+
+    safetyVolumeButton_.setBounds(headroomBar.getX(), headroomBar.getY(), toggleW, headroomBar.getHeight());
+    safetyHeadroomSlider_.setBounds(headroomBar.getX() + toggleW, headroomBar.getY(),
+                                    headroomSliderW, headroomBar.getHeight());
 
     int gap = 4;
     int btnW = (buttonBar.getWidth() - gap * 2) / 3;

@@ -98,6 +98,7 @@ dpClient.on("connected", () => {
 
 dpClient.on("disconnected", () => {
     streamDeck.logger.info("Disconnected from DirectPipe host");
+    currentState = null;
     for (const action of allActions) {
         if (typeof action.setDisconnectedState === "function") {
             action.setDisconnectedState();
@@ -107,6 +108,7 @@ dpClient.on("disconnected", () => {
 
 dpClient.on("connecting", () => {
     streamDeck.logger.info("Connecting to DirectPipe host...");
+    currentState = null;
     for (const action of allActions) {
         if (typeof action.setConnectingState === "function") {
             action.setConnectingState();

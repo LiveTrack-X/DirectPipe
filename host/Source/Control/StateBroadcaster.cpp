@@ -23,6 +23,7 @@
 
 #include "StateBroadcaster.h"
 #include <algorithm>
+#include <cmath>
 #include <JuceHeader.h>
 
 namespace directpipe {
@@ -44,8 +45,8 @@ static uint32_t quickStateHash(const AppState& s)
     uint32_t h = 0;
     auto hashFloat = [&](float v) {
         // Quantize to reduce jitter: 0.05 precision for levels/CPU
-        auto q = static_cast<uint32_t>(v * 20.0f);
-        h = h * 31u + q;
+        auto q = static_cast<int32_t>(std::lround(v * 20.0f));
+        h = h * 31u + static_cast<uint32_t>(q);
     };
     hashFloat(s.inputGain);
     hashFloat(s.monitorVolume);
@@ -71,6 +72,8 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.xrunCount);
     h = h * 31u + static_cast<uint32_t>(s.limiterEnabled);
     hashFloat(s.limiterCeilingdB);
+    h = h * 31u + static_cast<uint32_t>(s.safetyHeadroomEnabled);
+    hashFloat(s.safetyHeadroomdB);
     hashFloat(s.limiterGainReduction);
     h = h * 31u + static_cast<uint32_t>(s.limiterActive);
     h = h * 31u + static_cast<uint32_t>(s.channelMode);
@@ -209,10 +212,12 @@ std::string StateBroadcaster::toJSON() const
         slotNamesArr.add(juce::String(name));
     data->setProperty("slot_names", slotNamesArr);
 
-    // Safety Limiter
+    // Safety Guard / Safety Volume (legacy safety_limiter JSON key)
     auto limiterJson = new juce::DynamicObject();
     limiterJson->setProperty("enabled", state.limiterEnabled);
     limiterJson->setProperty("ceiling_dB", static_cast<double>(state.limiterCeilingdB));
+    limiterJson->setProperty("headroom_enabled", state.safetyHeadroomEnabled);
+    limiterJson->setProperty("headroom_dB", static_cast<double>(state.safetyHeadroomdB));
     limiterJson->setProperty("gain_reduction_dB", static_cast<double>(state.limiterGainReduction));
     limiterJson->setProperty("is_limiting", state.limiterActive);
     data->setProperty("safety_limiter", juce::var(limiterJson));

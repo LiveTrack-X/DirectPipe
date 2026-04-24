@@ -216,11 +216,13 @@ juce::String PresetManager::exportToJSON()
     // Audit mode
     root->setProperty("auditMode", Log::isAuditMode());
 
-    // Safety Limiter
+    // Safety Guard state (legacy "safetyLimiter" key for compatibility)
     auto limiterObj = new juce::DynamicObject();
     auto& limiter = engine_.getSafetyLimiter();
     limiterObj->setProperty("enabled", limiter.isEnabled());
     limiterObj->setProperty("ceiling_dB", static_cast<double>(limiter.getCeilingdB()));
+    limiterObj->setProperty("headroom_enabled", engine_.isSafetyHeadroomEnabled());
+    limiterObj->setProperty("headroom_dB", static_cast<double>(engine_.getSafetyHeadroomdB()));
     root->setProperty("safetyLimiter", juce::var(limiterObj));
 
     if (onExportAppSettings)
@@ -449,12 +451,20 @@ bool PresetManager::importFromJSON(const juce::String& json)
         Log::setAuditMode(static_cast<bool>(root->getProperty("auditMode")));
 
     // Safety Guard state (legacy "safetyLimiter" key; missing key = defaults)
+    // Legacy presets may omit Safety Volume fields, so reset those defaults
+    // before applying optional values.
+    engine_.setSafetyHeadroomEnabled(true);
+    engine_.setSafetyHeadroomdB(-0.3f);
     if (auto* limiterObj = root->getProperty("safetyLimiter").getDynamicObject()) {
         auto& limiter = engine_.getSafetyLimiter();
         if (limiterObj->hasProperty("enabled"))
             limiter.setEnabled(static_cast<bool>(limiterObj->getProperty("enabled")));
         if (limiterObj->hasProperty("ceiling_dB"))
             limiter.setCeiling(static_cast<float>(static_cast<double>(limiterObj->getProperty("ceiling_dB"))));
+        if (limiterObj->hasProperty("headroom_enabled"))
+            engine_.setSafetyHeadroomEnabled(static_cast<bool>(limiterObj->getProperty("headroom_enabled")));
+        if (limiterObj->hasProperty("headroom_dB"))
+            engine_.setSafetyHeadroomdB(static_cast<float>(static_cast<double>(limiterObj->getProperty("headroom_dB"))));
     }
 
     if (onImportAppSettings)
@@ -722,7 +732,7 @@ bool PresetManager::importChainFromJSON(const juce::String& json)
                     + juce::String(static_cast<int>(i)) + " (" + targets[i].name
                     + "): saved=" + juce::String(targets[i].bypassed ? "true" : "false")
                     + ", actual=" + juce::String(slot->bypassed ? "true" : "false")
-                    + " ??forcing sync");
+                    + " - forcing sync");
                 chain.setPluginBypassed(static_cast<int>(i), targets[i].bypassed);
             }
         }
@@ -1209,7 +1219,7 @@ juce::String PresetManager::getSlotName(int slotIndex) const
 void PresetManager::setSlotName(int slotIndex, const juce::String& name)
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return;
-    if (slotIndex == 5) return;  // Auto slot (index 5) name is fixed ??not renameable
+    if (slotIndex == 5) return;  // Auto slot (index 5) name is fixed - not renameable
     slotNames_[static_cast<size_t>(slotIndex)] = name.trim();
 
     // Persist name to slot file (re-save if file exists)

@@ -219,11 +219,11 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 | OutputRouterTest | ~6 | Monitor output routing, mute state / 모니터 출력 라우팅, 뮤트 상태 |
 | AudioEngineTest + DeviceStateTest | ~22 | Driver snapshot, device reconnection, XRun, buffer fallback, device state FSM / 드라이버 스냅샷, 장치 재연결, XRun, 버퍼 폴백, 장치 상태 FSM |
 | MidiHandlerTest | ~8 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
-| ActionHandlerTest | ~5 | Panic mute engage/restore, callback order / 패닉 뮤트 활성화/복원, 콜백 순서 |
-| SafetyLimiterTest | ~12 | Limiter ceiling, gain reduction, enable/disable / 리미터 실링, 게인 리덕션, 활성화/비활성화 |
+| ActionHandlerTest | ~6 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
+| SafetyLimiterTest | ~15 | Guard ceiling, gain reduction, zero-latency sample-peak guard behavior / 가드 실링, 게인 리덕션, zero-latency 샘플-피크 가드 동작 |
 | BuiltinFilterTest | ~8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
 | BuiltinNoiseRemovalTest | ~7 | RNNoise VAD thresholds, non-48k passthrough, latency / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시 |
-| BuiltinAutoGainTest | ~7 | AGC boost/cut, freeze level, max gain clamp / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프 |
+| BuiltinAutoGainTest | ~8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
 | VstChainTest | ~9 | VST chain operations, plugin ordering / VST 체인 연산, 플러그인 순서 |
 | PlatformTest | ~7 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
 

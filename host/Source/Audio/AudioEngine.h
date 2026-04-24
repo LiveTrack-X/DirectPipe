@@ -18,7 +18,7 @@
 
 /**
  * @file AudioEngine.h
- * @brief Core audio engine ??audio input ??VST chain ??output routing
+ * @brief Core audio engine: audio input, VST chain, and output routing
  *
  * Manages the audio device, VST plugin processing chain, and output
  * distribution to main output, monitor (headphones), IPC, and recorder.
@@ -103,7 +103,7 @@ public:
     /** @brief Get the desired SR/BS (survives driver fallback). */
     double getDesiredSampleRate() const { return desiredSampleRate_; }
     int getDesiredBufferSize() const { return desiredBufferSize_; }
-    /** @brief Sync desiredSR/BS FROM the current device (for ASIO ??device owns SR/BS globally). */
+    /** @brief Sync desiredSR/BS FROM the current device (ASIO owns SR/BS globally). */
     void syncDesiredFromDevice();
     // Dynamic capabilities (depends on current device type and device)
     juce::Array<double> getAvailableSampleRates() const;
@@ -150,6 +150,14 @@ public:
     void setInputGain(float gain) { inputGain_.store(gain, std::memory_order_relaxed); }
     float getInputGain() const { return inputGain_.load(std::memory_order_relaxed); }
 
+    /** Final global output trim after Safety Guard (dB, default -0.3). */
+    void setSafetyHeadroomEnabled(bool enabled) { safetyHeadroomEnabled_.store(enabled, std::memory_order_relaxed); }
+    bool isSafetyHeadroomEnabled() const { return safetyHeadroomEnabled_.load(std::memory_order_relaxed); }
+
+    /** Final global output trim after Safety Guard (dB, default -0.3). */
+    void setSafetyHeadroomdB(float dB);
+    float getSafetyHeadroomdB() const { return safetyHeadroomdB_.load(std::memory_order_relaxed); }
+
     void setMuted(bool muted) { muted_.store(muted, std::memory_order_relaxed); }
     bool isMuted() const { return muted_.load(std::memory_order_relaxed); }
 
@@ -159,7 +167,7 @@ public:
     void setOutputMuted(bool muted) { outputMuted_.store(muted, std::memory_order_relaxed); }
     bool isOutputMuted() const { return outputMuted_.load(std::memory_order_relaxed); }
 
-    /** Output "None" mode ??user selected no output device (persists across restart). */
+    /** Output "None" mode: user selected no output device (persists across restart). */
     void setOutputNone(bool none) { outputNone_.store(none, std::memory_order_relaxed); setOutputMuted(none); }
     bool isOutputNone() const { return outputNone_.load(std::memory_order_relaxed); }
 
@@ -185,7 +193,7 @@ public:
     int getRecentXRunCount() const;
     /** @brief Call from UI timer (~30Hz) to update the rolling xrun window. */
     void updateXRunTracking();
-    /** @brief Request xrun counter reset (safe from any thread ??sets atomic flag). */
+    /** @brief Request xrun counter reset (safe from any thread; sets atomic flag). */
     void requestXRunReset() { xrunResetRequested_.store(true, std::memory_order_release); }
 
     /** @brief Check and attempt device reconnection (call from message thread timer). */
@@ -207,7 +215,7 @@ public:
      * Use this for switch-based state handling instead of checking
      * individual boolean flags (compiler warns on missing cases).
      *
-     * [Message thread only] ??reads attemptingReconnection_ (non-atomic).
+     * [Message thread only] reads attemptingReconnection_ (non-atomic).
      */
     DeviceState getDeviceState() const
     {
@@ -285,9 +293,12 @@ private:
     std::atomic<float> inputLevel_{0.0f};               // [RT write, Message read]
     std::atomic<float> outputLevel_{0.0f};              // [RT write, Message read]
     std::atomic<float> inputGain_{1.0f};                // [Message write, RT read]
+    std::atomic<bool> safetyHeadroomEnabled_{true};     // [Message write, RT read]
+    std::atomic<float> safetyHeadroomdB_{-0.3f};        // [Message write, RT read]
+    std::atomic<float> safetyHeadroomGain_{1.0f};       // [Message write, RT read] cached linear gain
     std::atomic<int> channelMode_{2};                   // [Message write, RT read]
     std::atomic<bool> muted_{false};                    // [Message write, RT read]
-    std::atomic<bool> inputMuted_{false};               // [Any thread write, RT read] Independent input mute ??silences input, chain keeps running
+    std::atomic<bool> inputMuted_{false};               // [Any thread write, RT read] Independent input mute: silences input, chain keeps running
     std::atomic<bool> outputMuted_{false};              // [Message write, RT read]
     std::atomic<bool> outputNone_{false};               // [Message write, RT read] "None" output device (persists)
 
@@ -317,7 +328,7 @@ private:
     double desiredSampleRate_ = 48000.0;                // [Message thread only]
     int desiredBufferSize_ = 480;                       // [Message thread only]
     std::atomic<bool> deviceLost_{false};               // [RT/Device write, Message read]
-    std::atomic<bool> inputDeviceLost_{false};          // [RT/Device write, Message read] Input specifically lost ??zero input in audio callback
+    std::atomic<bool> inputDeviceLost_{false};          // [RT/Device write, Message read] Input specifically lost: zero input in audio callback
     std::atomic<bool> outputAutoMuted_{false};          // [RT/Device write, Message read] Output auto-muted due to device loss
     bool attemptingReconnection_ = false;               // [Message thread only] Re-entrancy guard
     std::atomic<bool> intentionalChange_{false};        // [Message write, Device thread read] Guards audioDeviceStopped from setting deviceLost_ during intentional changes
@@ -332,7 +343,7 @@ private:
     // RT thread only
     juce::AudioBuffer<float> workBuffer_;               // [RT thread only]
     uint32_t rmsDecimationCounter_ = 0;                 // [RT thread only] RMS computed every 4th callback (no atomic needed)
-    std::atomic<bool> chainCrashed_{false};              // [RT write, Message read] Plugin processBlock exception ??silence output
+    std::atomic<bool> chainCrashed_{false};              // [RT write, Message read] Plugin processBlock exception: silence output
     std::atomic<bool> chainCrashNotified_{false};        // [Message thread only] One-shot notification for chainCrashed_
     std::atomic<bool> mmcssRegistered_{false};           // [Device thread reset, RT thread write+read] MMCSS registration flag (Windows)
 

@@ -74,9 +74,11 @@ struct AppState {
     float outputVolume = 1.0f;  // Main output volume (0.0-1.0)
     int xrunCount = 0;
 
-    // Safety Limiter
+    // Safety Guard / Safety Volume (legacy safety_limiter JSON key)
     bool limiterEnabled = true;
     float limiterCeilingdB = -0.3f;
+    bool safetyHeadroomEnabled = true;
+    float safetyHeadroomdB = -0.3f;
     float limiterGainReduction = 0.0f;
     bool limiterActive = false;
 

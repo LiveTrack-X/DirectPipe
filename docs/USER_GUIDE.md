@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 4.0.4** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 4.0.5** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -481,7 +481,7 @@ Slots store **chain data + name** (plugins, order, bypass, parameters, slot name
 
 VST 플러그인 없이 기본적인 마이크 처리를 제공하는 내장 프로세서 3종. / 3 built-in processors for basic microphone processing without VST plugins.
 
-Auto chain order: Filter -> Noise Removal -> Auto Gain -> Post Limiter -> Global Safety Guard -> Output.
+Auto chain order: Filter -> Noise Removal -> Auto Gain -> Post Limiter -> Global Safety Guard -> Safety Volume -> Output.
 
 ### [Auto] 버튼 / Auto Button
 
@@ -573,12 +573,13 @@ Output 탭은 3개 섹션으로 구성됩니다. / The Output tab has 3 sections
 
 ### 세이프티 가드 / Safety Guard
 
-세이프티 가드는 **출력 직전 전역(stage-last)** 에 적용되는 보호 장치입니다. (legacy API/action name: SafetyLimiter)  
-Safety Guard is a **global stage-last** protection block applied right before output delivery. (legacy API/action name: SafetyLimiter)
+세이프티 가드는 **Safety Volume 직전 전역 보호 stage** 로 적용되는 보호 장치입니다. (legacy API/action name: SafetyLimiter)
+Safety Guard is a **global protection stage before Safety Volume/final output delivery**. (legacy API/action name: SafetyLimiter)
 
 - 적용 경로 / Applied paths: OUT, MON, VST(IPC), REC (WAV)
 - 동작 방식 / Behavior: zero-latency sample-peak guard + instant attack + smooth release + hard sample clamp
-- 설정 항목 / Controls: Enabled, Ceiling(dB)
+- 설정 항목 / Controls: Enabled, Ceiling(dB), Safety Volume On/Off, Safety Volume(dB)
+- Headroom 기본값 / Default headroom: `-0.3 dB` (Safety Guard 바로 아래 UI)
 - 권장값 / Recommended ceiling: `-1.0 dB ~ -0.3 dB` (스트리밍/OBS 헤드룸 확보 / safe streaming headroom)
 
 > OBS 등에서 순간 피크가 튀는 환경에서는 세이프티 리미터를 켜고 ceiling을 여유 있게 두는 것을 권장합니다.  
@@ -620,7 +621,7 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 
 ### 녹음 / Recording
 
-처리된 오디오(VST 체인 이후)를 WAV 파일로 녹음합니다. / Record post-chain audio to WAV.
+최종 처리된 오디오(VST 체인, Safety Guard, Safety Volume 이후)를 WAV 파일로 녹음합니다. / Record final processed audio after VST chain, Safety Guard, and Safety Volume to WAV.
 
 | 기능 / Feature | 설명 / Description |
 |---|---|
@@ -633,7 +634,7 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 - **기본 폴더 / Default folder**: `Documents/DirectPipe Recordings`
 - **파일명 / Filename**: `DirectPipe_YYYYMMDD_HHMMSS.wav`
 - **외부 제어 / External control**: Stream Deck (경과 시간 표시 / elapsed time display), HTTP API (`/api/recording/toggle`), WebSocket (`recording_toggle`)
-- 녹음은 lock-free(실시간 안전) — 오디오 처리 성능에 영향 없음 / Recording is lock-free (RT-safe) — no impact on audio performance
+- 녹음은 RT-safe try-lock/drop 방식 — teardown 경합 시 오디오 스레드 spin 대신 해당 녹음 블록을 drop / Recording uses RT-safe try-lock/drop — during teardown contention it drops that recording block instead of spinning the audio thread
 
 ---
 
@@ -932,9 +933,9 @@ Save activity-specific VST chains in Quick Slots (A-E) and **switch effects with
 
 #### 시나리오 6: 방송 중 녹음 / Recording While Streaming
 
-OBS 방송 + Discord 통화를 하면서 **동시에 WAV 녹음**을 할 수 있습니다. 녹음은 VST 체인 이후 처리된 오디오를 캡처합니다.
+OBS 방송 + Discord 통화를 하면서 **동시에 WAV 녹음**을 할 수 있습니다. 녹음은 VST 체인, Safety Guard, Safety Volume 이후 최종 처리된 오디오를 캡처합니다.
 
-Record to WAV **while streaming on OBS and chatting on Discord**. Recording captures post-chain processed audio.
+Record to WAV **while streaming on OBS and chatting on Discord**. Recording captures final processed audio after VST chain, Safety Guard, and Safety Volume.
 
 ```
 USB 마이크 → DirectPipe (VST 이펙트)

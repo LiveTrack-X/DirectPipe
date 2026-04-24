@@ -62,7 +62,7 @@ StateBroadcaster.updateState()
 |------|------|
 | `ControlManager.h/cpp` | 전체 제어 서브시스템의 최상위 관리자. Hotkey/MIDI/WS/HTTP 핸들러 소유 및 수명 관리 |
 | `ActionDispatcher.h/cpp` | 통합 액션 인터페이스. 모든 제어 소스 -> 메시지 스레드 리스너 전달. `Action` enum 및 `ActionEvent` 정의 |
-| `ActionHandler.h/cpp` | ActionEvent 라우팅. Panic mute 로직 통합 (`doPanicMute`). AudioEngine/PresetManager/UI 콜백 연결 |
+| `ActionHandler.h/cpp` | ActionEvent 라우팅. Panic mute 로직 통합 (`doPanicMute`) + 레거시 토글/명시 set 모드 지원. AudioEngine/PresetManager/UI 콜백 연결 |
 | `ControlMapping.h/cpp` | 단축키/MIDI/서버 매핑의 JSON 직렬화/역직렬화. `ControlConfig` 구조체. Portable 모드 지원 |
 | `SettingsAutosaver.h/cpp` | Dirty-flag 패턴 + 1초 디바운스 자동 저장. `markDirty()` / `tick()` / `saveNow()` |
 | `HotkeyHandler.h/cpp` | 글로벌 키보드 단축키. Windows: `RegisterHotKey` + 메시지 창. macOS: `CGEventTap`. Linux: stub |
@@ -188,7 +188,7 @@ ActionHandler::handle(event)
     +-- PluginBypass -> VSTChain::togglePluginBypassed
     +-- SetVolume -> OutputRouter::setVolume
     +-- LoadPreset -> PresetSlotBar::onSlotClicked
-    +-- PanicMute -> doPanicMute(toggle)
+    +-- PanicMute -> doPanicMute(toggle or explicit set)
     +-- RecordingToggle -> AudioRecorder::start/stop
     +-- ... (19개 액션)
 ```

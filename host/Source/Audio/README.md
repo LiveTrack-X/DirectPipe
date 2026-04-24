@@ -33,7 +33,9 @@ VSTChain.processBlock(workBuffer_)
 |
 +---> SafetyLimiter.process()            [RT-safe global Safety Guard (legacy name, zero-latency sample-peak guard + hard clamp), applied before ALL outputs]
 |
-+---> AudioRecorder.writeBlock()         [lock-free FIFO -> BG writer thread]
++---> Safety Volume trim                [Final global output trim (default -0.3 dB) applied after Safety Guard to ALL outputs]
+|
++---> AudioRecorder.writeBlock()         [RT try-lock/drop -> ThreadedWriter FIFO -> BG writer thread]
 |
 +---> SharedMemWriter.writeAudio()       [if ipcEnabled_, lock-free ring buffer -> Receiver VST]
 |
@@ -59,15 +61,15 @@ LatencyMonitor.markCallbackEnd()
 | `OutputRouter.h/cpp` | 처리된 오디오를 모니터(헤드폰) 출력으로 라우팅. 볼륨/활성화 제어, RMS 레벨 측정 |
 | `MonitorOutput.h/cpp` | 별도 WASAPI 공유 모드 디바이스를 통한 헤드폰 모니터링. AudioRingBuffer로 RT<->모니터 스레드 브릿징 |
 | `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 WASAPI 콜백(consumer) |
-| `AudioRecorder.h/cpp` | WAV 파일 녹음. ThreadedWriter로 lock-free FIFO 사용, BG 스레드에서 디스크 flush |
+| `AudioRecorder.h/cpp` | WAV 파일 녹음. RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
 | `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
 | `PluginPreloadCache.h/cpp` | 프리셋 슬롯 전환용 플러그인 인스턴스 백그라운드 프리로딩. 캐시 hit 시 DLL 로딩 건너뜀 |
 | `PluginLoadHelper.h` | 크로스플랫폼 플러그인 인스턴스 생성 헬퍼 (header-only). macOS에서 AppKit 메인 스레드 디스패치 |
-| `SafetyLimiter.h/cpp` | RT-safe global Safety Guard (legacy class name). Atomic params (enabled, ceiling). Zero-latency stereo-linked sample-peak guard, instant attack, 50ms release smoothing, hard ceiling clamp. GR feedback for UI |
+| `SafetyLimiter.h/cpp` | RT-safe global Safety Guard (legacy class name). Atomic params (enabled, ceiling). Zero-latency stereo-linked sample-peak guard, instant attack, 50ms release smoothing, hard ceiling clamp. GR feedback for UI. Final `Safety Volume` trim (enable + dB) is applied in `AudioEngine` after guard processing |
 | `DeviceState.h` | 디바이스 연결 상태 열거형 (header-only). DeviceState enum + transition() + deviceStateToString() |
 | `BuiltinFilter.h/cpp` | 내장 HPF + LPF 필터 (AudioProcessor 상속). IIR 2차 버터워스. RT-safe. PDC 0 |
 | `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise 노이즈 제거 (AudioProcessor 상속). FIFO 480프레임, VAD 게이팅, dual-mono. PDC 480 samples |
-| `BuiltinAutoGain.h/cpp` | 내장 LUFS AGC (AudioProcessor 상속). ITU-R BS.1770 K-weighting, 비대칭 보정 (Luveler Mode 2). PDC 0 |
+| `BuiltinAutoGain.h/cpp` | 내장 LUFS AGC (AudioProcessor 상속). ITU-R BS.1770 K-weighting, 비대칭 보정 (Luveler Mode 2) + 고정 post limiter(ceiling 노출, 내부 lookahead/release 고정). 고정 지연 경로 사용 (PDC = lookahead samples) |
 
 ---
 
@@ -92,7 +94,7 @@ LatencyMonitor.markCallbackEnd()
 | MonitorOutput | `initialize`, `setDevice`, `checkReconnection` | `[Message thread]` | 별도 AudioDeviceManager 조작 |
 | AudioRingBuffer | `write` (producer) | `[RT thread]` | SPSC. capacity는 power-of-2 필수 |
 | AudioRingBuffer | `read` (consumer) | `[Monitor RT thread]` | SPSC 단일 소비자 |
-| AudioRecorder | `writeBlock` | `[RT thread]` | ThreadedWriter FIFO에 push (lock-free). jassert: NOT message thread |
+| AudioRecorder | `writeBlock` | `[RT thread]` | try-lock 후 ThreadedWriter FIFO에 push, teardown 경합 시 drop. jassert: NOT message thread |
 | AudioRecorder | `startRecording`, `stopRecording` | `[Message thread]` | `writerLock_` (SpinLock) |
 | LatencyMonitor | `markCallbackStart/End` | `[RT thread]` | `sampleRate_`, `bufferSize_`, `callbackStartTicks_`, `avgProcessingTime_` 모두 atomic (reset()과의 cross-thread 안전) |
 | LatencyMonitor | `reset` | `[Message thread]` | audioDeviceAboutToStart에서 호출. atomic store(relaxed) |

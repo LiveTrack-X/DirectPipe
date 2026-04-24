@@ -337,6 +337,28 @@ TEST_F(StateSerializationTest, StateContainsAudioParams) {
     EXPECT_EQ(static_cast<int>(data->getProperty("channel_mode")), 2);
 }
 
+TEST_F(StateSerializationTest, StateContainsSafetyLimiterHeadroomFields) {
+    broadcaster->updateState([](AppState& state) {
+        state.limiterEnabled = true;
+        state.limiterCeilingdB = -0.3f;
+        state.safetyHeadroomEnabled = false;
+        state.safetyHeadroomdB = -1.2f;
+    });
+
+    std::string json = broadcaster->toJSON();
+    auto parsed = juce::JSON::parse(juce::String(json));
+    auto* data = parsed.getDynamicObject()->getProperty("data").getDynamicObject();
+    ASSERT_NE(data, nullptr);
+
+    auto* limiter = data->getProperty("safety_limiter").getDynamicObject();
+    ASSERT_NE(limiter, nullptr);
+
+    EXPECT_TRUE(static_cast<bool>(limiter->getProperty("enabled")));
+    EXPECT_NEAR(static_cast<double>(limiter->getProperty("ceiling_dB")), -0.3, 0.001);
+    EXPECT_FALSE(static_cast<bool>(limiter->getProperty("headroom_enabled")));
+    EXPECT_NEAR(static_cast<double>(limiter->getProperty("headroom_dB")), -1.2, 0.001);
+}
+
 TEST_F(StateSerializationTest, StateContainsPresetName) {
     broadcaster->updateState([](AppState& state) {
         state.currentPreset = "Streaming Vocal";

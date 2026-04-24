@@ -47,7 +47,10 @@ static bool processBlockSEH(VSTChain& chain, juce::AudioBuffer<float>& buffer, i
 }
 #endif
 
-AudioEngine::AudioEngine() = default;
+AudioEngine::AudioEngine()
+{
+    setSafetyHeadroomdB(-0.3f);
+}
 
 AudioEngine::~AudioEngine()
 {
@@ -357,6 +360,13 @@ ActionResult AudioEngine::setMonitorBufferSize(int bufferSize)
     if (monitorOutput_.setBufferSize(bufferSize))
         return ActionResult::ok();
     return ActionResult::fail("Failed to set monitor buffer size: " + juce::String(bufferSize));
+}
+
+void AudioEngine::setSafetyHeadroomdB(float dB)
+{
+    const float clamped = juce::jlimit(-6.0f, 0.0f, dB);
+    safetyHeadroomdB_.store(clamped, std::memory_order_relaxed);
+    safetyHeadroomGain_.store(juce::Decibels::decibelsToGain(clamped), std::memory_order_relaxed);
 }
 
 void AudioEngine::presetAudioParams(double sampleRate, int bufferSize)
@@ -669,7 +679,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
                 }
 
                 if (!asioOpened) {
-                    auto msg = juce::String("All ASIO devices failed ??reverting to previous driver");
+                    auto msg = juce::String("All ASIO devices failed - reverting to previous driver");
                     Log::error("AUDIO", msg);
                     intentionalChange_.store(false, std::memory_order_release);
                     deviceManager_.setCurrentAudioDeviceType(currentType, true);
@@ -1046,14 +1056,20 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     const bool muted = muted_.load(std::memory_order_relaxed);
     const bool outputMuted = outputMuted_.load(std::memory_order_relaxed);
 
-    numSamples = juce::jmin(numSamples, workBuffer_.getNumSamples());
+    const int callbackSamples = numSamples;
+    numSamples = juce::jlimit(0, workBuffer_.getNumSamples(), numSamples);
+
+    auto clearOutputRange = [&](int startSample, int samplesToClear) {
+        if (samplesToClear <= 0) return;
+        for (int ch = 0; ch < numOutputChannels; ++ch)
+            if (outputChannelData[ch])
+                std::memset(outputChannelData[ch] + startSample, 0,
+                            sizeof(float) * static_cast<size_t>(samplesToClear));
+    };
 
     // Fast path: panic muted zero output, skip all processing
     if (muted) {
-        for (int ch = 0; ch < numOutputChannels; ++ch)
-            if (outputChannelData[ch])
-                std::memset(outputChannelData[ch], 0,
-                            sizeof(float) * static_cast<size_t>(numSamples));
+        clearOutputRange(0, callbackSamples);
         inputLevel_.store(0.0f, std::memory_order_relaxed);
         outputLevel_.store(0.0f, std::memory_order_relaxed);
         latencyMonitor_.markCallbackEnd();
@@ -1062,10 +1078,13 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 
     // Plugin crash guard: chain crashed previously silence all outputs
     if (chainCrashed_.load(std::memory_order_relaxed)) {
-        for (int ch = 0; ch < numOutputChannels; ++ch)
-            if (outputChannelData[ch])
-                std::memset(outputChannelData[ch], 0,
-                            static_cast<size_t>(numSamples) * sizeof(float));
+        clearOutputRange(0, callbackSamples);
+        latencyMonitor_.markCallbackEnd();
+        return;
+    }
+
+    if (numSamples <= 0) {
+        clearOutputRange(0, callbackSamples);
         latencyMonitor_.markCallbackEnd();
         return;
     }
@@ -1075,9 +1094,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     int workChannels = juce::jmin(
         juce::jmax(chMode, juce::jmax(numInputChannels, numOutputChannels)),
         buffer.getNumChannels());
-    // Only clear the channels we'll use (not all 8 pre-allocated channels)
-    for (int ch = 0; ch < workChannels; ++ch)
-        juce::FloatVectorOperations::clear(buffer.getWritePointer(ch), numSamples);
+    // Clear all pre-allocated channels so hidden/stale channels cannot drive
+    // stereo-linked Safety Guard gain reduction.
+    buffer.clear(0, numSamples);
 
     // Input device lost use silence instead of fallback device input.
     // Work buffer already cleared above, so just skip the copy.
@@ -1085,17 +1104,21 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         if (chMode == 1) {
             // Mono mode: average all input channels to channel 0.
             // Single input channel: direct copy (no division needed).
-            // Multiple input channels: sum then divide by channel count to prevent
+            // Multiple valid input channels: sum then divide by valid count to prevent
             // +3dB boost when stereo mic sends identical signal on both channels.
-            if (numInputChannels > 0 && inputChannelData[0] != nullptr) {
-                buffer.copyFrom(0, 0, inputChannelData[0], numSamples);
-                for (int ch = 1; ch < numInputChannels; ++ch) {
-                    if (inputChannelData[ch] != nullptr)
+            int validInputChannels = 0;
+            for (int ch = 0; ch < numInputChannels; ++ch) {
+                if (inputChannelData[ch] != nullptr) {
+                    if (validInputChannels == 0)
+                        buffer.copyFrom(0, 0, inputChannelData[ch], numSamples);
+                    else
                         buffer.addFrom(0, 0, inputChannelData[ch], numSamples);
+                    ++validInputChannels;
                 }
-                if (numInputChannels > 1)
-                    buffer.applyGain(0, 0, numSamples, 1.0f / static_cast<float>(numInputChannels));
             }
+            if (validInputChannels > 1)
+                buffer.applyGain(0, 0, numSamples, 1.0f / static_cast<float>(validInputChannels));
+
             // Duplicate mono to channel 1 so both L/R outputs carry the same signal
             if (buffer.getNumChannels() > 1)
                 buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
@@ -1158,6 +1181,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // 2.1. Safety Guard clip prevention for all output paths (RT-safe)
     safetyLimiter_.process(buffer, numSamples);
 
+    // 2.2. Safety Volume: final global headroom trim for all output paths.
+    const bool safetyHeadroomEnabled = safetyHeadroomEnabled_.load(std::memory_order_relaxed);
+    const float safetyHeadroomGain = safetyHeadroomGain_.load(std::memory_order_relaxed);
+    if (safetyHeadroomEnabled && safetyHeadroomGain < 0.9999f)
+        buffer.applyGain(safetyHeadroomGain);
+
     // 2.5. Write processed audio to recorder (lock-free)
     recorder_.writeBlock(buffer, numSamples);
 
@@ -1193,6 +1222,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
                         sizeof(float) * static_cast<size_t>(numSamples));
         }
     }
+    clearOutputRange(numSamples, callbackSamples - numSamples);
 
     // Measure output level same decimation as input
     if (measureThisCallback && buffer.getNumChannels() > 0) {
@@ -1376,7 +1406,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     if (currentSampleRate_.load() <= 0.0 || currentBufferSize_.load() <= 0) {
         Log::warn("AUDIO", "Device reported invalid SR=" + juce::String(currentSampleRate_.load())
-                  + " BS=" + juce::String(currentBufferSize_.load()) + " ??skipping prepare");
+                  + " BS=" + juce::String(currentBufferSize_.load()) + " - skipping prepare");
         return;
     }
 
@@ -1583,7 +1613,7 @@ void AudioEngine::checkReconnection()
     // Monitor sample rate mismatch notification (one-shot, resets when mismatch clears)
     if (monitorOutput_.getStatus() == VirtualCableStatus::SampleRateMismatch && !monitorSRMismatchNotified_) {
         monitorSRMismatchNotified_ = true;
-        pushNotification("Monitor: sample rate mismatch ??monitor disabled", NotificationLevel::Warning);
+        pushNotification("Monitor: sample rate mismatch - monitor disabled", NotificationLevel::Warning);
     }
     if (monitorOutput_.getStatus() != VirtualCableStatus::SampleRateMismatch)
         monitorSRMismatchNotified_ = false;
@@ -1604,7 +1634,7 @@ void AudioEngine::attemptReconnection()
     BoolGuard reconnectGuard(attemptingReconnection_);
 
     Log::info("AUDIO", "Reconnect attempt #" + juce::String(reconnectMissCount_ + 1)
-        + " ??desired in='" + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
+        + " - desired in='" + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
 
     auto* type = deviceManager_.getCurrentDeviceTypeObject();
     if (!type) {

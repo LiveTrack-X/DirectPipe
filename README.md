@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.0.4-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.0.5-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -21,7 +21,7 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.0.4 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
+- **Latest (최신)**: [v4.0.5 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
 
 > **참고**: Windows는 안정(Stable), macOS는 베타, Linux는 실험적입니다. macOS/Linux 빌드는 실기기 테스트가 제한적입니다.
 > **Note**: Windows is stable, macOS is beta, Linux is experimental. macOS/Linux builds have limited real-hardware testing.
@@ -133,7 +133,7 @@ DirectPipe → 슬롯 A 세팅 완료          DirectPipe 설치
 ## 동작 원리 / How It Works
 
 ```
-Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─→ Global Safety Guard ─┐
+Mic ─→ WASAPI / ASIO / CoreAudio / ALSA ─→ Input Gain ─→ VST2/VST3 Plugin Chain ─→ Global Safety Guard ─→ Safety Volume ─┐
                                                                                           │
                  ┌────────────────────────────────────────────────────────────────────────┼────────────────────┐
                  │                                                                        │                    │
@@ -210,7 +210,7 @@ External Control:
 
 ### 녹음 / Recording
 
-- **오디오 녹음** — Output 탭에서 VST 체인 이후 처리된 오디오를 WAV로 녹음 (lock-free 실시간 안전) — Record post-chain audio to WAV in Output tab (lock-free, RT-safe)
+- **오디오 녹음** — Output 탭에서 VST 체인, Safety Guard, Safety Volume 이후의 최종 처리 오디오를 WAV로 녹음 (RT-safe try-lock/drop during teardown) — Record final processed audio after VST chain, Safety Guard, and Safety Volume to WAV in Output tab (RT-safe try-lock/drop during teardown)
 - **기본 폴더**: `Documents/DirectPipe Recordings` (사용자 문서 폴더), 파일명: `DirectPipe_YYYYMMDD_HHMMSS.wav` — Default folder (user Documents), naming format
 - **녹음 제어** — REC/STOP 버튼, 경과 시간 표시, Play (마지막 녹음 재생), Open Folder, 폴더 변경 — REC/STOP, elapsed time, Play last, Open Folder, change folder
 - **외부 제어** — Stream Deck (경과 시간 표시), HTTP API, WebSocket으로도 녹음 토글 가능 — Also controllable via Stream Deck (shows elapsed time), HTTP, WebSocket

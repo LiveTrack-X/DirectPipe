@@ -200,7 +200,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
             if (auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
                 if (std::abs(device->getCurrentSampleRate() - 48000.0) > 1.0)
-                    showNotification("Noise Removal requires 48kHz ??currently inactive at this sample rate",
+                    showNotification("Noise Removal requires 48kHz - currently inactive at this sample rate",
                                      NotificationLevel::Warning);
             }
 
@@ -403,7 +403,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     };
 
     // Auto-save chain to active slot when chain changes
-    // Safety Limiter toggle from chain editor UI
+    // Safety Guard toggle from chain editor UI (legacy SafetyLimiter API name).
     pluginChainEditor_->onLimiterToggled = [this](bool enabled) {
         audioEngine_.getSafetyLimiter().setEnabled(enabled);
         markSettingsDirty();
@@ -412,8 +412,18 @@ MainComponent::MainComponent(bool enableExternalControls)
         audioEngine_.getSafetyLimiter().setCeiling(dB);
         markSettingsDirty();
     };
+    pluginChainEditor_->onSafetyVolumeToggled = [this](bool enabled) {
+        audioEngine_.setSafetyHeadroomEnabled(enabled);
+        markSettingsDirty();
+    };
+    pluginChainEditor_->onSafetyHeadroomChanged = [this](float dB) {
+        audioEngine_.setSafetyHeadroomdB(dB);
+        markSettingsDirty();
+    };
     pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
     pluginChainEditor_->setLimiterCeiling(audioEngine_.getSafetyLimiter().getCeilingdB());
+    pluginChainEditor_->setSafetyVolumeState(audioEngine_.isSafetyHeadroomEnabled());
+    pluginChainEditor_->setSafetyHeadroom(audioEngine_.getSafetyHeadroomdB());
 
     pluginChainEditor_->onChainModified = [this] {
         // Chain structure changed (plugin add/remove/reorder) clear crash flag
@@ -892,7 +902,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                     // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
                     if (auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
                         if (std::abs(device->getCurrentSampleRate() - 48000.0) > 1.0)
-                            showNotification("Noise Removal requires 48kHz ??currently inactive at this sample rate",
+                            showNotification("Noise Removal requires 48kHz - currently inactive at this sample rate",
                                              NotificationLevel::Warning);
                     }
 
@@ -943,6 +953,8 @@ void MainComponent::timerCallback()
     if (pluginChainEditor_) {
         pluginChainEditor_->setLimiterState(audioEngine_.getSafetyLimiter().isEnabled());
         pluginChainEditor_->setLimiterCeiling(audioEngine_.getSafetyLimiter().getCeilingdB());
+        pluginChainEditor_->setSafetyVolumeState(audioEngine_.isSafetyHeadroomEnabled());
+        pluginChainEditor_->setSafetyHeadroom(audioEngine_.getSafetyHeadroomdB());
         pluginChainEditor_->setLimiterGR(audioEngine_.getSafetyLimiter().getCurrentGainReduction());
     }
 

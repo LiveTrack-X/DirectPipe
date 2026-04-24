@@ -66,7 +66,7 @@ private:
 };
 
 /**
- * @brief Log viewer tab ??real-time log display, export, and maintenance actions.
+ * @brief Log viewer tab: real-time log display, export, and maintenance actions.
  */
 class LogPanel : public juce::Component {
 public:
@@ -82,12 +82,12 @@ public:
     void setStartMinimizedToTrayEnabled(bool enabled);
     bool isStartMinimizedToTrayEnabled() const;
 
-    /** Wired by MainComponent ??called after Reset Settings deletes config files. */
+    /** Wired by MainComponent: called after Reset Settings deletes config files. */
     std::function<void()> onResetSettings;
     std::function<void()> onSaveSettings;
     std::function<void()> onLoadSettings;
     std::function<void(bool)> onStartMinimizedToTrayChanged;
-    /** Wired by MainComponent ??called after Clear All Presets deletes slot files. */
+    /** Wired by MainComponent: called after Clear All Presets deletes slot files. */
     std::function<void()> onPresetsCleared;
     std::function<void()> onFullBackup;
     std::function<void()> onFullRestore;

@@ -51,14 +51,13 @@ ActionHandler::ActionHandler(AudioEngine& engine, PresetManager& presetMgr,
 // The user may have lost the take during panic and should consciously re-engage.
 void ActionHandler::doPanicMute(bool mute)
 {
-    engine_.setMuted(mute);
     auto& router = engine_.getOutputRouter();
     if (mute) {
+        engine_.setMuted(true);
         preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
         preMuteOutputMuted_ = engine_.isOutputMuted();
         preMuteVstEnabled_ = engine_.isIpcEnabled();
         preMuteRecordingActive_ = engine_.getRecorder().isRecording();
-        engine_.setOutputMuted(false);
         router.setEnabled(OutputRouter::Output::Monitor, false);
         engine_.setMonitorEnabled(false);
         if (preMuteVstEnabled_) engine_.setIpcEnabled(false);
@@ -78,6 +77,8 @@ void ActionHandler::doPanicMute(bool mute)
             if (onNotification)
                 onNotification("Recording stopped during panic mute", NotificationLevel::Info);
         }
+        // Restore saved routes before audio is allowed to resume.
+        engine_.setMuted(false);
     }
     Log::info("ACTION", "Panic mute " + juce::String(mute ? "engaged" : "disengaged")
         + " — pre-mute state: monitor=" + juce::String(preMuteMonitorEnabled_ ? "on" : "off")
@@ -95,7 +96,6 @@ void ActionHandler::restorePanicMuteFromSettings()
     preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
     preMuteOutputMuted_ = engine_.isOutputMuted();
     preMuteVstEnabled_ = engine_.isIpcEnabled();
-    engine_.setOutputMuted(false);
     router.setEnabled(OutputRouter::Output::Monitor, false);
     engine_.setMonitorEnabled(false);
     if (preMuteVstEnabled_) engine_.setIpcEnabled(false);

@@ -79,6 +79,31 @@ TEST_F(ActionHandlerTest, PanicMuteRestore) {
     EXPECT_FALSE(engine_->isMuted());
 }
 
+TEST_F(ActionHandlerTest, PanicMuteRestoresOutputMuteBeforeRelease) {
+    engine_->setOutputMuted(true);
+
+    handler_->togglePanicMute();
+    EXPECT_TRUE(engine_->isMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+
+    handler_->togglePanicMute();
+    EXPECT_FALSE(engine_->isMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(ActionHandlerTest, PanicMuteRestoreFromSettingsKeepsPreMuteOutputMute) {
+    engine_->setOutputMuted(true);
+    engine_->setMuted(true);
+
+    handler_->restorePanicMuteFromSettings();
+    EXPECT_TRUE(engine_->isMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+
+    handler_->togglePanicMute();
+    EXPECT_FALSE(engine_->isMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
 // Test 3: Panic mute preserves monitor state — monitor enabled before panic is restored after
 TEST_F(ActionHandlerTest, PanicMutePreserveMonitor) {
     // Enable monitor before panic

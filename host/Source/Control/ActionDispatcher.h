@@ -172,8 +172,8 @@ inline juce::String actionToDisplayName(const ActionEvent& event)
         case Action::RecordingToggle: return "Recording Toggle";
         case Action::IpcToggle:       return "IPC Toggle";
         case Action::XRunReset:       return "XRun Reset";
-        case Action::SafetyLimiterToggle:      return "Safety Limiter Toggle";
-        case Action::SetSafetyLimiterCeiling:  return "Set Limiter Ceiling";
+        case Action::SafetyLimiterToggle:      return "Safety Guard Toggle";
+        case Action::SetSafetyLimiterCeiling:  return "Set Safety Guard Ceiling";
         case Action::AutoProcessorsAdd:        return "Auto Processors Add";
         default:                      return "Unknown";
     }

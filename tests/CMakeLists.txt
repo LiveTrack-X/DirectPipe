@@ -56,7 +56,7 @@ if(DIRECTPIPE_BUILD_HOST)
         # Slice 3: Control Handlers
         test_midi_handler.cpp
         test_action_handler.cpp
-        # Slice 5: Safety Limiter
+        # Slice 5: Safety Guard (legacy SafetyLimiter class/API names)
         test_safety_limiter.cpp
         # Slice 6: Built-in Processors
         test_builtin_processors.cpp
