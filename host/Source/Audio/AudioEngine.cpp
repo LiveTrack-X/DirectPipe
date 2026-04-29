@@ -202,7 +202,7 @@ void AudioEngine::setIpcEnabled(bool enabled)
 
     if (enabled) {
         uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
-        if (sharedMemWriter_.initialize(sr, 2)) {
+        if (sharedMemWriter_.initialize(sr, 2, directpipe::DEFAULT_BUFFER_FRAMES)) {
             ipcEnabled_.store(true, std::memory_order_release);
             Log::info("IPC", "Output enabled (SR=" + juce::String(sr) + ")");
         } else {
@@ -497,7 +497,7 @@ ActionResult AudioEngine::setBufferSize(int bufferSize)
     }
 
     currentBufferSize_ = actual;
-    desiredBufferSize_ = bufferSize;  // preserve user's request (not fallback)
+    desiredBufferSize_ = actual;  // keep runtime-aligned value to avoid inconsistent restart/reconnect state
     desiredSRBSSet_ = true;
     return ActionResult::ok(actual != bufferSize
         ? "Buffer: " + juce::String(bufferSize) + " -> " + juce::String(actual) + " smp"
@@ -1492,7 +1492,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     // Re-initialize IPC if it was enabled before device stopped
     if (ipcWasEnabled_) {
         uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
-        if (sharedMemWriter_.initialize(sr, 2)) {
+        if (sharedMemWriter_.initialize(sr, 2, directpipe::DEFAULT_BUFFER_FRAMES)) {
             ipcEnabled_.store(true, std::memory_order_release);
             ipcWasEnabled_ = false;
         } else {
