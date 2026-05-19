@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 4.0.5** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 4.0.6** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -683,6 +683,10 @@ DirectPipe는 시스템 트레이(Windows/Linux) 또는 메뉴 바(macOS)에 상
 
 DirectPipe is a tray-resident app (Windows/Linux: system tray, macOS: menu bar). The X button **minimizes to tray/menu bar**, not quit.
 
+패닉 뮤트가 활성화되면 트레이/메뉴 바 아이콘에 빨간 사선 표시가 추가되어, 메인 창이 숨겨져 있어도 전체 출력 차단 상태를 바로 확인할 수 있습니다.
+
+When Panic Mute is active, the tray/menu bar icon shows a red slash overlay so the emergency muted state remains visible while the main window is hidden.
+
 | 동작 / Action | 방법 / How |
 |---|---|
 | **창 복원** / Restore | 트레이/메뉴 바 아이콘 클릭 / Click tray/menu bar icon (Windows: double-click) |
@@ -798,6 +802,7 @@ In portable mode, multiple DirectPipe instances can run simultaneously. External
 - 패닉 뮤트 중에는 OUT/MON/VST 버튼이 잠기고 대부분 외부 제어 액션이 차단됩니다. 단, Input Mute/XRun Reset/Safety Guard(legacy SafetyLimiter actions)/Auto Processors Add는 예외적으로 허용됩니다 / During panic mute, OUT/MON/VST buttons are locked and most external-control actions are blocked. Input Mute/XRun Reset/Safety Guard (legacy SafetyLimiter actions)/Auto Processors Add are intentional exceptions
 - **녹음 중이면 자동 중지**됩니다 (해제 시 자동 재시작 안 함) / **Active recording is automatically stopped** (does not auto-restart on unmute)
 - 해제하면 이전 상태(모니터 켜짐/꺼짐, 출력 뮤트 등)가 **자동 복원**됩니다 / Previous state (monitor on/off, output mute, etc.) is **auto-restored** on unmute
+- 패닉 뮤트 중에는 트레이/메뉴 바 아이콘에도 빨간 사선 표시가 나타납니다 / Tray/menu bar icon shows a red slash overlay during Panic Mute
 - 단축키 / Shortcut: **Ctrl+Shift+M**
 
 Immediately kills all output paths and stops active recording. During panic mute, OUT/MON/VST controls are locked and most actions are blocked; Input Mute/XRun Reset/Safety Guard (legacy SafetyLimiter actions)/Auto Processors Add remain available. Previous state is restored on unmute (recording does not auto-restart).

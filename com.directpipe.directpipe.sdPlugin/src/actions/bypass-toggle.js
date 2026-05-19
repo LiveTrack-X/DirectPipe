@@ -22,6 +22,7 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { RenderCache } = require("./render-cache");
 
 const LONG_PRESS_THRESHOLD_MS = 500;
 
@@ -31,6 +32,7 @@ class BypassToggleAction extends SingletonAction {
     _keyDownTimes = new Map();
     /** @type {Map<string, object>} action.id -> cached settings */
     _settingsCache = new Map();
+    _renderCache = new RenderCache();
 
     onKeyDown(ev) {
         this._keyDownTimes.set(ev.action.id, Date.now());
@@ -68,6 +70,7 @@ class BypassToggleAction extends SingletonAction {
     onWillDisappear(ev) {
         this._keyDownTimes.delete(ev.action.id);
         this._settingsCache.delete(ev.action.id);
+        this._renderCache.delete(ev.action);
     }
 
     updateAllFromState(state) {
@@ -84,15 +87,16 @@ class BypassToggleAction extends SingletonAction {
     }
 
     setDisconnectedState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Disconnected");
-            if (typeof action.setState === "function") action.setState(0);
+            this._renderCache.apply(action, { title: "Disconnected", state: 0 });
         }
     }
 
     setConnectingState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Connecting...");
+            this._renderCache.apply(action, { title: "Connecting..." });
         }
     }
 
@@ -121,10 +125,10 @@ class BypassToggleAction extends SingletonAction {
             title = `Slot ${pluginIndex + 1}\nEmpty`;
         }
 
-        if (typeof action.setState === "function") {
-            action.setState(isBypassed ? 0 : 1);
-        }
-        action.setTitle(title);
+        this._renderCache.apply(action, {
+            state: isBypassed ? 0 : 1,
+            title,
+        });
     }
 }
 

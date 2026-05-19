@@ -200,13 +200,10 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 void DirectPipeReceiverProcessor::tryConnect()
 {
-    size_t shmSize = directpipe::calculateSharedMemorySize(
-        directpipe::DEFAULT_BUFFER_FRAMES, directpipe::DEFAULT_CHANNELS);
-
-    if (!sharedMemory_.open(directpipe::SHM_NAME, shmSize))
+    if (!sharedMemory_.open(directpipe::SHM_NAME, 0))
         return;
 
-    if (!ringBuffer_.attachAsConsumer(sharedMemory_.getData())) {
+    if (!ringBuffer_.attachAsConsumer(sharedMemory_.getData(), sharedMemory_.getSize())) {
         sharedMemory_.close();
         return;
     }

@@ -8,6 +8,24 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.0.6] - 2026-05-20
+
+### Added
+- **Panic Mute tray/menu bar indicator**: When Panic Mute is active, the tray/menu bar icon now shows a red slash overlay so the emergency muted state is visible even while the main window is hidden.
+
+### Changed
+- **Stream Deck update load reduction**: Split control-state broadcasts from high-frequency telemetry and throttle telemetry updates, reducing Stream Deck UI traffic while keeping control changes immediate.
+- **Stream Deck render caching**: Added action render caching to avoid repeated SDK image/title updates when state has not actually changed.
+
+### Fixed
+- **Stream Deck Panic Mute visual state**: Panic Mute now forces the matching Stream Deck key image/title so muted and unmuted states do not appear inverted after Stream Deck profile cache refreshes.
+- **Panic Mute restore path**: Host-side restore now tracks pending Panic Mute restoration separately from the engine mute flag, so explicit Stream Deck unmute commands can restore the previous output/monitor/IPC state on the first command.
+
+### Known Issues / 확인 중
+- **Full Restore runtime refresh gap / 전체 복원 후 런타임 갱신 누락 의심**: After importing a full backup, restored VST/IPC processing may not become active until the audio device is restarted, for example by changing buffer size or reselecting the device. This appears to be a restore-time runtime refresh issue when the saved device setup matches the current device setup. 전체 백업 복원 후 저장된 장치 설정이 현재 설정과 같으면 오디오 장치 재시작이 생략되어 VST/IPC 런타임이 바로 준비되지 않을 수 있습니다. 임시 우회는 버퍼 사이즈 변경 또는 장치 재선택입니다.
+
+---
+
 ## [4.0.3] - 2026-03-22
 
 ### Added

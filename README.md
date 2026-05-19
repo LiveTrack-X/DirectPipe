@@ -4,13 +4,16 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.0.5-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.0.6-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
   <br>
   <a href="https://marketplace.elgato.com/product/directpipe-29f7cbb8-cb90-425d-9dbc-b2158e7ea8b3">
     <img src="https://img.shields.io/badge/Stream%20Deck-Marketplace-8B5CF6?style=for-the-badge&logo=elgato&logoColor=white" alt="Stream Deck Marketplace">
+  </a>
+  <a href="https://deepwiki.com/LiveTrack-X/DirectPipe">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki">
   </a>
   <a href="https://buymeacoffee.com/livetrack">
     <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee">
@@ -21,7 +24,7 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.0.5 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
+- **Latest (최신)**: [v4.0.6 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 크로스 플랫폼 / Cross-platform (Windows stable, macOS beta, Linux experimental)
 
 > **참고**: Windows는 안정(Stable), macOS는 베타, Linux는 실험적입니다. macOS/Linux 빌드는 실기기 테스트가 제한적입니다.
 > **Note**: Windows is stable, macOS is beta, Linux is experimental. macOS/Linux builds have limited real-hardware testing.
@@ -440,6 +443,7 @@ Windows hides tray icons in the overflow area (▲ arrow) by default. To keep th
 **Windows (SmartScreen):**
 1. **"추가 정보"** 텍스트를 클릭하세요
 2. 아래에 나타나는 **"실행"** 버튼을 누르세요
+3. 다운로드한 파일 자체가 차단되어 실행되지 않으면 `DirectPipe.exe`를 우클릭 → **속성** → **일반** 탭 하단의 **보안** → **차단 해제** 체크 → **적용/확인**을 누르세요
 
 **macOS (Gatekeeper):**
 1. **시스템 설정** → **개인 정보 보호 및 보안** → 하단의 **"확인 없이 열기"** 클릭
@@ -454,6 +458,7 @@ This is normal! DirectPipe is open-source and does not have a code signing certi
 **Windows (SmartScreen):**
 1. Click the **"More info"** text
 2. Click the **"Run anyway"** button that appears
+3. If Windows still blocks the downloaded file, right-click `DirectPipe.exe` → **Properties** → **General** tab → **Security** → check **Unblock** → **Apply/OK**
 
 **macOS (Gatekeeper):**
 1. **System Settings** → **Privacy & Security** → click **"Open Anyway"** at the bottom

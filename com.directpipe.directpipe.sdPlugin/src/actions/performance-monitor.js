@@ -22,10 +22,12 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { RenderCache } = require("./render-cache");
 
 class PerformanceMonitorAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.performance-monitor";
     _settingsCache = new Map();
+    _renderCache = new RenderCache();
 
     onWillAppear(ev) {
         this._settingsCache.set(ev.action.id, ev.payload.settings ?? {});
@@ -41,7 +43,10 @@ class PerformanceMonitorAction extends SingletonAction {
         if (state) this._updateDisplay(ev.action, ev.payload.settings ?? {}, state);
     }
 
-    onWillDisappear(ev) { this._settingsCache.delete(ev.action.id); }
+    onWillDisappear(ev) {
+        this._settingsCache.delete(ev.action.id);
+        this._renderCache.delete(ev.action);
+    }
 
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
@@ -61,10 +66,12 @@ class PerformanceMonitorAction extends SingletonAction {
     }
 
     setDisconnectedState() {
-        for (const action of this.actions) action.setTitle("Disconnected");
+        this._renderCache.clear();
+        for (const action of this.actions) this._renderCache.apply(action, { title: "Disconnected" });
     }
     setConnectingState() {
-        for (const action of this.actions) action.setTitle("Connecting...");
+        this._renderCache.clear();
+        for (const action of this.actions) this._renderCache.apply(action, { title: "Connecting..." });
     }
     alertAll() { for (const action of this.actions) action.showAlert(); }
 
@@ -82,15 +89,16 @@ class PerformanceMonitorAction extends SingletonAction {
             title = `${(d.latency_ms ?? 0).toFixed(1)}ms\nCPU ${(d.cpu_percent ?? 0).toFixed(0)}%`;
             if (d.xrun_count > 0) title += `\nXR:${d.xrun_count}`;
         }
-        action.setTitle(title);
-
+        let feedback;
         if (typeof action.setFeedback === "function") {
-            action.setFeedback({
+            feedback = {
                 title: `${d.sample_rate ?? 48000}Hz / ${d.buffer_size ?? 480}`,
                 value: `${(d.latency_ms ?? 0).toFixed(1)}ms  CPU ${(d.cpu_percent ?? 0).toFixed(0)}%`,
                 indicator: { value: Math.min(100, Math.round(d.cpu_percent ?? 0)), enabled: true },
-            });
+            };
         }
+
+        this._renderCache.apply(action, { title, feedback });
     }
 }
 

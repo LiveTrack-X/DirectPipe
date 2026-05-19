@@ -22,9 +22,11 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { RenderCache } = require("./render-cache");
 
 class PresetBarAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.preset-bar";
+    _renderCache = new RenderCache();
 
     onDialRotate(ev) {
         const { dpClient } = require("../plugin");
@@ -70,25 +72,27 @@ class PresetBarAction extends SingletonAction {
             }
 
             if (typeof action.setFeedback === "function") {
-                action.setFeedback({
+                this._renderCache.apply(action, { feedback: {
                     title: "Preset",
                     value: display,
                     indicator: { value: indicatorValue, enabled: true },
-                });
+                } });
             }
         }
     }
 
     setDisconnectedState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
             if (typeof action.setFeedback === "function")
-                action.setFeedback({ title: "Disconnected", value: "", indicator: { enabled: false } });
+                this._renderCache.apply(action, { feedback: { title: "Disconnected", value: "", indicator: { enabled: false } } });
         }
     }
     setConnectingState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
             if (typeof action.setFeedback === "function")
-                action.setFeedback({ title: "Connecting...", value: "", indicator: { enabled: false } });
+                this._renderCache.apply(action, { feedback: { title: "Connecting...", value: "", indicator: { enabled: false } } });
         }
     }
     alertAll() { for (const action of this.actions) action.showAlert(); }

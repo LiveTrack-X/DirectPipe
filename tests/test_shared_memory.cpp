@@ -78,6 +78,22 @@ TEST_F(SharedMemoryTest, ProducerConsumerSharedMemory) {
     consumerShm.close();
 }
 
+TEST_F(SharedMemoryTest, OpenWithoutExplicitSizeUsesMappedSize) {
+    size_t size = calculateSharedMemorySize(kCapacity, kChannels);
+
+    SharedMemory producerShm;
+    ASSERT_TRUE(producerShm.create(kTestShmName, size));
+
+    SharedMemory consumerShm;
+    EXPECT_TRUE(consumerShm.open(kTestShmName, 0));
+    // Windows reports the mapped view at page granularity, so this can be
+    // larger than the requested logical IPC size.
+    EXPECT_GE(consumerShm.getSize(), size);
+
+    producerShm.close();
+    consumerShm.close();
+}
+
 TEST_F(SharedMemoryTest, MoveSemantics) {
     SharedMemory shm1;
     size_t size = calculateSharedMemorySize(kCapacity, kChannels);

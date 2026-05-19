@@ -368,11 +368,13 @@ private:
                                      directpipe::StateBroadcaster* broadcaster = nullptr)
             : app_(app), broadcaster_(broadcaster)
         {
-            auto smallIcon = juce::ImageFileFormat::loadFrom(
+            normalSmallIcon_ = juce::ImageFileFormat::loadFrom(
                 BinaryData::icon_16_png, BinaryData::icon_16_pngSize);
-            auto largeIcon = juce::ImageFileFormat::loadFrom(
+            normalLargeIcon_ = juce::ImageFileFormat::loadFrom(
                 BinaryData::icon_32_png, BinaryData::icon_32_pngSize);
-            setIconImage(smallIcon, largeIcon);
+            mutedSmallIcon_ = createMutedTrayIcon(normalSmallIcon_);
+            mutedLargeIcon_ = createMutedTrayIcon(normalLargeIcon_);
+            setIconImage(normalSmallIcon_, normalLargeIcon_);
             {
                 juce::String initTooltip = "DirectPipe";
                 if (directpipe::ControlMappingStore::isPortableMode())
@@ -381,8 +383,11 @@ private:
                 setIconTooltip(initTooltip);
             }
 
-            if (broadcaster_)
+            if (broadcaster_) {
                 broadcaster_->addListener(this);
+                cachedState_ = broadcaster_->getState();
+                stateDirty_.store(true, std::memory_order_release);
+            }
             startTimerHz(2);
         }
 
@@ -449,10 +454,44 @@ private:
                     tooltip += " | MON-MUTE";
             }
 
+            setMutedIcon(snapshot.muted);
             setIconTooltip(tooltip);
         }
 
     private:
+        static juce::Image createMutedTrayIcon(const juce::Image& source)
+        {
+            if (!source.isValid())
+                return {};
+
+            juce::Image image(juce::Image::ARGB, source.getWidth(), source.getHeight(), true);
+            juce::Graphics g(image);
+            g.drawImageAt(source, 0, 0);
+
+            auto bounds = image.getBounds().toFloat();
+            const float thickness = juce::jmax(2.0f, bounds.getWidth() * 0.16f);
+            const auto x1 = bounds.getX() + bounds.getWidth() * 0.18f;
+            const auto y1 = bounds.getY() + bounds.getHeight() * 0.82f;
+            const auto x2 = bounds.getX() + bounds.getWidth() * 0.82f;
+            const auto y2 = bounds.getY() + bounds.getHeight() * 0.18f;
+
+            g.setColour(juce::Colours::black.withAlpha(0.70f));
+            g.drawLine(x1 + 1.0f, y1 + 1.0f, x2 + 1.0f, y2 + 1.0f, thickness + 2.0f);
+            g.setColour(juce::Colour(0xFFE53935));
+            g.drawLine(x1, y1, x2, y2, thickness);
+            return image;
+        }
+
+        void setMutedIcon(bool muted)
+        {
+            if (trayIconMuted_ == muted)
+                return;
+
+            trayIconMuted_ = muted;
+            setIconImage(muted ? mutedSmallIcon_ : normalSmallIcon_,
+                         muted ? mutedLargeIcon_ : normalLargeIcon_);
+        }
+
         void showTrayMenu()
         {
             juce::PopupMenu menu;
@@ -490,6 +529,11 @@ private:
         directpipe::AppState cachedState_;
         std::mutex stateMutex_;
         std::atomic<bool> stateDirty_{false};
+        juce::Image normalSmallIcon_;
+        juce::Image normalLargeIcon_;
+        juce::Image mutedSmallIcon_;
+        juce::Image mutedLargeIcon_;
+        bool trayIconMuted_ = false;
     };
 
     // Main Window

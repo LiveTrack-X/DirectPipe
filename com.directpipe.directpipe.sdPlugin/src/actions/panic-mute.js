@@ -26,51 +26,79 @@ const { SingletonAction } = require("@elgato/streamdeck");
 
 class PanicMuteAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.panic-mute";
+
     _lastKnownMuted = null;
-    _lastLoggedMuted = null;
-    _pendingTarget = null;
-    _retryTimer = null;
+    _lastRenderedByAction = new Map();
+    _activePressContexts = new Set();
+    _lastKeyDownAt = 0;
+    _keypressDebounceMs = 120;
+
+    // Use explicit set semantics to avoid accidental double-toggles if response
+    // latency is higher than expected.
+    _inFlight = false;
+    _expectedMuted = null;
 
     onKeyDown(ev) {
         const { dpClient, getCurrentState } = require("../plugin");
+        const context = ev?.action?.context || ev?.context || "n/a";
+        const now = Date.now();
+        const timeSinceLast = now - this._lastKeyDownAt;
+
+        if (
+            (this._activePressContexts.has(context) && context !== "n/a") ||
+            timeSinceLast < this._keypressDebounceMs
+        ) {
+            streamDeck.logger.info(
+                `[panic-mute] ignore duplicate keyDown action=${ev?.action?.id || "n/a"} context=${context} since=${timeSinceLast}ms`
+            );
+            return;
+        }
+
+        if (context !== "n/a") {
+            this._activePressContexts.add(context);
+        }
+
+        this._lastKeyDownAt = now;
         const state = getCurrentState();
-
-        let currentMuted = this._lastKnownMuted;
-        let source = "cache";
-        if (currentMuted === null && state?.data) {
-            currentMuted = state.data.muted === true;
-            source = "state";
-        } else if (currentMuted === null) {
-            source = "unknown";
+        const hasCurrentState = !!(state?.data && state.data.muted !== undefined);
+        const currentMuted = hasCurrentState ? state.data.muted === true : this._lastKnownMuted;
+        if (currentMuted === null) {
+            streamDeck.logger.warn(
+                `[panic-mute] ignore keyDown due unknown mute state action=${ev?.action?.id || "n/a"} context=${context}`
+            );
+            return;
         }
+        const source = hasCurrentState ? "state" : (this._lastKnownMuted !== null ? "cache" : "unknown");
+        const targetMuted = !currentMuted;
 
-        if (currentMuted !== null) {
-            const targetMuted = !currentMuted;
-            this._lastKnownMuted = targetMuted;
-            this._sendTarget(dpClient, targetMuted,
-                `keyDown action=${ev?.action?.id || "n/a"} source=${source} current=${currentMuted}`);
-        } else {
-            // Panic mute must be idempotent; never send legacy toggle without known state.
-            streamDeck.logger.warn(`[panic-mute] ignored keyDown until state sync action=${ev?.action?.id || "n/a"}`);
-            ev?.action?.showAlert?.();
-            ev?.action?.setTitle?.("Syncing...");
-        }
+        this._inFlight = true;
+        this._expectedMuted = targetMuted;
+
+        this._sendPanicSet(
+            dpClient,
+            targetMuted,
+            `source=${source} current=${String(currentMuted)} target=${String(targetMuted)}`
+        );
     }
 
     onKeyUp(ev) {
+        const context = ev?.action?.context || ev?.context;
+        if (context) {
+            this._activePressContexts.delete(context);
+        }
         streamDeck.logger.info(`[panic-mute] keyUp action=${ev?.action?.id || "n/a"}`);
     }
 
     onWillAppear(ev) {
         const { getCurrentState } = require("../plugin");
         const state = getCurrentState();
-        if (state) this._updateDisplay(ev.action, state);
+        if (state) this._updateDisplay(ev.action, state, true);
     }
 
     onDidReceiveSettings(ev) {
         const { getCurrentState } = require("../plugin");
         const state = getCurrentState();
-        if (state) this._updateDisplay(ev.action, state);
+        if (state) this._updateDisplay(ev.action, state, true);
     }
 
     onWillDisappear(_ev) {
@@ -79,36 +107,27 @@ class PanicMuteAction extends SingletonAction {
 
     updateAllFromState(state) {
         if (state?.data) {
-            const serverMuted = state.data.muted === true;
+            const latestMuted = state.data.muted === true;
+            const shouldLogStateUpdate = this._lastKnownMuted !== latestMuted;
+            this._lastKnownMuted = latestMuted;
 
-            if (this._pendingTarget === null) {
-                // No in-flight target: trust server state.
-                this._lastKnownMuted = serverMuted;
-            } else if (this._pendingTarget === serverMuted) {
-                // Ack: server reached our target.
-                this._lastKnownMuted = serverMuted;
-                streamDeck.logger.info(`[panic-mute] ack target=${this._pendingTarget}`);
-                this._pendingTarget = null;
-                this._clearRetry();
-            } else if (this._lastKnownMuted === null) {
-                // Pending exists but no optimistic cache yet.
-                this._lastKnownMuted = serverMuted;
-            }
-
-            const effectiveMuted =
-                (this._pendingTarget !== null && this._lastKnownMuted !== null)
-                    ? this._lastKnownMuted
-                    : serverMuted;
-
-            if (this._lastLoggedMuted !== effectiveMuted) {
+            if (
+                this._inFlight &&
+                this._expectedMuted !== null &&
+                latestMuted === this._expectedMuted
+            ) {
                 streamDeck.logger.info(
-                    `[panic-mute] stateUpdate muted=${effectiveMuted}`
+                    `[panic-mute] ack target=${this._expectedMuted}`
                 );
-                this._lastLoggedMuted = effectiveMuted;
+                this._inFlight = false;
+                this._expectedMuted = null;
             }
 
             for (const action of this.actions) {
-                this._updateDisplay(action, effectiveMuted);
+                this._updateDisplay(action, state);
+            }
+            if (shouldLogStateUpdate) {
+                streamDeck.logger.info(`[panic-mute] stateUpdate muted=${latestMuted}`);
             }
             return;
         }
@@ -128,19 +147,18 @@ class PanicMuteAction extends SingletonAction {
         this._resetTransientState();
         streamDeck.logger.info("[panic-mute] disconnected");
         for (const action of this.actions) {
-            action.setTitle("Disconnected");
-            if (typeof action.setState === "function") action.setState(0);
+            this._applyVisual(action, false, "Disconnected");
         }
     }
 
     setConnectingState() {
         this._resetTransientState();
         for (const action of this.actions) {
-            action.setTitle("Connecting...");
+            this._applyVisual(action, false, "Connecting...");
         }
     }
 
-    _updateDisplay(action, stateOrMuted) {
+    _updateDisplay(action, stateOrMuted, force = false) {
         let isMuted;
         if (typeof stateOrMuted === "boolean") {
             isMuted = stateOrMuted;
@@ -148,52 +166,39 @@ class PanicMuteAction extends SingletonAction {
             if (!stateOrMuted?.data) return;
             isMuted = stateOrMuted.data.muted === true;
         }
+
+        const actionKey = action?.id || "singleton";
+        if (!force && this._lastRenderedByAction.get(actionKey) === isMuted) return;
+
+        this._lastRenderedByAction.set(actionKey, isMuted);
+        this._applyVisual(action, isMuted, isMuted ? "MUTED" : "MUTE");
+    }
+
+    _applyVisual(action, isMuted, title) {
         if (typeof action.setState === "function") {
-            action.setState(isMuted ? 1 : 0);
+            // Existing Stream Deck profiles can retain the panic image slots inverted.
+            action.setState(isMuted ? 0 : 1);
         }
-        action.setTitle(isMuted ? "MUTED" : "MUTE");
+        if (typeof action.setImage === "function") {
+            action.setImage(isMuted ? "images/panic-on.png" : "images/panic-off.png");
+        }
+        action.setTitle(title);
     }
 
-    _sendTarget(dpClient, targetMuted, context) {
+    _sendPanicSet(dpClient, targetMuted, context) {
         const sent = dpClient.sendAction("panic_mute", { muted: targetMuted });
-        this._pendingTarget = targetMuted;
-        this._clearRetry();
-        this._retryTimer = setTimeout(() => {
-            if (this._pendingTarget !== targetMuted) return;
-            const retrySent = dpClient.sendAction("panic_mute", { muted: targetMuted });
-            streamDeck.logger.info(
-                `[panic-mute] retry ${context} target=${targetMuted} sent=${retrySent ? "immediate" : "queued"}`
-            );
-            this._retryTimer = setTimeout(() => {
-                if (this._pendingTarget !== targetMuted) return;
-                streamDeck.logger.warn(`[panic-mute] target timeout ${context} target=${targetMuted}; resyncing`);
-                this._pendingTarget = null;
-                this._lastKnownMuted = null;
-                this._lastLoggedMuted = null;
-                for (const action of this.actions) {
-                    action.setTitle("Syncing...");
-                }
-            }, 1200);
-        }, 180);
         streamDeck.logger.info(
-            `[panic-mute] ${context} target=${targetMuted} sent=${sent ? "immediate" : "queued"}`
+            `[panic-mute] panic_mute set=${targetMuted} ${context} sent=${sent ? "immediate" : "queued"}`
         );
-    }
-
-    _clearRetry() {
-        if (this._retryTimer) {
-            clearTimeout(this._retryTimer);
-            this._retryTimer = null;
-        }
     }
 
     _resetTransientState() {
         this._lastKnownMuted = null;
-        this._lastLoggedMuted = null;
-        this._pendingTarget = null;
-        this._clearRetry();
+        this._lastRenderedByAction.clear();
+        this._activePressContexts.clear();
+        this._inFlight = false;
+        this._expectedMuted = null;
     }
-
 }
 
 PanicMuteAction.UUID = "com.directpipe.directpipe.panic-mute";

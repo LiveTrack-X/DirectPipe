@@ -3,6 +3,21 @@
 > 이 문서는 **사용자 대상** 릴리스 요약입니다. 개발자 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md) 참조.
 > This is a **user-facing** release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## v4.0.6
+
+### Highlights / 주요 변경
+- **Stream Deck Panic Mute reliability**: Panic Mute now uses explicit set-mode commands and restores the previous output/monitor/IPC state on the first unmute command.
+- **Stream Deck responsiveness**: DirectPipe now separates immediate control-state broadcasts from high-frequency telemetry, reducing Stream Deck update traffic while keeping button actions responsive.
+- **Panic Mute visibility**: The tray/menu bar icon now shows a red slash overlay while Panic Mute is active.
+- **Stream Deck visual consistency**: Panic Mute forces the correct key image/title so Stream Deck profile cache refreshes do not invert muted/unmuted visuals.
+- **README refresh**: Updated the latest version link to v4.0.6, added the DeepWiki badge, and documented the Windows downloaded-file unblock step.
+
+### Upgrade Notes / 업그레이드 안내
+- This release does not introduce a breaking control API or state schema change.
+- If Windows blocks a downloaded executable, right-click `DirectPipe.exe` -> **Properties** -> **General** -> **Security** -> **Unblock** -> **Apply/OK**.
+
+---
+
 ## v4.0.3
 
 ### Highlights / 주요 변경

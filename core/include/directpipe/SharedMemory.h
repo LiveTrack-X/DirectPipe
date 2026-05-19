@@ -64,7 +64,7 @@ public:
     /**
      * @brief Open an existing shared memory region (consumer side).
      * @param name The shared memory name.
-     * @param size Expected size in bytes.
+     * @param size Expected size in bytes. Use 0 to map the full existing region.
      * @return true if open succeeded.
      */
     bool open(const std::string& name, size_t size);

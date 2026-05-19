@@ -23,11 +23,13 @@
 
 const { SingletonAction } = require("@elgato/streamdeck");
 const { createRecordingIcon } = require("../utils/icon-renderer");
+const { RenderCache } = require("./render-cache");
 
 class RecordingToggleAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.recording-toggle";
     _blinkTimer = null;
     _blinkOn = true;
+    _renderCache = new RenderCache();
 
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
@@ -59,15 +61,16 @@ class RecordingToggleAction extends SingletonAction {
     }
 
     setDisconnectedState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Disconnected");
-            if (typeof action.setState === "function") action.setState(0);
+            this._renderCache.apply(action, { title: "Disconnected", state: 0 });
         }
     }
 
     setConnectingState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Connecting...");
+            this._renderCache.apply(action, { title: "Connecting..." });
         }
     }
 
@@ -75,15 +78,11 @@ class RecordingToggleAction extends SingletonAction {
         if (!state?.data) return;
         const recording = state.data.recording === true;
 
-        if (typeof action.setState === "function") {
-            action.setState(recording ? 1 : 0);
-        }
-
         if (recording) {
             const secs = Math.floor(state.data.recording_seconds || 0);
             const mm = String(Math.floor(secs / 60)).padStart(2, "0");
             const ss = String(secs % 60).padStart(2, "0");
-            action.setTitle(`REC ${mm}:${ss}`);
+            const title = `REC ${mm}:${ss}`;
 
             // Start blink timer if not running
             if (!this._blinkTimer) {
@@ -99,13 +98,13 @@ class RecordingToggleAction extends SingletonAction {
                     }
                     for (const a of this.actions) {
                         const icon = createRecordingIcon(s.data.recording_seconds || 0, this._blinkOn);
-                        a.setImage(icon);
+                        this._renderCache.apply(a, { image: icon });
                     }
                 }, 1000);
             }
 
             const icon = createRecordingIcon(secs, this._blinkOn);
-            action.setImage(icon);
+            this._renderCache.apply(action, { state: 1, title, image: icon });
         } else {
             // Stop blink timer
             if (this._blinkTimer) {
@@ -113,8 +112,7 @@ class RecordingToggleAction extends SingletonAction {
                 this._blinkTimer = null;
             }
             // Clear custom image (revert to manifest default)
-            action.setImage(undefined);
-            action.setTitle("REC");
+            this._renderCache.apply(action, { state: 0, title: "REC", image: undefined });
         }
     }
 }

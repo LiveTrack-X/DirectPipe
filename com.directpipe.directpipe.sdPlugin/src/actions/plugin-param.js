@@ -22,6 +22,7 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { RenderCache } = require("./render-cache");
 
 const DIAL_SEND_THROTTLE_MS = 50;
 const LOCAL_OVERRIDE_MS = 300;
@@ -33,6 +34,7 @@ class PluginParamAction extends SingletonAction {
     _lastValues = new Map();
     _dialSendTimer = null;
     _pendingValue = null;
+    _renderCache = new RenderCache();
 
     onDialRotate(ev) {
         const { dpClient } = require("../plugin");
@@ -52,11 +54,11 @@ class PluginParamAction extends SingletonAction {
         if (typeof ev.action.setFeedback === "function") {
             const pluginName = settings.pluginName || `Plugin ${pluginIndex + 1}`;
             const paramName = settings.paramName || `Param ${paramIndex}`;
-            ev.action.setFeedback({
+            this._renderCache.apply(ev.action, { feedback: {
                 title: pluginName,
                 value: `${paramName}: ${Math.round(newValue * 100)}%`,
                 indicator: { value: Math.round(newValue * 100), enabled: true },
-            });
+            } });
         }
 
         this._pendingValue = { pluginIndex, paramIndex, value: newValue };
@@ -91,7 +93,10 @@ class PluginParamAction extends SingletonAction {
         this._updateDisplay(ev.action, ev.payload.settings ?? {});
     }
 
-    onWillDisappear(ev) { this._settingsCache.delete(ev.action.id); }
+    onWillDisappear(ev) {
+        this._settingsCache.delete(ev.action.id);
+        this._renderCache.delete(ev.action);
+    }
 
     updateAllFromState(_state) {
         for (const action of this.actions) {
@@ -101,15 +106,17 @@ class PluginParamAction extends SingletonAction {
     }
 
     setDisconnectedState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
             if (typeof action.setFeedback === "function")
-                action.setFeedback({ title: "Disconnected", value: "", indicator: { enabled: false } });
+                this._renderCache.apply(action, { feedback: { title: "Disconnected", value: "", indicator: { enabled: false } } });
         }
     }
     setConnectingState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
             if (typeof action.setFeedback === "function")
-                action.setFeedback({ title: "Connecting...", value: "", indicator: { enabled: false } });
+                this._renderCache.apply(action, { feedback: { title: "Connecting...", value: "", indicator: { enabled: false } } });
         }
     }
     alertAll() { for (const action of this.actions) action.showAlert(); }
@@ -118,11 +125,11 @@ class PluginParamAction extends SingletonAction {
         const pluginName = settings.pluginName || `Plugin ${(Number(settings.pluginIndex) || 0) + 1}`;
         const paramName = settings.paramName || "Select param";
         if (typeof action.setFeedback === "function") {
-            action.setFeedback({
+            this._renderCache.apply(action, { feedback: {
                 title: pluginName,
                 value: paramName,
                 indicator: { value: 50, enabled: true },
-            });
+            } });
         }
     }
 }

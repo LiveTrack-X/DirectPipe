@@ -55,6 +55,7 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     auto result = deviceManager_->initialiseWithDefaultDevices(0, 2);
     if (result.isNotEmpty()) {
         Log::error("MONITOR", "Init error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
+        monitorLost_.store(true, std::memory_order_relaxed);
         status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
         return false;
     }
@@ -71,6 +72,7 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     result = deviceManager_->setAudioDeviceSetup(setup, true);
     if (result.isNotEmpty()) {
         Log::error("MONITOR", "Setup error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
+        monitorLost_.store(true, std::memory_order_relaxed);
         status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
         return false;
     }
@@ -113,7 +115,7 @@ bool MonitorOutput::setBufferSize(int bufferSize)
     return initialize(deviceName_, sampleRate_, bufferSize);
 }
 
-// ─── RT-safe: called from main audio callback thread ─────────────────────────
+// ??? RT-safe: called from main audio callback thread ?????????????????????????
 
 int MonitorOutput::writeAudio(const float* const* channelData,
                                   int numChannels, int numFrames)
@@ -128,7 +130,7 @@ int MonitorOutput::writeAudio(const float* const* channelData,
     return written;
 }
 
-// ─── Monitor device WASAPI callback (consumer) ────────────────────────────────
+// ??? Monitor device WASAPI callback (consumer) ????????????????????????????????
 
 void MonitorOutput::audioDeviceIOCallbackWithContext(
     const float* const* /*inputChannelData*/,
@@ -158,7 +160,7 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
         // Track underruns for drift diagnostics
         underrunCount_.fetch_add(1, std::memory_order_relaxed);
     }
-    // TODO: Add full drift compensation here — when ring buffer fill level
+    // TODO: Add full drift compensation here ??when ring buffer fill level
     // consistently drifts high (monitor clock faster than main), skip excess frames.
     // When it drifts low (monitor clock slower), throttle reads like the Receiver does.
     // For now, high-fill is handled by writeAudio's droppedFrames_ overflow tracking,
@@ -187,15 +189,17 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         // Set status BEFORE reset so the consumer callback sees non-Active
         // and skips ring buffer access (prevents data race on reset)
         status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_release);
+        monitorLost_.store(true, std::memory_order_relaxed);
         ringBuffer_.reset();
         return;
     }
 
     if (isFallback) {
-        // Don't use the fallback device — just shut down and wait for reconnection.
+        // Don't use the fallback device ??just shut down and wait for reconnection.
         status_.store(VirtualCableStatus::Error, std::memory_order_release);
+        monitorLost_.store(true, std::memory_order_relaxed);
         Log::warn("MONITOR", "Fallback to " + device->getName()
-                   + " rejected (desired: " + deviceName_ + ") — shutting down, waiting for reconnection");
+                   + " rejected (desired: " + deviceName_ + ") ??shutting down, waiting for reconnection");
         auto aliveFlag = alive_;
         juce::MessageManager::callAsync([this, aliveFlag] {
             if (!aliveFlag->load()) return;
@@ -226,7 +230,7 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 void MonitorOutput::audioDeviceStopped()
 {
     // shutdown() removes callback BEFORE closeAudioDevice(), so this only
-    // fires on external events (device unplug, driver error) — not our own teardown.
+    // fires on external events (device unplug, driver error) ??not our own teardown.
     monitorLost_.store(true, std::memory_order_relaxed);
     status_.store(VirtualCableStatus::Error, std::memory_order_release);
     Log::warn("MONITOR", "Device stopped (lost): " + deviceName_);
@@ -239,7 +243,7 @@ void MonitorOutput::audioDeviceError(const juce::String& errorMessage)
     status_.store(VirtualCableStatus::Error, std::memory_order_release);
 }
 
-// ─── Device enumeration ───────────────────────────────────────────────────────
+// ??? Device enumeration ???????????????????????????????????????????????????????
 
 juce::String MonitorOutput::getActualDeviceName() const
 {

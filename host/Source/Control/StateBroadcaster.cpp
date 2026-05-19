@@ -34,26 +34,22 @@ AppState StateBroadcaster::getState() const
     return state_;
 }
 
-// Fast hash of the state fields that change frequently (volumes, levels, CPU, recording)
-// to skip full JSON serialization + broadcast when nothing changed.
+// Fast hash of externally-visible control state. These changes should reach
+// Stream Deck immediately, so volatile telemetry is intentionally excluded.
 //
 // MAINTENANCE WARNING: When adding a new field to AppState, you MUST also
-// add it to this hash function. If omitted, changes to that field will NEVER
-// trigger a WebSocket broadcast or UI update — a silent, hard-to-diagnose bug.
-static uint32_t quickStateHash(const AppState& s)
+// add it either to this control hash or to quickTelemetryHash(). If omitted,
+// changes to that field will NEVER trigger a WebSocket broadcast or UI update.
+static uint32_t quickControlHash(const AppState& s)
 {
     uint32_t h = 0;
     auto hashFloat = [&](float v) {
-        // Quantize to reduce jitter: 0.05 precision for levels/CPU
+        // Quantize stable control floats enough to suppress tiny rounding noise.
         auto q = static_cast<int32_t>(std::lround(v * 20.0f));
         h = h * 31u + static_cast<uint32_t>(q);
     };
     hashFloat(s.inputGain);
     hashFloat(s.monitorVolume);
-    hashFloat(s.latencyMs);
-    hashFloat(s.monitorLatencyMs);
-    hashFloat(s.inputLevelDb);
-    hashFloat(s.cpuPercent);
     h = h * 31u + static_cast<uint32_t>(s.muted);
     h = h * 31u + static_cast<uint32_t>(s.outputMuted);
     h = h * 31u + static_cast<uint32_t>(s.monitorEnabled);
@@ -61,7 +57,6 @@ static uint32_t quickStateHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.activeSlot);
     h = h * 31u + static_cast<uint32_t>(s.autoSlotActive);
     h = h * 31u + static_cast<uint32_t>(s.recording);
-    h = h * 31u + static_cast<uint32_t>(s.recordingSeconds * 2.0);  // 0.5s precision
     h = h * 31u + static_cast<uint32_t>(s.inputMuted);
     h = h * 31u + static_cast<uint32_t>(s.ipcEnabled);
     h = h * 31u + static_cast<uint32_t>(s.deviceLost);
@@ -74,7 +69,6 @@ static uint32_t quickStateHash(const AppState& s)
     hashFloat(s.limiterCeilingdB);
     h = h * 31u + static_cast<uint32_t>(s.safetyHeadroomEnabled);
     hashFloat(s.safetyHeadroomdB);
-    hashFloat(s.limiterGainReduction);
     h = h * 31u + static_cast<uint32_t>(s.limiterActive);
     h = h * 31u + static_cast<uint32_t>(s.channelMode);
     h = h * 31u + static_cast<uint32_t>(s.plugins.size());
@@ -94,15 +88,47 @@ static uint32_t quickStateHash(const AppState& s)
     return h;
 }
 
+static uint32_t quickTelemetryHash(const AppState& s)
+{
+    uint32_t h = 0;
+    auto hashBucket = [&](float v, float bucketSize) {
+        auto q = static_cast<int32_t>(std::lround(v / bucketSize));
+        h = h * 31u + static_cast<uint32_t>(q);
+    };
+    hashBucket(s.latencyMs, 0.1f);
+    hashBucket(s.monitorLatencyMs, 0.1f);
+    hashBucket(s.inputLevelDb, 1.0f);
+    hashBucket(s.cpuPercent, 1.0f);
+    hashBucket(s.limiterGainReduction, 0.5f);
+    h = h * 31u + static_cast<uint32_t>(s.recordingSeconds);
+    return h;
+}
+
 void StateBroadcaster::updateState(std::function<void(AppState&)> updater)
 {
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         updater(state_);
-        // Skip broadcast if state hasn't meaningfully changed
-        uint32_t hash = quickStateHash(state_);
-        if (hash == lastBroadcastHash_) return;
-        lastBroadcastHash_ = hash;
+        // Control changes are broadcast immediately. High-frequency telemetry
+        // (CPU, levels, limiter gain reduction) is capped so Stream Deck does
+        // not receive a full SDK update burst on every 30Hz UI timer tick.
+        static constexpr uint32_t kTelemetryBroadcastIntervalMs = 250;
+        const auto controlHash = quickControlHash(state_);
+        const auto telemetryHash = quickTelemetryHash(state_);
+        const auto nowMs = juce::Time::getMillisecondCounter();
+
+        const bool isInitialBroadcast = !hasBroadcastState_;
+        const bool controlChanged = controlHash != lastControlBroadcastHash_;
+        const bool telemetryChanged = telemetryHash != lastTelemetryBroadcastHash_;
+        const bool telemetryDue = static_cast<uint32_t>(nowMs - lastTelemetryBroadcastMs_) >= kTelemetryBroadcastIntervalMs;
+
+        if (!isInitialBroadcast && !controlChanged && (!telemetryChanged || !telemetryDue))
+            return;
+
+        hasBroadcastState_ = true;
+        lastControlBroadcastHash_ = controlHash;
+        lastTelemetryBroadcastHash_ = telemetryHash;
+        lastTelemetryBroadcastMs_ = nowMs;
     }
     notifyListeners();
 }

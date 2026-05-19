@@ -103,7 +103,27 @@ bool SharedMemory::open(const std::string& name, size_t size)
         return false;
     }
 
-    size_ = size;
+    if (size == 0) {
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(data_, &mbi, sizeof(mbi)) != sizeof(mbi)) {
+            UnmapViewOfFile(data_);
+            data_ = nullptr;
+            CloseHandle(mapping_);
+            mapping_ = nullptr;
+            return false;
+        }
+        size_ = mbi.RegionSize;
+        if (size_ == 0) {
+            UnmapViewOfFile(data_);
+            data_ = nullptr;
+            CloseHandle(mapping_);
+            mapping_ = nullptr;
+            return false;
+        }
+    } else {
+        size_ = size;
+    }
+
     return true;
 }
 
@@ -278,7 +298,23 @@ bool SharedMemory::open(const ::std::string& name, size_t size)
     fd_ = shm_open(name_.c_str(), O_RDWR, 0600);
     if (fd_ < 0) return false;
 
-    data_ = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
+    size_t mapSize = size;
+    if (mapSize == 0) {
+        struct ::stat st;
+        if (fstat(fd_, &st) < 0) {
+            ::close(fd_);
+            fd_ = -1;
+            return false;
+        }
+        mapSize = static_cast<size_t>(st.st_size);
+        if (mapSize == 0) {
+            ::close(fd_);
+            fd_ = -1;
+            return false;
+        }
+    }
+
+    data_ = mmap(nullptr, mapSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (data_ == MAP_FAILED) {
         data_ = nullptr;
         ::close(fd_);
@@ -286,7 +322,7 @@ bool SharedMemory::open(const ::std::string& name, size_t size)
         return false;
     }
 
-    size_ = size;
+    size_ = mapSize;
     isCreator_ = false;  // Consumer doesn't own the shared memory
     return true;
 }

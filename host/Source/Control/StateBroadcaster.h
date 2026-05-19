@@ -151,7 +151,10 @@ private:
     // [callAsync lifetime guard — shared_ptr captured by value in lambda, checked before accessing this]
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
-    uint32_t lastBroadcastHash_ = 0;                      // [Protected by stateMutex_] Throttle: skip broadcast when state is unchanged
+    bool hasBroadcastState_ = false;                      // [Protected by stateMutex_] Ensures the initial state is always broadcast
+    uint32_t lastControlBroadcastHash_ = 0;               // [Protected by stateMutex_] Non-telemetry state changes broadcast immediately
+    uint32_t lastTelemetryBroadcastHash_ = 0;             // [Protected by stateMutex_] Volatile meters are rate-limited
+    uint32_t lastTelemetryBroadcastMs_ = 0;               // [Protected by stateMutex_] juce::Time::getMillisecondCounter()
 };
 
 } // namespace directpipe

@@ -22,9 +22,11 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { RenderCache } = require("./render-cache");
 
 class MonitorToggleAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.monitor-toggle";
+    _renderCache = new RenderCache();
 
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
@@ -56,25 +58,26 @@ class MonitorToggleAction extends SingletonAction {
     }
 
     setDisconnectedState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Disconnected");
-            if (typeof action.setState === "function") action.setState(0);
+            this._renderCache.apply(action, { title: "Disconnected", state: 0 });
         }
     }
 
     setConnectingState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Connecting...");
+            this._renderCache.apply(action, { title: "Connecting..." });
         }
     }
 
     _updateDisplay(action, state) {
         if (!state?.data) return;
         const enabled = state.data.monitor_enabled === true;
-        if (typeof action.setState === "function") {
-            action.setState(enabled ? 0 : 1);
-        }
-        action.setTitle(enabled ? "MON ON" : "MON OFF");
+        this._renderCache.apply(action, {
+            state: enabled ? 0 : 1,
+            title: enabled ? "MON ON" : "MON OFF",
+        });
     }
 }
 

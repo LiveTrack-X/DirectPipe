@@ -22,6 +22,7 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { RenderCache } = require("./render-cache");
 
 const TARGET_NAMES = { input: "Input", output: "Output", monitor: "Monitor" };
 
@@ -44,6 +45,7 @@ class VolumeControlAction extends SingletonAction {
     _localOverrideUntil = new Map();
     /** @type {Map<string, object>} action.id -> cached settings (avoid async getSettings) */
     _settingsCache = new Map();
+    _renderCache = new RenderCache();
     
     _resolveSettings(ev) {
         const payloadSettings = ev?.payload?.settings;
@@ -129,10 +131,10 @@ class VolumeControlAction extends SingletonAction {
             const isInput = target === "input";
             const max = TARGET_MAX[target] || 1.0;
             const pct = Math.round((newValue / max) * 100);
-            action.setFeedback({
+            this._renderCache.apply(action, { feedback: {
                 value: isInput ? `x${newValue.toFixed(2)}` : `${pct}%`,
                 indicator: { value: pct },
-            });
+            } });
         } else {
             this._updateDisplay(action, settings, state);
         }
@@ -154,6 +156,7 @@ class VolumeControlAction extends SingletonAction {
 
     onWillDisappear(ev) {
         this._settingsCache.delete(ev.action.id);
+        this._renderCache.delete(ev.action);
     }
 
     /** Returns the local override map for plugin.js to preserve values during state replacement */
@@ -184,15 +187,16 @@ class VolumeControlAction extends SingletonAction {
     }
 
     setDisconnectedState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Disconnected");
-            if (typeof action.setState === "function") action.setState(0);
+            this._renderCache.apply(action, { title: "Disconnected", state: 0 });
         }
     }
 
     setConnectingState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Connecting...");
+            this._renderCache.apply(action, { title: "Connecting..." });
         }
     }
 
@@ -229,29 +233,31 @@ class VolumeControlAction extends SingletonAction {
             title = displayName;
         }
 
-        if (typeof action.setState === "function") {
-            action.setState(isMuted ? 1 : 0);
-        }
-        action.setTitle(title);
-
         // Update dial LCD display (Encoder only)
+        let feedback;
         if (typeof action.setFeedback === "function") {
             const max = TARGET_MAX[target] || 1.0;
             const pct = volume !== undefined ? Math.round((volume / max) * 100) : 0;
             if (isMuted) {
-                action.setFeedback({
+                feedback = {
                     title: displayName,
                     value: "MUTED",
                     indicator: { value: 0, enabled: false },
-                });
+                };
             } else {
-                action.setFeedback({
+                feedback = {
                     title: displayName,
                     value: isInput ? `x${(volume ?? 1).toFixed(2)}` : `${pct}%`,
                     indicator: { value: pct, enabled: true },
-                });
+                };
             }
         }
+
+        this._renderCache.apply(action, {
+            state: isMuted ? 1 : 0,
+            title,
+            feedback,
+        });
     }
 }
 

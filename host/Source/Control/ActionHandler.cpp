@@ -58,6 +58,7 @@ void ActionHandler::doPanicMute(bool mute)
         preMuteOutputMuted_ = engine_.isOutputMuted();
         preMuteVstEnabled_ = engine_.isIpcEnabled();
         preMuteRecordingActive_ = engine_.getRecorder().isRecording();
+        panicRestorePending_ = true;
         router.setEnabled(OutputRouter::Output::Monitor, false);
         engine_.setMonitorEnabled(false);
         if (preMuteVstEnabled_) engine_.setIpcEnabled(false);
@@ -79,6 +80,7 @@ void ActionHandler::doPanicMute(bool mute)
         }
         // Restore saved routes before audio is allowed to resume.
         engine_.setMuted(false);
+        panicRestorePending_ = false;
     }
     Log::info("ACTION", "Panic mute " + juce::String(mute ? "engaged" : "disengaged")
         + " — pre-mute state: monitor=" + juce::String(preMuteMonitorEnabled_ ? "on" : "off")
@@ -96,6 +98,8 @@ void ActionHandler::restorePanicMuteFromSettings()
     preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
     preMuteOutputMuted_ = engine_.isOutputMuted();
     preMuteVstEnabled_ = engine_.isIpcEnabled();
+    preMuteRecordingActive_ = false;
+    panicRestorePending_ = true;
     router.setEnabled(OutputRouter::Output::Monitor, false);
     engine_.setMonitorEnabled(false);
     if (preMuteVstEnabled_) engine_.setIpcEnabled(false);
@@ -134,7 +138,7 @@ void ActionHandler::toggleIpcMute()
 
 void ActionHandler::togglePanicMute()
 {
-    doPanicMute(!engine_.isMuted());
+    doPanicMute(!(engine_.isMuted() || panicRestorePending_));
 }
 
 // ─── Action Dispatch ─────────────────────────────────────────────────────────
@@ -197,10 +201,10 @@ void ActionHandler::handle(const ActionEvent& event)
         case Action::PanicMute:
             if (event.stringParam == "set") {
                 const bool targetMuted = (event.intParam != 0);
-                if (targetMuted != engine_.isMuted())
+                if (targetMuted != engine_.isMuted() || (!targetMuted && panicRestorePending_))
                     doPanicMute(targetMuted);
             } else {
-                doPanicMute(!engine_.isMuted());
+                doPanicMute(!(engine_.isMuted() || panicRestorePending_));
             }
             break;
 

@@ -48,13 +48,13 @@ public:
     /**
      * @brief Initialize shared memory and event objects.
      * @param sampleRate Audio sample rate.
-     * @param channels Number of channels (default 2).
+     * @param channels Number of channels.
      * @param bufferFrames Ring buffer capacity in frames.
      * @return true if initialization succeeded.
      */
     [[nodiscard]] bool initialize(uint32_t sampleRate,
-                                  uint32_t channels = DEFAULT_CHANNELS,
-                                  uint32_t bufferFrames = DEFAULT_BUFFER_FRAMES);
+                                  uint32_t channels,
+                                  uint32_t bufferFrames);
 
     /**
      * @brief Shut down and release shared memory resources.

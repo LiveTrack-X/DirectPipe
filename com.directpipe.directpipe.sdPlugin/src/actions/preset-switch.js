@@ -22,6 +22,7 @@
  */
 
 const { SingletonAction } = require("@elgato/streamdeck");
+const { RenderCache } = require("./render-cache");
 
 const SLOT_LABELS = ["A", "B", "C", "D", "E", "Auto"];
 
@@ -29,6 +30,7 @@ class PresetSwitchAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.preset-switch";
     /** @type {Map<string, object>} action.id -> cached settings */
     _settingsCache = new Map();
+    _renderCache = new RenderCache();
 
     onKeyDown(ev) {
         const { dpClient } = require("../plugin");
@@ -59,6 +61,7 @@ class PresetSwitchAction extends SingletonAction {
 
     onWillDisappear(ev) {
         this._settingsCache.delete(ev.action.id);
+        this._renderCache.delete(ev.action);
     }
 
     updateAllFromState(state) {
@@ -75,15 +78,16 @@ class PresetSwitchAction extends SingletonAction {
     }
 
     setDisconnectedState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Disconnected");
-            if (typeof action.setState === "function") action.setState(0);
+            this._renderCache.apply(action, { title: "Disconnected", state: 0 });
         }
     }
 
     setConnectingState() {
+        this._renderCache.clear();
         for (const action of this.actions) {
-            action.setTitle("Connecting...");
+            this._renderCache.apply(action, { title: "Connecting..." });
         }
     }
 
@@ -115,7 +119,7 @@ class PresetSwitchAction extends SingletonAction {
             } else {
                 title = isActive ? `▶ Slot ${slotLabel}` : `Slot ${slotLabel}`;
             }
-            action.setTitle(title);
+            this._renderCache.apply(action, { title });
         } else {
             // "cycle" mode — show the currently active slot
             let label;
@@ -136,9 +140,9 @@ class PresetSwitchAction extends SingletonAction {
             }
 
             if (activeName) {
-                action.setTitle(`${label}|${activeName}`);
+                this._renderCache.apply(action, { title: `${label}|${activeName}` });
             } else {
-                action.setTitle(`Slot ${label}`);
+                this._renderCache.apply(action, { title: `Slot ${label}` });
             }
         }
     }

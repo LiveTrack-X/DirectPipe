@@ -28,6 +28,7 @@
 
 #include "Protocol.h"
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -66,9 +67,10 @@ public:
      * should warn the user — SPSC buffer cannot safely support two readers).
      *
      * @param memory Pointer to the shared memory region.
+     * @param mappedSizeBytes Mapped size in bytes (0 to skip size checks).
      * @return true if the buffer is valid and version matches.
      */
-    bool attachAsConsumer(void* memory);
+    bool attachAsConsumer(void* memory, size_t mappedSizeBytes = 0);
 
     /**
      * @brief Returns true if another consumer was already active when we attached.

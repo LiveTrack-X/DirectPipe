@@ -54,6 +54,40 @@ const presetBarAction = new PresetBarAction();
 
 const allActions = [bypassAction, panicAction, volumeAction, presetAction, monitorAction, recordingAction, ipcAction, perfAction, pluginParamAction, presetBarAction];
 
+function formatError(err) {
+    if (!err) return "unknown";
+    if (err instanceof Error) {
+        return `${err.name}: ${err.message}\n${err.stack}`;
+    }
+    try {
+        return JSON.stringify(err);
+    } catch {
+        return String(err);
+    }
+}
+
+process.on("uncaughtException", (error) => {
+    streamDeck.logger.error(`Process uncaughtException: ${formatError(error)}`);
+});
+
+process.on("unhandledRejection", (reason) => {
+    streamDeck.logger.error(`Process unhandledRejection: ${formatError(reason)}`);
+});
+
+process.on("exit", (code) => {
+    streamDeck.logger.error(`Process exit code: ${code}`);
+});
+
+process.on("SIGINT", () => {
+    streamDeck.logger.info("Process SIGINT");
+    process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+    streamDeck.logger.info("Process SIGTERM");
+    process.exit(0);
+});
+
 // ─── DirectPipe state broadcasting ──────────────────────────────────
 function broadcastState(state) {
     if (!state) return;
@@ -104,6 +138,11 @@ dpClient.on("disconnected", () => {
             action.setDisconnectedState();
         }
     }
+});
+
+dpClient.on("error", (error) => {
+    const message = error?.message || String(error);
+    streamDeck.logger.error(`DirectPipe client error: ${message}`);
 });
 
 dpClient.on("connecting", () => {

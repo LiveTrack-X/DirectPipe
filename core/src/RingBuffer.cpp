@@ -25,6 +25,7 @@
 #include "directpipe/Constants.h"
 #include <cassert>
 #include <algorithm>
+#include <limits>
 
 namespace directpipe {
 
@@ -56,7 +57,7 @@ void RingBuffer::initAsProducer(void* memory, uint32_t capacity_frames,
     std::memset(data_, 0, static_cast<size_t>(capacity_frames) * channels * sizeof(float));
 }
 
-bool RingBuffer::attachAsConsumer(void* memory)
+bool RingBuffer::attachAsConsumer(void* memory, size_t mappedSizeBytes)
 {
     if (!memory) return false;
 
@@ -86,6 +87,20 @@ bool RingBuffer::attachAsConsumer(void* memory)
         return false;
     }
 
+    if (mappedSizeBytes != 0) {
+        if (std::numeric_limits<size_t>::max() / sizeof(float) < header_->channels ||
+            std::numeric_limits<size_t>::max() / (header_->channels * sizeof(float)) < header_->buffer_frames) {
+            header_ = nullptr;
+            return false;
+        }
+
+        const size_t requiredBytes = calculateSharedMemorySize(header_->buffer_frames, header_->channels);
+        if (mappedSizeBytes < requiredBytes) {
+            header_ = nullptr;
+            return false;
+        }
+    }
+
     data_ = reinterpret_cast<float*>(static_cast<uint8_t*>(memory) + sizeof(DirectPipeHeader));
     mask_ = header_->buffer_frames - 1;
 
@@ -94,10 +109,10 @@ bool RingBuffer::attachAsConsumer(void* memory)
     if (header_->consumer_active.load(std::memory_order_acquire)) {
         // Check if previous consumer is actually reading — if read_pos is far behind
         // write_pos, assume the previous consumer crashed (stale flag)
-        uint32_t wp = static_cast<uint32_t>(header_->write_pos.load(std::memory_order_relaxed));
-        uint32_t rp = static_cast<uint32_t>(header_->read_pos.load(std::memory_order_relaxed));
-        uint32_t behind = wp - rp;  // unsigned diff, handles wrap
-        if (behind > header_->buffer_frames * 80 / 100) {
+        const uint64_t wp = header_->write_pos.load(std::memory_order_relaxed);
+        const uint64_t rp = header_->read_pos.load(std::memory_order_relaxed);
+        const uint64_t behind = wp - rp;  // unsigned diff, handles 64-bit wrap
+        if (behind > (header_->buffer_frames * 80ULL) / 100ULL) {
             // Previous consumer is stale (not reading) — clear flag, proceed normally
             anotherConsumerWasActive_ = false;
         } else {
