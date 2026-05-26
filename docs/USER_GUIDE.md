@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 4.0.6** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 4.0.7** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -336,9 +336,9 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 
 ### 샘플레이트 & 버퍼 크기 / Sample Rate & Buffer Size
 
-> **Audio 탭의 샘플레이트가 전체 시스템에 적용됩니다**: VST 체인, 모니터 출력, IPC(DirectPipe Receiver) 모두 이 값을 따릅니다. 모니터 출력은 메인 SR에 맞지 않으면 Error 상태가 됩니다.
+> **Audio 탭의 샘플레이트가 전체 시스템에 적용됩니다**: VST 체인, 모니터 출력, IPC(DirectPipe Receiver) 모두 이 값을 따릅니다. 모니터 출력은 메인 SR에 맞지 않으면 `SampleRateMismatch` 상태로 표시되고, 메인 샘플레이트를 바꾸거나 모니터 장치를 다시 선택할 때까지 중지 상태를 유지합니다.
 >
-> **Audio tab sample rate applies globally**: VST chain, monitor output, and IPC (DirectPipe Receiver) all follow this value. Monitor output will show Error if its device cannot match the main SR.
+> **Audio tab sample rate applies globally**: VST chain, monitor output, and IPC (DirectPipe Receiver) all follow this value. Monitor output shows `SampleRateMismatch` if its device cannot match the main SR, and stays paused until you change the main sample rate or reselect the monitor device.
 
 - **WASAPI** (Windows): 장치가 지원하는 크기만 표시. 지원하지 않는 크기 선택 시 가장 가까운 값으로 자동 전환 + 알림 표시 / Shows device-supported sizes only. Auto-fallback to closest supported size with notification
 - **ASIO** (Windows): 장치가 지원하는 값만 표시. ASIO Control Panel에서 설정 가능 / Shows device-supported values only. Configurable via ASIO Control Panel
@@ -687,10 +687,12 @@ DirectPipe is a tray-resident app (Windows/Linux: system tray, macOS: menu bar).
 
 When Panic Mute is active, the tray/menu bar icon shows a red slash overlay so the emergency muted state remains visible while the main window is hidden.
 
+The tray/menu bar right-click menu includes **Panic Mute** directly under **Show Window**. The item is checked while Panic Mute is active and toggles the same restore-safe Panic Mute path as the main window button.
+
 | 동작 / Action | 방법 / How |
 |---|---|
 | **창 복원** / Restore | 트레이/메뉴 바 아이콘 클릭 / Click tray/menu bar icon (Windows: double-click) |
-| **메뉴** / Menu | 아이콘 우클릭 → Show / Auto Start / Quit / Right-click icon (macOS: click) |
+| **메뉴** / Menu | 아이콘 우클릭 → Show / Panic Mute / Auto Start / Quit / Right-click icon (macOS: click) |
 | **완전 종료** / Quit | 메뉴 → "Quit DirectPipe" / Menu → "Quit DirectPipe" |
 
 **트레이 아이콘 고정하기 / Pin tray icon:**

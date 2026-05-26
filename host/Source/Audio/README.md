@@ -158,7 +158,7 @@ LatencyMonitor.markCallbackEnd()
 
 - `intentionalChange_` 플래그가 true이면 `audioDeviceStopped`에서 `deviceLost_`를 설정하지 않음
 - `ChangeListener` (즉시 감지) + 3초 타이머 폴링 (ChangeListener 누락 시 폴백)의 이중 메커니즘
-- MonitorOutput도 독립적으로 동일한 패턴 사용 (`monitorLost_` + 자체 cooldown)
+- MonitorOutput also uses independent reconnect state for retryable hotplug/device errors (`monitorLost_` + own cooldown); sample-rate mismatch is treated as a disabled configuration state, not a retry loop.
 
 ### Preset Loading Flow (replaceChainAsync)
 
@@ -221,7 +221,7 @@ LatencyMonitor.markCallbackEnd()
 
 7. **IPC 토글 race window**: `setIpcEnabled(false)` 후에도 RT 스레드가 `ipcEnabled_=true`를 읽을 수 있음. `interleaveBuffer_`를 `shutdown()`에서 해제하면 안 되는 이유.
 
-8. **MonitorOutput 재연결**: `monitorLost_`는 `audioDeviceError`/`audioDeviceStopped`에서 설정, `audioDeviceAboutToStart`에서만 해제. JUCE auto-fallback 디바이스는 거부.
+8. **MonitorOutput reconnection**: retryable device loss is set from `audioDeviceError`/external `audioDeviceStopped` and cleared by a successful `audioDeviceAboutToStart`. Intentional monitor teardown is ignored, JUCE auto-fallback devices are rejected, and sample-rate mismatch stays disabled until the main sample rate or selected monitor changes.
 
 9. **PluginPreloadCache `invalidateAll()`은 thread join 하지 않음**: COM STA 데드락 방지. `cancelPreload_` + `slotVersions_` bump로 non-blocking 무효화.
 

@@ -361,6 +361,8 @@ void AudioSettings::onDriverTypeChanged()
             if (actualIdx >= 0)
                 driverCombo_.setSelectedId(actualIdx + 1, juce::dontSendNotification);
             if (onError) onError(result.message);
+            refreshFromEngine();
+            return;
         }
 
         rebuildDeviceLists();
@@ -387,7 +389,11 @@ void AudioSettings::onInputDeviceChanged()
 
     if (isAsioMode()) {
         auto r = engine_.setAsioDevice(selectedText);
-        if (!r && onError) onError(r.message);
+        if (!r) {
+            if (onError) onError(r.message);
+            refreshFromEngine();
+            return;
+        }
 
         // Sync output combo to match (ASIO single device)
         auto outputs = engine_.getAvailableOutputDevices();
@@ -398,7 +404,11 @@ void AudioSettings::onInputDeviceChanged()
         rebuildChannelLists();
     } else {
         auto r = engine_.setInputDevice(selectedText);
-        if (!r && onError) onError(r.message);
+        if (!r) {
+            if (onError) onError(r.message);
+            refreshFromEngine();
+            return;
+        }
     }
 
     rebuildSampleRateList();
@@ -420,20 +430,13 @@ void AudioSettings::onOutputDeviceChanged()
         return;
     }
 
-    // Switching away from None — unmute
-    if (engine_.isOutputNone()) {
-        engine_.setOutputNone(false);
-    }
-
-    // User manually selected a device — clear device-loss auto-mute
-    if (engine_.isOutputAutoMuted()) {
-        engine_.clearOutputAutoMute();
-        engine_.setOutputMuted(false);
-    }
-
     if (isAsioMode()) {
         auto r = engine_.setAsioDevice(selectedText);
-        if (!r && onError) onError(r.message);
+        if (!r) {
+            if (onError) onError(r.message);
+            refreshFromEngine();
+            return;
+        }
 
         // Sync input combo to match (ASIO single device)
         auto inputs = engine_.getAvailableInputDevices();
@@ -444,8 +447,15 @@ void AudioSettings::onOutputDeviceChanged()
         rebuildChannelLists();
     } else {
         auto r = engine_.setOutputDevice(selectedText);
-        if (!r && onError) onError(r.message);
+        if (!r) {
+            if (onError) onError(r.message);
+            refreshFromEngine();
+            return;
+        }
     }
+
+    if (engine_.isOutputNone())
+        engine_.setOutputNone(false);
 
     rebuildSampleRateList();
     rebuildBufferSizeList();
@@ -464,7 +474,12 @@ void AudioSettings::onInputChannelChanged()
     int totalChannels = engine_.getInputChannelNames().size();
     if (totalChannels > 0 && firstChannel + numCh > totalChannels)
         return;
-    (void)engine_.setActiveInputChannels(firstChannel, numCh);
+    auto r = engine_.setActiveInputChannels(firstChannel, numCh);
+    if (!r) {
+        if (onError) onError(r.message);
+        rebuildChannelLists();
+        return;
+    }
 
     if (onSettingsChanged) onSettingsChanged();
 }
@@ -479,7 +494,12 @@ void AudioSettings::onOutputChannelChanged()
     int totalChannels = engine_.getOutputChannelNames().size();
     if (totalChannels > 0 && firstChannel + numCh > totalChannels)
         return;
-    (void)engine_.setActiveOutputChannels(firstChannel, numCh);
+    auto r = engine_.setActiveOutputChannels(firstChannel, numCh);
+    if (!r) {
+        if (onError) onError(r.message);
+        rebuildChannelLists();
+        return;
+    }
 
     if (onSettingsChanged) onSettingsChanged();
 }
@@ -492,7 +512,12 @@ void AudioSettings::onSampleRateChanged()
     auto rates = engine_.getAvailableSampleRates();
     if (id - 1 < rates.size()) {
         auto r = engine_.setSampleRate(rates[id - 1]);
-        if (!r && onError) onError(r.message);
+        if (!r) {
+            if (onError) onError(r.message);
+            return;
+        }
+        rebuildSampleRateList();
+        rebuildBufferSizeList();
         updateLatencyDisplay();
 
         if (onSettingsChanged) onSettingsChanged();
@@ -507,7 +532,12 @@ void AudioSettings::onBufferSizeChanged()
     auto sizes = engine_.getAvailableBufferSizes();
     if (id - 1 < sizes.size()) {
         auto r = engine_.setBufferSize(sizes[id - 1]);
-        if (!r && onError) onError(r.message);
+        if (!r) {
+            if (onError) onError(r.message);
+            return;
+        }
+        rebuildSampleRateList();
+        rebuildBufferSizeList();
         updateLatencyDisplay();
 
         if (onSettingsChanged) onSettingsChanged();

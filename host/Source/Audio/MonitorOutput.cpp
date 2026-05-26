@@ -92,9 +92,11 @@ void MonitorOutput::shutdown()
     actualSampleRate_.store(0.0, std::memory_order_relaxed);
     actualBufferSize_.store(0, std::memory_order_relaxed);
     if (deviceManager_) {
+        intentionalTeardown_.store(true, std::memory_order_release);
         deviceManager_->removeAudioCallback(this);
         deviceManager_->closeAudioDevice();
         deviceManager_.reset();
+        intentionalTeardown_.store(false, std::memory_order_release);
     }
     ringBuffer_.reset();
 }
@@ -189,7 +191,9 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         // Set status BEFORE reset so the consumer callback sees non-Active
         // and skips ring buffer access (prevents data race on reset)
         status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_release);
-        monitorLost_.store(true, std::memory_order_relaxed);
+        // This is a stable configuration mismatch, not a retryable hotplug loss.
+        // Leave the monitor disabled until the main SR or selected monitor changes.
+        monitorLost_.store(false, std::memory_order_relaxed);
         ringBuffer_.reset();
         return;
     }
@@ -229,6 +233,9 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
 void MonitorOutput::audioDeviceStopped()
 {
+    if (intentionalTeardown_.load(std::memory_order_acquire))
+        return;
+
     // shutdown() removes callback BEFORE closeAudioDevice(), so this only
     // fires on external events (device unplug, driver error) ??not our own teardown.
     monitorLost_.store(true, std::memory_order_relaxed);
@@ -263,7 +270,7 @@ void MonitorOutput::scanDevices()
 
 void MonitorOutput::checkReconnection()
 {
-    if (!monitorLost_.load(std::memory_order_relaxed)) return;
+    if (!isDeviceLost()) return;
     if (deviceName_.isEmpty()) return;
 
     if (reconnectCooldown_ > 0) {
@@ -283,10 +290,16 @@ void MonitorOutput::checkReconnection()
         return;
     }
 
-    if (initialize(deviceName_, sampleRate_, bufferSize_)) {
+    if (initialize(deviceName_, sampleRate_, bufferSize_)
+        && status_.load(std::memory_order_relaxed) == VirtualCableStatus::Active
+        && !isDeviceLost()) {
         // monitorLost_ cleared in audioDeviceAboutToStart
         reconnectCooldown_ = 0;
         Log::info("MONITOR", "Device reconnected: " + deviceName_);
+    } else if (status_.load(std::memory_order_relaxed) == VirtualCableStatus::SampleRateMismatch) {
+        Log::warn("MONITOR", "Reconnection paused: sample rate mismatch (device='" + deviceName_
+            + "' expected SR=" + juce::String(sampleRate_)
+            + " actual SR=" + juce::String(actualSampleRate_.load(std::memory_order_relaxed)) + ")");
     } else {
         Log::error("MONITOR", "Reconnection failed: initialize returned false (device='" + deviceName_ + "' SR=" + juce::String(sampleRate_) + " BS=" + juce::String(bufferSize_) + ")");
     }

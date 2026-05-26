@@ -73,6 +73,10 @@ public:
     /** @brief Get the preset manager (for session logging). */
     PresetManager* getPresetManager() { return presetManager_.get(); }
 
+    /** @brief Panic Mute state and toggle entry point for tray/menu bar controls. */
+    bool isPanicMuteActive() const { return audioEngine_.isMuted(); }
+    void togglePanicMute();
+
     bool isStartMinimizedToTrayOnLaunchEnabled() const { return startMinimizedToTrayOnLaunch_; }
     void setStartMinimizedToTrayOnLaunch(bool enabled, bool markDirty = true);
     void syncAutoStartToggle();

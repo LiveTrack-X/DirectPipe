@@ -221,14 +221,15 @@ void AudioEngine::setIpcEnabled(bool enabled)
 
 ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
 {
-    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredInputDevice_ = deviceName; }
-
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
 
     // Skip restart if device is already set (avoids ASIO re-init that resets BS)
-    if (setup.inputDeviceName == deviceName && !setup.inputChannels.isZero())
+    if (setup.inputDeviceName == deviceName && !setup.inputChannels.isZero()) {
+        const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+        desiredInputDevice_ = deviceName;
         return ActionResult::ok();
+    }
 
     setup.inputDeviceName = deviceName;
 
@@ -249,6 +250,7 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
+    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredInputDevice_ = deviceName; }
     // Clear device-loss state user intentionally picked a new input device
     inputDeviceLost_.store(false, std::memory_order_relaxed);
     deviceLost_.store(false, std::memory_order_relaxed);
@@ -267,14 +269,15 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
 
 ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
 {
-    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredOutputDevice_ = deviceName; }
-
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
 
     // Skip restart if device is already set (avoids ASIO re-init that resets BS)
-    if (setup.outputDeviceName == deviceName && !setup.outputChannels.isZero())
+    if (setup.outputDeviceName == deviceName && !setup.outputChannels.isZero()) {
+        const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+        desiredOutputDevice_ = deviceName;
         return ActionResult::ok();
+    }
 
     setup.outputDeviceName = deviceName;
 
@@ -300,6 +303,7 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
+    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredOutputDevice_ = deviceName; }
     // Clear device-loss state user intentionally picked a new output device
     if (outputAutoMuted_.load(std::memory_order_relaxed)) {
         outputAutoMuted_.store(false, std::memory_order_relaxed);
@@ -316,8 +320,6 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
 
 ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
 {
-    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredInputDevice_ = deviceName; desiredOutputDevice_ = deviceName; }
-
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.inputDeviceName = deviceName;
@@ -339,6 +341,7 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
+    { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); desiredInputDevice_ = deviceName; desiredOutputDevice_ = deviceName; }
     inputDeviceLost_.store(false, std::memory_order_relaxed);
     if (outputAutoMuted_.load(std::memory_order_relaxed)) {
         outputAutoMuted_.store(false, std::memory_order_relaxed);
@@ -471,10 +474,14 @@ ActionResult AudioEngine::setBufferSize(int bufferSize)
             // Try the best alternative if different from what we already got
             if (best != actual) {
                 setup.bufferSize = best;
+                juce::String fallbackError;
                 {
                     AtomicGuard intentionalGuard(intentionalChange_);
-                    deviceManager_.setAudioDeviceSetup(setup, true);
+                    fallbackError = deviceManager_.setAudioDeviceSetup(setup, true);
                 }
+                if (fallbackError.isNotEmpty())
+                    Log::warn("AUDIO", "Buffer fallback failed (requested=" + juce::String(bufferSize)
+                        + " fallback=" + juce::String(best) + "): " + fallbackError);
                 // Re-fetch device pointer (setAudioDeviceSetup may replace it)
                 device = deviceManager_.getCurrentAudioDevice();
                 if (!device) return ActionResult::fail("No audio device after buffer fallback");
@@ -526,8 +533,6 @@ ActionResult AudioEngine::setSampleRate(double sampleRate)
         }
     }
 
-    currentSampleRate_ = sampleRate;
-
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_.getAudioDeviceSetup(setup);
     setup.sampleRate = sampleRate;
@@ -537,14 +542,35 @@ ActionResult AudioEngine::setSampleRate(double sampleRate)
         error = deviceManager_.setAudioDeviceSetup(setup, true);
     }
     if (error.isNotEmpty()) {
+        if (auto* device = deviceManager_.getCurrentAudioDevice())
+            currentSampleRate_ = device->getCurrentSampleRate();
         auto msg = "setSampleRate failed (requested=" + juce::String(sampleRate) + "): " + error;
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
-    desiredSampleRate_ = sampleRate;
+
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    double actual = device ? device->getCurrentSampleRate() : sampleRate;
+    if (actual <= 0.0)
+        actual = sampleRate;
+
+    if (std::abs(actual - sampleRate) > 1.0) {
+        auto msg = "Sample rate: " + juce::String(static_cast<int>(sampleRate))
+            + " -> " + juce::String(static_cast<int>(actual)) + " Hz";
+        Log::info("AUDIO", "Sample rate: requested " + juce::String(sampleRate)
+            + " -> applied " + juce::String(actual));
+        pushNotification(msg, NotificationLevel::Info);
+    }
+
+    currentSampleRate_ = actual;
+    desiredSampleRate_ = actual;
     desiredSRBSSet_ = true;
-    Log::audit("AUDIO", "Sample rate set: " + juce::String(sampleRate));
-    return ActionResult::ok();
+    Log::audit("AUDIO", "Sample rate set: requested=" + juce::String(sampleRate)
+        + " actual=" + juce::String(actual));
+    return ActionResult::ok(std::abs(actual - sampleRate) > 1.0
+        ? "Sample rate: " + juce::String(static_cast<int>(sampleRate))
+            + " -> " + juce::String(static_cast<int>(actual)) + " Hz"
+        : juce::String());
 }
 
 juce::StringArray AudioEngine::getAvailableInputDevices() const
@@ -581,8 +607,11 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         if (typeName.containsIgnoreCase("ASIO") && preferredAsioDevice.isNotEmpty()) {
             juce::AudioDeviceManager::AudioDeviceSetup cur;
             deviceManager_.getAudioDeviceSetup(cur);
-            if (cur.inputDeviceName != preferredAsioDevice)
-                (void)setAsioDevice(preferredAsioDevice);
+            if (cur.inputDeviceName != preferredAsioDevice) {
+                auto result = setAsioDevice(preferredAsioDevice);
+                if (!result)
+                    return result;
+            }
         }
         return ActionResult::ok();
     }
@@ -1327,6 +1356,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 bool outAvail = type->getDeviceNames(false).contains(desiredOut);
                 if (!inAvail && !outAvail) return;  // both lost, wait for checkReconnection
 
+                juce::String restoreError;
                 {
                     AtomicGuard intentionalGuard(intentionalChange_);
                     juce::AudioDeviceManager::AudioDeviceSetup s;
@@ -1335,7 +1365,14 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     if (outAvail) s.outputDeviceName = desiredOut;
                     s.sampleRate = desiredSR;
                     s.bufferSize = desiredBS;
-                    deviceManager_.setAudioDeviceSetup(s, true);
+                    restoreError = deviceManager_.setAudioDeviceSetup(s, true);
+                }
+
+                if (restoreError.isNotEmpty()) {
+                    Log::warn("AUDIO", "Fallback restore failed (in='" + desiredIn
+                        + "' out='" + desiredOut + "' BS=" + juce::String(desiredBS)
+                        + " SR=" + juce::String(desiredSR) + "): " + restoreError);
+                    return;
                 }
 
                 juce::String restored;
@@ -1607,7 +1644,7 @@ void AudioEngine::checkReconnection()
 
     monitorOutput_.checkReconnection();
 
-    if (isMonitorLost && !monitorOutput_.isDeviceLost())
+    if (isMonitorLost && monitorOutput_.getStatus() == VirtualCableStatus::Active && !monitorOutput_.isDeviceLost())
         pushNotification("Monitor reconnected", NotificationLevel::Info);
 
     // Monitor sample rate mismatch notification (one-shot, resets when mismatch clears)

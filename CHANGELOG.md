@@ -8,6 +8,23 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.0.7] - 2026-05-26
+
+### Added
+- **Tray Panic Mute toggle**: The tray/menu bar right-click menu now includes a checked `Panic Mute` item directly under `Show Window`, using the same restore-safe Panic Mute path as the main UI button.
+
+### Changed
+- **Version and release docs sync**: Updated app, Receiver plugin, Stream Deck plugin, README, user guide, architecture/spec docs, and release body references for v4.0.7.
+
+### Fixed
+- **Monitor output sample-rate mismatch freeze**: Monitor sample-rate mismatch is now treated as a disabled configuration state instead of a retryable device-loss state, preventing the UI message thread from entering a tight monitor reconnection loop. Fixes [#2](https://github.com/LiveTrack-X/DirectPipe/issues/2).
+- **Monitor reconnection success reporting**: Monitor reconnection success logs and notifications now require the monitor output to actually become `Active`, avoiding false "reconnected" messages after a mismatch.
+- **Monitor teardown loss noise**: Internal monitor restart/shutdown no longer reports its own teardown as an external device-lost event.
+- **Sample-rate apply state alignment**: When an audio device applies a different sample rate than requested, DirectPipe now aligns desired/current sample-rate state to the actual runtime value instead of keeping a stale requested value.
+- **Failed settings apply guards**: Failed driver/device/channel/monitor setting changes no longer mark settings dirty or overwrite desired runtime targets, preventing invalid selections from being saved or retried later.
+
+---
+
 ## [4.0.6] - 2026-05-20
 
 ### Added

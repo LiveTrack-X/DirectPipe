@@ -84,8 +84,17 @@ public:
 
     /** @brief Check and attempt monitor device reconnection (call from message thread timer). */
     void checkReconnection();  // [Message thread only]
-    /** @brief True if the monitor device was lost (error/disconnect). */
-    bool isDeviceLost() const { return monitorLost_.load(std::memory_order_relaxed); }
+    /**
+     * @brief True if the monitor device has a retryable loss/error.
+     *
+     * Sample-rate mismatch is a stable configuration problem, not a hotplug loss;
+     * retrying it from the 30Hz UI timer can starve the message thread.
+     */
+    bool isDeviceLost() const
+    {
+        return monitorLost_.load(std::memory_order_relaxed)
+            && status_.load(std::memory_order_relaxed) != VirtualCableStatus::SampleRateMismatch;
+    }
 
     // --- Setup guide ---
     static juce::String getSetupGuideMessage();
@@ -121,6 +130,7 @@ private:
 
     // Device reconnection tracking
     std::atomic<bool> monitorLost_{false};                // [Monitor RT/Device write, Message read]
+    std::atomic<bool> intentionalTeardown_{false};        // [Message write, Device callback read]
     int reconnectCooldown_ = 0;                           // [Message thread only] Ticks before next attempt
 
     // Drift monitoring: counts consecutive low-fill / high-fill callbacks for diagnostics

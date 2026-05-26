@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.6 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.7 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.0.6)
+> Reverse spec — written based on currently implemented features (as of v4.0.7)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.0.6
+4.0.7
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -126,7 +126,7 @@ Mic Input  → VST Plugin Chain   → Output
 
 #### 4.1.3 출력 경로 (3가지 + 녹음) / Output Paths (3 + Recording)
 
-3가지 출력 경로는 모두 **독립적으로 켜기/끄기 및 볼륨 조절**이 가능하다. OUT/MON/VST 버튼 또는 외부 제어(핫키, MIDI, Stream Deck, HTTP API)로 각 경로를 개별 제어하여, 예를 들어 OBS 마이크만 끄고 Discord는 유지하거나 그 반대도 가능하다. Panic Mute(Ctrl+Shift+M)로 전체를 즉시 차단할 수 있으며, 해제 시 이전 ON/OFF 상태가 자동 복원된다.
+3가지 출력 경로는 모두 **독립적으로 켜기/끄기 및 볼륨 조절**이 가능하다. OUT/MON/VST 버튼 또는 외부 제어(핫키, MIDI, Stream Deck, HTTP API)로 각 경로를 개별 제어하여, 예를 들어 OBS 마이크만 끄고 Discord는 유지하거나 그 반대도 가능하다. Panic Mute(Ctrl+Shift+M)로 전체를 즉시 차단하고 활성 녹음을 중지할 수 있으며, 해제 시 이전 ON/OFF 상태가 자동 복원된다(녹음은 자동 재시작하지 않음). 패닉 중에는 대부분의 액션이 차단되며 Input Mute/XRun Reset/Safety Guard(legacy SafetyLimiter names)/AutoProcessorsAdd는 유지보수·준비 용도로 허용된다.
 
 All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly and stops active recording; previous ON/OFF states auto-restore on unmute (recording does not auto-restart). During panic, most actions (bypass, volume, preset, gain, recording, plugin parameters) are blocked; Input Mute/XRun Reset/Safety Guard controls (legacy SafetyLimiter names)/AutoProcessorsAdd are allowed.
 
@@ -163,7 +163,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 방향별 감지 / Per-Direction Detection | `inputDeviceLost_`: 입력 장치 분실 시 오디오 콜백에서 입력 무음 처리 (폴백 마이크 방지) / silences input in audio callback on input device loss (prevents fallback mic). `outputAutoMuted_`: 출력 장치 분실 시 자동 뮤트, 복원 시 자동 해제 / auto-mutes on output device loss, auto-unmutes on restore |
 | 재연결 실패 / Reconnection Failure | `reconnectMissCount_`: 5회 연속 실패(~15초) 후 현재 드라이버 장치를 수락하여 크로스 드라이버 stale name 무한 루프 방지 / after 5 consecutive failures (~15s), accepts current driver device to prevent cross-driver stale name infinite loop |
 | 드라이버 전환 복원 / Driver Switch Restore | `DriverTypeSnapshot`: 드라이버 타입별 설정(입출력 장치, SR, BS, outputNone) 저장/복원 / saves/restores per-driver-type settings (input/output device, SR, BS, outputNone). 프리셋 JSON의 `inputChannelMask`/`outputChannelMask`(인덱스 배열)도 저장/복원하여 비연속 ASIO 라우팅 유지, invalid 인덱스는 안전 기본값으로 폴백 / preset JSON `inputChannelMask`/`outputChannelMask` (index arrays) also persist/restore non-contiguous ASIO routing, with safe fallback for invalid indices |
-| 모니터 독립 / Monitor Independence | 모니터 장치는 별도 패턴으로 독립 재연결 / Monitor device reconnects independently with its own pattern (`monitorLost_` + 자체 쿨다운 / own cooldown) |
+| 모니터 독립 / Monitor Independence | 모니터 장치는 retry 가능한 장치 lost만 별도 패턴으로 독립 재연결 / Monitor device reconnects independently only for retryable device loss (`monitorLost_` + own cooldown); sample-rate mismatch stays paused |
 
 #### 4.1.6 XRun 모니터링 / XRun Monitoring
 | 항목 / Item | 상세 / Details |
@@ -320,12 +320,12 @@ rebuildGraph(bool suspend = true)
 #### 폴백 보호 / Fallback Protection
 - `audioDeviceAboutToStart`에서 실제 장치명 vs desired 비교 / Compares actual device name vs desired in `audioDeviceAboutToStart`
 - JUCE 자동 폴백 감지 시: Error 상태 설정, callAsync로 장치 닫기 / On JUCE auto-fallback detection: set Error state, close device via callAsync
-- SR 불일치: `SampleRateMismatch` 상태, 링 버퍼 리셋, one-shot NotificationBar 경고 (클리어 시 리셋) / SR mismatch: `SampleRateMismatch` state, ring buffer reset, one-shot NotificationBar warning (reset on clear)
+- SR 불일치: `SampleRateMismatch` 상태, 링 버퍼 리셋, one-shot NotificationBar 경고, 재연결 루프 중지 / SR mismatch: `SampleRateMismatch` state, ring buffer reset, one-shot NotificationBar warning, reconnect loop stopped
 
 #### 재연결 / Reconnection
-- `monitorLost_` atomic 플래그 (audioDeviceError/audioDeviceStopped에서 설정) / `monitorLost_` atomic flag (set by audioDeviceError/audioDeviceStopped)
-- `shutdown()`은 콜백 제거 후 실행 → 외부 이벤트에서만 monitorLost_ 설정 / `shutdown()` runs after callback removal → monitorLost_ only set by external events
-- 3초 타이머 폴링으로 재연결 시도 / Reconnection attempted via 3-second timer polling
+- `monitorLost_` atomic 플래그는 retry 가능한 error/external stopped 이벤트에서 설정 / `monitorLost_` atomic flag is set for retryable error/external stopped events
+- 내부 `shutdown()`/재초기화 callback은 intentional teardown guard로 lost 처리하지 않음 / Internal shutdown/reinitialization callbacks are ignored by an intentional teardown guard
+- retry 가능한 lost만 3초 타이머 로직으로 재연결 시도, `SampleRateMismatch`는 설정 변경 전까지 중지 / Only retryable loss uses 3-second timer polling; `SampleRateMismatch` stays paused until configuration changes
 - `actualSampleRate_` / `actualBufferSize_` 표시용 (shutdown 시 0으로 리셋) / For display purposes (reset to 0 on shutdown)
 
 #### 레이턴시 계산 / Latency Calculation
@@ -789,7 +789,7 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 |------|------|
 | 창 닫기 (X) / Close Window (X) | 트레이로 최소화 (종료 아님) / Minimize to tray (not quit) |
 | 트레이 좌클릭/더블클릭 / Tray Left/Double Click | 창 복원 + 포커스 / Restore window + focus |
-| 트레이 우클릭 / Tray Right Click | 메뉴 / Menu: Show/Hide, 자동 시작 토글 / auto-start toggle, Quit |
+| 트레이 우클릭 / Tray Right Click | 메뉴 / Menu: Show Window, Panic Mute checked toggle, 자동 시작 토글 / auto-start toggle, Quit |
 | 마우스 호버 / Mouse Hover | 동적 툴팁: 프리셋명, 플러그인 수, 볼륨, 뮤트 상태 / Dynamic tooltip: preset name, plugin count, volume, mute state |
 | 아이콘 / Icon | 16px/32px 듀얼 사이즈 / dual-size PNG |
 
@@ -937,7 +937,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.0.6" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.0.7" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1060,7 +1060,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.0.6",
+  "appVersion": "4.0.7",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1083,7 +1083,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.0.6",
+  "appVersion": "4.0.7",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1265,14 +1265,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.6.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.7.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host, 295 tests)
+├── tests/                          → Google Test (core + host, 316 registered tests)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin

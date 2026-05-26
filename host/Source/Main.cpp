@@ -346,6 +346,19 @@ public:
         return false;
     }
 
+    bool isPanicMuteActive() const
+    {
+        if (auto* mc = getMainComponent())
+            return mc->isPanicMuteActive();
+        return false;
+    }
+
+    void togglePanicMute()
+    {
+        if (auto* mc = getMainComponent())
+            mc->togglePanicMute();
+    }
+
     void toggleStartMinimizedToTrayOnLaunch()
     {
         if (auto* mc = getMainComponent()) {
@@ -496,6 +509,7 @@ private:
         {
             juce::PopupMenu menu;
             menu.addItem(1, "Show Window");
+            menu.addItem(5, "Panic Mute", true, app_.isPanicMuteActive());
             menu.addSeparator();
             if (directpipe::Platform::isAutoStartSupported()) {
                 menu.addItem(3, directpipe::Platform::getAutoStartLabel(),
@@ -520,6 +534,8 @@ private:
                             mc->syncAutoStartToggle();
                     } else if (result == 4) {
                         app_.toggleStartMinimizedToTrayOnLaunch();
+                    } else if (result == 5) {
+                        app_.togglePanicMute();
                     }
                 });
         }

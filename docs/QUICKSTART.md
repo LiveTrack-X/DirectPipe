@@ -221,6 +221,7 @@ DirectPipe stays in the system tray (Windows/Linux) or menu bar (macOS). The X b
 | 동작 / Action | 방법 / How |
 |---|---|
 | 창 복원 / Restore | 트레이 아이콘 더블클릭 (macOS: 메뉴 바 아이콘 클릭) / Double-click tray icon (macOS: click menu bar icon) |
+| 패닉 뮤트 / Panic Mute | 트레이 우클릭 → "Panic Mute" 체크/해제 / Right-click tray → check/uncheck "Panic Mute" |
 | 완전 종료 / Quit | 트레이 우클릭 → "Quit DirectPipe" (macOS: 메뉴 바 아이콘 → Quit) / Right-click tray → "Quit DirectPipe" |
 
 ---

@@ -189,16 +189,16 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Total: **295 tests** across 24 test groups (6 core + 18 host).
+Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Total: **316 registered tests** across 29 test suites (52 core in 6 suites + 264 host in 23 suites). In the current Windows verification run, 2 host tests are environment-dependent skips.
 
-두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 총 **295 테스트**, 24개 테스트 그룹 (코어 6 + 호스트 18).
+두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 총 **316개 등록 테스트**, 29개 테스트 스위트(코어 52개/6스위트 + 호스트 264개/23스위트)입니다. 현재 Windows 검증 기준으로 호스트 테스트 2개는 환경 의존 skip입니다.
 
 ### directpipe-tests (Core)
 
 | Test Group | Tests | Description |
 |------------|-------|-------------|
 | RingBufferTest | ~17 | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
-| SharedMemoryTest | ~7 | Shared memory create/map, named events / 공유 메모리 생성/매핑 |
+| SharedMemoryTest | 8 | Shared memory create/map, named events, full IPC pipeline / 공유 메모리 생성/매핑, named event, 전체 IPC 파이프라인 |
 | LatencyTest | ~3 | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
 | IPCIntegrationTest | ~12 | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
 | ReceiverSimulationTest | ~10 | Receiver VST processBlock simulation (de-interleave, underrun, clock drift, producer death) / Receiver VST processBlock 시뮬레이션 |
@@ -208,24 +208,25 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 
 | Test Group | Tests | Description |
 |------------|-------|-------------|
-| WebSocketProtocolTest | ~42 | JSON protocol parsing, state serialization, error handling, edge cases / JSON 프로토콜 파싱, 상태 직렬화, 오류 처리, 엣지 케이스 |
-| ActionDispatcherTest | ~31 | Action dispatch, listener management, thread safety, ActionResult / 액션 디스패치, 리스너 관리, 스레드 안전, ActionResult |
-| ActionResultTest | ~12 | ActionResult data type: ok/fail factory methods, bool conversion, message propagation / ActionResult 데이터 타입 테스트 |
-| ControlMappingTest | ~16 | Hotkey/MIDI/server config serialization roundtrip, defaults, error handling / 핫키/MIDI/서버 설정 직렬화, 기본값, 오류 처리 |
-| NotificationQueueTest | ~10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐 |
-| PresetManagerTest | ~24 | Preset slot save/load, import/export, Auto slot, factory reset / 프리셋 슬롯 저장/로드, 가져오기/내보내기 |
-| SettingsExporterTest | ~10 | Settings export/import roundtrip, migration / 설정 내보내기/가져오기, 마이그레이션 |
-| SettingsAutosaverTest | ~7 | Dirty-flag + debounce auto-save / 더티 플래그 + 디바운스 자동 저장 |
-| OutputRouterTest | ~6 | Monitor output routing, mute state / 모니터 출력 라우팅, 뮤트 상태 |
-| AudioEngineTest + DeviceStateTest | ~22 | Driver snapshot, device reconnection, XRun, buffer fallback, device state FSM / 드라이버 스냅샷, 장치 재연결, XRun, 버퍼 폴백, 장치 상태 FSM |
-| MidiHandlerTest | ~8 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
-| ActionHandlerTest | ~6 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
-| SafetyLimiterTest | ~15 | Guard ceiling, gain reduction, zero-latency sample-peak guard behavior / 가드 실링, 게인 리덕션, zero-latency 샘플-피크 가드 동작 |
-| BuiltinFilterTest | ~8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
-| BuiltinNoiseRemovalTest | ~7 | RNNoise VAD thresholds, non-48k passthrough, latency / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시 |
-| BuiltinAutoGainTest | ~8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
-| VstChainTest | ~9 | VST chain operations, plugin ordering / VST 체인 연산, 플러그인 순서 |
-| PlatformTest | ~7 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
+| WebSocketProtocolTest | 31 | JSON protocol parsing, action parsing, error handling, edge cases / JSON 프로토콜 파싱, 액션 파싱, 오류 처리, 엣지 케이스 |
+| StateSerializationTest | 13 | State JSON fields, reproducibility, device-loss/recording/IPC fields / 상태 JSON 필드, 재현성, 장치 손실/녹음/IPC 필드 |
+| ActionDispatcherTest | 31 | Action dispatch, listener management, thread safety, ActionResult / 액션 디스패치, 리스너 관리, 스레드 안전, ActionResult |
+| ActionResultTest | 12 | ActionResult data type: ok/fail factory methods, bool conversion, message propagation / ActionResult 데이터 타입 테스트 |
+| ControlMappingTest | 16 | Hotkey/MIDI/server config serialization roundtrip, defaults, error handling / 핫키/MIDI/서버 설정 직렬화, 기본값, 오류 처리 |
+| NotificationQueueTest | 10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐 |
+| PresetManagerTest + constants | 30 | Preset slot save/load, import/export, Auto slot, factory reset, constants / 프리셋 슬롯 저장/로드, 가져오기/내보내기, Auto 슬롯, 상수 |
+| SettingsExporterTest | 10 | Settings export/import roundtrip, migration / 설정 내보내기/가져오기, 마이그레이션 |
+| SettingsAutosaverTest | 11 | Dirty-flag + debounce auto-save, startup guard restore paths / 더티 플래그 + 디바운스 자동 저장, 시작 보호 복원 경로 |
+| OutputRouterTest | 6 | Monitor output routing, mute state / 모니터 출력 라우팅, 뮤트 상태 |
+| AudioEngineTest + DeviceStateTest | 23 | Driver snapshot, device reconnection, XRun, buffer fallback, sample-rate propagation, device state FSM / 드라이버 스냅샷, 장치 재연결, XRun, 버퍼 폴백, 샘플레이트 전파, 장치 상태 FSM |
+| MidiHandlerTest | 8 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
+| ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
+| SafetyLimiterTest | 15 | Guard ceiling, gain reduction, zero-latency sample-peak guard behavior / 가드 실링, 게인 리덕션, zero-latency 샘플-피크 가드 동작 |
+| BuiltinFilterTest | 8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
+| BuiltinNoiseRemovalTest + FIFO | 8 | RNNoise VAD thresholds, non-48k passthrough, latency, FIFO overflow guard / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시, FIFO overflow 보호 |
+| BuiltinAutoGainTest | 8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
+| VSTChainTest | 9 | VST chain operations, plugin ordering / VST 체인 연산, 플러그인 순서 |
+| PlatformTest | 7 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
 
 Host test source files: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.
 

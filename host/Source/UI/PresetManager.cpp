@@ -273,7 +273,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
                     else if (root->hasProperty("outputDevice"))
                         preferredDev = root->getProperty("outputDevice").toString();
                 }
-                (void)engine_.setAudioDeviceType(deviceType, preferredDev);
+                auto result = engine_.setAudioDeviceType(deviceType, preferredDev);
+                if (!result)
+                    juce::Logger::writeToLog("[PRESET] Device type restore failed: " + result.message);
             } else {
                 juce::Logger::writeToLog("[PRESET] Skipping unavailable device type: " + deviceType);
             }
@@ -296,10 +298,14 @@ bool PresetManager::importFromJSON(const juce::String& json)
         engine_.syncDesiredFromDevice();
     } else {
         if (root->hasProperty("sampleRate")) {
-            (void)engine_.setSampleRate(root->getProperty("sampleRate"));
+            auto result = engine_.setSampleRate(root->getProperty("sampleRate"));
+            if (!result)
+                juce::Logger::writeToLog("[PRESET] Sample-rate restore failed: " + result.message);
         }
         if (root->hasProperty("bufferSize")) {
-            (void)engine_.setBufferSize(root->getProperty("bufferSize"));
+            auto result = engine_.setBufferSize(root->getProperty("bufferSize"));
+            if (!result)
+                juce::Logger::writeToLog("[PRESET] Buffer-size restore failed: " + result.message);
         }
     }
     if (root->hasProperty("inputGain")) {
@@ -312,8 +318,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
     // Restore devices (use engine methods for intentionalChange_ guard + desiredDevice tracking)
     if (root->hasProperty("inputDevice")) {
         juce::String inputDev = root->getProperty("inputDevice").toString();
-        if (inputDev.isNotEmpty())
-            (void)engine_.setInputDevice(inputDev);
+        if (inputDev.isNotEmpty()) {
+            auto result = engine_.setInputDevice(inputDev);
+            if (!result)
+                juce::Logger::writeToLog("[PRESET] Input device restore failed: " + result.message);
+        }
     }
     // Restore output "None" mode first (before output device)
     bool outputNone = false;
@@ -323,8 +332,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
 
     if (!outputNone && root->hasProperty("outputDevice")) {
         juce::String outputDev = root->getProperty("outputDevice").toString();
-        if (outputDev.isNotEmpty() && outputDev != "None")
-            (void)engine_.setOutputDevice(outputDev);
+        if (outputDev.isNotEmpty() && outputDev != "None") {
+            auto result = engine_.setOutputDevice(outputDev);
+            if (!result)
+                juce::Logger::writeToLog("[PRESET] Output device restore failed: " + result.message);
+        }
     }
 
     if (root->hasProperty("inputChannelMask") || root->hasProperty("outputChannelMask")) {
@@ -422,14 +434,20 @@ bool PresetManager::importFromJSON(const juce::String& json)
 
             if (outputs->hasProperty("monitorBufferSize")) {
                 int bs = static_cast<int>(outputs->getProperty("monitorBufferSize"));
-                if (bs > 0)
-                    (void)engine_.setMonitorBufferSize(bs);
+                if (bs > 0) {
+                    auto result = engine_.setMonitorBufferSize(bs);
+                    if (!result)
+                        juce::Logger::writeToLog("[PRESET] Monitor buffer restore failed: " + result.message);
+                }
             }
 
             if (outputs->hasProperty("monitorDevice")) {
                 juce::String monDevice = outputs->getProperty("monitorDevice").toString();
-                if (monDevice.isNotEmpty())
-                    (void)engine_.setMonitorDevice(monDevice);
+                if (monDevice.isNotEmpty()) {
+                    auto result = engine_.setMonitorDevice(monDevice);
+                    if (!result)
+                        juce::Logger::writeToLog("[PRESET] Monitor device restore failed: " + result.message);
+                }
             }
         }
     }

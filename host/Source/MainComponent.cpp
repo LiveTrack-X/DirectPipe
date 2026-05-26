@@ -1005,6 +1005,12 @@ void MainComponent::syncAutoStartToggle()
         logComp->setAutoStartEnabled(Platform::isAutoStartEnabled());
 }
 
+void MainComponent::togglePanicMute()
+{
+    if (actionHandler_)
+        actionHandler_->togglePanicMute();
+}
+
 void MainComponent::refreshUI()
 {
     inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
