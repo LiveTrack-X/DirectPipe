@@ -18,11 +18,11 @@
 
 /**
  * @file MonitorOutput.h
- * @brief Monitor (headphone) output via separate WASAPI device.
+ * @brief Monitor (headphone) output via a separate shared-mode output device.
  *
- * Routes processed audio to a second WASAPI output device (e.g., headphones)
- * for real-time monitoring. Uses a lock-free ring buffer to bridge the main
- * audio callback and the monitor device's independent WASAPI callback thread.
+ * Routes processed audio to a second shared-mode output device (e.g.,
+ * headphones) for real-time monitoring. Uses a lock-free ring buffer to bridge
+ * the main audio callback and the monitor device's independent callback thread.
  */
 #pragma once
 
@@ -41,11 +41,12 @@ enum class VirtualCableStatus {
 };
 
 /**
- * @brief Monitor output via separate WASAPI device (e.g., headphones).
+ * @brief Monitor output via a separate shared-mode output device.
  *
  * Owns a separate AudioDeviceManager with its own callback thread.
  * The main audio callback writes to a lock-free ring buffer (producer),
- * and this class's callback reads from it (consumer) and outputs to WASAPI.
+ * and this class's callback reads from it (consumer) and outputs to the
+ * selected WASAPI/CoreAudio/ALSA device.
  *
  * NOTE: This runs on a SEPARATE RT thread from the main AudioEngine.
  * The monitor device has its own independent WASAPI/CoreAudio/ALSA callback.
@@ -79,6 +80,7 @@ public:
     bool isActive() const { return status_.load(std::memory_order_relaxed) == VirtualCableStatus::Active; }
     int getDroppedFrames() const { return droppedFrames_.load(std::memory_order_relaxed); }
     int getUnderrunCount() const { return underrunCount_.load(std::memory_order_relaxed); }
+    int getLatencyTrimmedFrames() const { return latencyTrimmedFrames_.load(std::memory_order_relaxed); }
     int getActualBufferSize() const { return actualBufferSize_.load(std::memory_order_relaxed); }
     double getActualSampleRate() const { return actualSampleRate_.load(std::memory_order_relaxed); }
 
@@ -133,8 +135,10 @@ private:
     std::atomic<bool> intentionalTeardown_{false};        // [Message write, Device callback read]
     int reconnectCooldown_ = 0;                           // [Message thread only] Ticks before next attempt
 
-    // Drift monitoring: counts consecutive low-fill / high-fill callbacks for diagnostics
+    // Drift monitoring: keeps monitor latency bounded when independent device clocks diverge.
     std::atomic<int> underrunCount_{0};                   // [Monitor RT write, Message read]
+    std::atomic<int> latencyTrimmedFrames_{0};             // [Monitor RT write, Message read]
+    std::atomic<int> callbacksSinceStart_{0};              // [Monitor RT write, Message read]
 };
 
 } // namespace directpipe

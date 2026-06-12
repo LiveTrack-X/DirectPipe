@@ -160,6 +160,28 @@ public:
             readPos_.load(std::memory_order_relaxed));
     }
 
+    int getCapacityFrames() const
+    {
+        return static_cast<int>(capacity_);
+    }
+
+    /**
+     * Drop the oldest readable frames without copying them.
+     * RT-safe for the single consumer thread.
+     */
+    int discard(int numFrames)
+    {
+        const uint64_t rp = readPos_.load(std::memory_order_relaxed);
+        const uint64_t wp = writePos_.load(std::memory_order_acquire);
+        const int available = static_cast<int>(wp - rp);
+        const int toDiscard = (numFrames < available) ? numFrames : available;
+
+        if (toDiscard <= 0) return 0;
+
+        readPos_.store(rp + static_cast<uint64_t>(toDiscard), std::memory_order_release);
+        return toDiscard;
+    }
+
     int availableWrite() const
     {
         return static_cast<int>(capacity_ -

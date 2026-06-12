@@ -12,6 +12,7 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ### Fixed
 - **Full Restore audio refresh**: Full backup/preset restore now reopens the current audio device when the driver reports an invalid stopped state such as `SR=0`, so ASIO and WASAPI restores can recover audio without requiring a second restore or manual buffer/device change.
+- **Monitor latency drift compensation**: Separate monitor output now trims stale ring-buffer frames when independent device clocks drift apart, keeping macOS/CoreAudio monitoring latency bounded instead of letting it grow until monitoring is toggled (#3).
 - **Invalid audio device state guards**: Device start, driver switch, sample-rate apply, and IPC enable paths now reject invalid `SR=0`/buffer state before it can overwrite current or desired runtime audio settings.
 - **Restore-time device loss state**: Channel mask restore now applies device setup through AudioEngine's intentional-change path, preventing normal restore stop/start cycles from being mistaken for external device loss.
 - **Uninitialized driver type changes**: Setting a driver type before `AudioEngine::initialize()` now records intent without opening a real audio device or leaking callbacks into teardown.

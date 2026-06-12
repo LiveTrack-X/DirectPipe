@@ -18,14 +18,21 @@
 
 /**
  * @file MonitorOutput.cpp
- * @brief Monitor (headphone) output implementation via separate WASAPI device.
+ * @brief Monitor (headphone) output implementation via a separate shared-mode device.
  */
 
 #include "MonitorOutput.h"
 #include "../Control/Log.h"
 #include "../Platform/PlatformAudio.h"
+#include <algorithm>
 
 namespace directpipe {
+
+namespace {
+constexpr int kMonitorRingBufferFrames = 4096;
+constexpr int kDriftWarmupCallbacks = 50;
+constexpr int kMinDriftTargetFrames = 128;
+}
 
 MonitorOutput::MonitorOutput() = default;
 
@@ -44,8 +51,9 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     sampleRate_ = sampleRate;
     bufferSize_ = bufferSize;
 
-    // Initialize ring buffer: 4096 frames (power of 2), stereo
-    ringBuffer_.initialize(4096, 2);
+    // Initialize ring buffer: power-of-two stereo buffer, bounded by drift trim.
+    ringBuffer_.initialize(kMonitorRingBufferFrames, 2);
+    callbacksSinceStart_.store(0, std::memory_order_relaxed);
 
     deviceManager_ = std::make_unique<juce::AudioDeviceManager>();
 
@@ -81,7 +89,7 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     deviceManager_->addAudioCallback(this);
 
     Log::info("MONITOR", "Initialized on " + deviceName + " (SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + ")");
-    Log::audit("MONITOR", "Ring buffer: 4096 frames, 2 channels");
+    Log::audit("MONITOR", "Ring buffer: " + juce::String(kMonitorRingBufferFrames) + " frames, 2 channels");
     return true;
 }
 
@@ -91,6 +99,7 @@ void MonitorOutput::shutdown()
     status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
     actualSampleRate_.store(0.0, std::memory_order_relaxed);
     actualBufferSize_.store(0, std::memory_order_relaxed);
+    callbacksSinceStart_.store(0, std::memory_order_relaxed);
     if (deviceManager_) {
         intentionalTeardown_.store(true, std::memory_order_release);
         deviceManager_->removeAudioCallback(this);
@@ -151,6 +160,28 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
         return;
     }
 
+    const int callbacks = callbacksSinceStart_.fetch_add(1, std::memory_order_relaxed) + 1;
+    int available = ringBuffer_.availableRead();
+
+    if (callbacks > kDriftWarmupCallbacks && available > 0) {
+        const int observedBlock = (std::max)(numSamples, actualBufferSize_.load(std::memory_order_relaxed));
+        const int targetFill = juce::jlimit(
+            kMinDriftTargetFrames,
+            (std::max)(kMinDriftTargetFrames, ringBuffer_.getCapacityFrames() / 2),
+            (std::max)(kMinDriftTargetFrames, observedBlock * 2));
+        const int highThreshold = juce::jlimit(
+            targetFill + 1,
+            ringBuffer_.getCapacityFrames(),
+            targetFill * 3);
+
+        if (available > highThreshold) {
+            const int trimmed = ringBuffer_.discard(available - targetFill);
+            if (trimmed > 0) {
+                latencyTrimmedFrames_.fetch_add(trimmed, std::memory_order_relaxed);
+            }
+        }
+    }
+
     int read = ringBuffer_.read(outputChannelData, numOutputChannels, numSamples);
 
     // Fill remaining samples with silence on underrun
@@ -162,11 +193,6 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
         // Track underruns for drift diagnostics
         underrunCount_.fetch_add(1, std::memory_order_relaxed);
     }
-    // TODO: Add full drift compensation here ??when ring buffer fill level
-    // consistently drifts high (monitor clock faster than main), skip excess frames.
-    // When it drifts low (monitor clock slower), throttle reads like the Receiver does.
-    // For now, high-fill is handled by writeAudio's droppedFrames_ overflow tracking,
-    // and low-fill is handled by zero-padding above + underrunCount_ monitoring.
 }
 
 void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
@@ -217,6 +243,7 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
     // Set non-Active before reset to prevent consumer from reading during reset
     status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
     ringBuffer_.reset();
+    callbacksSinceStart_.store(0, std::memory_order_relaxed);
     status_.store(VirtualCableStatus::Active, std::memory_order_release);
 
     Log::info("MONITOR", "Active on " + device->getName() + " @ " + juce::String(deviceSR) + "Hz / " + juce::String(deviceBS) + " samples");

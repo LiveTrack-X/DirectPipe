@@ -4,6 +4,7 @@
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
 #include "Audio/AudioEngine.h"
+#include "Audio/AudioRingBuffer.h"
 #include "Audio/DeviceState.h"
 
 using namespace directpipe;
@@ -100,6 +101,47 @@ TEST_F(AudioEngineTest, SampleRatePropagation) {
     auto rates = engine_->getAvailableSampleRates();
     // Without a device, list may be empty — that's valid
     EXPECT_GE(rates.size(), 0);
+}
+
+TEST(AudioRingBufferTest, DiscardDropsOldestFrames) {
+    AudioRingBuffer rb;
+    rb.initialize(1024, 2);
+
+    std::vector<float> left(512);
+    std::vector<float> right(512);
+    for (int i = 0; i < 512; ++i) {
+        left[static_cast<size_t>(i)] = static_cast<float>(i);
+        right[static_cast<size_t>(i)] = static_cast<float>(1000 + i);
+    }
+    const float* inputs[] = { left.data(), right.data() };
+
+    EXPECT_EQ(rb.write(inputs, 2, 512), 512);
+    EXPECT_EQ(rb.discard(384), 384);
+    EXPECT_EQ(rb.availableRead(), 128);
+
+    std::vector<float> outL(128, 0.0f);
+    std::vector<float> outR(128, 0.0f);
+    float* outputs[] = { outL.data(), outR.data() };
+
+    EXPECT_EQ(rb.read(outputs, 2, 128), 128);
+    EXPECT_FLOAT_EQ(outL[0], 384.0f);
+    EXPECT_FLOAT_EQ(outR[0], 1384.0f);
+    EXPECT_FLOAT_EQ(outL[127], 511.0f);
+    EXPECT_FLOAT_EQ(outR[127], 1511.0f);
+}
+
+TEST(AudioRingBufferTest, DiscardClampsToAvailableFrames) {
+    AudioRingBuffer rb;
+    rb.initialize(1024, 2);
+
+    std::vector<float> left(64, 1.0f);
+    std::vector<float> right(64, 2.0f);
+    const float* inputs[] = { left.data(), right.data() };
+
+    EXPECT_EQ(rb.write(inputs, 2, 64), 64);
+    EXPECT_EQ(rb.discard(256), 64);
+    EXPECT_EQ(rb.availableRead(), 0);
+    EXPECT_EQ(rb.discard(1), 0);
 }
 
 // ─── DeviceState state machine tests (pure function, no device needed) ───
