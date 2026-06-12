@@ -105,6 +105,13 @@ public:
     int getDesiredBufferSize() const { return desiredBufferSize_; }
     /** @brief Sync desiredSR/BS FROM the current device (ASIO owns SR/BS globally). */
     void syncDesiredFromDevice();
+    /** @brief Returns true only when the current audio device reports usable SR/BS. */
+    bool isCurrentAudioDeviceReady();
+    /** @brief Re-applies the current desired setup if the audio device is stopped/invalid. */
+    [[nodiscard]] ActionResult ensureAudioDeviceReady();
+    /** @brief Applies a full device setup as an intentional change, preventing false device-loss state. */
+    [[nodiscard]] ActionResult applyAudioDeviceSetup(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                                     const juce::String& context);
     // Dynamic capabilities (depends on current device type and device)
     juce::Array<double> getAvailableSampleRates() const;
     juce::Array<int> getAvailableBufferSizes() const;

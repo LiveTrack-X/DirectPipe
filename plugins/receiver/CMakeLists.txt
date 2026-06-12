@@ -14,7 +14,7 @@ juce_add_plugin(DirectPipeReceiver
     PLUGIN_MANUFACTURER_CODE DPip
     PLUGIN_CODE DPRx
     FORMATS ${RECEIVER_FORMATS}
-    VERSION "4.0.7"
+    VERSION "4.0.8"
     PRODUCT_NAME "DirectPipe Receiver"
     COMPANY_NAME "DirectPipe"
     IS_SYNTH FALSE
@@ -23,6 +23,8 @@ juce_add_plugin(DirectPipeReceiver
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
 )
+
+directpipe_add_juce_rc_refresh(DirectPipeReceiver)
 
 target_sources(DirectPipeReceiver PRIVATE
     Source/PluginProcessor.h

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DirectPipe VERSION 4.0.7 LANGUAGES C CXX)
+project(DirectPipe VERSION 4.0.8 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -92,6 +92,30 @@ if(DIRECTPIPE_BUILD_HOST OR DIRECTPIPE_BUILD_RECEIVER)
         message(STATUS "VST2 SDK not found — VST2 format disabled")
     endif()
 endif()
+
+function(directpipe_add_juce_rc_refresh target_name)
+    if(NOT WIN32 OR NOT TARGET "${target_name}_rc_lib")
+        return()
+    endif()
+
+    get_target_property(juce_generated_sources "${target_name}" JUCE_GENERATED_SOURCES_DIRECTORY)
+    get_target_property(juce_info_file "${target_name}" JUCE_INFO_FILE)
+    if(NOT juce_generated_sources OR NOT juce_info_file)
+        return()
+    endif()
+
+    set(juce_rc_file "${juce_generated_sources}/${target_name}_resources.rc")
+    set(refresh_target "${target_name}_refresh_rc")
+    add_custom_target("${refresh_target}"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DINFO_FILE=${juce_info_file}"
+            "-DRC_FILE=${juce_rc_file}"
+            "-DJUCEAIDE=$<TARGET_FILE:juce::juceaide>"
+            -P "${CMAKE_SOURCE_DIR}/tools/cmake/RefreshJuceRc.cmake"
+        COMMENT "Checking ${target_name} Windows resource version"
+        VERBATIM)
+    add_dependencies("${target_name}_rc_lib" "${refresh_target}")
+endfunction()
 
 # ─── Google Test (for testing) ───
 if(DIRECTPIPE_BUILD_TESTS)

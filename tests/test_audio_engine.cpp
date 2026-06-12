@@ -49,7 +49,8 @@ TEST_F(AudioEngineTest, OutputNoneClearOnDriverSwitch) {
 
     auto types = engine_->getAvailableDeviceTypes();
     if (!types.isEmpty()) {
-        engine_->setAudioDeviceType(types[0]);
+        auto result = engine_->setAudioDeviceType(types[0]);
+        EXPECT_TRUE(result);
     }
     SUCCEED();
 }
@@ -102,6 +103,13 @@ TEST_F(AudioEngineTest, SampleRatePropagation) {
 }
 
 // ─── DeviceState state machine tests (pure function, no device needed) ───
+
+TEST_F(AudioEngineTest, DeviceReadyRequiresActiveDevice) {
+    EXPECT_FALSE(engine_->isCurrentAudioDeviceReady());
+    auto result = engine_->ensureAudioDeviceReady();
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.isNotEmpty());
+}
 
 TEST_F(AudioEngineTest, SafetyHeadroomDefaultAndClamp) {
     EXPECT_TRUE(engine_->isSafetyHeadroomEnabled());

@@ -99,8 +99,15 @@ bool AudioEngine::initialize()
     // resets buffer size to its default on restart). importFromJSON will apply the
     // correct SR/BS/channel routing via setBufferSize/setInputDevice/etc.
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
-        currentSampleRate_ = device->getCurrentSampleRate();
-        currentBufferSize_ = device->getCurrentBufferSizeSamples();
+        auto initialSR = device->getCurrentSampleRate();
+        auto initialBS = device->getCurrentBufferSizeSamples();
+        if (initialSR > 0.0 && initialBS > 0) {
+            currentSampleRate_ = initialSR;
+            currentBufferSize_ = initialBS;
+        } else {
+            Log::warn("AUDIO", "Default device reported invalid SR=" + juce::String(initialSR)
+                + " BS=" + juce::String(initialBS) + " during initialize");
+        }
 
         // Resolve empty device names (edge case: some systems leave them blank)
         juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -130,8 +137,15 @@ bool AudioEngine::initialize()
             }
             // Re-fetch device pointer (setAudioDeviceSetup may have replaced it)
             if (auto* freshDev = deviceManager_.getCurrentAudioDevice()) {
-                currentSampleRate_ = freshDev->getCurrentSampleRate();
-                currentBufferSize_ = freshDev->getCurrentBufferSizeSamples();
+                auto refreshedSR = freshDev->getCurrentSampleRate();
+                auto refreshedBS = freshDev->getCurrentBufferSizeSamples();
+                if (refreshedSR > 0.0 && refreshedBS > 0) {
+                    currentSampleRate_ = refreshedSR;
+                    currentBufferSize_ = refreshedBS;
+                } else {
+                    Log::warn("AUDIO", "Device setup reported invalid SR=" + juce::String(refreshedSR)
+                        + " BS=" + juce::String(refreshedBS) + " during initialize");
+                }
             }
         }
     }
@@ -201,7 +215,13 @@ void AudioEngine::setIpcEnabled(bool enabled)
         return;
 
     if (enabled) {
-        uint32_t sr = static_cast<uint32_t>(currentSampleRate_);
+        auto currentSR = currentSampleRate_.load();
+        if (currentSR <= 0.0) {
+            Log::error("IPC", "Output failed to initialize: invalid sample rate "
+                + juce::String(currentSR));
+            return;
+        }
+        uint32_t sr = static_cast<uint32_t>(currentSR);
         if (sharedMemWriter_.initialize(sr, 2, directpipe::DEFAULT_BUFFER_FRAMES)) {
             ipcEnabled_.store(true, std::memory_order_release);
             Log::info("IPC", "Output enabled (SR=" + juce::String(sr) + ")");
@@ -225,7 +245,8 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
     deviceManager_.getAudioDeviceSetup(setup);
 
     // Skip restart if device is already set (avoids ASIO re-init that resets BS)
-    if (setup.inputDeviceName == deviceName && !setup.inputChannels.isZero()) {
+    if (setup.inputDeviceName == deviceName && !setup.inputChannels.isZero()
+        && isCurrentAudioDeviceReady()) {
         const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
         desiredInputDevice_ = deviceName;
         return ActionResult::ok();
@@ -273,7 +294,8 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
     deviceManager_.getAudioDeviceSetup(setup);
 
     // Skip restart if device is already set (avoids ASIO re-init that resets BS)
-    if (setup.outputDeviceName == deviceName && !setup.outputChannels.isZero()) {
+    if (setup.outputDeviceName == deviceName && !setup.outputChannels.isZero()
+        && isCurrentAudioDeviceReady()) {
         const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
         desiredOutputDevice_ = deviceName;
         return ActionResult::ok();
@@ -411,6 +433,12 @@ void AudioEngine::syncDesiredFromDevice()
     double sr = device->getCurrentSampleRate();
     int bs = device->getCurrentBufferSizeSamples();
 
+    if (sr <= 0.0 || bs <= 0) {
+        Log::warn("AUDIO", "Skipped desired sync from invalid device: SR="
+            + juce::String(sr) + " BS=" + juce::String(bs));
+        return;
+    }
+
     if (sr > 0) {
         currentSampleRate_ = sr;
         desiredSampleRate_ = sr;
@@ -422,6 +450,112 @@ void AudioEngine::syncDesiredFromDevice()
     desiredSRBSSet_ = true;
 
     Log::info("AUDIO", "Synced desired from device: SR=" + juce::String(sr) + " BS=" + juce::String(bs));
+}
+
+bool AudioEngine::isCurrentAudioDeviceReady()
+{
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    if (!device) return false;
+    return device->getCurrentSampleRate() > 0.0
+        && device->getCurrentBufferSizeSamples() > 0;
+}
+
+ActionResult AudioEngine::ensureAudioDeviceReady()
+{
+    if (isCurrentAudioDeviceReady())
+        return ActionResult::ok();
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+    const bool hadCurrentDevice = deviceManager_.getCurrentAudioDevice() != nullptr;
+
+    {
+        const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+        if (setup.inputDeviceName.isEmpty() && desiredInputDevice_.isNotEmpty())
+            setup.inputDeviceName = desiredInputDevice_;
+        if (setup.outputDeviceName.isEmpty() && desiredOutputDevice_.isNotEmpty())
+            setup.outputDeviceName = desiredOutputDevice_;
+    }
+
+    if (!hadCurrentDevice && setup.inputDeviceName.isEmpty() && setup.outputDeviceName.isEmpty())
+        return ActionResult::fail("No audio device available for restore refresh");
+
+    if (setup.sampleRate <= 0.0)
+        setup.sampleRate = desiredSampleRate_ > 0.0 ? desiredSampleRate_ : 48000.0;
+    if (setup.bufferSize <= 0)
+        setup.bufferSize = desiredBufferSize_ > 0 ? desiredBufferSize_ : 256;
+
+    if (setup.inputChannels.isZero() && setup.inputDeviceName.isNotEmpty()) {
+        setup.useDefaultInputChannels = false;
+        int numCh = channelMode_.load(std::memory_order_relaxed) == 1 ? 1 : 2;
+        setup.inputChannels.setRange(0, numCh, true);
+    }
+    if (setup.outputChannels.isZero() && setup.outputDeviceName.isNotEmpty()) {
+        setup.useDefaultOutputChannels = false;
+        setup.outputChannels.setRange(0, 2, true);
+    }
+
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
+    if (result.isNotEmpty()) {
+        auto msg = "Failed to reopen audio device after restore: " + result;
+        Log::error("AUDIO", msg);
+        return ActionResult::fail(msg);
+    }
+
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    if (!device || device->getCurrentSampleRate() <= 0.0 || device->getCurrentBufferSizeSamples() <= 0) {
+        auto msg = "Audio device still invalid after restore reopen";
+        Log::error("AUDIO", msg);
+        return ActionResult::fail(msg);
+    }
+
+    currentSampleRate_ = device->getCurrentSampleRate();
+    currentBufferSize_ = device->getCurrentBufferSizeSamples();
+    desiredSampleRate_ = currentSampleRate_;
+    desiredBufferSize_ = currentBufferSize_;
+    desiredSRBSSet_ = true;
+    deviceLost_.store(false, std::memory_order_relaxed);
+    inputDeviceLost_.store(false, std::memory_order_relaxed);
+    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+        outputAutoMuted_.store(false, std::memory_order_relaxed);
+        if (!outputNone_.load(std::memory_order_relaxed))
+            outputMuted_.store(false, std::memory_order_relaxed);
+    }
+    reconnectCooldown_ = 0;
+    reconnectMissCount_ = 0;
+
+    Log::info("AUDIO", "Audio device reopened after restore: " + device->getName()
+        + " @ " + juce::String(currentSampleRate_.load()) + "Hz / "
+        + juce::String(currentBufferSize_.load()) + " samples");
+    return ActionResult::ok();
+}
+
+ActionResult AudioEngine::applyAudioDeviceSetup(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                                const juce::String& context)
+{
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
+
+    if (result.isNotEmpty()) {
+        auto msg = context.isNotEmpty()
+            ? context + " failed: " + result
+            : juce::String("Audio device setup failed: ") + result;
+        Log::error("AUDIO", msg);
+        return ActionResult::fail(msg);
+    }
+
+    deviceLost_.store(false, std::memory_order_relaxed);
+    inputDeviceLost_.store(false, std::memory_order_relaxed);
+    reconnectCooldown_ = 0;
+    reconnectMissCount_ = 0;
+    return ActionResult::ok();
 }
 
 ActionResult AudioEngine::setBufferSize(int bufferSize)
@@ -542,8 +676,11 @@ ActionResult AudioEngine::setSampleRate(double sampleRate)
         error = deviceManager_.setAudioDeviceSetup(setup, true);
     }
     if (error.isNotEmpty()) {
-        if (auto* device = deviceManager_.getCurrentAudioDevice())
-            currentSampleRate_ = device->getCurrentSampleRate();
+        if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+            auto actual = device->getCurrentSampleRate();
+            if (actual > 0.0)
+                currentSampleRate_ = actual;
+        }
         auto msg = "setSampleRate failed (requested=" + juce::String(sampleRate) + "): " + error;
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
@@ -601,7 +738,11 @@ juce::StringArray AudioEngine::getSharedModeOutputDevices()
 ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const juce::String& preferredAsioDevice)
 {
     auto currentType = getCurrentDeviceType();
-    if (currentType == typeName) {
+    if (!running_ && deviceManager_.getCurrentAudioDevice() == nullptr) {
+        desiredDeviceType_ = typeName;
+        return ActionResult::ok();
+    }
+    if (currentType == typeName && isCurrentAudioDeviceReady()) {
         desiredDeviceType_ = typeName;
         // Already on ASIO but possibly wrong device switch to preferred
         if (typeName.containsIgnoreCase("ASIO") && preferredAsioDevice.isNotEmpty()) {
@@ -623,8 +764,8 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         deviceManager_.getAudioDeviceSetup(currentSetup);
         snap.inputDevice = desiredInputDevice_;
         snap.outputDevice = desiredOutputDevice_;
-        snap.sampleRate = currentSampleRate_;
-        snap.bufferSize = currentBufferSize_;
+        snap.sampleRate = currentSampleRate_.load() > 0.0 ? currentSampleRate_.load() : desiredSampleRate_;
+        snap.bufferSize = currentBufferSize_.load() > 0 ? currentBufferSize_.load() : desiredBufferSize_;
         snap.inputChannels = currentSetup.inputChannels;
         snap.outputChannels = currentSetup.outputChannels;
         snap.outputNone = outputNone_.load(std::memory_order_relaxed);
@@ -778,21 +919,34 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     // (e.g., ASIO ignores our request and uses its global setting).
     // Syncing desiredSR/BS ensures exportToJSON saves what's actually running,
     // not the stale snapshot value that may have been rejected by the driver.
+    bool switchedDeviceReady = false;
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
-        currentSampleRate_ = device->getCurrentSampleRate();
-        currentBufferSize_ = device->getCurrentBufferSizeSamples();
-        desiredSampleRate_ = currentSampleRate_;
-        desiredBufferSize_ = currentBufferSize_;
+        auto sr = device->getCurrentSampleRate();
+        auto bs = device->getCurrentBufferSizeSamples();
+        if (sr > 0.0 && bs > 0) {
+            currentSampleRate_ = sr;
+            currentBufferSize_ = bs;
+            desiredSampleRate_ = sr;
+            desiredBufferSize_ = bs;
+            switchedDeviceReady = true;
+        } else {
+            Log::warn("AUDIO", "Driver switch reported invalid SR=" + juce::String(sr)
+                + " BS=" + juce::String(bs) + " after switching to " + typeName);
+        }
     }
 
     // Clear reconnection state after intentional type switch.
     // Without this, audioDeviceAboutToStart would see stale desired names
     // (e.g. ASIO "TOPPING") vs actual WASAPI names "fallback detected" infinite loop.
-    deviceLost_.store(false, std::memory_order_relaxed);
-    inputDeviceLost_.store(false, std::memory_order_relaxed);
-    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
-        outputAutoMuted_.store(false, std::memory_order_relaxed);
-        outputMuted_.store(false, std::memory_order_relaxed);
+    if (switchedDeviceReady) {
+        deviceLost_.store(false, std::memory_order_relaxed);
+        inputDeviceLost_.store(false, std::memory_order_relaxed);
+        if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+            outputAutoMuted_.store(false, std::memory_order_relaxed);
+            outputMuted_.store(false, std::memory_order_relaxed);
+        }
+    } else {
+        deviceLost_.store(true, std::memory_order_relaxed);
     }
     // Clear "None" output state new driver type has its own output device.
     // Without this, OUT mute button stays locked after WASAPI "None" ASIO switch.
@@ -821,6 +975,12 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     }
 
     deviceManager_.addAudioCallback(this);
+    if (!switchedDeviceReady) {
+        auto msg = "Driver switch completed but audio device is not ready: " + typeName;
+        Log::error("AUDIO", msg);
+        return ActionResult::fail(msg);
+    }
+
     Log::info("AUDIO", "Driver switch: " + currentType + " -> " + typeName
         + " (SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + ")");
     if (Log::isAuditMode()) {
@@ -1300,6 +1460,22 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     if (device->getTypeName().containsIgnoreCase("ASIO"))
         lastAsioDevice_ = device->getName();
 
+    // Stop recording before device parameters change (prevents WAV corruption)
+    if (recorder_.isRecording())
+        recorder_.stopRecording();
+
+    const double reportedSampleRate = device->getCurrentSampleRate();
+    const int reportedBufferSize = device->getCurrentBufferSizeSamples();
+
+    if (reportedSampleRate <= 0.0 || reportedBufferSize <= 0) {
+        if (!intentionalChange_.load(std::memory_order_acquire))
+            deviceLost_.store(true, std::memory_order_relaxed);
+        Log::warn("AUDIO", "Device reported invalid SR=" + juce::String(reportedSampleRate)
+                  + " BS=" + juce::String(reportedBufferSize)
+                  + " - preserving previous runtime state and skipping prepare");
+        return;
+    }
+
     // Detect JUCE auto-fallback by comparing actual vs desired device names.
     // Two modes:
     //   - deviceLost_ already true (after audioDeviceError): keep it true, don't overwrite desired
@@ -1420,10 +1596,12 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     //      restart that disrupts other audio sources
                     // 3. exportToJSON getDesiredBufferSize() returns the
                     //      actual ASIO value, not a stale saved value
-                    desiredSampleRate_ = sr;
-                    desiredBufferSize_ = bs;
-                    desiredSRBSSet_ = true;
-                } else if (!desiredSRBSSet_) {
+                    if (sr > 0.0 && bs > 0) {
+                        desiredSampleRate_ = sr;
+                        desiredBufferSize_ = bs;
+                        desiredSRBSSet_ = true;
+                    }
+                } else if (!desiredSRBSSet_ && sr > 0.0 && bs > 0) {
                     // Non-ASIO first launch (no saved settings): accept device
                     // defaults. Once settings are loaded (desiredSRBSSet_=true),
                     // this branch is skipped and saved values are preserved.
@@ -1434,18 +1612,8 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         }
     }
 
-    // Stop recording before device parameters change (prevents WAV corruption)
-    if (recorder_.isRecording())
-        recorder_.stopRecording();
-
-    currentSampleRate_ = device->getCurrentSampleRate();
-    currentBufferSize_ = device->getCurrentBufferSizeSamples();
-
-    if (currentSampleRate_.load() <= 0.0 || currentBufferSize_.load() <= 0) {
-        Log::warn("AUDIO", "Device reported invalid SR=" + juce::String(currentSampleRate_.load())
-                  + " BS=" + juce::String(currentBufferSize_.load()) + " - skipping prepare");
-        return;
-    }
+    currentSampleRate_ = reportedSampleRate;
+    currentBufferSize_ = reportedBufferSize;
 
     // Log device capabilities for diagnostics
     {

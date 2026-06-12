@@ -1,51 +1,74 @@
 # DirectPipe Release Notes
 
-> 이 문서는 **사용자 대상** 릴리스 요약입니다. 개발자 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md) 참조.
+> 이 문서는 **사용자용 릴리즈 요약**입니다. 개발자용 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md)를 참고하세요.
 > This is a **user-facing** release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
+
+## v4.0.8
+
+v4.0.7 이후, 방송 전 오디오 테스트나 Full Backup 복원 후 오디오 장치가 다시 잡히지 않는 문제를 보강한 핫픽스 릴리스입니다.
+This hotfix hardens Full Backup and preset restore when the audio driver reports a stopped or invalid device state after v4.0.7.
+
+### Highlights / 주요 변경
+
+#### 1) Full Restore audio refresh / 전체 복원 오디오 재연결 보강
+- Full Backup 또는 프리셋 복원 후 현재 장치가 `SR=0` 같은 invalid/stopped 상태를 보고하면, 저장된 장치명이 같더라도 장치를 다시 열어 실제 오디오 경로를 복구합니다.
+- Full Backup and preset restore now reopen the current audio device when the driver reports an invalid or stopped state such as `SR=0`, even when the saved device name matches the current setup.
+- ASIO뿐 아니라 WASAPI에서도 같은 복원 경로를 사용하므로, 두 번째 복원이나 수동 버퍼/장치 변경 없이 오디오가 다시 잡히도록 보강했습니다.
+- The same recovery path covers ASIO and WASAPI, reducing cases where audio only comes back after a second restore or manual buffer/device change.
+
+#### 2) Invalid device-state guards / 잘못된 장치 상태 방어
+- 장치 시작, 드라이버 전환, 샘플레이트 적용, IPC 출력 활성화 경로에서 invalid `SR=0`/buffer 값이 내부 desired/current 상태로 저장되지 않도록 방어했습니다.
+- Invalid `SR=0` or buffer values are no longer allowed to pollute desired/current runtime state during device start, driver switching, sample-rate apply, or IPC enable.
+- 아직 `initialize()`되지 않은 엔진에서 드라이버 타입만 저장해야 하는 경우 실제 오디오 장치를 열지 않도록 해, 테스트 및 설정 로드 경계에서 callback 누수를 막았습니다.
+- Driver type changes on a non-initialized engine now store intent without opening a real audio device, preventing callback lifetime issues in isolated setup/load paths.
+
+#### 3) Restore-state accuracy / 복원 상태 정합성
+- 프리셋 복원의 채널 마스크 적용도 AudioEngine의 intentional device-change 경로를 사용해, 정상 복원 중 발생하는 장치 stop/start가 외부 장치 분실로 오인되지 않게 했습니다.
+- Channel-mask restore now goes through AudioEngine's intentional device-change path so normal restore stop/start cycles are not mistaken for external device loss.
+
+#### 4) Version and release docs sync / 버전 및 릴리즈 문서 정합성
+- 앱, Receiver 플러그인, Stream Deck 플러그인, README, 사용자 가이드, 아키텍처/스펙 문서, 릴리즈 본문의 v4.0.8 표기를 맞췄습니다.
+- Updated app, Receiver plugin, Stream Deck plugin, README, user guide, architecture/spec docs, and release body references for v4.0.8.
+
+### Upgrade Notes / 업그레이드 안내
+- **No API/state model break / API 및 상태 모델 호환 유지**: 이 릴리스는 control API 또는 state schema의 breaking change를 포함하지 않습니다.
+- **Full Restore / 전체 복원**: 복원 직후 장치가 stopped/invalid 상태로 보고되면 DirectPipe가 한 번 더 장치 설정을 적용해 오디오 경로를 복구합니다. 장치 자체가 분리되어 있거나 드라이버가 실패한 경우에는 로그에 복구 실패 이유가 남습니다.
+- **Windows unblock / Windows 차단 해제**: 다운로드한 실행 파일이 차단되면 `DirectPipe.exe` 우클릭 -> **속성** -> **일반** -> **보안** -> **차단 해제** -> **적용/확인**을 누르세요.
+
+---
 
 ## v4.0.7
 
-v4.0.6 이후, 모니터 출력 샘플레이트 불일치 상황에서 GUI가 즉시 멈출 수 있던 재연결 루프를 수정한 핫픽스 릴리스입니다.
-This hotfix prevents a monitor-output sample-rate mismatch from driving a tight reconnection loop that could freeze the GUI after v4.0.6.
+v4.0.6 이후 보고된 모니터 샘플레이트 불일치 프리즈를 수정하고, 트레이 Panic Mute 토글을 추가한 핫픽스 릴리스입니다.
+This hotfix addresses the monitor sample-rate mismatch freeze reported after v4.0.6 and adds a tray/menu bar Panic Mute toggle.
 
 ### Highlights / 주요 변경
+
 #### 1) Monitor sample-rate mismatch freeze fix / 모니터 샘플레이트 불일치 프리즈 수정
-- 모니터 장치가 메인 오디오와 다른 샘플레이트로 열릴 때, 이를 반복 재연결할 수 있는 장치 lost 상태가 아니라 사용자가 설정을 바꿀 때까지 비활성화되는 구성 불일치 상태로 처리합니다.
-- Monitor devices that open at a different sample rate from the main audio device are now treated as a disabled configuration mismatch, not a retryable device-loss loop.
+- 모니터 장치가 메인 오디오 장치와 다른 샘플레이트로 열릴 때, 반복 재연결 대상이 아니라 사용자가 설정을 바꿀 때까지 비활성화되는 구성 불일치 상태로 처리합니다.
+- Monitor devices that open at a different sample rate from the main audio device are treated as a disabled configuration mismatch, not a retryable device-loss loop.
 - GitHub issue [#2](https://github.com/LiveTrack-X/DirectPipe/issues/2)에 보고된 v4.0.6 GUI freeze 회귀를 해결합니다.
 - Addresses the v4.0.6 GUI freeze regression reported in GitHub issue [#2](https://github.com/LiveTrack-X/DirectPipe/issues/2).
 
-#### 2) Reconnection success accuracy / 재연결 성공 판정 정합성
-- 모니터 출력이 실제 `Active` 상태가 되었을 때만 재연결 성공 로그와 알림을 표시합니다.
-- Reconnection success logs and notifications are now emitted only when monitor output actually reaches the `Active` state.
+#### 2) Reconnection and settings accuracy / 재연결 및 설정 상태 정합성
+- 모니터 출력은 실제 `Active` 상태에 도달했을 때만 재연결 성공 로그와 알림을 표시합니다.
+- Reconnection success logs and notifications are emitted only when monitor output actually reaches the `Active` state.
+- 실패한 드라이버, 장치, 채널, 모니터 설정 변경은 더 이상 성공한 것처럼 desired target에 저장되지 않습니다.
+- Failed driver/device/channel/monitor setting changes no longer get saved as if they succeeded.
 
-#### 3) Internal monitor restart guard / 내부 모니터 재시작 보호
-- 내부 재초기화와 종료 과정에서 발생하는 monitor callback을 외부 장치 lost로 기록하지 않도록 보호했습니다.
-- Internal monitor restarts and teardowns no longer report their own callback sequence as an external device-lost event.
-
-#### 4) Version and release docs sync / 버전 및 릴리스 문서 동기화
-- 앱, Receiver 플러그인, Stream Deck 플러그인, README, 사용자 가이드, 아키텍처/스펙 문서, 릴리스 본문의 v4.0.7 표기를 맞췄습니다.
-- Updated app, Receiver plugin, Stream Deck plugin, README, user guide, architecture/spec docs, and release body references for v4.0.7.
-
-#### 5) Sample-rate state alignment / 샘플레이트 상태 정합성
-- 장치가 요청한 샘플레이트와 다른 실제 값으로 열릴 때, 내부 desired/current 샘플레이트 상태를 실제 런타임 값에 맞춥니다.
-- When a device opens at a different sample rate than requested, desired/current sample-rate state is aligned to the actual runtime value.
-
-#### 6) Tray Panic Mute toggle / 트레이 Panic Mute 토글
-- 트레이/메뉴 바 우클릭 메뉴의 **Show Window** 바로 아래에 체크 상태가 표시되는 **Panic Mute** 항목을 추가했습니다.
+#### 3) Tray Panic Mute toggle / 트레이 Panic Mute 토글
+- 트레이 우클릭 메뉴에서 **Show Window** 바로 아래에 체크 상태가 표시되는 **Panic Mute** 항목을 추가했습니다.
 - The tray/menu bar right-click menu now includes a checked **Panic Mute** item directly under **Show Window**.
 - 메인 창 버튼, 단축키, Stream Deck, HTTP, WebSocket과 같은 restore-safe Panic Mute 경로를 사용합니다.
 - This uses the same restore-safe Panic Mute path as the main window button, hotkey, Stream Deck, HTTP, and WebSocket controls.
 
-#### 7) Failed settings apply guards / 실패한 설정 적용 보호
-- 실패한 드라이버/장치/채널/모니터 설정 변경은 더 이상 성공한 것처럼 저장되지 않습니다.
-- Failed driver/device/channel/monitor setting changes no longer get saved as if they succeeded.
-- 런타임 desired target은 장치 변경이 실제로 수락된 뒤에만 갱신되어 stale retry와 복원 상태 오염을 줄입니다.
-- Desired runtime targets are updated only after the device change is accepted, reducing stale retry and restore-state issues.
+#### 4) Version and release docs sync / 버전 및 릴리즈 문서 정합성
+- 앱, Receiver 플러그인, Stream Deck 플러그인, README, 사용자 가이드, 아키텍처/스펙 문서, 릴리즈 본문의 v4.0.7 표기를 맞췄습니다.
+- Updated app, Receiver plugin, Stream Deck plugin, README, user guide, architecture/spec docs, and release body references for v4.0.7.
 
 ### Upgrade Notes / 업그레이드 안내
-- **No API/state model break / API·상태 모델 비호환 없음**: This release does not introduce breaking control API or state schema changes.
-- **Monitor mismatch**: If the monitor status shows a sample-rate mismatch, align the monitor device sample rate with the main DirectPipe sample rate or reselect the monitor after changing the main sample rate. / 모니터 샘플레이트 불일치가 표시되면 모니터 장치 샘플레이트를 DirectPipe 메인 샘플레이트와 맞추거나 메인 샘플레이트 변경 후 모니터를 다시 선택하세요.
+- **No API/state model break / API 및 상태 모델 호환 유지**: 이 릴리스는 control API 또는 state schema의 breaking change를 포함하지 않습니다.
+- **Monitor mismatch / 모니터 불일치**: 모니터 상태에 샘플레이트 불일치가 표시되면, 모니터 장치 샘플레이트를 DirectPipe 메인 샘플레이트와 맞추거나 메인 샘플레이트 변경 후 모니터 장치를 다시 선택하세요.
 - **Windows unblock / Windows 차단 해제**: 다운로드한 실행 파일이 차단되면 `DirectPipe.exe` 우클릭 -> **속성** -> **일반** -> **보안** -> **차단 해제** -> **적용/확인**을 누르세요.
 
 ---

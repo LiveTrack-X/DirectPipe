@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "4.0.7"
+    VERSION "4.0.8"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -150,6 +150,7 @@ juce_add_binary_data(DirectPipeBinaryData
 )
 
 juce_generate_juce_header(DirectPipe)
+directpipe_add_juce_rc_refresh(DirectPipe)
 
 # ─── ASIO SDK detection (Windows only) ───
 set(DIRECTPIPE_HAS_ASIO OFF)

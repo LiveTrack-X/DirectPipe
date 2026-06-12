@@ -366,9 +366,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
             setup.outputChannels = outMask;
         }
 
-        auto maskResult = dm.setAudioDeviceSetup(setup, true);
-        if (maskResult.isNotEmpty()) {
-            juce::Logger::writeToLog("[PRESET] Channel mask restore failed: " + maskResult);
+        auto maskResult = engine_.applyAudioDeviceSetup(setup, "Channel mask restore");
+        if (!maskResult) {
+            juce::Logger::writeToLog("[PRESET] " + maskResult.message);
             // Retry with minimal explicit masks, then driver defaults as final fallback.
             auto retrySetup = setup;
             bool hasExplicitMask = false;
@@ -386,17 +386,17 @@ bool PresetManager::importFromJSON(const juce::String& json)
             }
 
             if (hasExplicitMask) {
-                auto retryResult = dm.setAudioDeviceSetup(retrySetup, true);
-                if (retryResult.isNotEmpty()) {
-                    juce::Logger::writeToLog("[PRESET] Channel mask minimal fallback failed: " + retryResult);
+                auto retryResult = engine_.applyAudioDeviceSetup(retrySetup, "Channel mask minimal fallback");
+                if (!retryResult) {
+                    juce::Logger::writeToLog("[PRESET] " + retryResult.message);
                     auto defaultSetup = retrySetup;
                     if (root->hasProperty("inputChannelMask"))
                         defaultSetup.useDefaultInputChannels = true;
                     if (root->hasProperty("outputChannelMask"))
                         defaultSetup.useDefaultOutputChannels = true;
-                    auto defaultResult = dm.setAudioDeviceSetup(defaultSetup, true);
-                    if (defaultResult.isNotEmpty())
-                        juce::Logger::writeToLog("[PRESET] Channel mask default fallback failed: " + defaultResult);
+                    auto defaultResult = engine_.applyAudioDeviceSetup(defaultSetup, "Channel mask default fallback");
+                    if (!defaultResult)
+                        juce::Logger::writeToLog("[PRESET] " + defaultResult.message);
                 }
             }
         }
@@ -487,6 +487,10 @@ bool PresetManager::importFromJSON(const juce::String& json)
 
     if (onImportAppSettings)
         onImportAppSettings(*root);
+
+    auto readyResult = engine_.ensureAudioDeviceReady();
+    if (!readyResult)
+        juce::Logger::writeToLog("[PRESET] Audio device restore refresh failed: " + readyResult.message);
 
     return true;
 }

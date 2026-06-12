@@ -1,6 +1,6 @@
 # DirectPipe Architecture / 아키텍처
 
-> **Version 4.0.7 / 버전 4.0.7**
+> **Version 4.0.8 / 버전 4.0.8**
 
 ## System Overview / 시스템 개요
 

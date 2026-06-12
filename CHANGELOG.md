@@ -8,6 +8,16 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.0.8] - 2026-06-12
+
+### Fixed
+- **Full Restore audio refresh**: Full backup/preset restore now reopens the current audio device when the driver reports an invalid stopped state such as `SR=0`, so ASIO and WASAPI restores can recover audio without requiring a second restore or manual buffer/device change.
+- **Invalid audio device state guards**: Device start, driver switch, sample-rate apply, and IPC enable paths now reject invalid `SR=0`/buffer state before it can overwrite current or desired runtime audio settings.
+- **Restore-time device loss state**: Channel mask restore now applies device setup through AudioEngine's intentional-change path, preventing normal restore stop/start cycles from being mistaken for external device loss.
+- **Uninitialized driver type changes**: Setting a driver type before `AudioEngine::initialize()` now records intent without opening a real audio device or leaking callbacks into teardown.
+
+---
+
 ## [4.0.7] - 2026-05-26
 
 ### Added
@@ -39,7 +49,7 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 - **Panic Mute restore path**: Host-side restore now tracks pending Panic Mute restoration separately from the engine mute flag, so explicit Stream Deck unmute commands can restore the previous output/monitor/IPC state on the first command.
 
 ### Known Issues / 확인 중
-- **Full Restore runtime refresh gap / 전체 복원 후 런타임 갱신 누락 의심**: After importing a full backup, restored VST/IPC processing may not become active until the audio device is restarted, for example by changing buffer size or reselecting the device. This appears to be a restore-time runtime refresh issue when the saved device setup matches the current device setup. 전체 백업 복원 후 저장된 장치 설정이 현재 설정과 같으면 오디오 장치 재시작이 생략되어 VST/IPC 런타임이 바로 준비되지 않을 수 있습니다. 임시 우회는 버퍼 사이즈 변경 또는 장치 재선택입니다.
+- **Full Restore runtime refresh gap / 전체 복원 후 런타임 갱신 누락 의심**: After importing a full backup, restored VST/IPC processing may not become active until the audio device is restarted, for example by changing buffer size or reselecting the device. This appears to be a restore-time runtime refresh issue when the saved device setup matches the current device setup. 전체 백업 복원 후 저장된 장치 설정이 현재 설정과 같으면 오디오 장치 재시작이 생략되어 VST/IPC 런타임이 바로 준비되지 않을 수 있습니다. 임시 우회는 버퍼 사이즈 변경 또는 장치 재선택입니다. v4.0.8에서 해결됨 / Fixed in v4.0.8.
 
 ---
 
