@@ -119,7 +119,7 @@ Mic Input  → VST Plugin Chain   → Output
 7. Global Safety Guard 적용 + Safety Volume 최종 트림 (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release) / Apply Global Safety Guard + Safety Volume final trim (legacy API/action name: SafetyLimiter, zero-latency sample-peak guard + instant attack + hard ceiling clamp / 50ms release)
 8. AudioRecorder에 RT-safe try-lock 쓰기 (녹음 중일 때, teardown 경합 시 drop) / RT-safe try-lock write to AudioRecorder (drop during teardown contention)
 9. SharedMemWriter에 IPC 쓰기 (IPC 활성화 시) / IPC write to SharedMemWriter (when IPC enabled)
-10. OutputRouter → 모니터 출력 (별도 WASAPI 장치) / OutputRouter → monitor output (separate WASAPI device)
+10. OutputRouter → 모니터 출력 (별도 shared-mode 장치) / OutputRouter → monitor output (separate shared-mode device)
 11. 메인 출력: outputChannelData에 직접 memcpy / Main output: direct memcpy to outputChannelData
 12. 출력 RMS 레벨 계산 (데시메이션) / Output RMS level calculation (decimated)
 ```
@@ -133,7 +133,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 경로 / Path | 설명 / Description | 기술 / Technology | 제어 / Control |
 |------|------|------|------|
 | **Main Output** | 메인 출력 (스피커/가상 케이블) / Main output (speakers/virtual cable) | AudioSettings의 Output 장치에 직접 쓰기. WASAPI/ASIO 모두 지원 / Direct write to AudioSettings Output device. Both WASAPI/ASIO supported | OUT 버튼, ToggleMute, SetVolume |
-| **Monitor Output** | 헤드폰 모니터링 (자기 목소리 확인) / Headphone monitoring (hear your own voice) | 별도 WASAPI AudioDeviceManager + lock-free AudioRingBuffer (4096 프레임, 스테레오, power-of-2) / Separate WASAPI AudioDeviceManager + lock-free AudioRingBuffer (4096 frames, stereo, power-of-2) | MON 버튼, MonitorToggle, SetVolume |
+| **Monitor Output** | 헤드폰 모니터링 (자기 목소리 확인) / Headphone monitoring (hear your own voice) | 별도 shared-mode AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) + lock-free AudioRingBuffer (4096 프레임, 스테레오, power-of-2) + latency drift trim / Separate shared-mode AudioDeviceManager + lock-free AudioRingBuffer (4096 frames, stereo, power-of-2) + latency drift trim | MON 버튼, MonitorToggle, SetVolume |
 | **IPC Output** | OBS용 DirectPipe Receiver / DirectPipe Receiver for OBS | SharedMemory 기반 IPC. 공유 메모리 이름: `Local\\DirectPipeAudio`. 인터리브 float 형식. POSIX sem/shm 퍼미션 0600 (owner-only) / SharedMemory-based IPC. Shared memory name: `Local\\DirectPipeAudio`. Interleaved float format. POSIX sem/shm permissions 0600 (owner-only) | VST 버튼, IpcToggle |
 | **Recording** | WAV 녹음 (VST 체인, Safety Guard, Safety Volume 이후) / WAV recording (after VST chain, Safety Guard, and Safety Volume) | AudioRecorder, ThreadedWriter, RT try-lock/drop during teardown | REC 버튼, RecordingToggle |
 
@@ -309,13 +309,14 @@ rebuildGraph(bool suspend = true)
 |------|------|
 | 장치 / Device | 별도 AudioDeviceManager / Separate AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) (메인 드라이버와 독립 / independent from main driver) |
 | 링 버퍼 / Ring Buffer | AudioRingBuffer: 4096 프레임 / frames, 스테레오 / stereo, power-of-2 |
+| Drift 보정 / Drift Compensation | 모니터 콜백 warmup 후 fill이 high threshold를 넘으면 `AudioRingBuffer::discard()`로 오래된 프레임을 버려 target fill 근처로 되돌림 / After callback warmup, excessive fill is trimmed with `AudioRingBuffer::discard()` to keep accumulated monitor latency bounded |
 | 상태 / Status | `VirtualCableStatus` enum: NotConfigured, Active, Error, SampleRateMismatch |
 
 #### 이중 스레드 브릿지 / Dual-Thread Bridge
 | 역할 / Role | 스레드 / Thread | 동작 / Behavior |
 |------|--------|------|
 | 프로듀서 / Producer | 메인 오디오 콜백 (RT) / Main audio callback (RT) | `writeAudio()` → 링 버퍼에 RT-safe 쓰기 / RT-safe write to ring buffer |
-| 컨슈머 / Consumer | 모니터 장치 콜백 / Monitor device callback | 링 버퍼에서 읽기 → WASAPI 출력 / Read from ring buffer → WASAPI output |
+| 컨슈머 / Consumer | 모니터 장치 콜백 / Monitor device callback | 링 버퍼에서 읽기 → shared-mode 출력, 필요 시 오래된 프레임 trim / Read from ring buffer → shared-mode output, trimming stale frames when needed |
 
 #### 폴백 보호 / Fallback Protection
 - `audioDeviceAboutToStart`에서 실제 장치명 vs desired 비교 / Compares actual device name vs desired in `audioDeviceAboutToStart`
@@ -1210,7 +1211,7 @@ DirectPipe/
 │       │   ├── AudioEngine.h/cpp       → 오디오 콜백, 장치 관리, 재연결, XRun / Audio callback, device management, reconnection, XRun
 │       │   ├── VSTChain.h/cpp          → 플러그인 체인, 그래프, 비동기 로딩 / Plugin chain, graph, async loading
 │       │   ├── OutputRouter.h/cpp      → 모니터 출력 라우팅 / Monitor output routing
-│       │   ├── MonitorOutput.h/cpp     → 별도 WASAPI 모니터 장치 / Separate WASAPI monitor device
+│       │   ├── MonitorOutput.h/cpp     → 별도 shared-mode 모니터 장치 / Separate shared-mode monitor device
 │       │   ├── AudioRingBuffer.h       → Lock-free 스테레오 링 버퍼 / Lock-free stereo ring buffer
 │       │   ├── AudioRecorder.h/cpp     → WAV 녹음 / WAV recording (ThreadedWriter)
 │       │   ├── PluginPreloadCache.h/cpp → 슬롯 백그라운드 프리로드 / Slot background preloading

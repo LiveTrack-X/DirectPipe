@@ -1384,7 +1384,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         sharedMemWriter_.writeAudio(buffer, numSamples);
     }
 
-    // 3. Route processed audio to monitor (separate WASAPI device)
+    // 3. Route processed audio to monitor (separate shared-mode device)
     outputRouter_.routeAudio(buffer, numSamples);
 
     // 4. Apply output volume & copy to main output (AudioSettings Output device)

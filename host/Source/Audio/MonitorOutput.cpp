@@ -57,7 +57,7 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
 
     deviceManager_ = std::make_unique<juce::AudioDeviceManager>();
 
-    // Force shared-mode device type (WASAPI on Windows, CoreAudio on macOS)
+    // Force shared-mode device type (WASAPI on Windows, CoreAudio on macOS, ALSA on Linux).
     deviceManager_->setCurrentAudioDeviceType(PlatformAudio::getDefaultSharedDeviceType(), true);
 
     auto result = deviceManager_->initialiseWithDefaultDevices(0, 2);
@@ -141,7 +141,7 @@ int MonitorOutput::writeAudio(const float* const* channelData,
     return written;
 }
 
-// ??? Monitor device WASAPI callback (consumer) ????????????????????????????????
+// ??? Monitor device shared-mode callback (consumer) ????????????????????????????????
 
 void MonitorOutput::audioDeviceIOCallbackWithContext(
     const float* const* /*inputChannelData*/,

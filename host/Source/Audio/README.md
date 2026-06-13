@@ -41,7 +41,7 @@ VSTChain.processBlock(workBuffer_)
 |
 +---> OutputRouter.routeAudio()
 |      |
-|      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate WASAPI callback]
+|      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate shared-mode callback + drift trim]
 |
 +---> outputChannelData (main output)    [apply output volume, or zero if outputMuted_]
  |
@@ -59,8 +59,8 @@ LatencyMonitor.markCallbackEnd()
 | `AudioEngine.h/cpp` | 핵심 오디오 엔진. 디바이스 관리, RT 콜백, 입출력 채널 라우팅, 디바이스 재연결, XRun 추적 |
 | `VSTChain.h/cpp` | VST2/VST3 플러그인 체인. AudioProcessorGraph 기반 직렬 체인, 비동기 로딩, 에디터 창 관리 |
 | `OutputRouter.h/cpp` | 처리된 오디오를 모니터(헤드폰) 출력으로 라우팅. 볼륨/활성화 제어, RMS 레벨 측정 |
-| `MonitorOutput.h/cpp` | 별도 WASAPI 공유 모드 디바이스를 통한 헤드폰 모니터링. AudioRingBuffer로 RT<->모니터 스레드 브릿징 |
-| `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 WASAPI 콜백(consumer) |
+| `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, high-fill 시 stale frame trim |
+| `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 장치 콜백(consumer), `discard()`로 오래된 프레임 RT-safe 정리 |
 | `AudioRecorder.h/cpp` | WAV 파일 녹음. RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
 | `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
 | `PluginPreloadCache.h/cpp` | 프리셋 슬롯 전환용 플러그인 인스턴스 백그라운드 프리로딩. 캐시 hit 시 DLL 로딩 건너뜀 |
@@ -195,7 +195,7 @@ LatencyMonitor.markCallbackEnd()
 |------|----------|--------------|
 | 오디오 글리치/드롭아웃 | RT 콜백에서 할당/락 확인 → `audioDeviceIOCallbackWithContext` 내부 검사 | `AudioEngine.cpp` RT 콜백 |
 | 디바이스 연결 끊김 반복 | `desiredInputDevice_` vs 실제 디바이스 비교 → `intentionalChange_` 플래그 확인 → fallback 감지 로직 | `AudioEngine.cpp:checkReconnection` |
-| 모니터 출력 안 됨 | `monitorLost_` atomic 확인 → AudioRingBuffer overflow 확인 → 별도 WASAPI 디바이스 상태 | `MonitorOutput.cpp` |
+| 모니터 출력 안 됨 | `monitorLost_` atomic 확인 → AudioRingBuffer fill/trim 상태 확인 → 별도 shared-mode 디바이스 상태 | `MonitorOutput.cpp` |
 | 프리셋 로딩 중 오디오 끊김 | replaceChainAsync의 Keep-Old-Until-Ready 패턴 확인 → graph swap 시점 | `VSTChain.cpp:replaceChainAsync` |
 | 프리셋 로딩 실패 | `partialLoad_` 플래그 → 어떤 플러그인이 실패했는지 로그 확인 → DLL 경로/포맷 | `VSTChain.cpp:replaceChainAsync` |
 | XRun 카운트 증가 | 버퍼 크기 확인 → processBlock 처리 시간 → CPU 우선순위 | `LatencyMonitor.cpp` |

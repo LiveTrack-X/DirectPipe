@@ -67,9 +67,9 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
     const int numChannels = juce::jmin(buffer.getNumChannels(), 2);
 
     // Main output goes directly through the audio callback's outputChannelData.
-    // OutputRouter only handles additional routing to separate WASAPI devices.
+    // OutputRouter only handles additional routing to separate shared-mode devices.
 
-    // ── Monitor → Headphones (separate WASAPI device) ──
+    // ── Monitor → Headphones (separate shared-mode device) ──
     if (outputs_[static_cast<int>(Output::Monitor)].enabled.load(std::memory_order_relaxed)
         && monitorOutput_ != nullptr)
     {

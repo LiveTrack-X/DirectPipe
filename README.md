@@ -173,7 +173,7 @@ External Control:
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
 - **Safety Guard** — VST 체인 이후 전역 샘플-피크 가드(legacy API/action name: SafetyLimiter). zero-latency runtime, instant attack + smooth release + hard clamp, 기본 ceiling -0.3 dBFS — Global sample-peak guard after VST chain (legacy API/action name: SafetyLimiter). Zero-latency runtime with instant attack + smooth release + hard clamp, default ceiling -0.3 dBFS
 - **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼(입력 게인 옆 특수 프리셋 슬롯)으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter) insertable alongside VST plugins. [Auto] button (special preset slot next to input gain) adds all 3 at once
-- **Clock Drift Compensation** — Bidirectional IPC drift handling with hysteresis dead-band to improve long-duration streaming stability (auto buffer management helps reduce clicks/pops) / 히스테리시스 데드 밴드를 포함한 양방향 IPC 클록 드리프트 보상으로 장시간 스트리밍 안정성을 높이도록 설계됨 (자동 버퍼 관리로 끊김/팝 완화)
+- **Clock Drift Compensation** — IPC uses bidirectional drift handling with hysteresis dead-band, and Monitor output trims stale ring-buffer frames when independent device clocks drift apart (auto buffer management helps reduce clicks/pops and prevents monitor latency from growing over time) / IPC는 히스테리시스 데드 밴드를 포함한 양방향 클록 드리프트 보상을 사용하고, Monitor 출력은 독립 장치 클록이 벌어질 때 오래된 링 버퍼 프레임을 정리합니다 (자동 버퍼 관리로 끊김/팝을 완화하고 모니터 지연 누적을 제한)
 
 ### 외부 제어 / External Control
 
@@ -744,20 +744,20 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 **Monitor**는 자기 목소리를 헤드폰으로 실시간 확인하는 기능입니다. VST 이펙트가 적용된 자신의 목소리를 들을 수 있습니다.
 
 - **Output** 탭에서 헤드폰이 연결된 오디오 장치를 선택
-- Main Output과는 별도의 오디오 장치를 사용하므로 **독립적으로 동작** (Windows: WASAPI, macOS: CoreAudio)
+- Main Output과는 별도의 shared-mode 오디오 장치를 사용하므로 **독립적으로 동작** (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 - **MON** 버튼으로 켜기/끄기
 
-> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하므로, 장치/드라이버/버퍼 설정에 따라 보통 **추가 지연이 느껴질 수 있습니다**. 많은 환경에서 대략 `~15-20ms` 수준이지만 시스템에 따라 달라질 수 있습니다. 가장 낮은 모니터 지연이 필요하다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
+> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하므로, 장치/드라이버/버퍼 설정에 따라 보통 **추가 지연이 느껴질 수 있습니다**. 4.0.8부터 MonitorOutput은 두 장치의 클록이 벌어져 ring buffer가 과도하게 쌓일 때 오래된 프레임을 자동 정리해 지연이 계속 증가하지 않도록 제한합니다. 가장 낮은 모니터 지연이 필요하다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
 
 ---
 
 **Monitor** lets you hear your own processed voice through headphones in real-time, with all VST effects applied.
 
 - Select your headphone device in the **Output** tab
-- Uses a separate audio device from the Main Output, so it **works independently** (Windows: WASAPI, macOS: CoreAudio)
+- Uses a separate shared-mode audio device from the Main Output, so it **works independently** (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 - Toggle on/off with the **MON** button
 
-> **Latency note**: Monitor output uses a separate audio device, so you will usually hear some extra latency depending on the device, driver, and buffer settings. In many setups this is roughly `~15-20ms`, but it can vary by system. For the lowest monitor latency, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
+> **Latency note**: Monitor output uses a separate audio device, so you will usually hear some extra latency depending on the device, driver, and buffer settings. Since 4.0.8, MonitorOutput trims stale ring-buffer frames when independent device clocks drift apart, keeping accumulated latency bounded over long sessions. For the lowest monitor latency, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
 </details>
 
 <details>
@@ -1142,8 +1142,9 @@ This short gap is a major improvement over v3's 1-3 second mute gap. With the pr
 모니터 출력은 메인 출력과 **별도의 오디오 장치**를 사용하므로, 추가 지연이 발생할 수 있습니다.
 
 **원인:**
-1. **모니터 장치의 버퍼 크기** — WASAPI Shared 모드는 장치 기본 버퍼를 사용합니다 (보통 10-20ms)
+1. **모니터 장치의 버퍼 크기** — 별도 shared-mode 장치의 실제 버퍼 크기를 사용합니다 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 2. **샘플레이트 불일치** — 메인 장치와 모니터 장치의 샘플레이트가 다르면 리샘플링 지연 발생
+3. **독립 장치 클록 드리프트** — 서로 다른 물리 장치가 장시간 동작하면 clock drift가 생길 수 있으며, DirectPipe는 오래된 monitor buffer를 자동 정리해 누적 지연을 제한합니다
 
 **해결 방법:**
 - 메인 장치와 모니터 장치의 샘플레이트를 일치시키기 (Audio 탭에서 확인)
@@ -1155,8 +1156,9 @@ This short gap is a major improvement over v3's 1-3 second mute gap. With the pr
 Monitor output uses a **separate audio device** from the main output, which can introduce additional latency.
 
 **Causes:**
-1. **Monitor device buffer size** — WASAPI Shared mode uses the device's default buffer (typically 10-20ms)
+1. **Monitor device buffer size** — Uses the actual buffer size of the separate shared-mode device (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 2. **Sample rate mismatch** — Different sample rates between main and monitor devices cause resampling delay
+3. **Independent device clock drift** — Separate physical devices can drift over long sessions; DirectPipe trims stale monitor buffer frames to bound accumulated latency
 
 **Solutions:**
 - Match sample rates between main and monitor devices (check in Audio tab)

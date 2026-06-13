@@ -330,9 +330,9 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 
 **Linux:** USB 마이크는 ALSA, 오디오 인터페이스는 JACK (또는 PipeWire JACK) 권장. / ALSA for USB mics, JACK (or PipeWire JACK) for audio interfaces.
 
-> **ASIO 모니터링 장점 (Windows)**: ASIO 드라이버를 사용하면 입력(마이크)과 출력(헤드폰)이 하나의 ASIO 장치에서 처리됩니다. 별도 WASAPI 모니터 장치 없이도 자기 목소리를 최소 지연(~2ms)으로 들을 수 있습니다. Output 탭의 Monitor 설정은 불필요합니다.
+> **ASIO 모니터링 장점 (Windows)**: ASIO 드라이버를 사용하면 입력(마이크)과 출력(헤드폰)이 하나의 ASIO 장치에서 처리됩니다. Output 탭의 별도 shared-mode Monitor 경로를 쓰지 않고도 자기 목소리를 최소 지연(~2ms)으로 들을 수 있습니다. 이 경우 Output 탭의 Monitor 설정은 불필요합니다.
 >
-> **ASIO monitoring advantage (Windows)**: With an ASIO driver, input (mic) and output (headphones) share a single ASIO device. You can hear yourself with minimal latency (~2ms) without a separate WASAPI monitor device. The Output tab Monitor setup is unnecessary.
+> **ASIO monitoring advantage (Windows)**: With an ASIO driver, input (mic) and output (headphones) share a single ASIO device. You can hear yourself with minimal latency (~2ms) without using the Output tab's separate shared-mode Monitor path. In that case, the Output tab Monitor setup is unnecessary.
 
 ### 샘플레이트 & 버퍼 크기 / Sample Rate & Buffer Size
 
@@ -599,11 +599,11 @@ Monitor lets you hear your own processed voice through headphones in real-time.
   - 🔴 **Error** — 장치 오류 / Device error
   - ⚫ **No device** — 장치 미선택 / Not configured
 
-> 모니터는 메인 드라이버와 **독립된 별도 출력 장치**를 사용합니다. Windows에서는 별도 WASAPI 장치, macOS에서는 별도 CoreAudio 장치를 사용합니다. ASIO 모드(Windows)에서도 정상 동작합니다.
+> 모니터는 메인 드라이버와 **독립된 별도 shared-mode 출력 장치**를 사용합니다. Windows에서는 WASAPI, macOS에서는 CoreAudio, Linux에서는 ALSA 장치를 사용합니다. ASIO 모드(Windows)에서도 정상 동작합니다.
 >
-> Monitor uses a **separate output device**, independent from the main driver. On Windows it uses a separate WASAPI device; on macOS, a separate CoreAudio device. Works even with ASIO (Windows).
+> Monitor uses a **separate shared-mode output device**, independent from the main driver. On Windows it uses WASAPI; on macOS, CoreAudio; on Linux, ALSA. Works even with ASIO (Windows).
 
-> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 메인 출력 대비 **~15-20ms 추가 지연**이 발생합니다. 이는 듀얼 디바이스 구조의 하한선이며, 소프트웨어로 줄일 수 없는 한계입니다. 실시간 모니터링 시 지연이 거슬린다면 다음을 권장합니다:
+> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 메인 출력 대비 추가 지연이 발생할 수 있습니다. 4.0.8부터는 독립 장치 클록이 벌어져 ring buffer가 과도하게 쌓일 때 오래된 프레임을 자동 정리해 장시간 사용 중 지연이 계속 증가하지 않도록 제한합니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
 > - **ASIO 드라이버 사용 (Windows)** — 입력과 출력이 하나의 ASIO 디바이스에서 처리되어 별도 모니터 장치 없이 최소 지연으로 자기 목소리를 들을 수 있습니다
 > - **하드웨어 다이렉트 모니터링** — 오디오 인터페이스 자체의 Direct Monitor 기능을 사용하면 컴퓨터를 거치지 않아 지연이 0입니다
 >
@@ -1210,7 +1210,7 @@ DirectPipe는 USB 오디오 장치가 분리되면 **자동 재연결**을 시�
 1. Output 탭에서 모니터 **장치 선택** 확인 / Check monitor **device selection** in Output tab
 2. **Enable** 토글이 켜져 있는지 확인 / Verify **Enable** toggle is on
 3. **MON** 버튼이 초록색인지 확인 / Check **MON** button is green
-4. 모니터는 별도 오디오 장치를 사용 (Windows: WASAPI, macOS: CoreAudio) — ASIO 모드(Windows)에서도 동작 / Monitor uses a separate audio device (Windows: WASAPI, macOS: CoreAudio) — works even with ASIO (Windows)
+4. 모니터는 별도 shared-mode 오디오 장치를 사용 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) — ASIO 모드(Windows)에서도 동작 / Monitor uses a separate shared-mode audio device (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) — works even with ASIO (Windows)
 
 #### 모니터 출력 무음 (SR 불일치) / Monitor Silent (Sample Rate Mismatch)
 
@@ -1223,8 +1223,8 @@ If the main audio device and monitor device have different sample rates, monitor
 2. **macOS**: Audio MIDI Setup → 모니터 장치 → 포맷을 메인 SR과 동일하게 / Audio MIDI Setup → Match monitor format to main SR
 3. 또는 메인 SR을 모니터 장치에 맞추기 / Or match main SR to monitor device
 
-> DirectPipe에서 모니터 장치의 SR을 직접 변경할 수 없습니다 (WASAPI Shared 모드 제한).
-> DirectPipe cannot change the monitor device's SR directly (WASAPI Shared mode limitation).
+> DirectPipe에서 모니터 장치의 시스템 기본 SR을 직접 변경할 수는 없습니다 (shared-mode 장치 제한).
+> DirectPipe cannot change the monitor device's system default SR directly (shared-mode device limitation).
 
 ### 플러그인 스캔이 오래 걸려요 / Plugin scan takes long
 

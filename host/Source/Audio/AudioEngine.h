@@ -142,7 +142,7 @@ public:
     void setMonitorEnabled(bool enabled) { outputRouter_.setEnabled(OutputRouter::Output::Monitor, enabled); }
     bool isMonitorEnabled() const { return outputRouter_.isEnabled(OutputRouter::Output::Monitor); }
 
-    /** Set the monitor output WASAPI device (independent of main driver). */
+    /** Set the monitor output shared-mode device (independent of main driver). */
     [[nodiscard]] ActionResult setMonitorDevice(const juce::String& deviceName);
     juce::String getMonitorDeviceName() const { return monitorOutput_.getDeviceName(); }
     MonitorOutput& getMonitorOutput() { return monitorOutput_; }
@@ -191,7 +191,7 @@ public:
     juce::StringArray getAvailableOutputDevices() const;
 
     /** @brief Get shared-mode output devices regardless of current driver type.
-     *  On Windows returns WASAPI devices, on macOS CoreAudio, on Linux ALSA. */
+     *  On Windows returns WASAPI devices, on macOS CoreAudio devices, on Linux ALSA devices. */
     juce::StringArray getSharedModeOutputDevices();
 
     bool isRunning() const { return running_; }

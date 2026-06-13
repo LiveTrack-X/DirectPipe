@@ -114,7 +114,7 @@ To enable ASIO driver support: / ASIO 드라이버를 사용하려면:
 2. Extract to `thirdparty/asiosdk/` so that `thirdparty/asiosdk/common/asio.h` exists / 경로에 맞게 압축 해제
 3. CMake will detect the SDK and enable `JUCE_ASIO=1` automatically / 자동 감지됨
 
-Without the ASIO SDK, the build succeeds with WASAPI-only support. / ASIO SDK 없이도 빌드 가능 (WASAPI만 지원).
+Without the ASIO SDK, the build still succeeds; ASIO is disabled while the platform-native audio drivers remain available. / ASIO SDK 없이도 빌드 가능하며, ASIO만 비활성화되고 플랫폼 기본 오디오 드라이버는 유지됩니다.
 
 ## Build Options / 빌드 옵션
 

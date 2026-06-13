@@ -20,7 +20,7 @@
  * @file OutputRouter.h
  * @brief Audio output routing to monitor (headphones)
  *
- * Routes processed audio to a separate WASAPI monitor device (headphones).
+ * Routes processed audio to a separate shared-mode monitor device (headphones).
  * Main output goes through the AudioSettings Output device directly.
  */
 #pragma once
@@ -41,7 +41,7 @@ class OutputRouter {
 public:
     /// Output destination identifiers
     enum class Output {
-        Monitor = 0,       ///< Local monitoring (headphones, separate WASAPI device)
+        Monitor = 0,       ///< Local monitoring (headphones, separate shared-mode device)
         Main,              ///< Main output volume control
         Count
     };
@@ -64,7 +64,7 @@ public:
     bool isEnabled(Output output) const;
     float getLevel(Output output) const;
 
-    /** Wire the monitor output (non-owning pointer, separate WASAPI device). */
+    /** Wire the monitor output (non-owning pointer, separate shared-mode device). */
     void setMonitorOutput(MonitorOutput* mo) { monitorOutput_ = mo; }
 
     /** Check if monitor output is active and receiving audio. */

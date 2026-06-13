@@ -21,7 +21,7 @@
  * @brief Real-time latency measurement and display
  *
  * Measures the total audio path latency including:
- * - Input buffer latency (WASAPI)
+ * - Input buffer latency (current audio driver)
  * - VST processing time
  * - Output buffer latency
  */

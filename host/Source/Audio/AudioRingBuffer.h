@@ -22,7 +22,7 @@
  *
  * Producer (main audio callback) writes non-interleaved float frames.
  * Consumer (monitor device callback) reads them.
- * Used to bridge two independent WASAPI callback threads.
+ * Used to bridge the main audio callback and an independent monitor device callback.
  */
 #pragma once
 

@@ -102,7 +102,7 @@ public:
     static juce::String getSetupGuideMessage();
 
 private:
-    // juce::AudioIODeviceCallback — monitor device's WASAPI callback
+    // juce::AudioIODeviceCallback — monitor device's shared-mode callback
     // [Monitor RT thread — SEPARATE from main AudioEngine RT thread]
     void audioDeviceIOCallbackWithContext(
         const float* const* inputChannelData, int numInputChannels,
