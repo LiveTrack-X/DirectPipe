@@ -41,7 +41,7 @@ VSTChain.processBlock(workBuffer_)
 |
 +---> OutputRouter.routeAudio()
 |      |
-|      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate shared-mode callback + drift trim]
+|      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate shared-mode callback + block-aware drift trim]
 |
 +---> outputChannelData (main output)    [apply output volume, or zero if outputMuted_]
  |
@@ -59,7 +59,7 @@ LatencyMonitor.markCallbackEnd()
 | `AudioEngine.h/cpp` | 핵심 오디오 엔진. 디바이스 관리, RT 콜백, 입출력 채널 라우팅, 디바이스 재연결, XRun 추적 |
 | `VSTChain.h/cpp` | VST2/VST3 플러그인 체인. AudioProcessorGraph 기반 직렬 체인, 비동기 로딩, 에디터 창 관리 |
 | `OutputRouter.h/cpp` | 처리된 오디오를 모니터(헤드폰) 출력으로 라우팅. 볼륨/활성화 제어, RMS 레벨 측정 |
-| `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, high-fill 시 stale frame trim |
+| `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, high-fill 시 producer/consumer block-aware stale frame trim |
 | `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 장치 콜백(consumer), `discard()`로 오래된 프레임 RT-safe 정리 |
 | `AudioRecorder.h/cpp` | WAV 파일 녹음. RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
 | `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
@@ -242,6 +242,11 @@ LatencyMonitor.markCallbackEnd()
 17. **JUCE `File::moveFileTo` 동작**: 대상 파일이 이미 존재하면 먼저 `deleteFile()` 후 이동. POSIX `rename()`과 달리 atomic하지 않음 (delete + move 두 단계). `atomicWriteFile`의 .bak 경로가 동작하는 이유.
 
 ---
+
+## Current Edge Guards
+
+- Monitor drift trim target/high-threshold math lives in `MonitorDriftPolicy.h`; keep it producer/consumer block-aware when changing monitor buffering.
+- `AudioRingBuffer`, `OutputRouter`, `MonitorOutput`, `SharedMemWriter`, and `AudioRecorder` explicitly guard zero-channel, null-channel, and short-source-buffer calls so fallback silence paths do not reuse stale audio or read past source buffers.
 
 ## When to Update This README
 

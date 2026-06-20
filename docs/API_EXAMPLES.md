@@ -1122,7 +1122,7 @@ AutoHotkey로 커스텀 핫키:
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/status` | 전체 상태 JSON / Full state JSON |
-| `GET /api/slot/:index` | 슬롯 전환 (0-5, A-E + Auto) / Switch preset slot |
+| `GET /api/slot/:index` | A-E 슬롯 전환 (0-4; Auto는 `/api/auto/add`) / Switch A-E preset slot |
 | `GET /api/bypass/:index/toggle` | 플러그인 바이패스 토글 / Toggle plugin bypass |
 | `GET /api/bypass/master` | 마스터 바이패스 / Master bypass toggle |
 | `GET /api/mute/panic` | 패닉 뮤트 / Panic mute toggle |
@@ -1130,7 +1130,7 @@ AutoHotkey로 커스텀 핫키:
 | `GET /api/input-mute/toggle` | 입력 뮤트 토글 / Input mute toggle |
 | `GET /api/volume/:target/:value` | 볼륨 설정 (monitor/output 0-1, input 0-2) / Set volume |
 | `GET /api/gain/:delta` | 입력 게인 조정 (선형, 예: 0.1 = +0.1) / Adjust input gain (linear) |
-| `GET /api/preset/:index` | 프리셋 로드 (0-5, A-E + Auto) / Load preset |
+| `GET /api/preset/:index` | A-E 프리셋 로드 (0-4; Auto는 `/api/auto/add`) / Load A-E preset |
 | `GET /api/monitor/toggle` | 모니터 출력 토글 / Monitor toggle |
 | `GET /api/ipc/toggle` | IPC 출력 토글 / IPC toggle |
 | `GET /api/recording/toggle` | 녹음 토글 / Recording toggle |

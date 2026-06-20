@@ -28,6 +28,30 @@
 #include "../Platform/AutoStart.h"
 
 namespace directpipe {
+namespace {
+juce::File backupFileFor(const juce::File& file)
+{
+    return file.getSiblingFile(file.getFileName() + ".bak");
+}
+
+juce::File legacyBackupFileFor(const juce::File& file)
+{
+    return file.withFileExtension(file.getFileExtension() + ".backup");
+}
+
+juce::File tempFileFor(const juce::File& file)
+{
+    return file.getSiblingFile(file.getFileName() + ".tmp");
+}
+
+void deleteAtomicFileFamily(const juce::File& file)
+{
+    file.deleteFile();
+    backupFileFor(file).deleteFile();
+    legacyBackupFileFor(file).deleteFile();
+    tempFileFor(file).deleteFile();
+}
+} // namespace
 
 // ============================================================================
 //  DirectPipeLogger
@@ -479,8 +503,7 @@ void LogPanel::onClearAllPresets()
         for (int i = 0; i < 5; ++i) {
             char label = static_cast<char>('A' + i);
             auto base = juce::String("slot_") + juce::String::charToString(label);
-            slotsDir.getChildFile(base + ".dppreset").deleteFile();
-            slotsDir.getChildFile(base + ".dppreset.backup").deleteFile();
+            deleteAtomicFileFamily(slotsDir.getChildFile(base + ".dppreset"));
         }
         // NOTE: The wildcard deletion below also catches slot_Auto.dppreset
         // (the Auto preset slot) and any .tmp files from interrupted saves.
@@ -523,10 +546,9 @@ void LogPanel::onResetSettingsClicked()
         auto dir = getConfigDir();
 
         // Settings
-        dir.getChildFile("settings.dppreset").deleteFile();
-        dir.getChildFile("settings.dppreset.backup").deleteFile();
-        dir.getChildFile("directpipe-controls.json").deleteFile();
-        dir.getChildFile("recording-config.json").deleteFile();
+        deleteAtomicFileFamily(dir.getChildFile("settings.dppreset"));
+        deleteAtomicFileFamily(dir.getChildFile("directpipe-controls.json"));
+        deleteAtomicFileFamily(dir.getChildFile("recording-config.json"));
 
         // Plugin cache
         dir.getChildFile("plugin-cache.xml").deleteFile();
@@ -539,8 +561,7 @@ void LogPanel::onResetSettingsClicked()
         for (int i = 0; i < 5; ++i) {
             char label = static_cast<char>('A' + i);
             auto base = juce::String("slot_") + juce::String::charToString(label);
-            slotsDir.getChildFile(base + ".dppreset").deleteFile();
-            slotsDir.getChildFile(base + ".dppreset.backup").deleteFile();
+            deleteAtomicFileFamily(slotsDir.getChildFile(base + ".dppreset"));
         }
         // NOTE: Wildcard deletion also removes slot_Auto.dppreset (Auto slot)
         // and any temporary files from interrupted save operations.

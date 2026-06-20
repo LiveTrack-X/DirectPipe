@@ -139,6 +139,7 @@ private:
     std::atomic<int> underrunCount_{0};                   // [Monitor RT write, Message read]
     std::atomic<int> latencyTrimmedFrames_{0};             // [Monitor RT write, Message read]
     std::atomic<int> callbacksSinceStart_{0};              // [Monitor RT write, Message read]
+    std::atomic<int> producerBlockSize_{0};                // [Main RT write, Monitor RT read]
 };
 
 } // namespace directpipe

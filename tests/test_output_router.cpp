@@ -62,6 +62,17 @@ TEST_F(OutputRouterTest, BufferTruncatedFlag) {
     EXPECT_FALSE(router_.checkAndClearBufferTruncated());
 }
 
+TEST_F(OutputRouterTest, ClampsToSourceBufferLength) {
+    router_.setEnabled(OutputRouter::Output::Monitor, true);
+    router_.setVolume(OutputRouter::Output::Monitor, 1.0f);
+
+    juce::AudioBuffer<float> buffer(2, 64);
+    buffer.clear();
+
+    router_.routeAudio(buffer, 128);
+    EXPECT_FALSE(router_.checkAndClearBufferTruncated());
+}
+
 TEST_F(OutputRouterTest, MonoToStereoRouting) {
     router_.setEnabled(OutputRouter::Output::Monitor, true);
     router_.setVolume(OutputRouter::Output::Monitor, 1.0f);
@@ -72,6 +83,16 @@ TEST_F(OutputRouterTest, MonoToStereoRouting) {
 
     router_.routeAudio(buffer, 512);
     SUCCEED();
+}
+
+TEST_F(OutputRouterTest, EmptyBufferReturnsWithoutChannelAccess) {
+    router_.setEnabled(OutputRouter::Output::Monitor, true);
+    router_.setVolume(OutputRouter::Output::Monitor, 1.0f);
+
+    juce::AudioBuffer<float> buffer(0, 128);
+
+    router_.routeAudio(buffer, 128);
+    EXPECT_FALSE(router_.checkAndClearBufferTruncated());
 }
 
 TEST_F(OutputRouterTest, UninitializedEarlyReturn) {

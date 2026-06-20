@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 4.0.8** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 4.0.9** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -603,7 +603,7 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 >
 > Monitor uses a **separate shared-mode output device**, independent from the main driver. On Windows it uses WASAPI; on macOS, CoreAudio; on Linux, ALSA. Works even with ASIO (Windows).
 
-> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 메인 출력 대비 추가 지연이 발생할 수 있습니다. 4.0.8부터는 독립 장치 클록이 벌어져 ring buffer가 과도하게 쌓일 때 오래된 프레임을 자동 정리해 장시간 사용 중 지연이 계속 증가하지 않도록 제한합니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
+> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 메인 출력 대비 추가 지연이 발생할 수 있습니다. 4.0.8부터는 독립 장치 클록이 벌어져 ring buffer가 과도하게 쌓일 때 오래된 프레임을 자동 정리해 장시간 사용 중 지연이 계속 증가하지 않도록 제한합니다. 4.0.9부터는 메인 콜백 크기와 모니터 콜백 크기를 함께 고려해 작은 모니터 버퍼에서 과도하게 얕게 trim하지 않도록 보정했습니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
 > - **ASIO 드라이버 사용 (Windows)** — 입력과 출력이 하나의 ASIO 디바이스에서 처리되어 별도 모니터 장치 없이 최소 지연으로 자기 목소리를 들을 수 있습니다
 > - **하드웨어 다이렉트 모니터링** — 오디오 인터페이스 자체의 Direct Monitor 기능을 사용하면 컴퓨터를 거치지 않아 지연이 0입니다
 >
@@ -1136,8 +1136,8 @@ View all app events (audio engine, plugins, WebSocket, HTTP, etc.) in real-time.
 | **Full Backup** | 전체 백업 (설정 + VST 체인 + 슬롯 A-E + 컨트롤) → `.dpfullbackup` 파일. 백업에 플랫폼 정보 포함 / Full backup (settings + VST chain + slots A-E + controls) → `.dpfullbackup` file. Includes platform info |
 | **Full Restore** | `.dpfullbackup` 파일에서 전체 복원. **같은 OS끼리만 가능** (Windows 백업은 Windows에서만, macOS 백업은 macOS에서만 복원). 다른 OS에서 복원 시 경고 다이얼로그 표시 / Restore from `.dpfullbackup`. **Same OS only** (Windows backup → Windows, macOS → macOS). Cross-OS restore is blocked with a warning dialog |
 | **Clear Plugin Cache** | 스캔된 플러그인 목록 삭제 (다음 Scan 시 재스캔) / Delete scanned plugin list (re-scan on next Scan) |
-| **Clear All Presets** | 퀵 슬롯 A~E + Auto 슬롯 + 사용자 프리셋 전체 삭제, 현재 체인도 클리어 / Delete all quick slots (A-E + Auto) + user presets, clears active chain |
-| **Factory Reset** | 공장 초기화 — 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 플러그인 캐시, 녹음 설정) / Factory reset — deletes all data (settings, controls, presets (A-E + Auto), plugin cache, recording config) |
+| **Clear All Presets** | 퀵 슬롯 A~E + Auto 슬롯 + 사용자 프리셋 전체 삭제, 현재 체인/슬롯 이름/프리로드 캐시도 클리어 / Delete all quick slots (A-E + Auto) + user presets, clears active chain, slot names, and preload cache |
+| **Factory Reset** | 공장 초기화 — 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 플러그인 캐시, 녹음 설정) 및 `.bak`/`.backup`/`.tmp` 잔재 정리 / Factory reset — deletes all data (settings, controls, presets (A-E + Auto), plugin cache, recording config) and stale `.bak`/`.backup`/`.tmp` files |
 
 ---
 

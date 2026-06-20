@@ -27,6 +27,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <vector>
@@ -77,19 +78,44 @@ public:
         // Check if write wraps around
         const uint32_t firstPart = capacity_ - startIdx;
 
+        if (chCount <= 0 || channelData == nullptr) {
+            if (static_cast<uint32_t>(toWrite) <= firstPart) {
+                for (int ch = 0; ch < channels_; ++ch)
+                    std::fill(&data_[ch][startIdx], &data_[ch][startIdx] + toWrite, 0.0f);
+            } else {
+                const int second = toWrite - static_cast<int>(firstPart);
+                for (int ch = 0; ch < channels_; ++ch) {
+                    std::fill(&data_[ch][startIdx], &data_[ch][startIdx] + firstPart, 0.0f);
+                    std::fill(&data_[ch][0], &data_[ch][0] + second, 0.0f);
+                }
+            }
+
+            writePos_.store(wp + static_cast<uint64_t>(toWrite), std::memory_order_release);
+            return toWrite;
+        }
+
         if (static_cast<uint32_t>(toWrite) <= firstPart) {
             // No wrap
-            for (int ch = 0; ch < chCount; ++ch)
-                std::memcpy(&data_[ch][startIdx], channelData[ch],
-                            static_cast<size_t>(toWrite) * sizeof(float));
+            for (int ch = 0; ch < chCount; ++ch) {
+                if (channelData[ch] != nullptr)
+                    std::memcpy(&data_[ch][startIdx], channelData[ch],
+                                static_cast<size_t>(toWrite) * sizeof(float));
+                else
+                    std::fill(&data_[ch][startIdx], &data_[ch][startIdx] + toWrite, 0.0f);
+            }
         } else {
             // Wrap around
             const int second = toWrite - static_cast<int>(firstPart);
             for (int ch = 0; ch < chCount; ++ch) {
-                std::memcpy(&data_[ch][startIdx], channelData[ch],
-                            firstPart * sizeof(float));
-                std::memcpy(&data_[ch][0], channelData[ch] + firstPart,
-                            static_cast<size_t>(second) * sizeof(float));
+                if (channelData[ch] != nullptr) {
+                    std::memcpy(&data_[ch][startIdx], channelData[ch],
+                                firstPart * sizeof(float));
+                    std::memcpy(&data_[ch][0], channelData[ch] + firstPart,
+                                static_cast<size_t>(second) * sizeof(float));
+                } else {
+                    std::fill(&data_[ch][startIdx], &data_[ch][startIdx] + firstPart, 0.0f);
+                    std::fill(&data_[ch][0], &data_[ch][0] + second, 0.0f);
+                }
             }
         }
 
@@ -122,7 +148,7 @@ public:
         const int available = static_cast<int>(wp - rp);
         const int toRead = (numFrames < available) ? numFrames : available;
 
-        if (toRead <= 0) return 0;
+        if (toRead <= 0 || channelData == nullptr) return 0;
 
         const int chCount = (numChannels < channels_) ? numChannels : channels_;
         const uint32_t startIdx = static_cast<uint32_t>(rp & mask_);
@@ -130,23 +156,30 @@ public:
 
         if (static_cast<uint32_t>(toRead) <= firstPart) {
             for (int ch = 0; ch < chCount; ++ch)
-                std::memcpy(channelData[ch], &data_[ch][startIdx],
-                            static_cast<size_t>(toRead) * sizeof(float));
+                if (channelData[ch] != nullptr)
+                    std::memcpy(channelData[ch], &data_[ch][startIdx],
+                                static_cast<size_t>(toRead) * sizeof(float));
         } else {
             const int second = toRead - static_cast<int>(firstPart);
             for (int ch = 0; ch < chCount; ++ch) {
-                std::memcpy(channelData[ch], &data_[ch][startIdx],
-                            firstPart * sizeof(float));
-                std::memcpy(channelData[ch] + firstPart, &data_[ch][0],
-                            static_cast<size_t>(second) * sizeof(float));
+                if (channelData[ch] != nullptr) {
+                    std::memcpy(channelData[ch], &data_[ch][startIdx],
+                                firstPart * sizeof(float));
+                    std::memcpy(channelData[ch] + firstPart, &data_[ch][0],
+                                static_cast<size_t>(second) * sizeof(float));
+                }
             }
         }
 
         // Fill extra output channels (mono ring → stereo output)
         for (int ch = chCount; ch < numChannels; ++ch) {
-            if (chCount > 0)
+            if (channelData[ch] == nullptr)
+                continue;
+            if (chCount > 0 && channelData[0] != nullptr)
                 std::memcpy(channelData[ch], channelData[0],
                             static_cast<size_t>(toRead) * sizeof(float));
+            else
+                std::fill(channelData[ch], channelData[ch] + toRead, 0.0f);
         }
 
         readPos_.store(rp + static_cast<uint64_t>(toRead), std::memory_order_release);

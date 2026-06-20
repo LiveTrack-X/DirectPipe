@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.8 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.9 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.0.8)
+> Reverse spec — written based on currently implemented features (as of v4.0.9)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.0.8
+4.0.9
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -267,7 +267,7 @@ AudioProcessorGraph:
 | 저장 위치 / Storage Location | 앱 데이터 디렉토리 / App data directory `Slots/slot_A.dppreset` ~ `slot_E.dppreset` (Windows: `%AppData%/DirectPipe/`, macOS/Linux: see platform paths above) |
 | 전환 속도 / Switch Speed | 캐시 히트 / Cache hit: 10-50ms, DLL 로딩 / DLL loading: 200-500ms |
 | 전환 방식 / Switch Method | **Keep-Old-Until-Ready**: 이전 체인이 오디오 처리 계속 → 새 체인 준비 완료 시 메시지 스레드에서 원자적 교체 / Old chain continues audio processing → atomic swap on message thread when new chain is ready |
-| 프리로드 / Preload | `PluginPreloadCache`: 슬롯 로드 후 백그라운드에서 다른 슬롯 플러그인 미리 로드 / After slot load, preloads other slot plugins in background. SR/BS 변경, 구조 변경(이름/경로/순서) 시 무효화 / Invalidated on SR/BS change or structure change (name/path/order). Per-slot 버전 카운터로 프리로드 중 무효화 경합 방지 / Per-slot version counter prevents invalidation race during preload |
+| 프리로드 / Preload | `PluginPreloadCache`: 슬롯 로드 후 백그라운드에서 다른 슬롯 플러그인 미리 로드 / After slot load, preloads other slot plugins in background. SR/BS 변경, 구조 변경(이름/경로/순서) 시 무효화 / Invalidated on SR/BS change or structure change (name/path/order). Cache hit 전 현재 슬롯 파일의 plugin type/name/path와 재검증, 불일치 시 stale cache 폐기 후 async load / Cache hits are revalidated against current slot-file plugin type/name/path; mismatches discard stale cache and fall back to async load. Per-slot 버전 카운터로 프리로드 중 무효화 경합 방지 / Per-slot version counter prevents invalidation race during preload |
 | 자동 저장 / Auto-Save | 플러그인 에디터 닫을 때 (`onEditorClosed`) 활성 슬롯에 자동 저장 / Auto-saves to active slot when plugin editor closes (`onEditorClosed`) |
 | 슬롯 이름 / Slot Naming | 커스텀 이름 지원 / Custom names supported. 표시 / Display: `A\|게임` (파이프 구분자, 최대 8자 + ".." 자동 잘림 / pipe delimiter, max 8 chars + ".." auto-truncation). `.dppreset` JSON `"name"` 필드에 저장 / stored in `"name"` field. StateBroadcaster `slot_names` 배열로 외부 전달 / externally delivered via `slot_names` array |
 | 관리 / Management | 우클릭 메뉴 / Right-click menu: Rename, Copy A→B/C/D/E, Delete, Export (.dppreset), Import (.dppreset). 활성 슬롯 Copy 시 라이브 상태 캡처 / Active slot Copy captures live state |
@@ -309,7 +309,7 @@ rebuildGraph(bool suspend = true)
 |------|------|
 | 장치 / Device | 별도 AudioDeviceManager / Separate AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) (메인 드라이버와 독립 / independent from main driver) |
 | 링 버퍼 / Ring Buffer | AudioRingBuffer: 4096 프레임 / frames, 스테레오 / stereo, power-of-2 |
-| Drift 보정 / Drift Compensation | 모니터 콜백 warmup 후 fill이 high threshold를 넘으면 `AudioRingBuffer::discard()`로 오래된 프레임을 버려 target fill 근처로 되돌림 / After callback warmup, excessive fill is trimmed with `AudioRingBuffer::discard()` to keep accumulated monitor latency bounded |
+| Drift 보정 / Drift Compensation | 모니터 콜백 warmup 후 fill이 high threshold를 넘으면 메인 콜백 producer block과 모니터 콜백 consumer block을 함께 고려한 target fill 근처로 `AudioRingBuffer::discard()` trim / After callback warmup, excessive fill is trimmed with `AudioRingBuffer::discard()` toward a target fill that accounts for both the main producer block and monitor consumer block |
 | 상태 / Status | `VirtualCableStatus` enum: NotConfigured, Active, Error, SampleRateMismatch |
 
 #### 이중 스레드 브릿지 / Dual-Thread Bridge
@@ -521,8 +521,8 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | `GET /api/mute/toggle` | 마스터 뮤트 토글 / Master mute toggle | — |
 | `GET /api/volume/{target}/{value}` | 볼륨 설정 / Set volume | target: monitor(0~1)/input(0~2)/output(0~1). 범위 초과 시 400 / 400 on out-of-range |
 | `GET /api/volume/output/{value}` | 출력 볼륨 설정 / Set output volume | 0~1 범위 / range |
-| `GET /api/preset/{index}` | 프리셋 로드 / Load preset | 0~5 범위 / range (0-4=A-E, 5=Auto) |
-| `GET /api/slot/{index}` | 슬롯 전환 / Switch slot | 0~5 범위 / range (0-4=A-E, 5=Auto) |
+| `GET /api/preset/{index}` | 프리셋 로드 / Load preset | A-E 슬롯 0~4 / A-E slots 0-4. Auto는 `/api/auto/add` 사용 / use `/api/auto/add` for Auto |
+| `GET /api/slot/{index}` | 슬롯 전환 / Switch slot | A-E 슬롯 0~4 / A-E slots 0-4. Auto는 `/api/auto/add` 사용 / use `/api/auto/add` for Auto |
 | `GET /api/gain/{delta}` | 입력 게인 조정 / Adjust input gain | float 델타 / delta |
 | `GET /api/input-mute/toggle` | 입력 뮤트 토글 / Input mute toggle | — |
 | `GET /api/monitor/toggle` | 모니터 출력 토글 / Monitor output toggle | — |
@@ -764,8 +764,8 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 | Full Backup | `.dpfullbackup`으로 전체 백업 / Full backup to `.dpfullbackup` | 없음 (파일 선택) / None (file chooser) |
 | Full Restore | `.dpfullbackup`에서 전체 복원 / Full restore from `.dpfullbackup` | 있음 / Yes |
 | Clear Plugin Cache | 플러그인 스캔 캐시 삭제 / Delete plugin scan cache | 있음 / Yes |
-| Clear All Presets | 슬롯 A-E + Auto + 백업 + 임시 파일 삭제, 활성 체인 초기화 / Delete slots A-E + Auto + backups + temp files, reset active chain | 있음 / Yes |
-| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정) / Delete all data (settings, controls, presets (A-E + Auto), cache, recording config) | 있음 / Yes |
+| Clear All Presets | 슬롯 A-E + Auto + 백업/임시 파일(`.bak`, `.backup`, `.tmp`) 삭제, 활성 체인과 런타임 슬롯 상태/프리로드 캐시 초기화 / Delete slots A-E + Auto + backup/temp files (`.bak`, `.backup`, `.tmp`), reset active chain and runtime slot/preload state | 있음 / Yes |
+| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정), 슬롯 이름/점유 캐시/프리로드 캐시도 초기화 / Delete all data (settings, controls, presets (A-E + Auto), cache, recording config), also clear slot names, occupancy cache, and preload cache | 있음 / Yes |
 
 #### 4.6.6 상태 바 / Status Bar (30px)
 | 요소 / Element | 설명 / Description |
@@ -938,7 +938,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.0.8" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.0.9" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1061,7 +1061,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.0.8",
+  "appVersion": "4.0.9",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1084,7 +1084,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.0.8",
+  "appVersion": "4.0.9",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1103,8 +1103,8 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 | Full Backup | `.dpfullbackup`으로 전체 백업 / Full backup to `.dpfullbackup` | 파일 선택 / File chooser |
 | Full Restore | `.dpfullbackup`에서 전체 복원 (같은 OS만 — 크로스 OS 복원 차단) / Full restore from `.dpfullbackup` (same OS only — cross-OS restore blocked) | 확인 다이얼로그 / Confirmation dialog |
 | Clear Plugin Cache | 스캔 캐시 XML 삭제 / Delete scan cache XML | 확인 다이얼로그 / Confirmation dialog |
-| Clear All Presets | 슬롯 A-E + Auto 파일 + 백업 + 임시 파일 삭제, 활성 체인 초기화 / Delete slots A-E + Auto files + backups + temp files, reset active chain | 확인 다이얼로그 / Confirmation dialog |
-| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정) / Delete all data (settings, controls, presets (A-E + Auto), cache, recording config) | 확인 다이얼로그 / Confirmation dialog |
+| Clear All Presets | 슬롯 A-E + Auto 파일 + 백업/임시 파일 삭제, 활성 체인과 런타임 슬롯 상태/프리로드 캐시 초기화 / Delete slots A-E + Auto files + backup/temp files, reset active chain and runtime slot/preload state | 확인 다이얼로그 / Confirmation dialog |
+| Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정), 슬롯 이름/점유 캐시/프리로드 캐시도 초기화 / Delete all data (settings, controls, presets (A-E + Auto), cache, recording config), also clear slot names, occupancy cache, and preload cache | 확인 다이얼로그 / Confirmation dialog |
 
 ---
 
@@ -1266,7 +1266,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.8.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.9.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

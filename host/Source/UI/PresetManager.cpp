@@ -67,6 +67,86 @@ int fallbackChannelCount(int reportedCount, const juce::BigInteger& currentMask)
     // Some drivers briefly report 0 channel names; prefer stereo-safe fallback.
     return juce::jmax(2, fromMask);
 }
+
+juce::File backupFileFor(const juce::File& file)
+{
+    return file.getSiblingFile(file.getFileName() + ".bak");
+}
+
+juce::File legacyBackupFileFor(const juce::File& file)
+{
+    return file.withFileExtension(file.getFileExtension() + ".backup");
+}
+
+juce::File tempFileFor(const juce::File& file)
+{
+    return file.getSiblingFile(file.getFileName() + ".tmp");
+}
+
+bool fileFamilyExists(const juce::File& file)
+{
+    return file.existsAsFile()
+        || backupFileFor(file).existsAsFile()
+        || legacyBackupFileFor(file).existsAsFile();
+}
+
+bool deleteFileIfPresent(const juce::File& file)
+{
+    if (!file.existsAsFile()) return false;
+    file.deleteFile();
+    return true;
+}
+
+bool deleteFileFamily(const juce::File& file)
+{
+    bool deleted = false;
+    deleted |= deleteFileIfPresent(file);
+    deleted |= deleteFileIfPresent(backupFileFor(file));
+    deleted |= deleteFileIfPresent(legacyBackupFileFor(file));
+    deleted |= deleteFileIfPresent(tempFileFor(file));
+    return deleted;
+}
+
+juce::File getLegacyNumericSlotFile(int slotIndex)
+{
+    if (slotIndex < 0 || slotIndex >= PresetManager::kNumSlots || slotIndex == 5)
+        return {};
+
+    auto dir = ControlMappingStore::getConfigDirectory().getChildFile("Slots");
+    return dir.getChildFile("slot_" + juce::String(static_cast<int>(PresetManager::slotLabel(slotIndex))) + ".dppreset");
+}
+
+bool slotFileFamilyExists(int slotIndex)
+{
+    auto file = PresetManager::getSlotFile(slotIndex);
+    if (fileFamilyExists(file)) return true;
+
+    auto legacyFile = getLegacyNumericSlotFile(slotIndex);
+    return legacyFile != juce::File() && fileFamilyExists(legacyFile);
+}
+
+void deleteSlotBackupFiles(int slotIndex)
+{
+    auto file = PresetManager::getSlotFile(slotIndex);
+    deleteFileIfPresent(backupFileFor(file));
+    deleteFileIfPresent(legacyBackupFileFor(file));
+    deleteFileIfPresent(tempFileFor(file));
+
+    auto legacyFile = getLegacyNumericSlotFile(slotIndex);
+    if (legacyFile != juce::File())
+        deleteFileFamily(legacyFile);
+}
+
+bool deleteSlotFileFamily(int slotIndex)
+{
+    bool deleted = deleteFileFamily(PresetManager::getSlotFile(slotIndex));
+
+    auto legacyFile = getLegacyNumericSlotFile(slotIndex);
+    if (legacyFile != juce::File())
+        deleted |= deleteFileFamily(legacyFile);
+
+    return deleted;
+}
 } // namespace
 
 PresetManager::PresetManager(AudioEngine& engine)
@@ -580,6 +660,26 @@ bool PresetManager::isSameChain(const std::vector<TargetPlugin>& targets, VSTCha
     return true;
 }
 
+bool PresetManager::cachedSlotMatchesTargets(const PluginPreloadCache::CachedSlot& cached,
+                                             const std::vector<TargetPlugin>& targets)
+{
+    if (targets.size() != cached.entries.size())
+        return false;
+
+    for (size_t i = 0; i < targets.size(); ++i) {
+        const auto& target = targets[i];
+        const auto& entry = cached.entries[i];
+
+        if (target.type != PluginSlot::Type::VST)
+            return false;
+
+        if (target.name != entry.name || target.path != entry.path)
+            return false;
+    }
+
+    return true;
+}
+
 void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
 {
     // Suspend graph processing to prevent audio thread from calling processBlock
@@ -793,12 +893,12 @@ bool PresetManager::saveSlot(int slotIndex)
 
     // If all plugins were removed, delete the slot file to reflect empty state
     if (engine_.getVSTChain().getPluginCount() == 0) {
-        auto file = getSlotFile(slotIndex);
-        if (file.existsAsFile()) {
-            file.deleteFile();
-            file.withFileExtension("dppreset.backup").deleteFile();
+        const bool hadSlot = slotFileFamilyExists(slotIndex);
+        if (hadSlot) {
+            deleteSlotFileFamily(slotIndex);
             preloadCache_.invalidateSlot(slotIndex);
             slotOccupiedCache_[static_cast<size_t>(slotIndex)] = false;
+            slotNames_[static_cast<size_t>(slotIndex)] = {};
             juce::Logger::writeToLog("[PRESET] Cleared empty slot " + juce::String::charToString(slotLabel(slotIndex)));
         }
         return true;  // empty-chain clear is a successful operation
@@ -904,30 +1004,13 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         + " activeSlot=" + juce::String(activeSlot_));
 
     auto file = getSlotFile(slotIndex);
-    if (!file.existsAsFile()) {
-        auto backup = file.withFileExtension("dppreset.backup");
-        if (backup.existsAsFile()) {
-            juce::Logger::writeToLog("[PRESET] Slot file missing, restoring from backup");
-            backup.copyFileTo(file);
-        }
-    }
-    if (!file.existsAsFile()) {
+    auto json = loadFileWithBackupFallback(file);
+    if (json.isEmpty()) {
         if (onComplete) onComplete(false);
         return;
     }
 
-    auto json = file.loadFileAsString();
     auto parsed = juce::JSON::parse(json);
-    if (!parsed.isObject()) {
-        // Try backup for corrupt file
-        auto backup = file.withFileExtension("dppreset.backup");
-        if (backup.existsAsFile()) {
-            juce::Logger::writeToLog("[PRESET] Slot file corrupt, restoring from backup");
-            json = backup.loadFileAsString();
-            parsed = juce::JSON::parse(json);
-            if (parsed.isObject()) backup.copyFileTo(file);
-        }
-    }
     if (!parsed.isObject()) {
         if (onComplete) onComplete(false);
         return;
@@ -989,10 +1072,10 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
 
             freshTargets = parseSlotFile(slotIndex);
 
-            // Structural mismatch: cache has different plugin count than file.
+            // Structural mismatch: cache has different plugins than file.
             // This happens when plugins were added/removed/moved after the cache
             // was populated. Discard stale cache and fall through to slow path.
-            if (freshTargets.size() != cached->entries.size()) {
+            if (!cachedSlotMatchesTargets(*cached, freshTargets)) {
                 Log::audit("PRESET", "Cache stale: cached=" + juce::String(static_cast<int>(cached->entries.size()))
                     + " file=" + juce::String(static_cast<int>(freshTargets.size()))
                     + " - discarding cache, using slow path");
@@ -1131,12 +1214,11 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
 
     auto srcFile = getSlotFile(fromSlot);
     auto dstFile = getSlotFile(toSlot);
+    auto srcJson = loadFileWithBackupFallback(srcFile);
 
     // Empty source clear destination
-    if (!srcFile.existsAsFile()) {
-        if (dstFile.existsAsFile())
-            dstFile.deleteFile();
-        dstFile.withFileExtension("dppreset.backup").deleteFile();
+    if (srcJson.isEmpty()) {
+        deleteSlotFileFamily(toSlot);
         preloadCache_.invalidateSlot(toSlot);
         slotOccupiedCache_[static_cast<size_t>(toSlot)] = false;
         slotNames_[static_cast<size_t>(toSlot)] = {};
@@ -1145,10 +1227,10 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
         return true;
     }
 
-    bool ok = srcFile.copyFileTo(dstFile);
+    bool ok = atomicWriteFile(dstFile, srcJson);
     if (ok) {
         // Remove stale backup of destination (it no longer matches the copied data)
-        dstFile.withFileExtension("dppreset.backup").deleteFile();
+        deleteSlotBackupFiles(toSlot);
         preloadCache_.invalidateSlot(toSlot);
         slotOccupiedCache_[static_cast<size_t>(toSlot)] = true;
         slotNames_[static_cast<size_t>(toSlot)] = slotNames_[static_cast<size_t>(fromSlot)];
@@ -1162,13 +1244,8 @@ bool PresetManager::deleteSlot(int slotIndex)
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
 
-    auto file = getSlotFile(slotIndex);
-    if (!file.existsAsFile()) return false;
-
-    bool ok = file.deleteFile();
+    bool ok = deleteSlotFileFamily(slotIndex);
     if (ok) {
-        // Also remove backup file
-        file.withFileExtension("dppreset.backup").deleteFile();
         // If we deleted the active slot, clear activeSlot
         if (activeSlot_ == slotIndex)
             activeSlot_ = -1;
@@ -1189,8 +1266,7 @@ bool PresetManager::isSlotOccupied(int slotIndex) const
 bool PresetManager::querySlotOccupied(int slotIndex) const
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
-    auto file = getSlotFile(slotIndex);
-    return file.existsAsFile() || file.withFileExtension("dppreset.backup").existsAsFile();
+    return slotFileFamilyExists(slotIndex);
 }
 
 void PresetManager::refreshSlotOccupancyCache()
@@ -1228,6 +1304,21 @@ void PresetManager::triggerPreload(std::function<void()> onComplete)
 void PresetManager::invalidatePreloadCache()
 {
     preloadCache_.invalidateAll();
+}
+
+void PresetManager::clearPreloadCache()
+{
+    suppressPreload_ = false;
+    preloadCache_.clearAll();
+}
+
+void PresetManager::clearRuntimeSlotState()
+{
+    activeSlot_ = -1;
+    slotOccupiedCache_.fill(false);
+    for (auto& name : slotNames_)
+        name = {};
+    clearPreloadCache();
 }
 
 // Slot Names
@@ -1278,10 +1369,15 @@ juce::String PresetManager::getSlotDisplayName(int slotIndex) const
 
 void PresetManager::loadSlotNames()
 {
+    for (auto& name : slotNames_)
+        name = {};
+
     for (int i = 0; i < kNumSlots; ++i) {
         auto file = getSlotFile(i);
-        if (!file.existsAsFile()) continue;
-        auto json = file.loadFileAsString();
+        if (!fileFamilyExists(file))
+            continue;
+        auto json = loadFileWithBackupFallback(file);
+        if (json.isEmpty()) continue;
         auto parsed = juce::JSON::parse(json);
         if (auto* root = parsed.getDynamicObject()) {
             if (root->hasProperty("name"))
@@ -1301,7 +1397,8 @@ void PresetManager::exportSlot(int slotIndex)
         saveSlot(slotIndex);
 
     auto srcFile = getSlotFile(slotIndex);
-    if (!srcFile.existsAsFile()) return;
+    auto srcJson = loadFileWithBackupFallback(srcFile);
+    if (srcJson.isEmpty()) return;
 
     auto defaultName = "slot_" + juce::String::charToString(slotLabel(slotIndex));
     auto name = getSlotName(slotIndex);
@@ -1315,12 +1412,17 @@ void PresetManager::exportSlot(int slotIndex)
 
     chooser->launchAsync(juce::FileBrowserComponent::saveMode
                          | juce::FileBrowserComponent::canSelectFiles,
-                         [srcFile, slotIndex, chooser](const juce::FileChooser& fc) {
+                         [srcJson, slotIndex, chooser](const juce::FileChooser& fc) {
         auto dest = fc.getResult();
         if (dest == juce::File()) return;
         if (!dest.hasFileExtension(".dpchain"))
             dest = dest.withFileExtension(".dpchain");
-        srcFile.copyFileTo(dest);
+        if (!atomicWriteFile(dest, srcJson)) {
+            juce::Logger::writeToLog("[PRESET] Failed to export slot "
+                + juce::String::charToString(PresetManager::slotLabel(slotIndex))
+                + " to " + dest.getFileName());
+            return;
+        }
         juce::Logger::writeToLog("[PRESET] Exported slot "
             + juce::String::charToString(PresetManager::slotLabel(slotIndex))
             + " to " + dest.getFileName());
@@ -1369,7 +1471,7 @@ void PresetManager::importSlot(int slotIndex, std::function<void(bool)> onComple
             if (onComplete) onComplete(false);
             return;
         }
-        dstFile.withFileExtension("dppreset.backup").deleteFile();
+        deleteSlotBackupFiles(slotIndex);
         preloadCache_.invalidateSlot(slotIndex);
         slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
 

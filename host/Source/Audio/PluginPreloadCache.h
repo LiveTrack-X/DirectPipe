@@ -99,6 +99,9 @@ public:
     /** @brief Invalidate all cached slots. */
     void invalidateAll();
 
+    /** @brief Cancel preloading and drop all cached plugin instances. */
+    void clearAll();
+
     /** @brief Cancel any running preload and wait for it to finish. */
     void cancelAndWait();
 

@@ -23,6 +23,7 @@
 
 #include "SharedMemWriter.h"
 #include "directpipe/Protocol.h"
+#include <algorithm>
 #include <thread>
 
 namespace directpipe {
@@ -115,25 +116,37 @@ void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int num
     if (numSamples <= 0) return;
 
     const int numChannels = juce::jmin(buffer.getNumChannels(), static_cast<int>(channels_));
-    // Clamp to interleaveBuffer_ capacity to prevent buffer overrun
+    // Clamp to both source and interleaveBuffer_ capacity to prevent overrun.
     const auto maxFrames = interleaveBuffer_.size() / (std::max)(static_cast<size_t>(channels_), size_t{1});
-    const auto samples = (std::min)(static_cast<size_t>(numSamples), maxFrames);
+    const auto requestedSamples = (std::min)(static_cast<size_t>(numSamples),
+                                             static_cast<size_t>(buffer.getNumSamples()));
+    const auto samples = (std::min)(requestedSamples, maxFrames);
+    if (samples == 0)
+        return;
 
-    // Convert from JUCE's non-interleaved format to interleaved
-    // JUCE: [L0 L1 L2 ...][R0 R1 R2 ...]
-    // Ring buffer: [L0 R0 L1 R1 L2 R2 ...]
-    if (channels_ == 1) {
-        // Mono: just copy channel 0
-        const float* src = buffer.getReadPointer(0);
-        std::memcpy(interleaveBuffer_.data(), src, samples * sizeof(float));
-    } else {
-        // Stereo: interleave channels
-        const float* left = buffer.getReadPointer(0);
-        const float* right = numChannels > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0);
+    if (numChannels <= 0) {
+        std::fill(interleaveBuffer_.begin(),
+                  interleaveBuffer_.begin() + static_cast<std::ptrdiff_t>(samples * channels_),
+                  0.0f);
+    }
+    else
+    {
+        // Convert from JUCE's non-interleaved format to interleaved
+        // JUCE: [L0 L1 L2 ...][R0 R1 R2 ...]
+        // Ring buffer: [L0 R0 L1 R1 L2 R2 ...]
+        if (channels_ == 1) {
+            // Mono: just copy channel 0
+            const float* src = buffer.getReadPointer(0);
+            std::memcpy(interleaveBuffer_.data(), src, samples * sizeof(float));
+        } else {
+            // Stereo: interleave channels
+            const float* left = buffer.getReadPointer(0);
+            const float* right = numChannels > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0);
 
-        for (size_t i = 0; i < samples; ++i) {
-            interleaveBuffer_[i * 2] = left[i];
-            interleaveBuffer_[i * 2 + 1] = right[i];
+            for (size_t i = 0; i < samples; ++i) {
+                interleaveBuffer_[i * 2] = left[i];
+                interleaveBuffer_[i * 2 + 1] = right[i];
+            }
         }
     }
 

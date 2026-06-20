@@ -105,13 +105,15 @@ void AudioRecorder::writeBlock(const juce::AudioBuffer<float>& buffer, int numSa
             || !juce::MessageManager::getInstance()->isThisTheMessageThread());
 
     if (!recording_.load(std::memory_order_acquire)) return;
+    const int samplesToWrite = juce::jlimit(0, buffer.getNumSamples(), numSamples);
+    if (samplesToWrite <= 0 || buffer.getNumChannels() <= 0) return;
 
     const juce::SpinLock::ScopedTryLockType sl(writerLock_);
     if (!sl.isLocked()) return;  // Drop during teardown instead of spinning the RT thread.
     if (!threadedWriter_) return;
 
-    threadedWriter_->write(buffer.getArrayOfReadPointers(), numSamples);
-    samplesWritten_.fetch_add(numSamples, std::memory_order_relaxed);
+    threadedWriter_->write(buffer.getArrayOfReadPointers(), samplesToWrite);
+    samplesWritten_.fetch_add(samplesToWrite, std::memory_order_relaxed);
 }
 
 juce::File AudioRecorder::getRecordingFile() const

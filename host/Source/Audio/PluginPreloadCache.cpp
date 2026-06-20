@@ -313,6 +313,21 @@ void PluginPreloadCache::invalidateAll()
     // of dozens of plugin instances on the message thread during driver switches.
 }
 
+void PluginPreloadCache::clearAll()
+{
+    cancelPreload_.store(true);
+    preloadGeneration_.fetch_add(1);  // supersede running thread
+
+    for (int i = 0; i < kNumSlots; ++i)
+        slotVersions_[static_cast<size_t>(i)].fetch_add(1);
+
+    std::map<int, std::unique_ptr<CachedSlot>> oldCache;
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex_);
+        oldCache.swap(cache_);
+    }
+}
+
 void PluginPreloadCache::cancelAndWait()
 {
     cancelPreload_.store(true);

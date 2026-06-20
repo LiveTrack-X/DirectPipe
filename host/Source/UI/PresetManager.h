@@ -192,6 +192,12 @@ public:
     /** @brief Invalidate all cached plugin instances (e.g., on SR/BS change). */
     void invalidatePreloadCache();
 
+    /** @brief Drop all cached plugin instances immediately after destructive slot changes. */
+    void clearPreloadCache();
+
+    /** @brief Clear in-memory slot occupancy, names, active slot, and preload cache. */
+    void clearRuntimeSlotState();
+
     /** @brief Refresh slot occupancy cache from filesystem. */
     void refreshSlotOccupancy() { refreshSlotOccupancyCache(); }
 
@@ -218,6 +224,8 @@ private:
     static std::vector<TargetPlugin> parseTargetPlugins(const juce::Array<juce::var>* pluginsArray);
     static std::vector<TargetPlugin> parseSlotFile(int slotIndex);
     static bool isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain);
+    static bool cachedSlotMatchesTargets(const PluginPreloadCache::CachedSlot& cached,
+                                         const std::vector<TargetPlugin>& targets);
     static void applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
     static void applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
 

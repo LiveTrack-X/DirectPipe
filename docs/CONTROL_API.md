@@ -119,7 +119,7 @@ Optional explicit-set mode:
 |-------|------|----------|-------------|
 | `muted` | boolean | No | Explicit panic state set (`true`=engage, `false`=release). If omitted, legacy toggle behavior is used. / 패닉 상태를 명시적으로 설정 (`true`=켜기, `false`=해제). 생략 시 레거시 토글 동작 사용 |
 
-Immediately mutes all output paths and stops active recording. Send again to unmute (previous monitor/output/IPC state is restored; recording does not auto-restart). During panic mute, most actions (bypass, volume, preset, recording, etc.) are blocked; `input_mute_toggle`, `xrun_reset`, limiter controls, and `auto_add` are allowed for maintenance/prep use. / 패닉 뮤트 (출력 경로 전체 차단) + 녹음 자동 중지. 재전송 시 해제 (이전 모니터/출력/IPC 상태 복원; 녹음은 자동 재시작 안 함). 패닉 뮤트 중 대부분의 액션(바이패스, 볼륨, 프리셋, 녹음 등)은 차단되며, 유지보수/준비 용도로 `input_mute_toggle`, `xrun_reset`, 리미터 제어, `auto_add`는 허용됩니다.
+Immediately mutes all output paths and stops active recording. Send again to unmute (previous monitor/output/IPC state is restored; recording does not auto-restart). During panic mute, most actions (bypass, volume, preset, recording, etc.) are blocked; `input_mute_toggle`, `xrun_reset`, limiter controls, and `auto_processors_add` are allowed for maintenance/prep use. / 패닉 뮤트 (출력 경로 전체 차단) + 녹음 자동 중지. 재전송 시 해제 (이전 모니터/출력/IPC 상태 복원; 녹음은 자동 재시작 안 함). 패닉 뮤트 중 대부분의 액션(바이패스, 볼륨, 프리셋, 녹음 등)은 차단되며, 유지보수/준비 용도로 `input_mute_toggle`, `xrun_reset`, 리미터 제어, `auto_processors_add`는 허용됩니다.
 
 ---
 
@@ -168,10 +168,10 @@ Toggles the monitor output (headphones) on/off. / 모니터 출력(헤드폰) �
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `slot` | number | Yes | 0=A, 1=B, 2=C, 3=D, 4=E |
+| `slot` | number | Yes | 0=A, 1=B, 2=C, 3=D, 4=E. Auto uses `auto_processors_add`. |
 
-> **Auto 슬롯**: WebSocket에서 Auto 슬롯(index 5)을 활성화하려면 `auto_processors_add` 액션을 사용하세요. `switch_preset_slot`은 A-E(0-4)만 지원합니다. HTTP에서는 `/api/preset/5`로 Auto 접근 가능.
-> **Auto slot**: To activate the Auto slot (index 5) via WebSocket, use the `auto_processors_add` action. `switch_preset_slot` supports A-E (0-4) only. Via HTTP, `/api/preset/5` accesses Auto.
+> **Auto 슬롯**: Auto 슬롯(index 5)은 A-E 슬롯 바와 별도인 `[Auto]` 버튼 경로입니다. WebSocket에서는 `auto_processors_add`, HTTP에서는 `/api/auto/add`를 사용하세요. `switch_preset_slot`은 A-E(0-4)만 전환합니다.
+> **Auto slot**: Auto slot (index 5) is the separate `[Auto]` button path, not part of the A-E slot bar. Use `auto_processors_add` over WebSocket or `/api/auto/add` over HTTP. `switch_preset_slot` switches A-E (0-4) only.
 
 ---
 
@@ -183,10 +183,10 @@ Toggles the monitor output (headphones) on/off. / 모니터 출력(헤드폰) �
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `index` | number | Yes | 0=A, 1=B, 2=C, 3=D, 4=E, 5=Auto. HTTP equivalent: `/api/preset/:index` / 슬롯 인덱스. HTTP: `/api/preset/:index` |
+| `index` | number | Yes | 0=A, 1=B, 2=C, 3=D, 4=E. Auto uses `auto_processors_add` / `/api/auto/add`. |
 
-> `load_preset`과 `switch_preset_slot`의 차이: `load_preset`은 슬롯 0-5(Auto 포함)를 로드, `switch_preset_slot`은 A-E(0-4)만 전환. Auto 슬롯은 `load_preset(index=5)` 또는 `auto_processors_add`로 접근.
-> Difference from `switch_preset_slot`: `load_preset` loads slots 0-5 (including Auto), `switch_preset_slot` switches A-E (0-4) only. Auto slot is accessed via `load_preset(index=5)` or `auto_processors_add`.
+> `load_preset`과 `switch_preset_slot`의 차이: 둘 다 외부 슬롯 바 경로에서는 A-E(0-4)를 대상으로 합니다. Auto 슬롯은 `[Auto]` 버튼 경로인 `auto_processors_add` 또는 `/api/auto/add`로 접근합니다.
+> Difference from `switch_preset_slot`: both target A-E (0-4) through the external slot-bar path. Auto slot is accessed through the `[Auto]` button path: `auto_processors_add` or `/api/auto/add`.
 
 ---
 
@@ -208,8 +208,8 @@ Cycles forward to the next occupied preset slot. / 다음 사용 중인 프리�
 
 Cycles backward to the previous occupied preset slot. / 이전 사용 중인 프리셋 슬롯으로 이동.
 
-> **참고**: `next_preset`과 `previous_preset`은 WebSocket 전용입니다. HTTP API에서는 `/api/preset/:index`로 특정 슬롯을 직접 지정하세요.
-> **Note**: `next_preset` and `previous_preset` are WebSocket-only. For HTTP, use `/api/preset/:index` to specify the target slot directly.
+> **참고**: `next_preset`과 `previous_preset`은 WebSocket 전용입니다. HTTP API에서는 `/api/preset/:index`로 A-E 슬롯을 직접 지정하고, Auto는 `/api/auto/add`를 사용하세요.
+> **Note**: `next_preset` and `previous_preset` are WebSocket-only. For HTTP, use `/api/preset/:index` for A-E slots and `/api/auto/add` for Auto.
 
 ---
 
@@ -402,8 +402,8 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/mute/panic` | Panic mute / 패닉 뮤트 |
 | `GET /api/volume/:target/:value` | Set volume (target: `input` [0.0-2.0], `monitor` [0.0-1.0], `output` [0.0-1.0]; validated) / 볼륨 설정 (범위 검증) |
 | `GET /api/monitor/toggle` | Toggle monitor output on/off / 모니터 출력 토글 |
-| `GET /api/preset/:index` | Load preset (0-5: 0-4=A-E, 5=Auto) / 프리셋 로드 (0-5: 0-4=A-E, 5=Auto) |
-| `GET /api/slot/:index` | Switch preset slot (0-5, A-E + Auto) / 슬롯 전환 |
+| `GET /api/preset/:index` | Load A-E preset slot (0-4). Use `/api/auto/add` for Auto. / A-E 프리셋 슬롯 로드 (0-4). Auto는 `/api/auto/add` 사용 |
+| `GET /api/slot/:index` | Switch A-E preset slot (0-4). Use `/api/auto/add` for Auto. / A-E 슬롯 전환 (0-4). Auto는 `/api/auto/add` 사용 |
 | `GET /api/input-mute/toggle` | Toggle input mute / 입력 뮤트 토글 |
 | `GET /api/gain/:delta` | Adjust input gain (linear, e.g. 0.1 = +0.1 gain) / 입력 게인 조절 (선형, 예: 0.1 = +0.1 게인) |
 | `GET /api/recording/toggle` | Toggle audio recording on/off / 오디오 녹음 토글 |

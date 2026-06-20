@@ -379,13 +379,13 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                floatToString(value) + "}"};
     }
 
-    // GET /api/preset/:index (0-4 = A-E, 5 = Auto)
+    // GET /api/preset/:index (0-4 = A-E; Auto uses /api/auto/add)
     if (action == "preset" && segments.size() >= 3) {
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
         int index = safeAtoi(segments[2]);
-        if (index < 0 || index > 5)
-            return {400, "{\"error\": \"Preset index out of range 0-5 (0-4=A-E, 5=Auto)\"}"};
+        if (index < 0 || index > 4)
+            return {400, "{\"error\": \"Preset index out of range 0-4 (A-E); use /api/auto/add for Auto\"}"};
         dispatcher_.loadPreset(index);
         return {200, R"({"ok": true, "action": "load_preset", "index": )" +
                std::to_string(index) + "}"};
@@ -406,13 +406,13 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                floatToString(delta) + "}"};
     }
 
-    // GET /api/slot/:index (0-4 = A-E, 5 = Auto)
+    // GET /api/slot/:index (0-4 = A-E; Auto uses /api/auto/add)
     if (action == "slot" && segments.size() >= 3) {
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
         int index = safeAtoi(segments[2]);
-        if (index < 0 || index > 5)
-            return {400, "{\"error\": \"Slot index out of range 0-5 (0-4=A-E, 5=Auto)\"}"};
+        if (index < 0 || index > 4)
+            return {400, "{\"error\": \"Slot index out of range 0-4 (A-E); use /api/auto/add for Auto\"}"};
         ActionEvent event;
         event.action = Action::SwitchPresetSlot;
         event.intParam = index;

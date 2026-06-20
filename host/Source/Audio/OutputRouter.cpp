@@ -64,7 +64,10 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
         bufferTruncated_.store(true, std::memory_order_relaxed);
         numSamples = maxSamples;
     }
+    numSamples = juce::jmin(numSamples, buffer.getNumSamples());
     const int numChannels = juce::jmin(buffer.getNumChannels(), 2);
+    if (numChannels <= 0 || numSamples <= 0)
+        return;
 
     // Main output goes directly through the audio callback's outputChannelData.
     // OutputRouter only handles additional routing to separate shared-mode devices.

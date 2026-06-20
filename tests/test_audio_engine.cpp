@@ -6,6 +6,7 @@
 #include "Audio/AudioEngine.h"
 #include "Audio/AudioRingBuffer.h"
 #include "Audio/DeviceState.h"
+#include "Audio/MonitorDriftPolicy.h"
 
 using namespace directpipe;
 
@@ -142,6 +143,77 @@ TEST(AudioRingBufferTest, DiscardClampsToAvailableFrames) {
     EXPECT_EQ(rb.discard(256), 64);
     EXPECT_EQ(rb.availableRead(), 0);
     EXPECT_EQ(rb.discard(1), 0);
+}
+
+TEST(AudioRingBufferTest, ZeroChannelWriteProducesSilenceNotStaleAudio) {
+    AudioRingBuffer rb;
+    rb.initialize(1024, 2);
+
+    std::vector<float> tone(128, 0.75f);
+    const float* inputs[] = { tone.data() };
+    EXPECT_EQ(rb.write(inputs, 1, 128), 128);
+
+    float* noInputs[] = { nullptr };
+    EXPECT_EQ(rb.write(noInputs, 0, 64), 64);
+    EXPECT_EQ(rb.discard(128), 128);
+
+    std::vector<float> outL(64, 1.0f);
+    std::vector<float> outR(64, 1.0f);
+    float* outputs[] = { outL.data(), outR.data() };
+
+    EXPECT_EQ(rb.read(outputs, 2, 64), 64);
+    for (int i = 0; i < 64; ++i) {
+        EXPECT_FLOAT_EQ(outL[static_cast<size_t>(i)], 0.0f);
+        EXPECT_FLOAT_EQ(outR[static_cast<size_t>(i)], 0.0f);
+    }
+}
+
+TEST(AudioRingBufferTest, NullInputChannelWritesSilenceForThatChannel) {
+    AudioRingBuffer rb;
+    rb.initialize(1024, 2);
+
+    std::vector<float> tone(32, 0.5f);
+    const float* inputs[] = { tone.data(), nullptr };
+    EXPECT_EQ(rb.write(inputs, 2, 32), 32);
+
+    std::vector<float> outL(32, 0.0f);
+    std::vector<float> outR(32, 1.0f);
+    float* outputs[] = { outL.data(), outR.data() };
+    EXPECT_EQ(rb.read(outputs, 2, 32), 32);
+
+    for (int i = 0; i < 32; ++i) {
+        EXPECT_FLOAT_EQ(outL[static_cast<size_t>(i)], 0.5f);
+        EXPECT_FLOAT_EQ(outR[static_cast<size_t>(i)], 0.0f);
+    }
+}
+
+TEST(MonitorDriftPolicyTest, ProducerBlockPreventsOverTrimWithSmallMonitorBuffer) {
+    auto plan = monitor_drift::calculateTrimPlan(
+        1800, 4096,
+        512, 128);
+
+    EXPECT_GE(plan.targetFill, 1024);
+    EXPECT_EQ(plan.highThreshold, 1536);
+    EXPECT_EQ(plan.trimFrames, 1800 - plan.targetFill);
+}
+
+TEST(MonitorDriftPolicyTest, DoesNotTrimBelowMainCallbackGranularity) {
+    auto plan = monitor_drift::calculateTrimPlan(
+        900, 4096,
+        512, 128);
+
+    EXPECT_GE(plan.targetFill, 1024);
+    EXPECT_EQ(plan.trimFrames, 0);
+}
+
+TEST(MonitorDriftPolicyTest, LargeProducerBlockStillTrimsBeforeFullCapacity) {
+    auto plan = monitor_drift::calculateTrimPlan(
+        3500, 4096,
+        1024, 128);
+
+    EXPECT_EQ(plan.targetFill, 2048);
+    EXPECT_EQ(plan.highThreshold, 3072);
+    EXPECT_EQ(plan.trimFrames, 3500 - 2048);
 }
 
 // ─── DeviceState state machine tests (pure function, no device needed) ───

@@ -8,6 +8,22 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.0.9] - 2026-06-20
+
+### Fixed
+- **Monitor drift trim over-correction**: The v4.0.8 monitor latency drift trim now accounts for both the main audio callback producer block size and the monitor-device consumer block size. This prevents the monitor ring buffer from being trimmed below the main callback granularity when the monitor buffer is smaller than the main buffer, reducing dropouts without reverting the long-session drift protection.
+- **Monitor behavior clarification**: Confirmed the monitor path still receives the already processed post-VST/post-Safety audio buffer; no second VST processing pass is performed for monitor output.
+- **Defensive audio buffer edge handling**: `AudioRingBuffer`, `OutputRouter`, `MonitorOutput`, `SharedMemWriter`, and `AudioRecorder` now guard zero-channel, null-channel, or short-source-buffer calls so edge-case silence paths do not reuse stale audio or read past the source buffer.
+- **Preset slot switch crash guard**: Slot-cache hits now verify the cached plugin chain against the current slot file by plugin type/name/path before swapping instances, preventing stale preload entries from being reused after reset, restore, delete, or import operations.
+- **Factory Reset slot cleanup**: Factory Reset and Clear All Presets now clear in-memory slot names, occupancy state, pending slot loads, and the preload cache immediately after destructive slot cleanup, so deleted slot names do not remain visible.
+- **Preset backup cleanup**: Preset reset/delete/copy/import/export paths now consistently remove `.bak`, `.backup`, `.tmp`, and legacy numeric slot files, preventing stale atomic-write backups from reviving old settings or slot names.
+
+### Tests
+- Added `MonitorDriftPolicyTest`, `AudioRingBufferTest`, and `OutputRouterTest` coverage for small-monitor-buffer, large-producer-block, zero-channel, null-channel, and short-source-buffer cases.
+- Rebuilt and ran targeted audio routing/drift tests, targeted preset/settings tests, and the full host test suite for the slot reset cleanup and audio edge-case paths.
+
+---
+
 ## [4.0.8] - 2026-06-12
 
 ### Fixed

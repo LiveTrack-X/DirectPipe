@@ -290,9 +290,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             auto& chain = audioEngine_.getVSTChain();
             for (int i = chain.getPluginCount() - 1; i >= 0; --i)
                 chain.removePlugin(i);
-            presetManager_->setActiveSlot(-1);
-            presetManager_->refreshSlotOccupancy();
-            presetManager_->invalidatePreloadCache();
+            presetManager_->clearRuntimeSlotState();
             loadingSlot_ = false;
             markSettingsDirty();
             if (presetSlotBar_)
@@ -306,9 +304,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             auto& chain = audioEngine_.getVSTChain();
             for (int i = chain.getPluginCount() - 1; i >= 0; --i)
                 chain.removePlugin(i);
-            presetManager_->setActiveSlot(-1);
-            presetManager_->refreshSlotOccupancy();
-            presetManager_->invalidatePreloadCache();
+            presetManager_->clearRuntimeSlotState();
             // Reload with factory defaults
             controlManager_->reloadConfig();
             setStartMinimizedToTrayOnLaunch(false, false);
@@ -369,7 +365,7 @@ MainComponent::MainComponent(bool enableExternalControls)
                     safeThis->controlManager_->reloadConfig();
                     safeThis->presetManager_->refreshSlotOccupancy();
                     safeThis->presetManager_->loadSlotNames();
-                    safeThis->presetManager_->invalidatePreloadCache();
+                    safeThis->presetManager_->clearPreloadCache();
                     safeThis->loadingSlot_ = false;
                     safeThis->markSettingsDirty();
                     safeThis->refreshUI();

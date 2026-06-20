@@ -24,6 +24,7 @@
 #include "MonitorOutput.h"
 #include "../Control/Log.h"
 #include "../Platform/PlatformAudio.h"
+#include "MonitorDriftPolicy.h"
 #include <algorithm>
 
 namespace directpipe {
@@ -31,7 +32,6 @@ namespace directpipe {
 namespace {
 constexpr int kMonitorRingBufferFrames = 4096;
 constexpr int kDriftWarmupCallbacks = 50;
-constexpr int kMinDriftTargetFrames = 128;
 }
 
 MonitorOutput::MonitorOutput() = default;
@@ -54,6 +54,7 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     // Initialize ring buffer: power-of-two stereo buffer, bounded by drift trim.
     ringBuffer_.initialize(kMonitorRingBufferFrames, 2);
     callbacksSinceStart_.store(0, std::memory_order_relaxed);
+    producerBlockSize_.store(0, std::memory_order_relaxed);
 
     deviceManager_ = std::make_unique<juce::AudioDeviceManager>();
 
@@ -100,6 +101,7 @@ void MonitorOutput::shutdown()
     actualSampleRate_.store(0.0, std::memory_order_relaxed);
     actualBufferSize_.store(0, std::memory_order_relaxed);
     callbacksSinceStart_.store(0, std::memory_order_relaxed);
+    producerBlockSize_.store(0, std::memory_order_relaxed);
     if (deviceManager_) {
         intentionalTeardown_.store(true, std::memory_order_release);
         deviceManager_->removeAudioCallback(this);
@@ -134,6 +136,7 @@ int MonitorOutput::writeAudio(const float* const* channelData,
     if (status_.load(std::memory_order_acquire) != VirtualCableStatus::Active)
         return 0;
 
+    producerBlockSize_.store(numFrames, std::memory_order_relaxed);
     int written = ringBuffer_.write(channelData, numChannels, numFrames);
     if (written < numFrames)
         droppedFrames_.fetch_add(numFrames - written, std::memory_order_relaxed);
@@ -151,12 +154,16 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
     int numSamples,
     const juce::AudioIODeviceCallbackContext& /*context*/)
 {
+    if (numSamples <= 0 || numOutputChannels <= 0 || outputChannelData == nullptr)
+        return;
+
     // Guard: if not Active, output silence without touching ring buffer.
     // Prevents data race when reset() is called from another thread.
     if (status_.load(std::memory_order_acquire) != VirtualCableStatus::Active) {
         for (int ch = 0; ch < numOutputChannels; ++ch)
-            std::memset(outputChannelData[ch], 0,
-                        static_cast<size_t>(numSamples) * sizeof(float));
+            if (outputChannelData[ch] != nullptr)
+                std::memset(outputChannelData[ch], 0,
+                            static_cast<size_t>(numSamples) * sizeof(float));
         return;
     }
 
@@ -164,18 +171,15 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
     int available = ringBuffer_.availableRead();
 
     if (callbacks > kDriftWarmupCallbacks && available > 0) {
-        const int observedBlock = (std::max)(numSamples, actualBufferSize_.load(std::memory_order_relaxed));
-        const int targetFill = juce::jlimit(
-            kMinDriftTargetFrames,
-            (std::max)(kMinDriftTargetFrames, ringBuffer_.getCapacityFrames() / 2),
-            (std::max)(kMinDriftTargetFrames, observedBlock * 2));
-        const int highThreshold = juce::jlimit(
-            targetFill + 1,
+        const int consumerBlock = (std::max)(numSamples, actualBufferSize_.load(std::memory_order_relaxed));
+        const auto plan = monitor_drift::calculateTrimPlan(
+            available,
             ringBuffer_.getCapacityFrames(),
-            targetFill * 3);
+            producerBlockSize_.load(std::memory_order_relaxed),
+            consumerBlock);
 
-        if (available > highThreshold) {
-            const int trimmed = ringBuffer_.discard(available - targetFill);
+        if (plan.trimFrames > 0) {
+            const int trimmed = ringBuffer_.discard(plan.trimFrames);
             if (trimmed > 0) {
                 latencyTrimmedFrames_.fetch_add(trimmed, std::memory_order_relaxed);
             }
@@ -187,8 +191,9 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
     // Fill remaining samples with silence on underrun
     if (read < numSamples) {
         for (int ch = 0; ch < numOutputChannels; ++ch) {
-            std::memset(outputChannelData[ch] + read, 0,
-                        static_cast<size_t>(numSamples - read) * sizeof(float));
+            if (outputChannelData[ch] != nullptr)
+                std::memset(outputChannelData[ch] + read, 0,
+                            static_cast<size_t>(numSamples - read) * sizeof(float));
         }
         // Track underruns for drift diagnostics
         underrunCount_.fetch_add(1, std::memory_order_relaxed);
@@ -244,6 +249,7 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
     status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
     ringBuffer_.reset();
     callbacksSinceStart_.store(0, std::memory_order_relaxed);
+    producerBlockSize_.store(0, std::memory_order_relaxed);
     status_.store(VirtualCableStatus::Active, std::memory_order_release);
 
     Log::info("MONITOR", "Active on " + device->getName() + " @ " + juce::String(deviceSR) + "Hz / " + juce::String(deviceBS) + " samples");
