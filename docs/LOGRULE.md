@@ -36,7 +36,7 @@ Portable mode (all platforms): `./config/directpipe.log`
 ### Example / 예시
 
 ```
-[11:23:45.123] INF [APP] DirectPipe v4.0.9 started
+[11:23:45.123] INF [APP] DirectPipe v4.1.0 started
 [11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200          (Windows)
                                  macOS 15.2 (Sequoia)            (macOS)
                                  Ubuntu 24.04 LTS (6.8.0-45)     (Linux)
@@ -118,6 +118,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 - 프리셋 캐시 상태 (hit/miss, SR/BS match, slot index) / Preset cache state (hit/miss, SR/BS match, slot index)
 - IPC 상태 변경 상세 / IPC state change details
 - 채널 라우팅 변경 / Channel routing changes
+- AUDIO audit snapshots include `xruns60` as the current 60-second rolling display count and `xrunDelta` as the monotonic device XRun events since the previous audit snapshot.
 
 ---
 
@@ -240,7 +241,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 Log the following information at startup, in available order:
 
 ```
-INF [APP] DirectPipe v4.0.9 started
+INF [APP] DirectPipe v4.1.0 started
 INF [APP] OS: Windows 11 Pro 10.0.26200       (or macOS 15.2 Sequoia / Ubuntu 24.04 LTS)
 INF [APP] Process priority: HIGH_PRIORITY_CLASS  (Windows; macOS/Linux use equivalent scheduling)
 INF [APP] Timer resolution: 1ms                  (Windows; macOS/Linux use platform timers)
@@ -351,7 +352,7 @@ Log::setAuditMode(false);  // disable (default)
 }  // → "INF [VST] Cached chain swap: 3 plugins (15ms)"
 
 // Session header (call once at startup)
-Log::sessionStart("4.0.9");
+Log::sessionStart("4.1.0");
 Log::audioConfig(driverType, inputDevice, outputDevice, sr, bs);
 ```
 
@@ -391,6 +392,7 @@ Log::error("AUDIO", "Failed to init device '" + name + "': " + result);
 12. **Audit는 진단 전용** — 기본 OFF, 문제 재현 시에만 ON / **Audit is diagnostic only** — default OFF, enable only for issue reproduction
 13. **Audit 값 캡처 규칙** — lock 안에서 문자열 캡처, lock 해제 후 `Log::audit()` 호출 / **Audit value capture rule** — capture strings inside lock, call `Log::audit()` after releasing lock
 14. **비싼 문자열 생성 보호** — `if (Log::isAuditMode())` 가드로 감싸서 OFF 시 문자열 생성 비용 제거 / **Expensive string guard** — wrap with `if (Log::isAuditMode())` to eliminate string construction cost when OFF
+15. **Audio audit snapshot** — `StatusUpdater` emits ~1Hz `AUDIO`/`MONITOR` audit snapshots while Audit Mode is ON, including desired/actual devices, SR/BS, XRUN/callback-overrun deltas, monitor PLL/fill fields, monitor drop/underrun/emergency-trim deltas, and mute/lost flags. Keep this on the message thread; never log directly from RT callbacks.
 
 ---
 

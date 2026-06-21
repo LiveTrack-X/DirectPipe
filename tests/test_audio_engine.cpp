@@ -82,6 +82,18 @@ TEST_F(AudioEngineTest, FallbackProtection) {
     EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
 
+TEST_F(AudioEngineTest, RememberRestoreTargetsArmsStartupRetryWhenDeviceUnavailable) {
+    engine_->rememberRestoredDeviceTargets("Windows Audio", "Boot Mic", "Boot Speakers");
+
+    EXPECT_EQ(engine_->getDesiredDeviceType(), "Windows Audio");
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "Boot Mic");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "Boot Speakers");
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
 TEST_F(AudioEngineTest, XRunWindowRolling) {
     int xruns = engine_->getRecentXRunCount();
     EXPECT_LE(xruns, 0);
@@ -187,33 +199,193 @@ TEST(AudioRingBufferTest, NullInputChannelWritesSilenceForThatChannel) {
     }
 }
 
-TEST(MonitorDriftPolicyTest, ProducerBlockPreventsOverTrimWithSmallMonitorBuffer) {
-    auto plan = monitor_drift::calculateTrimPlan(
-        1800, 4096,
-        512, 128);
+TEST(AudioRingBufferTest, InterpolatedReadLinearPhaseAdvance) {
+    AudioRingBuffer rb;
+    rb.initialize(1024, 2);
 
-    EXPECT_GE(plan.targetFill, 1024);
-    EXPECT_EQ(plan.highThreshold, 1536);
-    EXPECT_EQ(plan.trimFrames, 1800 - plan.targetFill);
+    std::vector<float> left = { 0.0f, 10.0f, 20.0f, 30.0f };
+    std::vector<float> right = { 100.0f, 110.0f, 120.0f, 130.0f };
+    const float* inputs[] = { left.data(), right.data() };
+    EXPECT_EQ(rb.write(inputs, 2, 4), 4);
+
+    std::vector<float> outL(2, 0.0f);
+    std::vector<float> outR(2, 0.0f);
+    float* outputs[] = { outL.data(), outR.data() };
+    double phase = 0.5;
+    int consumed = 0;
+
+    EXPECT_EQ(rb.readInterpolated(outputs, 2, 2, 1.0, phase, consumed), 2);
+    EXPECT_EQ(consumed, 2);
+    EXPECT_NEAR(phase, 0.5, 0.000001);
+    EXPECT_FLOAT_EQ(outL[0], 5.0f);
+    EXPECT_FLOAT_EQ(outL[1], 15.0f);
+    EXPECT_FLOAT_EQ(outR[0], 105.0f);
+    EXPECT_FLOAT_EQ(outR[1], 115.0f);
 }
 
-TEST(MonitorDriftPolicyTest, DoesNotTrimBelowMainCallbackGranularity) {
-    auto plan = monitor_drift::calculateTrimPlan(
-        900, 4096,
-        512, 128);
+TEST(AudioRingBufferTest, InterpolatedReadCommitsIntegerFrames) {
+    AudioRingBuffer rb;
+    rb.initialize(1024, 1);
 
-    EXPECT_GE(plan.targetFill, 1024);
-    EXPECT_EQ(plan.trimFrames, 0);
+    std::vector<float> mono = { 0.0f, 10.0f, 20.0f, 30.0f, 40.0f };
+    const float* inputs[] = { mono.data() };
+    EXPECT_EQ(rb.write(inputs, 1, 5), 5);
+
+    std::vector<float> outL(2, 0.0f);
+    std::vector<float> outR(2, 0.0f);
+    float* outputs[] = { outL.data(), outR.data() };
+    double phase = 0.25;
+    int consumed = 0;
+
+    EXPECT_EQ(rb.readInterpolated(outputs, 2, 2, 1.25, phase, consumed), 2);
+    EXPECT_EQ(consumed, 2);
+    EXPECT_NEAR(phase, 0.75, 0.000001);
+    EXPECT_EQ(rb.availableRead(), 3);
+    EXPECT_FLOAT_EQ(outL[0], 2.5f);
+    EXPECT_FLOAT_EQ(outR[0], 2.5f);
 }
 
-TEST(MonitorDriftPolicyTest, LargeProducerBlockStillTrimsBeforeFullCapacity) {
-    auto plan = monitor_drift::calculateTrimPlan(
-        3500, 4096,
-        1024, 128);
+TEST(AudioRingBufferTest, InterpolatedReadRefusesPastAvailable) {
+    AudioRingBuffer rb;
+    rb.initialize(1024, 1);
 
-    EXPECT_EQ(plan.targetFill, 2048);
-    EXPECT_EQ(plan.highThreshold, 3072);
-    EXPECT_EQ(plan.trimFrames, 3500 - 2048);
+    std::vector<float> mono = { 0.0f, 10.0f };
+    const float* inputs[] = { mono.data() };
+    EXPECT_EQ(rb.write(inputs, 1, 2), 2);
+
+    std::vector<float> out(4, 99.0f);
+    float* outputs[] = { out.data() };
+    double phase = 0.0;
+    int consumed = 0;
+
+    EXPECT_EQ(rb.readInterpolated(outputs, 1, 4, 1.0, phase, consumed), 0);
+    EXPECT_EQ(consumed, 0);
+    EXPECT_EQ(rb.availableRead(), 2);
+    EXPECT_FLOAT_EQ(out[0], 99.0f);
+}
+
+TEST(AudioRingBufferTest, InterpolatedReadWrapAround) {
+    AudioRingBuffer rb;
+    rb.initialize(8, 1);
+
+    std::vector<float> first = { 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f };
+    const float* firstInput[] = { first.data() };
+    EXPECT_EQ(rb.write(firstInput, 1, 6), 6);
+    EXPECT_EQ(rb.advanceRead(5), 5);
+
+    std::vector<float> second = { 6.0f, 7.0f, 8.0f, 9.0f, 10.0f };
+    const float* secondInput[] = { second.data() };
+    EXPECT_EQ(rb.write(secondInput, 1, 5), 5);
+
+    std::vector<float> out(2, 0.0f);
+    float* outputs[] = { out.data() };
+    double phase = 0.5;
+    int consumed = 0;
+
+    EXPECT_EQ(rb.readInterpolated(outputs, 1, 2, 1.0, phase, consumed), 2);
+    EXPECT_FLOAT_EQ(out[0], 5.5f);
+    EXPECT_FLOAT_EQ(out[1], 6.5f);
+}
+
+TEST(MonitorDriftPolicyTest, TargetFillDerivedFromRuntimeBlocks) {
+    monitor_drift::AdaptiveTargetState state;
+    auto plan = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+
+    EXPECT_EQ(plan.minimumTargetFill, 640);
+    EXPECT_EQ(plan.targetFill, plan.minimumTargetFill);
+    EXPECT_EQ(plan.producerBlock, 512);
+    EXPECT_EQ(plan.consumerBlock, 128);
+}
+
+TEST(MonitorDriftPolicyTest, TargetFillChangesWhenBlockSizesChange) {
+    monitor_drift::AdaptiveTargetState state;
+    auto smallPlan = monitor_drift::calculateBufferPlan(8192, 256, 128, 48000.0, state);
+    auto largePlan = monitor_drift::calculateBufferPlan(8192, 1024, 128, 48000.0, state);
+
+    EXPECT_NE(smallPlan.targetFill, largePlan.targetFill);
+    EXPECT_EQ(smallPlan.targetFill, 384);
+    EXPECT_EQ(largePlan.targetFill, 1152);
+}
+
+TEST(MonitorDriftPolicyTest, RepeatedUnderrunsRaiseTargetGradually) {
+    monitor_drift::AdaptiveTargetState state;
+    auto base = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+
+    monitor_drift::noteUnderrun(state, base);
+    auto raised = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+
+    EXPECT_GT(raised.targetFill, base.targetFill);
+    EXPECT_EQ(raised.targetFill - base.targetFill, raised.consumerBlock);
+    EXPECT_EQ(raised.reason, monitor_drift::TargetReason::UnderrunRaised);
+}
+
+TEST(MonitorDriftPolicyTest, StableFillLowersTargetGradually) {
+    monitor_drift::AdaptiveTargetState state;
+    auto base = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+    monitor_drift::noteUnderrun(state, base);
+    auto raised = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+
+    for (int i = 0; i < raised.stabilityWindowCallbacks; ++i)
+        monitor_drift::noteStableCallback(state, raised, 0);
+
+    auto lowered = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+    EXPECT_LT(lowered.targetFill, raised.targetFill);
+    EXPECT_GE(lowered.targetFill, lowered.minimumTargetFill);
+}
+
+TEST(MonitorDriftPolicyTest, NearOverflowDoesNotPermanentlyInflateTarget) {
+    monitor_drift::AdaptiveTargetState state;
+    auto before = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+    monitor_drift::noteNearOverflow(state);
+    auto after = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+
+    EXPECT_EQ(after.targetFill, before.targetFill);
+}
+
+TEST(MonitorDriftPolicyTest, PositiveFillErrorDrainsFaster) {
+    monitor_drift::PllState pll;
+    auto update = monitor_drift::updatePll(pll, 256.0, 640, 128, 48000.0, false);
+
+    EXPECT_GT(update.playbackRatio, 1.0);
+    EXPECT_GT(update.correction, 0.0);
+}
+
+TEST(MonitorDriftPolicyTest, NegativeFillErrorDrainsSlower) {
+    monitor_drift::PllState pll;
+    auto update = monitor_drift::updatePll(pll, -256.0, 640, 128, 48000.0, false);
+
+    EXPECT_LT(update.playbackRatio, 1.0);
+    EXPECT_LT(update.correction, 0.0);
+}
+
+TEST(MonitorDriftPolicyTest, RatioCorrectionDecaysTowardUnity) {
+    monitor_drift::PllState pll;
+    auto first = monitor_drift::updatePll(pll, 512.0, 640, 128, 48000.0, false);
+    double distance = std::abs(first.playbackRatio - 1.0);
+
+    for (int i = 0; i < 200; ++i) {
+        auto update = monitor_drift::updatePll(pll, 0.0, 640, 128, 48000.0, false);
+        distance = (std::min)(distance, std::abs(update.playbackRatio - 1.0));
+    }
+
+    EXPECT_LT(distance, std::abs(first.playbackRatio - 1.0));
+}
+
+TEST(MonitorDriftPolicyTest, EmergencyTrimDisabledDuringNormalDrift) {
+    monitor_drift::AdaptiveTargetState state;
+    auto plan = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+    auto trim = monitor_drift::calculateEmergencyTrimPlan(plan.highThreshold + 1, plan);
+
+    EXPECT_EQ(trim.trimFrames, 0);
+}
+
+TEST(MonitorDriftPolicyTest, EmergencyTrimOnlyNearOverflow) {
+    monitor_drift::AdaptiveTargetState state;
+    auto plan = monitor_drift::calculateBufferPlan(8192, 512, 128, 48000.0, state);
+    auto trim = monitor_drift::calculateEmergencyTrimPlan(plan.emergencyThreshold + 256, plan);
+
+    EXPECT_GT(trim.trimFrames, 0);
+    EXPECT_LE(trim.trimFrames, plan.consumerBlock / 2);
 }
 
 // ─── DeviceState state machine tests (pure function, no device needed) ───

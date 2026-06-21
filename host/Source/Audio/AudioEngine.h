@@ -98,8 +98,8 @@ public:
     /** @brief Get the desired device type (survives fallback, unlike getCurrentDeviceType). */
     juce::String getDesiredDeviceType() const { return desiredDeviceType_.isEmpty() ? getCurrentDeviceType() : desiredDeviceType_; }
     /** @brief Get the desired input/output device names (survive fallback). */
-    juce::String getDesiredInputDevice() const { return desiredInputDevice_; }
-    juce::String getDesiredOutputDevice() const { return desiredOutputDevice_; }
+    juce::String getDesiredInputDevice() const { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); return desiredInputDevice_; }
+    juce::String getDesiredOutputDevice() const { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); return desiredOutputDevice_; }
     /** @brief Get the desired SR/BS (survives driver fallback). */
     double getDesiredSampleRate() const { return desiredSampleRate_; }
     int getDesiredBufferSize() const { return desiredBufferSize_; }
@@ -109,6 +109,10 @@ public:
     bool isCurrentAudioDeviceReady();
     /** @brief Re-applies the current desired setup if the audio device is stopped/invalid. */
     [[nodiscard]] ActionResult ensureAudioDeviceReady();
+    /** @brief Remember saved startup device targets even if the first open fails. */
+    void rememberRestoredDeviceTargets(const juce::String& deviceType,
+                                       const juce::String& inputDevice,
+                                       const juce::String& outputDevice);
     /** @brief Applies a full device setup as an intentional change, preventing false device-loss state. */
     [[nodiscard]] ActionResult applyAudioDeviceSetup(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
                                                      const juce::String& context);
@@ -198,6 +202,8 @@ public:
 
     /** @brief Get the number of xruns in the last 60 seconds. Returns -1 if unsupported. */
     int getRecentXRunCount() const;
+    /** @brief Monotonic xrun event counter for audit deltas. */
+    uint64_t getTotalXRunEvents() const { return totalXRunEvents_.load(std::memory_order_relaxed); }
     /** @brief Call from UI timer (~30Hz) to update the rolling xrun window. */
     void updateXRunTracking();
     /** @brief Request xrun counter reset (safe from any thread; sets atomic flag). */
@@ -317,6 +323,7 @@ private:
     // xrunBaselineResync_: device restart resync lastDeviceXRunCount_ only (preserve history)
     // xrunResetRequested_: user action full clear (history + display)
     std::atomic<int> recentXRuns_{0};                   // [Message write, UI read]
+    std::atomic<uint64_t> totalXRunEvents_{0};           // [Message write, UI read] Monotonic audit counter
     std::atomic<bool> xrunBaselineResync_{false};       // [Device thread write, Message read]
     std::atomic<bool> xrunResetRequested_{false};       // [Any thread write, Message read]
     int lastDeviceXRunCount_ = 0;                       // [Message thread only]
@@ -325,7 +332,7 @@ private:
     double lastXRunBucketTime_ = juce::Time::getMillisecondCounterHiRes() / 1000.0;  // [Message thread only]
 
     // Device reconnection tracking (Message thread only, except atomics)
-    juce::SpinLock desiredDeviceLock_;                   // Protects desiredInputDevice_ / desiredOutputDevice_
+    mutable juce::SpinLock desiredDeviceLock_;           // Protects desiredInputDevice_ / desiredOutputDevice_
     juce::String desiredInputDevice_;                   // [Protected by desiredDeviceLock_]
     juce::String desiredOutputDevice_;                  // [Protected by desiredDeviceLock_]
     juce::String desiredDeviceType_;                    // [Message thread only] Tracks intended driver type across fallbacks
@@ -339,6 +346,7 @@ private:
     std::atomic<bool> outputAutoMuted_{false};          // [RT/Device write, Message read] Output auto-muted due to device loss
     bool attemptingReconnection_ = false;               // [Message thread only] Re-entrancy guard
     std::atomic<bool> intentionalChange_{false};        // [Message write, Device thread read] Guards audioDeviceStopped from setting deviceLost_ during intentional changes
+    bool startupRestorePending_ = false;                // [Message thread only] Saved startup target is not active yet; keep retrying instead of accepting fallback
     int reconnectCooldown_ = 0;                         // [Message thread only] Ticks before next reconnect attempt (30Hz timer)
     int reconnectMissCount_ = 0;                        // [Message thread only] Consecutive failed reconnect attempts
     static constexpr int kMaxReconnectMisses = 5;       // ~15s at 3s intervals
@@ -364,6 +372,7 @@ private:
     AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;   // [Device thread write-once, RT thread read]
     AvRevertMmThreadCharFn avRevertMmThreadChar_ = nullptr; // [Device callback write-once, Device callback read]
     std::atomic<HANDLE> mmcssTaskHandle_{nullptr};        // [RT thread write, Device callback read]
+    std::atomic<DWORD> mmcssThreadId_{0};                 // [RT thread write, Device callback read] Creator thread for same-thread revert
 #endif
 
     // Lock-free notification queue (RT write Message read)

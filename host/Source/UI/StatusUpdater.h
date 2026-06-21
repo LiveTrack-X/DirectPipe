@@ -51,6 +51,13 @@ public:
     void tick(PresetManager* pm, int numPresetSlots);
 
 private:
+    void emitAuditDiagnostics(double mainLatencyMs,
+                              double monitorLatencyMs,
+                              bool monitorEnabled,
+                              double cpuPercent,
+                              int recentXruns,
+                              bool limiterActive);
+
     AudioEngine& engine_;
     StateBroadcaster& broadcaster_;
 
@@ -84,6 +91,17 @@ private:
     int cachedBufferSize_ = 0;
     int cachedChannelMode_ = 0;
     bool cachedLimiterActive_ = false;
+
+    // Audit diagnostics: last emitted snapshot values (message thread only).
+    static constexpr int kAuditSnapshotTicks = 30;  // ~1 second at MainComponent's 30Hz timer
+    int auditTicksSinceSnapshot_ = 0;
+    bool auditBaselineValid_ = false;
+    juce::String auditLastStateSignature_;
+    uint64_t auditLastTotalXRunEvents_ = 0;
+    uint32_t auditLastCallbackOverruns_ = 0;
+    int auditLastMonitorDroppedFrames_ = 0;
+    int auditLastMonitorUnderruns_ = 0;
+    int auditLastMonitorTrimmedFrames_ = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StatusUpdater)
 };

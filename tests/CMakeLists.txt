@@ -53,6 +53,7 @@ if(DIRECTPIPE_BUILD_HOST)
         # Slice 2: Audio Engine
         test_output_router.cpp
         test_audio_engine.cpp
+        test_monitor_output.cpp
         # Slice 3: Control Handlers
         test_midi_handler.cpp
         test_action_handler.cpp

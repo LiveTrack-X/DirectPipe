@@ -3,7 +3,10 @@
 
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
+
+#define private public
 #include "Audio/OutputRouter.h"
+#undef private
 
 using namespace directpipe;
 
@@ -48,6 +51,31 @@ TEST_F(OutputRouterTest, EnableDisableToggle) {
 
     router_.setEnabled(OutputRouter::Output::Monitor, false);
     EXPECT_FALSE(router_.isEnabled(OutputRouter::Output::Monitor));
+}
+
+TEST_F(OutputRouterTest, DisableClearsMonitorLevel) {
+    const int idx = static_cast<int>(OutputRouter::Output::Monitor);
+    router_.outputs_[idx].level.store(0.5f, std::memory_order_relaxed);
+
+    router_.setEnabled(OutputRouter::Output::Monitor, false);
+
+    EXPECT_FLOAT_EQ(router_.getLevel(OutputRouter::Output::Monitor), 0.0f);
+}
+
+TEST_F(OutputRouterTest, InactiveMonitorClearsStaleLevel) {
+    const int idx = static_cast<int>(OutputRouter::Output::Monitor);
+    router_.setEnabled(OutputRouter::Output::Monitor, true);
+    router_.outputs_[idx].level.store(0.5f, std::memory_order_relaxed);
+
+    juce::AudioBuffer<float> buffer(2, 128);
+    buffer.clear();
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < 128; ++i)
+            buffer.setSample(ch, i, 0.25f);
+
+    router_.routeAudio(buffer, 128);
+
+    EXPECT_FLOAT_EQ(router_.getLevel(OutputRouter::Output::Monitor), 0.0f);
 }
 
 TEST_F(OutputRouterTest, BufferTruncatedFlag) {

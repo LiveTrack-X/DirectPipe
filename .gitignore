@@ -37,6 +37,7 @@ dist/*.zip
 dist/*.streamDeckPlugin
 dist/RELEASE_NOTES.md
 dist/_tmp_release/
+dist/_inspect_sd/
 dist/release-*/
 
 # Claude Code internal files

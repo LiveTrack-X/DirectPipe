@@ -30,6 +30,46 @@
 
 namespace directpipe {
 
+namespace {
+
+const char* boolText(bool value)
+{
+    return value ? "true" : "false";
+}
+
+const char* monitorStatusToString(VirtualCableStatus status)
+{
+    switch (status) {
+        case VirtualCableStatus::NotConfigured: return "NotConfigured";
+        case VirtualCableStatus::Active: return "Active";
+        case VirtualCableStatus::Error: return "Error";
+        case VirtualCableStatus::SampleRateMismatch: return "SampleRateMismatch";
+    }
+    return "Unknown";
+}
+
+juce::String emptyAsNone(const juce::String& value)
+{
+    return value.isEmpty() ? "(none)" : value;
+}
+
+int positiveDelta(int current, int previous)
+{
+    return current >= previous ? current - previous : current;
+}
+
+uint32_t positiveDelta(uint32_t current, uint32_t previous)
+{
+    return current >= previous ? current - previous : current;
+}
+
+uint64_t positiveDelta(uint64_t current, uint64_t previous)
+{
+    return current >= previous ? current - previous : current;
+}
+
+} // namespace
+
 StatusUpdater::StatusUpdater(AudioEngine& engine, StateBroadcaster& broadcaster)
     : engine_(engine), broadcaster_(broadcaster)
 {
@@ -53,6 +93,161 @@ void StatusUpdater::setUI(juce::Label* latencyLabel, juce::Label* cpuLabel, juce
     inputGainSlider_ = inputGainSlider;
     inputMeter_ = inputMeter;
     outputMeter_ = outputMeter;
+}
+
+void StatusUpdater::emitAuditDiagnostics(double mainLatencyMs,
+                                         double monitorLatencyMs,
+                                         bool monitorEnabled,
+                                         double cpuPercent,
+                                         int recentXruns,
+                                         bool limiterActive)
+{
+    if (!Log::isAuditMode()) {
+        auditBaselineValid_ = false;
+        auditTicksSinceSnapshot_ = 0;
+        return;
+    }
+
+    auto& monitor = engine_.getLatencyMonitor();
+    auto& router = engine_.getOutputRouter();
+    auto& monOut = engine_.getMonitorOutput();
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    engine_.getDeviceManager().getAudioDeviceSetup(setup);
+    auto* device = engine_.getDeviceManager().getCurrentAudioDevice();
+
+    const auto deviceState = engine_.getDeviceState();
+    const auto monitorStatus = monOut.getStatus();
+    const auto callbackOverruns = monitor.getCallbackOverrunCount();
+    const uint64_t totalXRunEvents = engine_.getTotalXRunEvents();
+    const int monitorDropped = monOut.getDroppedFrames();
+    const int monitorUnderruns = monOut.getUnderrunCount();
+    const int monitorTrimmed = monOut.getLatencyTrimmedFrames();
+    const int monitorFillFrames = monOut.getFillFrames();
+    const int monitorTargetFill = monOut.getTargetFillFrames();
+    const auto monitorTargetReason = static_cast<monitor_drift::TargetReason>(monOut.getTargetReasonCode());
+    const double monitorPlaybackRatio = monOut.getPlaybackRatio();
+    const double monitorPllErrorFrames = monOut.getPllErrorFrames();
+    const double monitorPllErrorMs = monOut.getPllErrorMs();
+    const double monitorPllCorrection = monOut.getPllCorrection();
+    const double monitorDriftEstimate = monOut.getDriftEstimate();
+    const bool monitorPriming = monOut.isPriming();
+
+    const juce::String actualDriver = device ? device->getTypeName() : engine_.getCurrentDeviceType();
+    const juce::String actualDevice = device ? device->getName() : "(none)";
+    const juce::String actualMonitorDevice = emptyAsNone(monOut.getActualDeviceName());
+
+    juce::String stateSignature;
+    stateSignature
+        << deviceStateToString(deviceState)
+        << "|" << static_cast<int>(monitorStatus)
+        << "|" << actualDriver
+        << "|" << setup.inputDeviceName
+        << "|" << setup.outputDeviceName
+        << "|" << monOut.getDeviceName()
+        << "|" << actualMonitorDevice
+        << "|" << boolText(engine_.isDeviceLost())
+        << "|" << boolText(engine_.isInputDeviceLost())
+        << "|" << boolText(engine_.isOutputAutoMuted())
+        << "|" << boolText(monOut.isDeviceLost())
+        << "|" << boolText(monitorEnabled)
+        << "|" << boolText(monOut.isActive())
+        << "|" << boolText(engine_.isIpcEnabled());
+
+    ++auditTicksSinceSnapshot_;
+    const bool firstSnapshot = !auditBaselineValid_;
+    const bool stateChanged = auditBaselineValid_ && stateSignature != auditLastStateSignature_;
+    const bool periodicSnapshot = auditTicksSinceSnapshot_ >= kAuditSnapshotTicks;
+
+    if (!firstSnapshot && !stateChanged && !periodicSnapshot)
+        return;
+
+    const juce::String reason = firstSnapshot ? "baseline"
+        : (stateChanged ? "state-change" : "periodic");
+
+    const uint64_t xrunDelta = firstSnapshot ? 0u : positiveDelta(totalXRunEvents, auditLastTotalXRunEvents_);
+    const uint32_t callbackOverrunDelta = firstSnapshot ? 0u
+        : positiveDelta(callbackOverruns, auditLastCallbackOverruns_);
+    const int monitorDropDelta = firstSnapshot ? 0 : positiveDelta(monitorDropped, auditLastMonitorDroppedFrames_);
+    const int monitorUnderrunDelta = firstSnapshot ? 0 : positiveDelta(monitorUnderruns, auditLastMonitorUnderruns_);
+    const int monitorTrimDelta = firstSnapshot ? 0 : positiveDelta(monitorTrimmed, auditLastMonitorTrimmedFrames_);
+
+    juce::String audioLine;
+    audioLine
+        << "Status " << reason
+        << ": state=" << deviceStateToString(deviceState)
+        << " driver='" << actualDriver << "'"
+        << " actualDevice='" << actualDevice << "'"
+        << " actualIn='" << emptyAsNone(setup.inputDeviceName) << "'"
+        << " actualOut='" << emptyAsNone(setup.outputDeviceName) << "'"
+        << " desiredDriver='" << emptyAsNone(engine_.getDesiredDeviceType()) << "'"
+        << " desiredIn='" << emptyAsNone(engine_.getDesiredInputDevice()) << "'"
+        << " desiredOut='" << emptyAsNone(engine_.getDesiredOutputDevice()) << "'"
+        << " sr=" << juce::String(monitor.getSampleRate(), 0)
+        << " desiredSR=" << juce::String(engine_.getDesiredSampleRate(), 0)
+        << " bs=" << monitor.getBufferSize()
+        << " desiredBS=" << engine_.getDesiredBufferSize()
+        << " channels=" << engine_.getChannelMode()
+        << " latencyMs=" << juce::String(mainLatencyMs, 2)
+        << " procMs=" << juce::String(monitor.getProcessingTimeMs(), 3)
+        << " cpuPct=" << juce::String(cpuPercent, 1)
+        << " xruns60=" << recentXruns
+        << " xrunDelta=" << static_cast<juce::int64>(xrunDelta)
+        << " callbackOverruns=" << static_cast<int>(callbackOverruns)
+        << " callbackOverrunDelta=" << static_cast<int>(callbackOverrunDelta)
+        << " inputLost=" << boolText(engine_.isInputDeviceLost())
+        << " outputAutoMuted=" << boolText(engine_.isOutputAutoMuted())
+        << " inputMuted=" << boolText(engine_.isInputMuted())
+        << " outputMuted=" << boolText(engine_.isOutputMuted())
+        << " panicMuted=" << boolText(engine_.isMuted())
+        << " ipc=" << boolText(engine_.isIpcEnabled())
+        << " limiter=" << boolText(limiterActive);
+    Log::audit("AUDIO", audioLine);
+
+    juce::String monitorLine;
+    monitorLine
+        << "Status " << reason
+        << ": enabled=" << boolText(monitorEnabled)
+        << " active=" << boolText(monOut.isActive())
+        << " lost=" << boolText(monOut.isDeviceLost())
+        << " status=" << monitorStatusToString(monitorStatus)
+        << " desired='" << emptyAsNone(monOut.getDeviceName()) << "'"
+        << " actual='" << actualMonitorDevice << "'"
+        << " prefBS=" << monOut.getPreferredBufferSize()
+        << " actualSR=" << juce::String(monOut.getActualSampleRate(), 0)
+        << " actualBS=" << monOut.getActualBufferSize()
+        << " latencyMs=" << juce::String(monitorLatencyMs, 2)
+        << " volume=" << juce::String(router.getVolume(OutputRouter::Output::Monitor), 3)
+        << " level=" << juce::String(router.getLevel(OutputRouter::Output::Monitor), 3)
+        << " fillFrames=" << monitorFillFrames
+        << " targetFill=" << monitorTargetFill
+        << " targetReason=" << monitor_drift::targetReasonToString(monitorTargetReason)
+        << " playbackRatio=" << juce::String(monitorPlaybackRatio, 7)
+        << " pllErrorFrames=" << juce::String(monitorPllErrorFrames, 2)
+        << " pllErrorMs=" << juce::String(monitorPllErrorMs, 3)
+        << " pllCorrection=" << juce::String(monitorPllCorrection, 8)
+        << " driftEstimate=" << juce::String(monitorDriftEstimate, 4)
+        << " priming=" << boolText(monitorPriming)
+        << " droppedFrames=" << monitorDropped
+        << " droppedFramesDelta=" << monitorDropDelta
+        << " underruns=" << monitorUnderruns
+        << " underrunDelta=" << monitorUnderrunDelta
+        << " trimmedFrames=" << monitorTrimmed
+        << " emergencyTrimDelta=" << monitorTrimDelta
+        << " producerBlock=" << monOut.getProducerBlockSize()
+        << " consumerBlock=" << monOut.getConsumerBlockSize()
+        << " sampleRate=" << juce::String(monOut.getActualSampleRate(), 0)
+        << " capacityFrames=" << monOut.getCapacityFrames();
+    Log::audit("MONITOR", monitorLine);
+
+    auditBaselineValid_ = true;
+    auditTicksSinceSnapshot_ = 0;
+    auditLastStateSignature_ = stateSignature;
+    auditLastTotalXRunEvents_ = totalXRunEvents;
+    auditLastCallbackOverruns_ = callbackOverruns;
+    auditLastMonitorDroppedFrames_ = monitorDropped;
+    auditLastMonitorUnderruns_ = monitorUnderruns;
+    auditLastMonitorTrimmedFrames_ = monitorTrimmed;
 }
 
 void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
@@ -152,9 +347,9 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     auto& monOut = engine_.getMonitorOutput();
     auto& router = engine_.getOutputRouter();
     bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
+    double monitorLatency = 0.0;
 
     {
-        double monitorLatency = 0.0;
         if (monEnabled) {
             monitorLatency = mainLatency;
             if (monOut.isActive()) {
@@ -178,11 +373,14 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     }
 
     // ── CPU/XRun/LIM label ──
+    double cpuPct = monitor.getCpuUsagePercent();
+    int xruns = engine_.getRecentXRunCount();
+    bool limActive = engine_.getSafetyLimiter().isLimiting();
     {
         engine_.updateXRunTracking();
-        double cpuPct = monitor.getCpuUsagePercent();
-        int xruns = engine_.getRecentXRunCount();
-        bool limActive = engine_.getSafetyLimiter().isLimiting();
+        cpuPct = monitor.getCpuUsagePercent();
+        xruns = engine_.getRecentXRunCount();
+        limActive = engine_.getSafetyLimiter().isLimiting();
         if (std::abs(cpuPct - cachedCpuPercent_) > 0.1 || xruns != cachedXruns_ ||
             limActive != cachedLimiterActive_) {
             cachedCpuPercent_ = cpuPct;
@@ -203,6 +401,8 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     }
 
     // ── Format label ──
+    emitAuditDiagnostics(mainLatency, monitorLatency, monEnabled, cpuPct, xruns, limActive);
+
     {
         int sr = static_cast<int>(monitor.getSampleRate());
         int bs = monitor.getBufferSize();

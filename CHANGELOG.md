@@ -8,6 +8,40 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.1.0] - 2026-06-21
+
+### Changed
+- **Adaptive PLL monitor bridge**: Separate monitor output now uses fractional read playback with linear interpolation and an adaptive PLL controller to absorb small independent-device clock drift. Normal drift correction no longer discards frames.
+- **Runtime-derived monitor target**: Monitor target fill is derived from producer block size, monitor consumer block size, sample rate, ring capacity, and recent underrun/stability behavior. Repeated underruns raise the target gradually; stable fill lowers it toward the runtime-derived minimum.
+- **Emergency trim fallback only**: Old-frame trim is now reserved for near-overflow safety fallback and still uses a short fade-in after emergency trims.
+- **Monitor audit snapshots**: Audit Mode `MONITOR` lines now include PLL/fill fields such as `fillFrames`, `targetFill`, `targetReason`, `playbackRatio`, `pllErrorFrames`, `pllErrorMs`, `pllCorrection`, `driftEstimate`, `priming`, `emergencyTrimDelta`, `underrunDelta`, `droppedFramesDelta`, block sizes, sample rate, and ring capacity.
+- **Inherited release-prep notes**: This is the next public release after v4.0.9, so the startup/tray device-restore, XRun-window, and broader Audit Mode work prepared after v4.0.9 is included in v4.1.0.
+
+### Fixed
+- **Startup/tray WASAPI restore**: Settings restore now remembers the saved input/output device targets even when Windows has not finished enumerating devices at login. DirectPipe keeps waiting for the saved devices instead of accepting an unintended fallback device as success.
+- **Small monitor buffer crackle/cutout**: The monitor callback avoids repeated partial audio plus zero-fill and uses adaptive fractional playback instead of normal drift frame drops, reducing the need to raise the monitor buffer above the device minimum.
+- **Runtime monitor block-size changes**: When the main producer block size or monitor consumer block size changes, MonitorOutput re-enters priming so the newly derived target fill is honored before playback resumes.
+- **Main OUT protection**: Monitor output remains post-VST/post-Safety, does not run the VST chain twice, and stays below main OUT scheduling priority.
+- **Monitor callback scheduling on Windows**: The separate monitor WASAPI callback thread now registers with MMCSS `Pro Audio` at normal priority instead of critical priority, so monitor output does not preempt the main OUT callback and inflate OUT XRuns.
+- **MMCSS lifecycle contract**: Main OUT and monitor AvRT cleanup now avoids cross-thread `AvRevertMmThreadCharacteristics` calls and publishes cached AvRT function pointers before allowing RT registration.
+- **Inactive monitor routing cost**: The main audio callback now skips monitor scaling/copy work unless the separate monitor output is actually `Active`, reducing RT work during monitor device loss, sample-rate mismatch, or reconnect.
+- **Inactive monitor meter reset**: Monitor RMS level is cleared immediately when monitor routing is disabled or inactive, so Audit Mode and UI meters do not report stale monitor audio.
+- **XRun display over-reporting after UI stalls**: The 60-second XRun rolling window now advances every elapsed bucket when the message thread is delayed by device restart/restore work, so stale XRuns age out on time instead of lingering for minutes.
+- **Audit XRun delta accuracy**: Audit Mode `xrunDelta` now comes from a monotonic XRun event counter instead of comparing 60-second rolling totals, preventing stale bucket aging from appearing as new XRuns.
+
+### Diagnostics
+- **Wider Audit Mode audio snapshots**: Audit Mode now emits rate-limited `AUDIO` and `MONITOR` status snapshots from the message thread, including desired/actual devices, SR/BS, CPU/processing time, XRUN and callback-overrun deltas, monitor dropped/underrun/trim deltas, and mute/lost/IPC/limiter flags.
+
+### Release
+- **Version metadata sync**: App, bundled Receiver plugin metadata, Stream Deck manifest/package metadata, README, user guide, product spec, architecture notes, log rules, building docs, and release body are aligned to v4.1.0. Existing Receiver VST installs do not need manual replacement for these host-side fixes.
+- **Platform support wording sync**: Release docs now consistently distinguish Windows as the stable, locally verified v4.1.0 target from macOS beta and Linux experimental CI/source-supported builds. Stream Deck support is documented as a separate cross-platform package.
+
+### Tests
+- Added fractional ring-buffer interpolation coverage, adaptive PLL/target policy coverage, MonitorOutput callback state regression coverage, startup restore retry coverage, inactive monitor meter reset coverage, and bounded monitor drift regression coverage.
+- Rebuilt the Release app/plugin/test targets and reran full core/host test validation.
+
+---
+
 ## [4.0.9] - 2026-06-20
 
 ### Fixed
@@ -215,7 +249,7 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 - **Stream Deck 10 액션** — 기존 7개 + Performance Monitor, Plugin Parameter (SD+), Preset Bar (SD+) / 10 actions (was 7)
 - **19 통합 액션** — XRunReset, SafetyLimiterToggle, SetSafetyLimiterCeiling, AutoProcessorsAdd 추가 / 19 actions (was 15)
 - **IPC consumer_active 감지** — Receiver VST 다중 연결 시 경고 표시 / SPSC violation warning when multiple Receivers connect
-- **DPC Latency 대책** — MMCSS "Pro Audio" AVRT_PRIORITY_HIGH, IPC SetEvent 최적화, 콜백 오버런 감지 / MMCSS registration, IPC optimization, callback overrun detection
+- **DPC Latency 대책** — main MMCSS "Pro Audio" AVRT_PRIORITY_CRITICAL, IPC SetEvent 최적화, 콜백 오버런 감지 / MMCSS registration, IPC optimization, callback overrun detection
 - **SHA-256 체크섬 검증** — 자동 업데이터 다운로드 무결성 확인 (`checksums.sha256`) / Auto-updater integrity check
 - **48kHz NotificationBar 경고** — Auto/NR 추가 시 비-48kHz 샘플레이트 경고 / Warning when NR added at non-48kHz
 - **ActionHandler** — 중앙 액션 라우팅, MainComponent에서 추출 / Centralized action routing

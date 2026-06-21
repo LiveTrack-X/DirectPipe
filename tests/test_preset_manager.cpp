@@ -335,6 +335,25 @@ TEST_F(PresetManagerTest, SafetyLimiterHeadroomExportImportRoundtrip) {
     EXPECT_NEAR(targetEngine.getSafetyHeadroomdB(), -1.7f, 0.001f);
 }
 
+TEST_F(PresetManagerTest, ImportRemembersUnavailableStartupDevicesForRetry) {
+    AudioEngine targetEngine;
+    PresetManager targetManager(targetEngine);
+
+    juce::String json = R"({
+        "version": 4,
+        "inputDevice": "Boot Mic",
+        "outputDevice": "Boot Speakers",
+        "outputMuted": false
+    })";
+
+    ASSERT_TRUE(targetManager.importFromJSON(json));
+    EXPECT_EQ(targetEngine.getDesiredInputDevice(), "Boot Mic");
+    EXPECT_EQ(targetEngine.getDesiredOutputDevice(), "Boot Speakers");
+    EXPECT_TRUE(targetEngine.isDeviceLost());
+    EXPECT_TRUE(targetEngine.isInputDeviceLost());
+    EXPECT_TRUE(targetEngine.isOutputAutoMuted());
+}
+
 TEST_F(PresetManagerTest, LegacySafetyLimiterJsonWithoutHeadroomStillLoads) {
     juce::String json = R"({
         "version": 4,

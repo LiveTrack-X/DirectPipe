@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.0.9 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.1.0 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.0.9)
+> Reverse spec — written based on currently implemented features (as of v4.1.0)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.0.9
+4.1.0
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -37,15 +37,19 @@ The lightest way to apply VST effects to a microphone — no DAW, no installatio
 GPL v3 (오픈소스 / open source)
 
 ### 플랫폼 / Platform
-- **Windows** 10/11 (64-bit) — fully supported / 정식 지원
+- **Windows** 10/11 (64-bit) — stable release target / 안정 릴리즈 대상
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
-- **Linux** (Ubuntu 22.04+, x86_64) — experimental / 실험적
+- **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
+- **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
+- v4.1.0 local pre-release verification was completed on Windows. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
+- v4.1.0 로컬 릴리즈 전 검증은 Windows에서 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
 - `DirectPipe Receiver.dll` — Receiver 플러그인 (VST2/VST3/AU) / Receiver plugin (VST2/VST3/AU)
 - `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 플러그인 패키지 / Stream Deck plugin package
-- 릴리즈: Windows `DirectPipe-vX.Y.Z-Windows.zip` (exe + dll + vst3), macOS `DirectPipe-vX.Y.Z-macOS.dmg`, Linux `DirectPipe-vX.Y.Z-Linux.tar.gz` / Release: Windows `.zip`, macOS `.dmg`, Linux `.tar.gz`
+- 릴리즈 CI 산출물: Windows `DirectPipe-vX.Y.Z-Windows.zip` (exe + Receiver VST2/VST3), macOS `DirectPipe-vX.Y.Z-macOS.dmg` (app + VST/AU bundles), Linux `DirectPipe-vX.Y.Z-Linux.tar.gz` (binary + VST bundles), Stream Deck `.streamDeckPlugin`.
+- Release CI artifacts: Windows `.zip`, macOS `.dmg`, Linux `.tar.gz`, and the Stream Deck `.streamDeckPlugin`. The Windows ZIP is the stable release asset; macOS/Linux assets are beta/experimental.
 
 ---
 
@@ -133,7 +137,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 경로 / Path | 설명 / Description | 기술 / Technology | 제어 / Control |
 |------|------|------|------|
 | **Main Output** | 메인 출력 (스피커/가상 케이블) / Main output (speakers/virtual cable) | AudioSettings의 Output 장치에 직접 쓰기. WASAPI/ASIO 모두 지원 / Direct write to AudioSettings Output device. Both WASAPI/ASIO supported | OUT 버튼, ToggleMute, SetVolume |
-| **Monitor Output** | 헤드폰 모니터링 (자기 목소리 확인) / Headphone monitoring (hear your own voice) | 별도 shared-mode AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) + lock-free AudioRingBuffer (4096 프레임, 스테레오, power-of-2) + latency drift trim / Separate shared-mode AudioDeviceManager + lock-free AudioRingBuffer (4096 frames, stereo, power-of-2) + latency drift trim | MON 버튼, MonitorToggle, SetVolume |
+| **Monitor Output** | 헤드폰 모니터링 (자기 목소리 확인) / Headphone monitoring (hear your own voice) | 별도 shared-mode AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) + lock-free AudioRingBuffer (8192 프레임, 스테레오, power-of-2) + low-watermark priming + adaptive PLL fractional playback + emergency trim fallback / Separate shared-mode AudioDeviceManager + lock-free AudioRingBuffer (8192 frames, stereo, power-of-2) + low-watermark priming + adaptive PLL fractional playback + emergency trim fallback | MON 버튼, MonitorToggle, SetVolume |
 | **IPC Output** | OBS용 DirectPipe Receiver / DirectPipe Receiver for OBS | SharedMemory 기반 IPC. 공유 메모리 이름: `Local\\DirectPipeAudio`. 인터리브 float 형식. POSIX sem/shm 퍼미션 0600 (owner-only) / SharedMemory-based IPC. Shared memory name: `Local\\DirectPipeAudio`. Interleaved float format. POSIX sem/shm permissions 0600 (owner-only) | VST 버튼, IpcToggle |
 | **Recording** | WAV 녹음 (VST 체인, Safety Guard, Safety Volume 이후) / WAV recording (after VST chain, Safety Guard, and Safety Volume) | AudioRecorder, ThreadedWriter, RT try-lock/drop during teardown | REC 버튼, RecordingToggle |
 
@@ -147,7 +151,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 뮤트 fast-path / Mute Fast-Path | 뮤트 상태에서 VST 처리 스킵 / Skip VST processing when muted |
 | 워크버퍼 / Work Buffer | 8채널 사전 할당 (`workBuffer_`). 콜백에서 힙 할당 없음 / 8-channel pre-allocated (`workBuffer_`). No heap allocation in callback |
 | 프로세스 우선순위 / Process Priority | `HIGH_PRIORITY_CLASS` |
-| MMCSS 스레드 등록 / MMCSS Thread Registration | Windows: 오디오 콜백 스레드를 "Pro Audio" MMCSS에 AVRT_PRIORITY_HIGH로 등록 (WASAPI + ASIO 모두). DPC 지연 간섭 방지 / Registers audio callback thread to "Pro Audio" MMCSS at AVRT_PRIORITY_HIGH (both WASAPI + ASIO). Prevents DPC latency interference. MMCSS 함수 포인터는 `audioDeviceAboutToStart`에서 1회 캐시 (release/acquire 순서), RT 콜백에서 읽기만 / MMCSS function pointers cached once in `audioDeviceAboutToStart` (release/acquire order), read-only in RT callback. `audioDeviceStopped`에서 핸들 적절히 revert / Handle properly reverted in `audioDeviceStopped` |
+| MMCSS 스레드 등록 / MMCSS Thread Registration | Windows: 메인 오디오 콜백 스레드는 "Pro Audio" MMCSS에 AVRT_PRIORITY_CRITICAL로 등록 (WASAPI + ASIO 모두), 별도 monitor callback은 AVRT_PRIORITY_NORMAL로 등록해 main OUT을 선점하지 않음 / Registers the main audio callback thread to "Pro Audio" MMCSS at AVRT_PRIORITY_CRITICAL (both WASAPI + ASIO), while the separate monitor callback uses AVRT_PRIORITY_NORMAL so it does not preempt main OUT. MMCSS 함수 포인터는 `audioDeviceAboutToStart`에서 캐시한 뒤 release/acquire 순서로 RT 콜백에 공개 / MMCSS function pointers are cached in `audioDeviceAboutToStart`, then published to the RT callback with release/acquire ordering. `AvRevertMmThreadCharacteristics`는 Windows API 계약에 맞게 등록한 동일 콜백 스레드에서만 호출 / `AvRevertMmThreadCharacteristics` is called only from the same callback thread that registered the task, matching the Windows API contract. |
 | IPC 이벤트 최적화 / IPC Event Optimization | `SetEvent` 시그널을 데이터 기록 시에만 발생 (불필요한 커널 호출 감소) / `SetEvent` signal only fired on data write (reduces unnecessary kernel calls) |
 | 콜백 오버런 감지 / Callback Overrun Detection | LatencyMonitor: 처리 시간이 버퍼 주기를 초과하면 카운트 / counts when processing time exceeds buffer period (`getCallbackOverrunCount()`) |
 
@@ -308,15 +312,15 @@ rebuildGraph(bool suspend = true)
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 장치 / Device | 별도 AudioDeviceManager / Separate AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) (메인 드라이버와 독립 / independent from main driver) |
-| 링 버퍼 / Ring Buffer | AudioRingBuffer: 4096 프레임 / frames, 스테레오 / stereo, power-of-2 |
-| Drift 보정 / Drift Compensation | 모니터 콜백 warmup 후 fill이 high threshold를 넘으면 메인 콜백 producer block과 모니터 콜백 consumer block을 함께 고려한 target fill 근처로 `AudioRingBuffer::discard()` trim / After callback warmup, excessive fill is trimmed with `AudioRingBuffer::discard()` toward a target fill that accounts for both the main producer block and monitor consumer block |
+| 링 버퍼 / Ring Buffer | AudioRingBuffer: 8192 프레임 / frames, 스테레오 / stereo, power-of-2 |
+| Drift 보정 / Drift Compensation | adaptive PLL fractional playback으로 정상 drift를 playback ratio 미세 조정으로 흡수. overflow 임박 시에만 capped emergency trim. 부분 underrun은 재생 재개 전 re-prime / Adaptive PLL fractional playback absorbs normal drift with tiny playback-ratio correction. Capped emergency trim is used only near overflow. Partial underruns re-prime before playback resumes |
 | 상태 / Status | `VirtualCableStatus` enum: NotConfigured, Active, Error, SampleRateMismatch |
 
 #### 이중 스레드 브릿지 / Dual-Thread Bridge
 | 역할 / Role | 스레드 / Thread | 동작 / Behavior |
 |------|--------|------|
 | 프로듀서 / Producer | 메인 오디오 콜백 (RT) / Main audio callback (RT) | `writeAudio()` → 링 버퍼에 RT-safe 쓰기 / RT-safe write to ring buffer |
-| 컨슈머 / Consumer | 모니터 장치 콜백 / Monitor device callback | 링 버퍼에서 읽기 → shared-mode 출력, 필요 시 오래된 프레임 trim / Read from ring buffer → shared-mode output, trimming stale frames when needed |
+| 컨슈머 / Consumer | 모니터 장치 콜백 / Monitor device callback | 링 버퍼 fractional read + linear interpolation → shared-mode 출력, near-overflow 시에만 emergency trim / Fractional ring-buffer read + linear interpolation → shared-mode output, emergency trim only near overflow |
 
 #### 폴백 보호 / Fallback Protection
 - `audioDeviceAboutToStart`에서 실제 장치명 vs desired 비교 / Compares actual device name vs desired in `audioDeviceAboutToStart`
@@ -938,7 +942,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.0.9" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.1.0" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1061,7 +1065,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.0.9",
+  "appVersion": "4.1.0",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1084,7 +1088,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.0.9",
+  "appVersion": "4.1.0",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1266,14 +1270,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.0.9.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.1.0.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host, 316 registered tests)
+├── tests/                          → Google Test (core + host, 345 registered tests)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin

@@ -28,6 +28,7 @@
 
 #include <JuceHeader.h>
 #include "AudioRingBuffer.h"
+#include "MonitorDriftPolicy.h"
 #include <atomic>
 #include <memory>
 
@@ -81,6 +82,18 @@ public:
     int getDroppedFrames() const { return droppedFrames_.load(std::memory_order_relaxed); }
     int getUnderrunCount() const { return underrunCount_.load(std::memory_order_relaxed); }
     int getLatencyTrimmedFrames() const { return latencyTrimmedFrames_.load(std::memory_order_relaxed); }
+    int getFillFrames() const { return currentFillFrames_.load(std::memory_order_relaxed); }
+    int getTargetFillFrames() const { return targetFillFrames_.load(std::memory_order_relaxed); }
+    int getTargetReasonCode() const { return targetReasonCode_.load(std::memory_order_relaxed); }
+    double getPlaybackRatio() const { return playbackRatio_.load(std::memory_order_relaxed); }
+    double getPllErrorFrames() const { return pllErrorFrames_.load(std::memory_order_relaxed); }
+    double getPllErrorMs() const { return pllErrorMs_.load(std::memory_order_relaxed); }
+    double getPllCorrection() const { return pllCorrection_.load(std::memory_order_relaxed); }
+    double getDriftEstimate() const { return driftEstimate_.load(std::memory_order_relaxed); }
+    bool isPriming() const { return priming_.load(std::memory_order_relaxed); }
+    int getProducerBlockSize() const { return producerBlockSize_.load(std::memory_order_relaxed); }
+    int getConsumerBlockSize() const { return consumerBlockSize_.load(std::memory_order_relaxed); }
+    int getCapacityFrames() const { return capacityFrames_.load(std::memory_order_relaxed); }
     int getActualBufferSize() const { return actualBufferSize_.load(std::memory_order_relaxed); }
     double getActualSampleRate() const { return actualSampleRate_.load(std::memory_order_relaxed); }
 
@@ -140,6 +153,33 @@ private:
     std::atomic<int> latencyTrimmedFrames_{0};             // [Monitor RT write, Message read]
     std::atomic<int> callbacksSinceStart_{0};              // [Monitor RT write, Message read]
     std::atomic<int> producerBlockSize_{0};                // [Main RT write, Monitor RT read]
+    std::atomic<int> consumerBlockSize_{0};                // [Monitor RT write, Message read]
+    std::atomic<int> capacityFrames_{0};                   // [Message init, Any read]
+    std::atomic<int> currentFillFrames_{0};                // [Monitor RT write, Message read]
+    std::atomic<int> targetFillFrames_{0};                 // [Monitor RT write, Message read]
+    std::atomic<int> targetReasonCode_{0};                 // [Monitor RT write, Message read]
+    std::atomic<double> playbackRatio_{1.0};               // [Monitor RT write, Message read]
+    std::atomic<double> pllErrorFrames_{0.0};              // [Monitor RT write, Message read]
+    std::atomic<double> pllErrorMs_{0.0};                  // [Monitor RT write, Message read]
+    std::atomic<double> pllCorrection_{0.0};               // [Monitor RT write, Message read]
+    std::atomic<double> driftEstimate_{0.0};               // [Monitor RT write, Message read]
+    std::atomic<bool> priming_{true};                       // [Message reset, Monitor RT read/write] hold playback until ring has safe fill
+    double fractionalReadPhase_ = 0.0;                     // [Monitor RT only]
+    monitor_drift::AdaptiveTargetState adaptiveTargetState_; // [Monitor RT, reset while inactive]
+    monitor_drift::PllState pllState_;                       // [Monitor RT, reset while inactive]
+
+#if defined(_WIN32)
+    using MmcssTaskHandle = void*;
+    using AvSetMmThreadCharFn = MmcssTaskHandle(__stdcall*)(const wchar_t*, unsigned long*);
+    using AvSetMmThreadPrioFn = int(__stdcall*)(MmcssTaskHandle, int);
+    using AvRevertMmThreadCharFn = int(__stdcall*)(MmcssTaskHandle);
+    AvSetMmThreadCharFn avSetMmThreadChar_ = nullptr;      // [Device thread write-once, Monitor RT read]
+    AvSetMmThreadPrioFn avSetMmThreadPrio_ = nullptr;      // [Device thread write-once, Monitor RT read]
+    AvRevertMmThreadCharFn avRevertMmThreadChar_ = nullptr; // [Device callback write-once, Device callback read]
+    std::atomic<bool> mmcssRegistered_{false};              // [Device thread reset, Monitor RT write+read]
+    std::atomic<MmcssTaskHandle> mmcssTaskHandle_{nullptr}; // [Monitor RT write, Device callback read]
+    std::atomic<unsigned long> mmcssThreadId_{0};            // [Monitor RT write, Device callback read] Creator thread for same-thread revert
+#endif
 };
 
 } // namespace directpipe

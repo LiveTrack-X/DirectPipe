@@ -275,6 +275,7 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
     // Clear device-loss state user intentionally picked a new input device
     inputDeviceLost_.store(false, std::memory_order_relaxed);
     deviceLost_.store(false, std::memory_order_relaxed);
+    startupRestorePending_ = false;
     // Auto-unmute output if it was auto-muted due to device loss
     if (outputAutoMuted_.load(std::memory_order_relaxed)) {
         outputAutoMuted_.store(false, std::memory_order_relaxed);
@@ -333,6 +334,7 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
     }
     deviceLost_.store(false, std::memory_order_relaxed);
     inputDeviceLost_.store(false, std::memory_order_relaxed);
+    startupRestorePending_ = false;
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
     Log::info("AUDIO", "Output device set: " + deviceName);
@@ -370,6 +372,7 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
         outputMuted_.store(false, std::memory_order_relaxed);
     }
     Log::info("AUDIO", "ASIO device set: " + deviceName);
+    startupRestorePending_ = false;
     return ActionResult::ok();
 }
 
@@ -520,6 +523,7 @@ ActionResult AudioEngine::ensureAudioDeviceReady()
     desiredSRBSSet_ = true;
     deviceLost_.store(false, std::memory_order_relaxed);
     inputDeviceLost_.store(false, std::memory_order_relaxed);
+    startupRestorePending_ = false;
     if (outputAutoMuted_.load(std::memory_order_relaxed)) {
         outputAutoMuted_.store(false, std::memory_order_relaxed);
         if (!outputNone_.load(std::memory_order_relaxed))
@@ -532,6 +536,66 @@ ActionResult AudioEngine::ensureAudioDeviceReady()
         + " @ " + juce::String(currentSampleRate_.load()) + "Hz / "
         + juce::String(currentBufferSize_.load()) + " samples");
     return ActionResult::ok();
+}
+
+void AudioEngine::rememberRestoredDeviceTargets(const juce::String& deviceType,
+                                                const juce::String& inputDevice,
+                                                const juce::String& outputDevice)
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    if (deviceType.isNotEmpty())
+        desiredDeviceType_ = deviceType;
+
+    const bool hasInputTarget = inputDevice.isNotEmpty();
+    const bool hasOutputTarget = outputDevice.isNotEmpty();
+
+    if (!hasInputTarget && !hasOutputTarget)
+        return;
+
+    {
+        const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+        if (hasInputTarget)
+            desiredInputDevice_ = inputDevice;
+        if (hasOutputTarget)
+            desiredOutputDevice_ = outputDevice;
+    }
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+
+    const bool currentReady = isCurrentAudioDeviceReady();
+    const bool inputNeedsRestore = hasInputTarget
+        && (!currentReady || setup.inputDeviceName != inputDevice);
+    const bool outputNeedsRestore = hasOutputTarget
+        && (!currentReady || setup.outputDeviceName != outputDevice);
+
+    const auto currentType = getCurrentDeviceType();
+    const bool typeNeedsRestore = deviceType.isNotEmpty()
+        && currentType.isNotEmpty()
+        && currentType != deviceType;
+
+    if (!inputNeedsRestore && !outputNeedsRestore && !typeNeedsRestore) {
+        startupRestorePending_ = false;
+        return;
+    }
+
+    startupRestorePending_ = true;
+    deviceLost_.store(true, std::memory_order_relaxed);
+    reconnectCooldown_ = 0;
+    reconnectMissCount_ = 0;
+
+    if (inputNeedsRestore)
+        inputDeviceLost_.store(true, std::memory_order_relaxed);
+
+    if (outputNeedsRestore && !outputNone_.load(std::memory_order_relaxed)) {
+        outputMuted_.store(true, std::memory_order_relaxed);
+        outputAutoMuted_.store(true, std::memory_order_relaxed);
+    }
+
+    Log::warn("AUDIO", "Startup restore waiting for saved device target: in='"
+        + inputDevice + "' out='" + outputDevice + "' current in='"
+        + setup.inputDeviceName + "' out='" + setup.outputDeviceName + "'");
 }
 
 ActionResult AudioEngine::applyAudioDeviceSetup(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
@@ -553,6 +617,7 @@ ActionResult AudioEngine::applyAudioDeviceSetup(const juce::AudioDeviceManager::
 
     deviceLost_.store(false, std::memory_order_relaxed);
     inputDeviceLost_.store(false, std::memory_order_relaxed);
+    startupRestorePending_ = false;
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
     return ActionResult::ok();
@@ -941,6 +1006,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     if (switchedDeviceReady) {
         deviceLost_.store(false, std::memory_order_relaxed);
         inputDeviceLost_.store(false, std::memory_order_relaxed);
+        startupRestorePending_ = false;
         if (outputAutoMuted_.load(std::memory_order_relaxed)) {
             outputAutoMuted_.store(false, std::memory_order_relaxed);
             outputMuted_.store(false, std::memory_order_relaxed);
@@ -1096,11 +1162,18 @@ void AudioEngine::updateXRunTracking()
     double elapsed = now - lastXRunBucketTime_;
 
     if (elapsed >= 1.0) {
-        lastXRunBucketTime_ = now;
+        const int elapsedBuckets = juce::jlimit(1, 60, static_cast<int>(elapsed));
+        lastXRunBucketTime_ = (elapsedBuckets >= 60)
+            ? now
+            : lastXRunBucketTime_ + static_cast<double>(elapsedBuckets);
 
-        // Move to next slot, clear old value
-        xrunHistoryIdx_ = (xrunHistoryIdx_ + 1) % 60;
-        xrunHistory_[xrunHistoryIdx_] = 0;
+        // Move by every elapsed second. If the message thread was blocked by
+        // device restart or restore work, stale XRuns must still age out of the
+        // 60-second display window instead of lingering for minutes.
+        for (int i = 0; i < elapsedBuckets; ++i) {
+            xrunHistoryIdx_ = (xrunHistoryIdx_ + 1) % 60;
+            xrunHistory_[xrunHistoryIdx_] = 0;
+        }
 
         // Recompute total from all 60 slots
         int total = 0;
@@ -1111,6 +1184,7 @@ void AudioEngine::updateXRunTracking()
 
     // Add current delta to the active slot
     if (delta > 0) {
+        totalXRunEvents_.fetch_add(static_cast<uint64_t>(delta), std::memory_order_relaxed);
         xrunHistory_[xrunHistoryIdx_] += delta;
 
         // Update total immediately
@@ -1219,18 +1293,21 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // One-time MMCSS registration on the audio callback thread (Windows only).
     // Boosts thread priority via Multimedia Class Scheduler Service, reducing
     // DPC latency interference. JUCE WASAPI registers at AVRT_PRIORITY_NORMAL;
-    // we re-register at AVRT_PRIORITY_HIGH for stronger protection.
+    // DirectPipe keeps the main OUT callback at AVRT_PRIORITY_CRITICAL for
+    // strongest protection; MonitorOutput stays lower so it cannot preempt it.
     // For ASIO (where JUCE does NO MMCSS), this is the only MMCSS registration.
 #if defined(_WIN32)
     if (!mmcssRegistered_.load(std::memory_order_acquire)) {
-        mmcssRegistered_.store(true, std::memory_order_relaxed);
         if (avSetMmThreadChar_ && avSetMmThreadPrio_) {
             DWORD taskIndex = 0;
             HANDLE h = avSetMmThreadChar_(L"Pro Audio", &taskIndex);
-            mmcssTaskHandle_.store(h, std::memory_order_relaxed);
-            if (h)
-                avSetMmThreadPrio_(h, 2);  // AVRT_PRIORITY_HIGH
+            if (h) {
+                mmcssTaskHandle_.store(h, std::memory_order_relaxed);
+                mmcssThreadId_.store(GetCurrentThreadId(), std::memory_order_relaxed);
+                avSetMmThreadPrio_(h, 2);  // AVRT_PRIORITY_CRITICAL
+            }
         }
+        mmcssRegistered_.store(true, std::memory_order_release);
     }
 #endif
 
@@ -1434,9 +1511,6 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
 
-    // Reset MMCSS flag new device means new audio thread, re-registration needed
-    mmcssRegistered_.store(false, std::memory_order_release);
-
 #if defined(_WIN32)
     if (!avSetMmThreadChar_) {
         if (auto* avrt = LoadLibraryA("avrt.dll")) {
@@ -1454,6 +1528,11 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             }
         }
     }
+    // New device means a new callback thread. Reset after function pointer
+    // refresh so the RT thread sees a coherent registration state.
+    mmcssTaskHandle_.store(nullptr, std::memory_order_relaxed);
+    mmcssThreadId_.store(0, std::memory_order_relaxed);
+    mmcssRegistered_.store(false, std::memory_order_release);
 #endif
 
     // Remember last used ASIO device for future type switches
@@ -1714,12 +1793,14 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 void AudioEngine::audioDeviceStopped()
 {
 #if defined(_WIN32)
-    // Revert MMCSS thread characteristics to avoid handle leak
-    HANDLE h = mmcssTaskHandle_.load(std::memory_order_relaxed);
-    if (h && avRevertMmThreadChar_) {
+    // AvRevertMmThreadCharacteristics must run on the same thread that called
+    // AvSetMmThreadCharacteristics. If JUCE calls this from a control thread,
+    // avoid a guaranteed-failing cross-thread revert.
+    HANDLE h = mmcssTaskHandle_.exchange(nullptr, std::memory_order_relaxed);
+    const DWORD ownerThread = mmcssThreadId_.exchange(0, std::memory_order_relaxed);
+    if (h && avRevertMmThreadChar_ && ownerThread == GetCurrentThreadId())
         avRevertMmThreadChar_(h);
-        mmcssTaskHandle_.store(nullptr, std::memory_order_relaxed);
-    }
+    mmcssRegistered_.store(false, std::memory_order_release);
 #endif
 
     // Remember IPC state for re-init in audioDeviceAboutToStart,
@@ -1765,7 +1846,8 @@ void AudioEngine::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
 // Dual-Mechanism Reconnection
 // 1) Immediate ChangeListener callback on deviceManager_ (fast detection).
 // 2) 3s timer polling fallback (covers missed ChangeListener events).
-// reconnectMissCount_: after repeated misses, accept current device to avoid loop.
+// reconnectMissCount_: after repeated misses, accept current device to avoid loop
+// unless startup restore or output loss requires waiting for an explicit target.
 // WARNING: desiredInputDevice_/desiredOutputDevice_Message thread only
 // ===========================================================================
 void AudioEngine::checkReconnection()
@@ -1863,11 +1945,13 @@ void AudioEngine::attemptReconnection()
     if (!inputOk || !outputOk) {
         ++reconnectMissCount_;
         if (reconnectMissCount_ >= kMaxReconnectMisses) {
-            // Output genuinely lost (physically unplugged) keep waiting, don't accept fallback
-            if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+            // Saved startup targets and output loss are explicit user choices:
+            // keep waiting instead of accepting the wrong fallback device.
+            if (startupRestorePending_
+                || outputAutoMuted_.load(std::memory_order_relaxed)) {
                 reconnectMissCount_ = 0;
-                Log::audit("AUDIO", "Reconnection: output device lost, continuing to wait for '"
-                    + desiredOutputDevice_ + "'");
+                Log::audit("AUDIO", "Reconnection: explicit device target not ready, continuing to wait for in='"
+                    + desiredInputDevice_ + "' out='" + desiredOutputDevice_ + "'");
             } else {
                 // Stale cross-driver names accept current driver's devices to break the loop
                 Log::warn("AUDIO", "Reconnection: desired devices not found after "
@@ -1883,6 +1967,7 @@ void AudioEngine::attemptReconnection()
                 }
                 deviceLost_.store(false, std::memory_order_relaxed);
                 inputDeviceLost_.store(false, std::memory_order_relaxed);
+                startupRestorePending_ = false;
                 reconnectMissCount_ = 0;
                 pushNotification("Device not found, using current device", NotificationLevel::Warning);
                 if (onDeviceReconnected) onDeviceReconnected();
@@ -1923,6 +2008,7 @@ void AudioEngine::attemptReconnection()
             if (!outputNone_.load(std::memory_order_relaxed))
                 outputMuted_.store(false, std::memory_order_relaxed);
         }
+        startupRestorePending_ = false;
         reconnectCooldown_ = 0;
         reconnectMissCount_ = 0;
         Log::info("AUDIO", "Device reconnected: " + setup.inputDeviceName + " / " + setup.outputDeviceName);

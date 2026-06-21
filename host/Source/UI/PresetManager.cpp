@@ -323,6 +323,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
     int version = root->getProperty("version");
     if (version < 1) return false;
 
+    juce::String restoredDeviceType;
+    juce::String restoredInputDevice;
+    juce::String restoredOutputDevice;
+    bool outputNone = false;
+
     // Restore active slot (clamp to valid range: -1 to kNumSlots-1, i.e. -1 to 5)
     if (root->hasProperty("activeSlot")) {
         int slot = static_cast<int>(root->getProperty("activeSlot"));
@@ -346,6 +351,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
         if (deviceType.isNotEmpty()) {
             auto availableTypes = engine_.getAvailableDeviceTypes();
             if (availableTypes.contains(deviceType)) {
+                restoredDeviceType = deviceType;
                 juce::String preferredDev;
                 if (deviceType.containsIgnoreCase("ASIO")) {
                     if (root->hasProperty("inputDevice"))
@@ -397,23 +403,22 @@ bool PresetManager::importFromJSON(const juce::String& json)
 
     // Restore devices (use engine methods for intentionalChange_ guard + desiredDevice tracking)
     if (root->hasProperty("inputDevice")) {
-        juce::String inputDev = root->getProperty("inputDevice").toString();
-        if (inputDev.isNotEmpty()) {
-            auto result = engine_.setInputDevice(inputDev);
+        restoredInputDevice = root->getProperty("inputDevice").toString();
+        if (restoredInputDevice.isNotEmpty()) {
+            auto result = engine_.setInputDevice(restoredInputDevice);
             if (!result)
                 juce::Logger::writeToLog("[PRESET] Input device restore failed: " + result.message);
         }
     }
     // Restore output "None" mode first (before output device)
-    bool outputNone = false;
     if (root->hasProperty("outputNone"))
         outputNone = static_cast<bool>(root->getProperty("outputNone"));
     engine_.setOutputNone(outputNone);
 
     if (!outputNone && root->hasProperty("outputDevice")) {
-        juce::String outputDev = root->getProperty("outputDevice").toString();
-        if (outputDev.isNotEmpty() && outputDev != "None") {
-            auto result = engine_.setOutputDevice(outputDev);
+        restoredOutputDevice = root->getProperty("outputDevice").toString();
+        if (restoredOutputDevice.isNotEmpty() && restoredOutputDevice != "None") {
+            auto result = engine_.setOutputDevice(restoredOutputDevice);
             if (!result)
                 juce::Logger::writeToLog("[PRESET] Output device restore failed: " + result.message);
         }
@@ -543,6 +548,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
     // Output mute state
     if (root->hasProperty("outputMuted"))
         engine_.setOutputMuted(static_cast<bool>(root->getProperty("outputMuted")));
+
+    engine_.rememberRestoredDeviceTargets(
+        restoredDeviceType,
+        restoredInputDevice,
+        (outputNone || restoredOutputDevice == "None") ? juce::String{} : restoredOutputDevice);
 
     // Audit mode
     if (root->hasProperty("auditMode"))

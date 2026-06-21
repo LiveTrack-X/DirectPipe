@@ -1,16 +1,28 @@
 # Platform Guide / 플랫폼별 가이드
 
-DirectPipe는 Windows, macOS, Linux를 지원합니다. 플랫폼에 따라 기능과 설정이 다릅니다.
+DirectPipe는 Windows, macOS, Linux를 지원합니다. 플랫폼에 따라 기능과 설정, 릴리즈 안정도가 다릅니다.
 
-DirectPipe supports Windows, macOS, and Linux. Features and setup vary by platform.
+DirectPipe supports Windows, macOS, and Linux. Features, setup, and release maturity vary by platform.
 
 ---
+
+## 지원 상태 / Support Status
+
+| 플랫폼 / Platform | 릴리즈 상태 / Release status | 빌드/배포 상태 / Build & distribution | 검증 메모 / Validation notes |
+|---|---|---|---|
+| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release ZIP 및 CI `windows-latest` | v4.1.0 릴리즈 전 로컬 검증 완료. WASAPI/ASIO 문제 대응의 기준 플랫폼. |
+| **macOS 10.15+ universal** | 베타 / Beta | CI `macos-14` DMG | CMake/CI 빌드 경로와 CoreAudio 구현은 유지. 실기기 오디오 검증 범위는 제한적. |
+| **Linux x86_64** | 실험적 / Experimental | CI `ubuntu-24.04` tar.gz | ALSA/JACK 경로는 유지. 배포판/데스크톱/오디오 서버 조합별 편차가 있을 수 있음. |
+| **Stream Deck plugin** | 별도 크로스 플랫폼 패키지 / Separate cross-platform package | CI `ubuntu-latest` `.streamDeckPlugin` | Manifest 기준 Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
+
+> v4.1.0 릴리즈 문서의 "지원"은 소스/CI 빌드 경로와 플랫폼 구현 존재를 의미합니다. 안정도와 실기기 검증 수준은 위 표의 상태를 따릅니다.
+> In v4.1.0 release docs, "supported" means the source/CI path and platform implementation exist. Release maturity and hardware validation follow the table above.
 
 ## 플랫폼별 기능 비교 / Feature Comparison
 
 | 기능 / Feature | Windows | macOS | Linux |
 |---|---|---|---|
-| **상태 / Status** | 안정 (Stable) | 베타 (Beta) | 실험적 (Experimental) |
+| **상태 / Status** | 안정 / Stable | 베타 / Beta | 실험적 / Experimental |
 | **오디오 드라이버** | WASAPI Shared/Exclusive, ASIO | CoreAudio | ALSA, JACK |
 | **VST2 호스팅** | O | O | O |
 | **VST3 호스팅** | O | O | O |

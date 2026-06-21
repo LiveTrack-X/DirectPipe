@@ -82,7 +82,7 @@ public:
      */
     bool importFromJSON(const juce::String& json);
 
-    // ??? Quick Preset Slots (A..E) ???
+    // Quick Preset Slots (A..E)
 
     static constexpr int kNumSlots = 6;  // A-E (0-4) + Auto (5)
 
@@ -161,7 +161,7 @@ public:
     void setSlotName(int slotIndex, const juce::String& name);
 
     /**
-     * @brief Get display label for slot button (e.g. "A" or "A|寃뚯엫").
+     * @brief Get display label for slot button (e.g. "A" or "A|Game").
      */
     juce::String getSlotDisplayName(int slotIndex) const;
 

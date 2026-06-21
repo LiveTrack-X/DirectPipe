@@ -1,7 +1,7 @@
 {
   "name": "directpipe-streamdeck",
-  "version": "4.0.9",
-  "description": "Stream Deck plugin for DirectPipe — Control VST bypass, volume, presets, and panic mute via WebSocket.",
+  "version": "4.1.0",
+  "description": "Stream Deck plugin for DirectPipe - Control VST bypass, volume, presets, and panic mute via WebSocket.",
   "main": "src/plugin.js",
   "scripts": {
     "start": "node src/plugin.js",

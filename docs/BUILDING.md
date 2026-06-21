@@ -1,7 +1,16 @@
 # Building DirectPipe / 빌드 가이드
 
-> **플랫폼 지원 상태**: Windows (안정), macOS (베타), Linux (실험적). macOS/Linux 빌드는 실험적이며 실기기 테스트가 제한적입니다.
-> **Platform support**: Windows (stable), macOS (beta), Linux (experimental). macOS/Linux builds are experimental with limited real-hardware testing.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적입니다. v4.1.0 로컬 릴리즈 전 검증은 Windows에서 완료했으며, macOS/Linux는 CI 빌드와 소스 경로를 유지하지만 실기기 오디오 테스트가 제한적입니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. macOS 10.15+ universal is beta. Linux x86_64 is experimental. v4.1.0 local pre-release verification was completed on Windows; macOS/Linux keep CI and source support but have limited real-hardware audio testing.
+
+## Support Status / 지원 상태
+
+| Platform | Release status | CI target | Audio backend | Notes |
+|---|---|---|---|---|
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Locally verified for v4.1.0 pre-release. |
+| macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
+| Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
+| Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
 
 ## Requirements / 요구 사항
 
@@ -189,9 +198,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Current v4.0.9 test inventory: **326 registered tests** across 31 test suites (52 core in 6 suites + 274 host in 25 suites). In the current Windows verification run, 2 host tests are environment-dependent skips.
+Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Current v4.1.0 test inventory: **345 registered tests** across 32 test suites (52 core in 6 suites + 293 host in 26 suites). In the current Windows verification run, 2 host tests are environment-dependent skips.
 
-두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 현재 v4.0.9 기준 총 **326개 등록 테스트**, 31개 테스트 스위트(코어 52개/6스위트 + 호스트 274개/25스위트)입니다. 현재 Windows 검증 기준으로 호스트 테스트 2개는 환경 의존 skip입니다.
+두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 현재 v4.1.0 기준 총 **345개 등록 테스트**, 32개 테스트 스위트(코어 52개/6스위트 + 호스트 293개/26스위트)입니다. 현재 Windows 검증 기준으로 호스트 테스트 2개는 환경 의존 skip입니다.
 
 ### directpipe-tests (Core)
 
@@ -217,10 +226,11 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 | PresetManagerTest + constants | 30 | Preset slot save/load, import/export, Auto slot, factory reset, constants / 프리셋 슬롯 저장/로드, 가져오기/내보내기, Auto 슬롯, 상수 |
 | SettingsExporterTest | 10 | Settings export/import roundtrip, migration / 설정 내보내기/가져오기, 마이그레이션 |
 | SettingsAutosaverTest | 11 | Dirty-flag + debounce auto-save, startup guard restore paths / 더티 플래그 + 디바운스 자동 저장, 시작 보호 복원 경로 |
-| OutputRouterTest | 8 | Monitor output routing, mute state / 모니터 출력 라우팅, 뮤트 상태 |
-| AudioEngineTest | 14 | Driver snapshot, device reconnection, XRun, buffer fallback, sample-rate propagation / 드라이버 스냅샷, 장치 재연결, XRun, 버퍼 폴백, 샘플레이트 전파 |
-| AudioRingBufferTest | 4 | Lock-free audio ring buffer reset/discard behavior / 오디오 링 버퍼 reset/discard 동작 |
-| MonitorDriftPolicyTest | 3 | Monitor drift trim policy for producer/consumer block-size combinations / 메인/모니터 콜백 크기 조합별 드리프트 trim 정책 |
+| OutputRouterTest | 10 | Monitor output routing, mute state, inactive meter reset / 모니터 출력 라우팅, 뮤트 상태, 비활성 meter reset |
+| AudioEngineTest | 15 | Driver snapshot, device reconnection, XRun, buffer fallback, sample-rate propagation / 드라이버 스냅샷, 장치 재연결, XRun, 버퍼 폴백, 샘플레이트 전파 |
+| AudioRingBufferTest | 8 | Lock-free audio ring buffer reset/discard and fractional interpolation behavior / 오디오 링 버퍼 reset/discard 및 fractional interpolation 동작 |
+| MonitorDriftPolicyTest | 10 | Adaptive monitor target, PLL ratio, and emergency trim policy / adaptive 모니터 target, PLL ratio, emergency trim 정책 |
+| MonitorOutputTest | 4 | Monitor callback priming, runtime block-size re-prime, underrun re-prime, and normal drift no-trim regression / MonitorOutput 콜백 상태 회귀 |
 | DeviceStateTest | 10 | Device state FSM and invalid-state guards / 장치 상태 FSM 및 invalid-state 방어 |
 | MidiHandlerTest | 8 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
@@ -231,9 +241,9 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 | VSTChainTest | 9 | VST chain operations, plugin ordering / VST 체인 연산, 플러그인 순서 |
 | PlatformTest | 7 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
 
-Host test source files: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.
+Host test source files: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_monitor_output.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.
 
-호스트 테스트 소스: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.
+호스트 테스트 소스: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_monitor_output.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.
 
 ### GTest JSON Output / GTest JSON 출력
 
@@ -267,7 +277,7 @@ bash tools/pre-release-test.sh
 
 | 이벤트 / Event | 조건 / Condition | 동작 / Action |
 |---|---|---|
-| Pull Request | `v4` 또는 `main` 브랜치 대상 / targeting `v4` or `main` | 4개 플랫폼 빌드 + 테스트 (릴리스 업로드 없음) / Build + test (no upload) |
+| Pull Request | `v4` 또는 `main` 브랜치 대상 / targeting `v4` or `main` | Windows/macOS/Linux + Stream Deck 빌드/테스트 (릴리스 업로드 없음) / Build + test (no upload) |
 | Release created | GitHub Release 생성 시 / On release creation | 빌드 + 릴리스 asset 업로드 / Build + upload to release |
 | workflow_dispatch | 수동 실행 + release_tag 입력 / Manual with tag | 빌드 + 지정 릴리스에 업로드 / Build + upload to specified tag |
 
@@ -293,7 +303,7 @@ bash tools/pre-release-test.sh
 ### 릴리스 프로세스 / Release Process
 
 1. GitHub에서 Release 생성 (`--latest` 플래그로 정식 릴리즈) / Create Release on GitHub (use `--latest` for official release)
-2. CI가 자동으로 4개 빌드 실행 / CI automatically runs 4 builds
+2. CI가 자동으로 Windows/macOS/Linux + Stream Deck 빌드 실행 / CI automatically runs Windows/macOS/Linux + Stream Deck builds
 3. `upload-release` job이 모든 빌드 완료 후 asset 업로드 / `upload-release` job uploads after all builds pass
 4. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention
 

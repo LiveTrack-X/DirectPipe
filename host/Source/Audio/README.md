@@ -41,7 +41,7 @@ VSTChain.processBlock(workBuffer_)
 |
 +---> OutputRouter.routeAudio()
 |      |
-|      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate shared-mode callback + block-aware drift trim]
+|      +---> MonitorOutput.writeAudio()  [lock-free AudioRingBuffer -> separate shared-mode callback + adaptive PLL fractional read + emergency trim fallback]
 |
 +---> outputChannelData (main output)    [apply output volume, or zero if outputMuted_]
  |
@@ -59,8 +59,8 @@ LatencyMonitor.markCallbackEnd()
 | `AudioEngine.h/cpp` | 핵심 오디오 엔진. 디바이스 관리, RT 콜백, 입출력 채널 라우팅, 디바이스 재연결, XRun 추적 |
 | `VSTChain.h/cpp` | VST2/VST3 플러그인 체인. AudioProcessorGraph 기반 직렬 체인, 비동기 로딩, 에디터 창 관리 |
 | `OutputRouter.h/cpp` | 처리된 오디오를 모니터(헤드폰) 출력으로 라우팅. 볼륨/활성화 제어, RMS 레벨 측정 |
-| `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, high-fill 시 producer/consumer block-aware stale frame trim |
-| `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 장치 콜백(consumer), `discard()`로 오래된 프레임 RT-safe 정리 |
+| `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, low-watermark priming, adaptive PLL fractional playback, near-overflow emergency trim |
+| `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 장치 콜백(consumer), integer read/discard 및 fractional interpolated read 지원 |
 | `AudioRecorder.h/cpp` | WAV 파일 녹음. RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
 | `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
 | `PluginPreloadCache.h/cpp` | 프리셋 슬롯 전환용 플러그인 인스턴스 백그라운드 프리로딩. 캐시 hit 시 DLL 로딩 건너뜀 |
@@ -93,7 +93,7 @@ LatencyMonitor.markCallbackEnd()
 | MonitorOutput | `audioDeviceIOCallbackWithContext` | `[Monitor RT thread]` | AudioRingBuffer consumer (lock-free) |
 | MonitorOutput | `initialize`, `setDevice`, `checkReconnection` | `[Message thread]` | 별도 AudioDeviceManager 조작 |
 | AudioRingBuffer | `write` (producer) | `[RT thread]` | SPSC. capacity는 power-of-2 필수 |
-| AudioRingBuffer | `read` (consumer) | `[Monitor RT thread]` | SPSC 단일 소비자 |
+| AudioRingBuffer | `read` / `readInterpolated` (consumer) | `[Monitor RT thread]` | SPSC 단일 소비자 |
 | AudioRecorder | `writeBlock` | `[RT thread]` | try-lock 후 ThreadedWriter FIFO에 push, teardown 경합 시 drop. jassert: NOT message thread |
 | AudioRecorder | `startRecording`, `stopRecording` | `[Message thread]` | `writerLock_` (SpinLock) |
 | LatencyMonitor | `markCallbackStart/End` | `[RT thread]` | `sampleRate_`, `bufferSize_`, `callbackStartTicks_`, `avgProcessingTime_` 모두 atomic (reset()과의 cross-thread 안전) |
@@ -245,7 +245,9 @@ LatencyMonitor.markCallbackEnd()
 
 ## Current Edge Guards
 
-- Monitor drift trim target/high-threshold math lives in `MonitorDriftPolicy.h`; keep it producer/consumer block-aware when changing monitor buffering.
+- Monitor adaptive target, PLL ratio limits, and emergency trim fallback live in `MonitorDriftPolicy.h`; normal drift must use fractional playback rather than frame discard, and monitor MMCSS must stay below main OUT priority.
+- XRun display history is a 60-second rolling window. If message-thread work stalls the UI timer, `updateXRunTracking()` must advance every elapsed bucket so stale XRuns age out on time.
+- Startup settings restore calls `rememberRestoredDeviceTargets()` so saved WASAPI input/output names remain the reconnection target even when Windows has not finished enumerating devices at login.
 - `AudioRingBuffer`, `OutputRouter`, `MonitorOutput`, `SharedMemWriter`, and `AudioRecorder` explicitly guard zero-channel, null-channel, and short-source-buffer calls so fallback silence paths do not reuse stale audio or read past source buffers.
 
 ## When to Update This README

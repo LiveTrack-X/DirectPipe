@@ -1,436 +1,77 @@
 # DirectPipe Release Notes
 
-> 이 문서는 **사용자용 릴리즈 요약**입니다. 개발자용 상세 변경 이력은 [CHANGELOG.md](../CHANGELOG.md)를 참고하세요.
-> This is a **user-facing** release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
+> This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
-## v4.0.9
+## DirectPipe v4.1.0
 
-v4.0.8 이후, 모니터 지연 누적 보정이 일부 장치 조합에서 너무 공격적으로 동작해 모니터 버퍼를 크게 잡아야 끊김이 줄어드는 문제를 보정한 핫픽스 릴리스입니다.
-This hotfix adjusts the v4.0.8 monitor drift compensation so smaller monitor buffers do not get over-trimmed when the main audio callback uses a larger block size.
-It also hardens preset slot switching and Factory Reset cleanup so stale preload entries or backup files do not keep old slot state alive.
-The same audit also adds defensive empty/short-buffer guards in the host audio paths without requiring users to replace an already installed Receiver VST plugin.
+v4.1.0 is the next public release after v4.0.9. It includes the startup/tray device-restore and Audit Mode work prepared after v4.0.9, plus the adaptive PLL monitor-output bridge.
+
+This release targets the real crackle/cutout and OUT XRun increase seen when the main OUT path and a separate monitor device run on independent WASAPI hardware clocks. Monitor output still receives the already processed post-VST/post-Safety buffer; it does not run the VST chain a second time.
+
+v4.0.9 이후 준비했던 시작/트레이 장치 복원, Audit Mode 확장, adaptive PLL 기반 모니터 출력 브리지를 포함한 릴리즈입니다. 별도 모니터 장치 사용 시 발생하던 실제 끊김/지지직 및 OUT XRun 증가 문제를 줄이는 데 초점을 맞췄습니다.
+
+---
 
 ### Highlights / 주요 변경
 
-#### 1) Monitor drift trim tuning / 모니터 드리프트 trim 보정
-- 모니터 출력은 여전히 VST/Safety 처리 이후의 메인 오디오 버퍼를 그대로 받아 출력하며, 별도의 VST 이중 처리는 하지 않습니다.
-- Monitor output still receives the already processed post-VST/post-Safety audio buffer; it does not run a second VST processing pass.
-- 4.0.8의 오래된 monitor ring-buffer 프레임 정리는 유지하되, trim 목표치를 메인 오디오 콜백 producer block과 모니터 장치 consumer block을 함께 고려하도록 조정했습니다.
-- The stale-frame trim added in v4.0.8 is kept, but its target fill now accounts for both the main audio callback producer block and the monitor-device consumer block.
-- 메인 버퍼가 512 samples이고 모니터 버퍼가 128 samples처럼 더 작은 경우에도 ring buffer를 메인 콜백 단위보다 얕게 깎지 않아, 짧은 모니터 버퍼에서 발생할 수 있는 끊김을 줄입니다.
-- When the main buffer is larger than the monitor buffer, for example 512 samples vs 128 samples, DirectPipe no longer trims the ring buffer below the main callback granularity, reducing monitor dropouts.
+#### 1) Adaptive PLL monitor bridge / 적응형 PLL 모니터 브리지
+- Monitor output now uses fractional read playback with linear interpolation on the monitor consumer side.
+- Normal independent-device clock drift is absorbed by tiny playback-ratio corrections instead of frame discard.
+- Runtime producer/consumer block-size changes re-prime the monitor bridge so the new target fill is honored before playback resumes.
+- Partial monitor underruns re-prime before playback resumes, and repeated underruns gradually raise the target fill.
+- Near-overflow emergency trim remains a safety fallback only and gets a short fade-in.
+- This is not double processing: the VST chain still runs once in the main audio path.
 
-#### Host buffer edge-case guards
-- `AudioRingBuffer`, `OutputRouter`, `MonitorOutput`, `SharedMemWriter`, and `AudioRecorder` now defensively handle zero-channel, null-channel, or short-source-buffer calls so fallback silence paths do not reuse stale audio or read past the source buffer.
+#### 2) Startup/tray WASAPI restore / 시작 및 트레이 WASAPI 복원
+- Settings restore now remembers saved input/output device targets even when Windows has not finished enumerating devices at login or tray startup.
+- If the saved mic or output device is not available yet, DirectPipe keeps retrying for that explicit target instead of accepting an unintended fallback device as a successful restore.
+- Output auto-mute remains active while the saved output target is missing, reducing wrong-device output risk.
 
-#### Preset slot switch stability
-- DirectPipe now validates cached preset-slot plugin instances against the current slot file before using them.
-- If a slot was reset, restored, deleted, imported, or otherwise changed behind the cache, DirectPipe discards the stale cache and reloads the slot normally instead of swapping mismatched plugin instances.
-- This addresses cases where switching to a specific slot could close the host process.
+#### 3) Main OUT XRun protection / 메인 OUT XRun 보호
+- The main RT callback only pushes monitor audio when the separate monitor output is actually active.
+- Monitor RMS level is cleared when monitor routing is disabled or inactive, keeping Audit Mode and UI meters from showing stale monitor audio.
+- On Windows, the monitor callback remains below the main OUT callback priority by using MMCSS `Pro Audio` normal priority.
+- The 60-second XRun rolling window now advances by every elapsed second after UI/device stalls, so stale buckets age out on time.
+- Audit Mode `xrunDelta` now comes from a monotonic XRun event counter instead of comparing rolling-window totals.
 
-#### Factory Reset slot cleanup
-- Factory Reset and Clear All Presets now clear runtime slot names, occupied-slot state, pending slot loads, and preload cache state immediately after deleting preset files.
-- Deleted slot names should no longer remain visible after a reset.
+#### 4) Audit diagnostics / Audit 진단 확장
+- Audit Mode now emits rate-limited `AUDIO` and `MONITOR` snapshots from the message thread.
+- `AUDIO` snapshots include desired/actual devices, SR/BS, CPU/proc time, XRun and callback-overrun deltas, mute/lost/IPC/limiter flags.
+- `MONITOR` snapshots include fill/target/PLL state, block sizes, dropped/underrun/trim deltas, sample rate, ring capacity, and priming state.
+- RT callbacks only update atomics/counters; logging stays on the message thread.
 
-#### Backup-file cleanup
-- Preset cleanup now removes `.bak`, `.backup`, `.tmp`, and legacy numeric slot-file variants together.
-- Existing preset files remain compatible. If an old slot name was already stuck before upgrading, run Factory Reset or Clear All Presets once on v4.0.9 so the new cleanup path can remove stale backup files.
+#### 5) Platform support / OS별 지원
+- **Windows 10/11 x64**: stable release target. v4.1.0 local pre-release verification completed.
+- **macOS 10.15+ universal**: beta. Source/CMake/CI release path exists; real-hardware audio validation is limited.
+- **Linux x86_64**: experimental. Source/CMake/CI release path exists; behavior can vary by distribution, desktop environment, and audio server.
+- **Stream Deck plugin**: separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+.
+
+---
 
 ### Upgrade Notes / 업그레이드 안내
-- **No API/state model break / API 및 상태 모델 호환 유지**: 이 릴리스는 control API 또는 state schema의 breaking change를 포함하지 않습니다.
-- **Monitor output / 모니터 출력**: 가장 낮은 지연을 원하면 기존처럼 같은 오디오 인터페이스의 ASIO 모니터링 또는 하드웨어 다이렉트 모니터링이 가장 안정적입니다. 별도 shared-mode 모니터 장치를 쓰는 경우에는 이번 보정으로 4.0.8보다 작은 모니터 버퍼에서도 안정성이 좋아집니다.
-- **Validation / 검증**: Release host tests were rebuilt and run; host tests passed with 272 passed and 2 environment-dependent tests skipped.
+- **No API/state model break / API 및 상태 모델 호환 유지**: Stream Deck, HTTP, WebSocket, presets, and backups remain compatible.
+- **No Receiver VST replacement required for these host-side fixes**: existing Receiver VST installs do not need manual replacement to benefit from the startup, monitor-output, and diagnostics fixes. The bundled Receiver plugin remains version-aligned for new installs.
+- **Audit Mode / Audit 모드**: enable it only while reproducing monitor or XRun issues, then compare monitor-off vs monitor-on runs.
+- **Release assets are built by CI / 릴리즈 산출물은 CI에서 빌드**: this GitHub release is created with notes only; GitHub Actions builds and uploads the Windows, macOS, Linux, Stream Deck, and checksum assets.
 
 ---
 
-## v4.0.8
-
-v4.0.7 이후, 방송 전 오디오 테스트/Full Backup 복원 후 오디오 장치가 다시 잡히지 않는 문제와 macOS 모니터 지연 누적 문제를 보강한 핫픽스 릴리스입니다.
-This hotfix hardens Full Backup/preset restore and bounds macOS monitor latency drift after v4.0.7.
-
-### Highlights / 주요 변경
-
-#### 1) Full Restore audio refresh / 전체 복원 오디오 재연결 보강
-- Full Backup 또는 프리셋 복원 후 현재 장치가 `SR=0` 같은 invalid/stopped 상태를 보고하면, 저장된 장치명이 같더라도 장치를 다시 열어 실제 오디오 경로를 복구합니다.
-- Full Backup and preset restore now reopen the current audio device when the driver reports an invalid or stopped state such as `SR=0`, even when the saved device name matches the current setup.
-- ASIO뿐 아니라 WASAPI에서도 같은 복원 경로를 사용하므로, 두 번째 복원이나 수동 버퍼/장치 변경 없이 오디오가 다시 잡히도록 보강했습니다.
-- The same recovery path covers ASIO and WASAPI, reducing cases where audio only comes back after a second restore or manual buffer/device change.
-
-#### 2) Monitor latency drift compensation / 모니터 지연 누적 보정
-- macOS/CoreAudio처럼 입력 장치와 모니터 출력 장치가 서로 다른 클럭으로 움직이는 구성에서 ring buffer가 계속 쌓이면 오래된 프레임을 자동으로 정리해 모니터 지연이 선형으로 증가하지 않게 했습니다.
-- When separate input and monitor output devices drift on independent clocks, DirectPipe now trims stale monitor ring-buffer frames so monitoring latency stays bounded instead of growing linearly (#3).
-- 모니터 OFF/ON으로 지연을 초기화해야 하던 상황을 줄입니다.
-- This reduces cases where toggling monitoring OFF/ON is needed to reset accumulated latency.
-
-#### 3) Invalid device-state guards / 잘못된 장치 상태 방어
-- 장치 시작, 드라이버 전환, 샘플레이트 적용, IPC 출력 활성화 경로에서 invalid `SR=0`/buffer 값이 내부 desired/current 상태로 저장되지 않도록 방어했습니다.
-- Invalid `SR=0` or buffer values are no longer allowed to pollute desired/current runtime state during device start, driver switching, sample-rate apply, or IPC enable.
-- 아직 `initialize()`되지 않은 엔진에서 드라이버 타입만 저장해야 하는 경우 실제 오디오 장치를 열지 않도록 해, 테스트 및 설정 로드 경계에서 callback 누수를 막았습니다.
-- Driver type changes on a non-initialized engine now store intent without opening a real audio device, preventing callback lifetime issues in isolated setup/load paths.
-
-#### 4) Restore-state accuracy / 복원 상태 정합성
-- 프리셋 복원의 채널 마스크 적용도 AudioEngine의 intentional device-change 경로를 사용해, 정상 복원 중 발생하는 장치 stop/start가 외부 장치 분실로 오인되지 않게 했습니다.
-- Channel-mask restore now goes through AudioEngine's intentional device-change path so normal restore stop/start cycles are not mistaken for external device loss.
-
-#### 5) Version and release docs sync / 버전 및 릴리즈 문서 정합성
-- 앱, Receiver 플러그인, Stream Deck 플러그인, README, 사용자 가이드, 아키텍처/스펙 문서, 릴리즈 본문의 v4.0.8 표기를 맞췄습니다.
-- Updated app, Receiver plugin, Stream Deck plugin, README, user guide, architecture/spec docs, and release body references for v4.0.8.
-
-### Upgrade Notes / 업그레이드 안내
-- **No API/state model break / API 및 상태 모델 호환 유지**: 이 릴리스는 control API 또는 state schema의 breaking change를 포함하지 않습니다.
-- **Full Restore / 전체 복원**: 복원 직후 장치가 stopped/invalid 상태로 보고되면 DirectPipe가 한 번 더 장치 설정을 적용해 오디오 경로를 복구합니다. 장치 자체가 분리되어 있거나 드라이버가 실패한 경우에는 로그에 복구 실패 이유가 남습니다.
-- **Monitor drift / 모니터 지연 누적**: 서로 다른 물리 장치를 입력과 모니터 출력으로 쓰는 경우 clock drift 자체는 발생할 수 있지만, DirectPipe가 오래된 monitor buffer를 정리해 누적 지연을 제한합니다.
-- **Windows unblock / Windows 차단 해제**: 다운로드한 실행 파일이 차단되면 `DirectPipe.exe` 우클릭 -> **속성** -> **일반** -> **보안** -> **차단 해제** -> **적용/확인**을 누르세요.
+### Validation / 검증
+- Local Windows Release verification built: `DirectPipe`, `DirectPipeReceiver_VST3`, `DirectPipeReceiver_VST`, `directpipe-tests`, and `directpipe-host-tests`.
+- `directpipe-tests`: 52 passed.
+- `directpipe-host-tests`: 291 passed, 2 environment-dependent tests skipped.
+- Text integrity, JSON metadata validation, Stream Deck package manifest validation, and `git diff --check` passed.
+- Final release assets are rebuilt by GitHub Actions after the release is created.
 
 ---
 
-## v4.0.7
-
-v4.0.6 이후 보고된 모니터 샘플레이트 불일치 프리즈를 수정하고, 트레이 Panic Mute 토글을 추가한 핫픽스 릴리스입니다.
-This hotfix addresses the monitor sample-rate mismatch freeze reported after v4.0.6 and adds a tray/menu bar Panic Mute toggle.
-
-### Highlights / 주요 변경
-
-#### 1) Monitor sample-rate mismatch freeze fix / 모니터 샘플레이트 불일치 프리즈 수정
-- 모니터 장치가 메인 오디오 장치와 다른 샘플레이트로 열릴 때, 반복 재연결 대상이 아니라 사용자가 설정을 바꿀 때까지 비활성화되는 구성 불일치 상태로 처리합니다.
-- Monitor devices that open at a different sample rate from the main audio device are treated as a disabled configuration mismatch, not a retryable device-loss loop.
-- GitHub issue [#2](https://github.com/LiveTrack-X/DirectPipe/issues/2)에 보고된 v4.0.6 GUI freeze 회귀를 해결합니다.
-- Addresses the v4.0.6 GUI freeze regression reported in GitHub issue [#2](https://github.com/LiveTrack-X/DirectPipe/issues/2).
-
-#### 2) Reconnection and settings accuracy / 재연결 및 설정 상태 정합성
-- 모니터 출력은 실제 `Active` 상태에 도달했을 때만 재연결 성공 로그와 알림을 표시합니다.
-- Reconnection success logs and notifications are emitted only when monitor output actually reaches the `Active` state.
-- 실패한 드라이버, 장치, 채널, 모니터 설정 변경은 더 이상 성공한 것처럼 desired target에 저장되지 않습니다.
-- Failed driver/device/channel/monitor setting changes no longer get saved as if they succeeded.
-
-#### 3) Tray Panic Mute toggle / 트레이 Panic Mute 토글
-- 트레이 우클릭 메뉴에서 **Show Window** 바로 아래에 체크 상태가 표시되는 **Panic Mute** 항목을 추가했습니다.
-- The tray/menu bar right-click menu now includes a checked **Panic Mute** item directly under **Show Window**.
-- 메인 창 버튼, 단축키, Stream Deck, HTTP, WebSocket과 같은 restore-safe Panic Mute 경로를 사용합니다.
-- This uses the same restore-safe Panic Mute path as the main window button, hotkey, Stream Deck, HTTP, and WebSocket controls.
-
-#### 4) Version and release docs sync / 버전 및 릴리즈 문서 정합성
-- 앱, Receiver 플러그인, Stream Deck 플러그인, README, 사용자 가이드, 아키텍처/스펙 문서, 릴리즈 본문의 v4.0.7 표기를 맞췄습니다.
-- Updated app, Receiver plugin, Stream Deck plugin, README, user guide, architecture/spec docs, and release body references for v4.0.7.
-
-### Upgrade Notes / 업그레이드 안내
-- **No API/state model break / API 및 상태 모델 호환 유지**: 이 릴리스는 control API 또는 state schema의 breaking change를 포함하지 않습니다.
-- **Monitor mismatch / 모니터 불일치**: 모니터 상태에 샘플레이트 불일치가 표시되면, 모니터 장치 샘플레이트를 DirectPipe 메인 샘플레이트와 맞추거나 메인 샘플레이트 변경 후 모니터 장치를 다시 선택하세요.
-- **Windows unblock / Windows 차단 해제**: 다운로드한 실행 파일이 차단되면 `DirectPipe.exe` 우클릭 -> **속성** -> **일반** -> **보안** -> **차단 해제** -> **적용/확인**을 누르세요.
-
----
-
-## v4.0.6
-
-v4.0.5 이후, Stream Deck 응답성, Panic Mute 상태 정합성, 트레이 표시, IPC/shared-memory 안전성을 보강한 릴리즈입니다.
-This release improves Stream Deck responsiveness, Panic Mute state consistency, tray visibility, and IPC/shared-memory safety after v4.0.5.
-
-### Highlights / 주요 변경
-
-#### 1) Stream Deck update load reduction / Stream Deck 업데이트 부하 감소
-- DirectPipe 상태 브로드캐스트를 즉시 반영이 필요한 control state와 고빈도 telemetry로 분리하고, telemetry 전송을 제한해 Stream Deck 전체 UI 렉 가능성을 줄였습니다.
-- Split DirectPipe state broadcasts into immediate control state and high-frequency telemetry, then throttled telemetry updates to reduce Stream Deck UI load.
-
-#### 2) Stream Deck render caching / Stream Deck 렌더 캐싱
-- Stream Deck 액션들이 같은 이미지/타이틀/상태를 반복 전송하지 않도록 공통 render cache를 추가했습니다.
-- Added a shared render cache so Stream Deck actions do not repeatedly send identical image/title/state updates.
-
-#### 3) Panic Mute set-mode path / Panic Mute 명시적 set-mode 경로
-- Panic Mute 액션을 명시적 `muted=true/false` set-mode 중심으로 정리해, 상태 반영 지연 중 legacy toggle이 섞여 이중 토글처럼 보이는 경로를 줄였습니다.
-- Reworked Panic Mute around explicit `muted=true/false` set-mode commands, reducing paths where delayed state feedback could look like a double toggle.
-
-#### 4) Panic Mute restore behavior / Panic Mute 복원 동작
-- host 쪽 Panic Mute 복원 대기 상태를 engine mute flag와 분리해, Stream Deck의 명시적 unmute 명령이 이전 output/monitor/IPC 상태를 첫 명령에서 복원할 수 있게 보강했습니다.
-- Separated host-side pending Panic Mute restore state from the engine mute flag so explicit Stream Deck unmute can restore prior output/monitor/IPC state on the first command.
-
-#### 5) Panic Mute visual state / Panic Mute 표시 상태
-- Stream Deck 프로필 캐시 갱신 후에도 muted/unmuted 이미지와 타이틀이 뒤집혀 보이지 않도록 Panic Mute key 이미지를 강제로 동기화합니다.
-- Panic Mute now forces the matching Stream Deck key image/title so muted and unmuted visuals do not appear inverted after profile cache refreshes.
-
-#### 6) Tray/menu bar Panic Mute indicator / 트레이·메뉴 바 Panic Mute 표시
-- Panic Mute가 활성화되면 트레이/메뉴 바 아이콘에 빨간 사선 overlay를 표시해, 메인 창이 숨겨진 상태에서도 긴급 mute 상태를 바로 확인할 수 있습니다.
-- The tray/menu bar icon now shows a red slash overlay while Panic Mute is active, making the emergency muted state visible even when the main window is hidden.
-
-#### 7) IPC/shared-memory hardening / IPC·공유 메모리 보강
-- shared-memory open 경로와 ring buffer detach 경로를 보강해, 크기를 명시하지 않는 consumer attach와 detach 이후 read/write 경로를 더 안전하게 처리합니다.
-- Hardened shared-memory open and ring-buffer detach paths for safer consumer attach without explicit size and safer read/write behavior after detach.
-
-#### 8) Docs & release notes sync / 문서·릴리스 노트 정합성
-- README 최신 버전 링크를 v4.0.6으로 갱신하고, DeepWiki badge와 Windows 다운로드 파일 차단 해제 안내를 추가했습니다.
-- Updated README latest links to v4.0.6, added the DeepWiki badge, and documented the Windows downloaded-file unblock step.
-
-### Upgrade Notes / 업그레이드 안내
-- **No API/state model break / API·상태 모델 비호환 없음**: This release does not introduce breaking control API or state schema changes.
-- **Stream Deck 적용 / Stream Deck apply timing**: Stream Deck plugin 업데이트 후 Stream Deck 앱/플러그인을 재시작하면 새 Panic Mute 표시 및 응답성 개선이 적용됩니다.
-- **Windows 차단 해제 / Windows unblock**: 다운로드한 실행 파일이 차단되면 `DirectPipe.exe` 우클릭 -> **속성** -> **일반** -> **보안** -> **차단 해제** -> **적용/확인**을 누르세요.
-
----
-
-## v4.0.3
-
-### Highlights / 주요 변경
-- **Start Minimized to Tray 옵션 / option**: `Settings > Application`과 트레이 우클릭 메뉴 양쪽에 시작 동작 토글을 추가했고, 앱 설정으로 항상 동기화됩니다 / Added startup behavior toggle in both Settings and tray menu, synchronized through app settings.
-- **자동 시작 라벨 통일 / cross-platform auto-start wording**: Settings와 Tray 모두 동일한 플랫폼 라벨 소스를 사용합니다 (`Open at Login` on macOS, `Start with System` on Windows/Linux).
-- **세이프티 가드 런타임 전환 / Safety Guard runtime update**: 글로벌 stage는 zero-latency sample-peak guard(instant attack + smooth release + hard clamp)로 동작하며, legacy SafetyLimiter API/action names are preserved.
-- **ASIO 채널 라우팅 복원 개선 / ASIO channel restore fix**: 드라이버 전환 스냅샷 + 프리셋 JSON(`inputChannelMask`/`outputChannelMask`) 영속화로 ASIO 채널 선택(비연속 마스크 포함) 초기화를 방지하고, invalid 인덱스는 안전 기본값으로 폴백합니다.
-
-### Upgrade Notes / 업그레이드 안내
-- **No API/state model break / API·상태 모델 비호환 없음**: This release does not introduce breaking schema changes.
-- **적용 시점 / apply timing**: `Start Minimized to Tray`는 다음 프로세스 시작 시 적용됩니다. 트레이에서 실행 중이면 완전 종료 후 재실행해 확인하세요 / applies on next process start.
-
----
-
-## v4.0.2
-
-### Highlights / 주요 변경
-
-- **Independent Input Mute / 독립 입력 뮤트**: INPUT 전용 뮤트를 추가/정리하여 입력만 무음 처리하고 체인/출력 경로는 유지합니다. Added dedicated INPUT mute behavior that silences mic input only while keeping chain/output paths running.
-- **Panic Mute Clarification / 패닉 동작 명확화**: Panic은 OUT/MON/VST 차단 + 녹음 자동 중지를 유지하고, 해제 시 사용자 뮤트 상태를 복원합니다. Panic still blocks OUT/MON/VST and stops active recording, then restores user mute states on unmute.
-- **State Model Update / 상태 모델 갱신**: `active_slot`을 `0-5`(`5=Auto`, `-1`=none)로 통합했고 `auto_slot_active`는 deprecated입니다. Unified `active_slot` to `0-5` with `-1` as none; `auto_slot_active` is now deprecated.
-- **XRun QoL / XRun 운용성 개선**: 60초 윈도우 드리프트를 수정하고 CPU/XRun 라벨 클릭 리셋을 추가했습니다. Fixed 60-second drift and added click-to-reset on CPU/XRun label.
-- **SR-safe NR timing / SR 안전 NR 타이밍**: NR hold/smoothing이 런타임 SR 기준으로 재계산됩니다. NR hold/smoothing now recalculates from runtime sample rate.
-
-### Upgrade Notes / 업그레이드 안내
-
-- **API clients / API 연동**: `active_slot` (`0-5` / `-1`)을 기준으로 사용하고 `auto_slot_active`는 하위 호환용으로만 유지하세요. Prefer `active_slot` as source of truth and keep `auto_slot_active` only for backward compatibility.
-- **Control integrations / 제어 연동**: `input_muted`와 panic `muted`는 독립 상태입니다. `input_muted` is independent from panic `muted`; do not assume mirrored state.
-
----
-
-## v4.0.1
-
-### Bugfixes
-
-- **NoiseRemoval**: Ring buffer uint32_t overflow causing permanent silence after ~25h continuous use
-- **HTTP API**: Strict numeric validation — reject mixed alpha-numeric input (e.g., "abc0.5")
-- **UI**: Plugin chain editor negative height on very small window
-- **State Broadcast**: activeSlot clamped to 0-4, added `auto_slot_active` field for WebSocket/SD clients
-- **Linux**: Complete XDG Desktop Entry Exec key character escaping per spec
-- **macOS**: Notify user when hotkey accessibility permission not granted
-- **Linux**: Show "unsupported" message in Hotkeys tab instead of non-functional UI
-- **HTTP API**: Escape JSON special characters in API responses
-- **Platform**: AutoStart setters return bool, notify user on failure
-- **IPC**: Restrict POSIX semaphore/shm permissions to owner-only (0600)
-- **XRun Tracking**: Device restart no longer clears XRun history — display persists for full 60s window
-- **Audio RT**: Moved MMCSS LoadLibraryA call from RT callback to audioDeviceAboutToStart
-- **MIDI**: Fixed LearnTimeout use-after-free when timer callback destroyed itself
-- **Preset**: Added loadingSlot_ guard to Reset Auto to prevent intermediate state auto-save
-- **Audio**: Recorder now stops on device loss (audioDeviceStopped) to prevent WAV corruption
-- **Preset**: Auto first-click failure now sets partialLoad_ to prevent saving incomplete chain
-- **Preset**: pendingSlot_ cleared on Factory Reset / Clear All Presets
-- **State**: Plugin name now included in quickStateHash — name changes trigger WebSocket broadcast
-- **WebSocket**: broadcastToClients releases clientsMutex_ before socket writes — prevents slow client blocking shutdown
-- **IPC**: Receiver VST now calls detach() before close() on failed producer check — fixes spurious multi-consumer warning
-- **Thread Safety**: audioDeviceAboutToStart non-atomic variable writes deferred to message thread via callAsync
-- **Update**: PowerShell batch script now escapes single quotes in paths
-- **Audio**: Added null guard on outputChannelData for ASIO legacy drivers
-- **Preset**: parseSlotFile now uses .bak fallback for crash resilience
-- **UI**: Plugin removal now identifies by index+name, not name-only (fixes duplicate-name removal)
-- **WebSocket**: Sends RFC 6455 close frame (1009) before disconnecting oversized-message clients
-- **Settings**: importAll/importFullBackup now check platform compatibility internally
-- **Platform**: macOS/Linux AutoStart uses atomicWriteFile for crash-safe writes
-
----
-
-## v4.0.0
-
-### Code Architecture Refactoring
-
-- **MainComponent split**: Reduced `MainComponent.cpp` from ~1835 lines to ~729 lines by extracting 7 focused classes:
-  - `ActionHandler` (`Control/`) — Centralized action event handling (moved from MainComponent's 200+ line switch-case)
-  - `SettingsAutosaver` (`Control/`) — Dirty-flag + debounce auto-save logic
-  - `PresetSlotBar` (`UI/`) — Preset slot A-E buttons, naming, right-click menu
-  - `StatusUpdater` (`UI/`) — Status bar updates (latency, CPU, format, notifications)
-  - `UpdateChecker` (`UI/`) — Background GitHub release check + update dialog
-  - `HotkeyTab`, `MidiTab`, `StreamDeckTab` (`UI/`) — Split from monolithic `ControlSettingsPanel`
-- **ActionResult pattern**: New `ActionResult` struct (`ActionResult.h`) for typed success/failure returns with messages. Replaces bare `bool`/`void` returns on AudioEngine device methods. `static ok()` / `static fail(msg)`, `explicit operator bool()`.
-- **onError callback pattern**: `std::function<void(const juce::String&)> onError` on `AudioSettings` and `OutputPanel`, wired to `MainComponent::showNotification()` for clean error propagation.
-
-### Test Suite Expansion
-
-- **52 → 110+ tests** across 6 host test suites (was 2):
-  - `WebSocketProtocolTest` (30 tests) — expanded with state serialization, error handling, edge cases
-  - `ActionDispatcherTest` (31 tests) — expanded with ActionResult integration, error paths
-  - `ActionResultTest` (12 tests) — new: ok/fail factory, bool conversion, message propagation
-  - `ControlMappingTest` (16 tests) — new: hotkey/MIDI/server serialization roundtrip, defaults, error handling
-  - `NotificationQueueTest` (10 tests) — new: lock-free SPSC queue correctness, overflow, cross-thread
-- **GTest dashboard integration**: `pre-release-dashboard.html` now loads GTest JSON output files for visual test result inspection.
-- **GTest JSON output**: `pre-release-test.sh` generates `--gtest_output=json:` files for both core and host tests.
-
-### Cross-Platform Support
-
-- **Platform abstraction layer**: New `host/Source/Platform/` module with per-platform implementations (PlatformAudio, AutoStart, ProcessPriority, MultiInstanceLock). Replaces hardcoded Windows API calls with cross-platform interfaces.
-- **macOS support (Beta)**: CoreAudio driver, LaunchAgent auto-start, CGEventTap hotkeys (requires Accessibility permission), Gatekeeper instructions.
-- **Linux support (Experimental)**: ALSA/JACK drivers, XDG autostart, hotkey stub (use MIDI/HTTP/WebSocket instead).
-- **Cross-OS backup protection**: Backup files (`.dpbackup`, `.dpfullbackup`) now include a `platform` field. Restoring a backup from a different OS is blocked with a warning dialog.
-- **Platform-adaptive UI labels**: "Start with System" (Windows/Linux), "Open at Login" (macOS).
-- **Plugin scanner cross-platform paths**: Scans OS-specific VST directories (Windows: `Program Files\...`, macOS: `/Library/Audio/Plug-Ins/...`, Linux: `/usr/lib/vst3/...`).
-- **Plugin file browser**: Platform-specific file filters (`.dll` on Windows, `.vst3/.vst/.component` on macOS, `.vst3/.so` on Linux).
-- **Preset deviceType validation**: Skips unavailable device types when importing presets (e.g., WASAPI preset on macOS).
-- **CJK font per platform**: Windows (Malgun Gothic), macOS (Apple SD Gothic Neo), Linux (Noto Sans CJK).
-
-### Build System
-
-- **Core library**: Added POSIX library linking for macOS (`-lpthread`) and Linux (`-lrt -lpthread`).
-- **Receiver plugin**: Added `JUCE_PLUGINHOST_AU=1` for macOS AudioUnit builds.
-- **CMake**: Platform-conditional WASAPI/ASIO/CoreAudio/ALSA/JACK defines.
-- **CI/CD**: macOS build artifact changed from `.zip` to `.dmg` — prevents v3 auto-updater from downloading wrong binary (updater looks for `.zip` → `.dmg` is invisible to it).
-
-### Bugfix Ports from v3.10.1
-
-- **VST Bypass fix**: `setPluginBypassed` now syncs `node->setBypassed()` + `getBypassParameter()->setValueNotifyingHost()` and calls `rebuildGraph(false)` to disconnect bypassed plugins in the signal chain. Fixes bypass not working for plugins with internal bypass parameter (Clear, RNNoise, etc.). `rebuildGraph` gains `suspend` parameter (default `true`) — bypass toggle uses `false` for glitch-free connection-only rebuild. Iterator safety fix (copy `getConnections()` before removal).
-- **Preload cache race condition fix**: Per-slot version counter (`slotVersions_`) prevents background preload thread from storing stale plugin instances after `invalidateSlot` was called mid-preload. Version captured at file-read time, checked before cache store.
-- **Cache structure validation**: `saveSlot` now checks plugin structure (names/paths/order) via `isCachedWithStructure` before deciding to invalidate cache. Parameter-only saves (bypass, state) skip invalidation. Prevents stale cache when plugins are added/removed/replaced/reordered.
-
-### Bugfix Ports from v3.10.2
-
-- **ASIO device iteration fix**: `setAudioDeviceType` now builds an ordered try-list (`tryOrder`: preferred → lastAsio → all remaining devices) and iterates through all available ASIO devices. Previously only tried `devices[0]` — if that device was disconnected, no other ASIO devices were attempted. Individual device failures log `warn` and `continue` to next device; full revert to previous driver only when all devices fail.
-- **Driver combo sync on ASIO failure**: `AudioSettings::onDriverTypeChanged` now checks the `bool` return value of `setAudioDeviceType`. On failure (engine reverted to previous driver), syncs the driver combo to the actual current driver type via `getCurrentDeviceType()`. Fixes UI showing "ASIO" while engine was already back on WASAPI.
-
-### Bugfixes
-
-- **Panic mute comprehensive blocking**: All action cases in `ActionHandler::handle()` now check `engine_.isMuted()` — PluginBypass, MasterBypass, InputGainAdjust, SetVolume (input), SetPluginParameter, LoadPreset, SwitchPresetSlot, NextPreset, PreviousPreset, RecordingToggle. Previously some actions (bypass, gain, presets) could execute during panic mute.
-- **Panic mute stops recording**: `doPanicMute(true)` now stops active recording (recording is mic output → must stop). Recording does not auto-restart on unmute. RecordingToggle is also blocked during panic.
-- **HTTP CORS preflight**: Added `OPTIONS` request handler with `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS` for browser-based clients (e.g., pre-release dashboard). Without this, browser PUT/DELETE requests got connection reset before reaching the 405 handler.
-- **HTTP gain delta scaling**: `/api/gain/:delta` now multiplies delta by 10× to compensate for `ActionHandler`'s `*0.1f` scaling (designed for hotkey steps of ±1.0 meaning ±1 dB = ±0.1 gain). Previously `GET /api/gain/1.0` only applied +0.1 gain instead of +1.0.
-- **HTTP volume/parameter validation**: Volume and parameter endpoints validate numeric input — `indexOfAnyOf("0123456789.")` check rejects non-numeric strings like "abc" which `getFloatValue()` silently converts to 0.0.
-- **UpdateChecker lifetime fix**: `alive_` promoted from local variable to class member. Destructor sets `false` before joining threads, preventing use-after-free in pending `callAsync` lambdas.
-- **IPC lock-free assertion**: `Protocol.h` now has `static_assert(std::atomic<uint64_t/bool>::is_always_lock_free)` — compile-time guarantee that shared memory atomics never use hidden mutexes.
-- **MidiTab Learn race fix**: `startLearn` callback captures `manager_` reference directly instead of raw `this`, eliminating potential use-after-free when MIDI thread fires callback during tab destruction.
-- **VSTChain addPlugin double-suspend fix**: Removed orphaned `suspendProcessing(true)` around `addNode()`. JUCE uses a counter-based suspend mechanism — the extra suspend without matching resume left the audio graph muted after plugin load.
-- **RingBuffer availableWrite clamp**: Added `std::min` overflow guard matching `availableRead()`, preventing underflow if positions are transiently inconsistent.
-- **Receiver VST RT-safety**: Replaced `std::vector::resize()` in `saveLastOutput` (called from `processBlock`) with `jassert` — buffer is pre-allocated in `prepareToPlay`.
-- **Code deduplication**: Extracted identical `actionToDisplayName` (~40 lines) from `HotkeyTab.cpp` and `MidiTab.cpp` to shared `ActionDispatcher.h`.
-- **`input_muted` clarification**: `input_muted` is independent from `muted` (panic mute). `InputMuteToggle` mutes microphone input only while keeping the VST chain and output paths running.
-
-### Docs
-
-- Platform Guide (new): OS-specific setup, features, and limitations.
-- Pre-release dashboard: Platform selector (Windows/macOS/Linux) for OS-specific test items.
-- All docs updated with cross-platform information.
-
----
-
-## v3.10.0
-
-### Multi-Instance & Portable Mode
-
-- **Multi-instance external control priority**: Named Mutex system (`DirectPipe_NormalRunning`, `DirectPipe_ExternalControl`) prevents hotkey/MIDI/WebSocket/HTTP conflicts between instances. Normal mode blocks if portable has control. Portable runs audio-only if another instance already controls.
-- **Audio-only mode indicators**: Title bar "(Audio Only)", status bar orange "Portable", tray tooltip "(Portable/Audio Only)".
-- **IPC blocked in audio-only mode**: `setIpcEnabled(true)` silently ignored — prevents shared memory name collision between instances.
-- **Quit button**: Red "Quit" button in Settings tab (next to auto-start toggle) for closing individual instances.
-
-### Audio Engine
-
-- **Driver type snapshot/restore**: Settings (input/output device, SR, BS) saved per driver type before switching. Automatically restored when switching back (e.g., WASAPI → ASIO → WASAPI preserves original WASAPI settings).
-- **Per-direction device loss**: Input and output device loss handled independently.
-  - `inputDeviceLost_`: Silences input in audio callback (prevents fallback mic audio leak).
-  - `outputAutoMuted_`: Auto-mutes output on device loss, auto-unmutes when restored.
-  - Edge-detection notifications for both directions.
-- **Reconnection miss counter**: After 5 consecutive failed reconnection attempts (~15s), accepts current driver's devices to break cross-driver stale name infinite loops. When `outputAutoMuted_` is true (genuine device loss), the counter resets and keeps waiting indefinitely — fallback only applies to stale name issues, not physical disconnection.
-- **Reconnection state cleanup**: `setAudioDeviceType` clears `deviceLost_`, `inputDeviceLost_`, `outputAutoMuted_`, and reconnect counters to prevent stale state after intentional driver switch.
-- **Output "None" state on driver switch**: `outputNone_` cleared when switching driver types (prevents OUT mute button getting stuck after WASAPI "None" → ASIO). `DriverTypeSnapshot` now includes `outputNone` for save/restore across driver switches.
-- **Device loss UI**: Input/output combos show "DeviceName (Disconnected)" when device is physically lost (instead of showing fallback device name). Clears when device is reconnected or user manually selects another device.
-- **Manual device selection during loss**: `setInputDevice`/`setOutputDevice` now clear `deviceLost_`, `inputDeviceLost_`, reconnection counters — allows user to manually pick a different device during device loss without interference from reconnection logic.
-
-### UI
-
-- **LevelMeter**: Smoother release (kRelease 0.05→0.12, ~230ms half-life at 30Hz). Lower repaint threshold (0.001→0.0004) for finer visual response.
-- **PluginChainEditor delete fix**: Delete confirmation now uses `slot->name` instead of `nameLabel_.getText()` (which includes row prefix "1. Clear"), fixing silent delete failure from name mismatch.
-
-### Stability
-
-- **PluginPreloadCache `cancelAndWait`**: Heap-allocated `shared_ptr` for join state — prevents dangling reference if detached joiner thread outlives caller's stack frame.
-- **HttpApiServer thread cleanup**: Handler thread join moved outside `handlersMutex_` lock (deadlock prevention, same pattern as WebSocketServer).
-- **StateBroadcaster hash**: `quickStateHash` now includes `inputMuted`, `sampleRate`, `bufferSize`, `channelMode`, and plugin `loaded` state for more accurate dirty detection.
-
----
-
-## v3.9.12
-
-- ASIO startup buffer size bounce fix (wrong device selection during type switch)
-- `pushNotification` MPSC ring buffer fix
-- MonitorOutput `alive_` flag lifetime guard
-- AudioRingBuffer `reset()` ordering fix
-- StateBroadcaster `slotNames` hash fix
-
-## v3.9.11
-
-- Output device switching fix (fallback false positive + input channel loss)
-
-## v3.9.10
-
-- ASIO buffer size persistence fix (`desiredBufferSize_` preserves user request)
-
-## v3.9.9
-
-- Slot naming (right-click Rename, `A|게임` display) / Slot naming (right-click Rename, `A|Game` display)
-- Individual slot export/import (`.dppreset`)
-- StateBroadcaster `slot_names` array
-
-## v3.9.8
-
-- Device fallback protection
-- Hotkey drag-and-drop reorder
-- MIDI HTTP API test endpoints
-- MIDI Learn / Hotkey recording cancel buttons
-
-## v3.9.7
-
-- Instant preset switching (keep-old-until-ready)
-- Settings scope separation (Save/Load vs Full Backup)
-- Full Backup/Restore (`.dpfullbackup`)
-
-## v3.9.6
-
-- Device auto-reconnection (dual mechanism)
-- Monitor reconnect
-- Click-to-refresh device combos
-- StateBroadcaster `device_lost`/`monitor_lost`
-
-## v3.9.5
-
-- WASAPI Exclusive Mode
-- Audio optimizations (timeBeginPeriod, ScopedNoDenormals, RMS decimation)
-- XRun monitoring
-- 5 driver types
-
-## v3.9.4
-
-- Modal dialog fixes
-- HTTP API input gain range
-- Constructor SafePointer
-
-## v3.9.3
-
-- 25 bug fixes: thread safety, lifetime guards, server fixes, RT-safety
-
-## v3.9.2
-
-- Categorized logging
-- LogPanel batch flush
-- VSTChain lock-ordering fix
-
-## v3.9.0 – v3.9.1
-
-- Buffer display, SR propagation, monitor SR mismatch, Receiver VST SR warning
-
-## v3.8.0
-
-- Auto-updater UI, CJK font fix, download thread safety
-
-## v3.7.0
-
-- Plugin scanner fix (moreThanOneInstanceAllowed)
-
-## v3.6.0
-
-- IPC Toggle, Receiver VST buffer config, panic mute lockout
-
-## v3.5.0
-
-- NotificationBar, LogPanel, thread-safety audit (4 callAsync fixes)
-
-## v3.4.0
-
-- Tray tooltip, plugin search/sort, audio recording, settings save/load, MIDI param mapping, auto-updater
+### Downloads / 다운로드
+- `DirectPipe-v4.1.0-Windows.zip` — Windows stable artifact, CI-built.
+- `DirectPipe-v4.1.0-macOS.dmg` — macOS beta artifact, CI-built.
+- `DirectPipe-v4.1.0-Linux.tar.gz` — Linux experimental artifact, CI-built.
+- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck control package, CI-built.
+- `checksums.sha256` — generated by CI for all uploaded assets.
+
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.0.9...v4.1.0
+
+For v4.0.9 and earlier history, see [CHANGELOG.md](../CHANGELOG.md).

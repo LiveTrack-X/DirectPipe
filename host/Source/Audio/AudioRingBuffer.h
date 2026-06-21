@@ -29,6 +29,7 @@
 #include <JuceHeader.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -184,6 +185,89 @@ public:
 
         readPos_.store(rp + static_cast<uint64_t>(toRead), std::memory_order_release);
         return toRead;
+    }
+
+    /**
+     * Peek one sample relative to the current read position without advancing.
+     * RT-safe for the single consumer thread. Callers must keep frameOffset
+     * within the readable range returned by availableRead().
+     */
+    float peek(int channel, int frameOffset) const
+    {
+        if (capacity_ == 0 || channels_ <= 0 || frameOffset < 0)
+            return 0.0f;
+
+        const int sourceChannel = (channel >= 0 && channel < channels_) ? channel : 0;
+        const uint64_t rp = readPos_.load(std::memory_order_relaxed);
+        const uint32_t idx = static_cast<uint32_t>((rp + static_cast<uint64_t>(frameOffset)) & mask_);
+        return data_[sourceChannel][idx];
+    }
+
+    /**
+     * Advance the read position without copying.
+     * RT-safe for the single consumer thread.
+     */
+    int advanceRead(int numFrames)
+    {
+        return discard(numFrames);
+    }
+
+    static int requiredFramesForInterpolatedRead(int numSamples,
+                                                 double fractionalPhase,
+                                                 double playbackRatio)
+    {
+        if (numSamples <= 0 || playbackRatio <= 0.0)
+            return 0;
+
+        const double phase = (std::max)(0.0, fractionalPhase);
+        const double lastPosition = phase + playbackRatio * static_cast<double>((std::max)(0, numSamples - 1));
+        return static_cast<int>(std::floor(lastPosition)) + 2;
+    }
+
+    /**
+     * Fractional monitor read using linear interpolation.
+     *
+     * Returns 0 and does not advance if there is not enough readable data for
+     * the requested interpolated block. This avoids partial audio plus zero-fill
+     * at the monitor callback boundary.
+     */
+    int readInterpolated(float* const* channelData,
+                         int numChannels,
+                         int numSamples,
+                         double playbackRatio,
+                         double& fractionalPhase,
+                         int& framesConsumed)
+    {
+        framesConsumed = 0;
+        if (channelData == nullptr || numChannels <= 0 || numSamples <= 0 || playbackRatio <= 0.0)
+            return 0;
+
+        const int required = requiredFramesForInterpolatedRead(numSamples, fractionalPhase, playbackRatio);
+        if (availableRead() < required)
+            return 0;
+
+        double position = (std::max)(0.0, fractionalPhase);
+        for (int i = 0; i < numSamples; ++i) {
+            const int frameIndex = static_cast<int>(std::floor(position));
+            const float frac = static_cast<float>(position - static_cast<double>(frameIndex));
+
+            for (int ch = 0; ch < numChannels; ++ch) {
+                if (channelData[ch] == nullptr)
+                    continue;
+
+                const int sourceChannel = (ch < channels_) ? ch : 0;
+                const float s0 = peek(sourceChannel, frameIndex);
+                const float s1 = peek(sourceChannel, frameIndex + 1);
+                channelData[ch][i] = s0 + frac * (s1 - s0);
+            }
+
+            position += playbackRatio;
+        }
+
+        framesConsumed = static_cast<int>(std::floor(position));
+        fractionalPhase = position - static_cast<double>(framesConsumed);
+        advanceRead(framesConsumed);
+        return numSamples;
     }
 
     int availableRead() const

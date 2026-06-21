@@ -53,9 +53,15 @@ void OutputRouter::shutdown()
 
 void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSamples)
 {
+    const int monitorIdx = static_cast<int>(Output::Monitor);
+    auto clearMonitorLevel = [&] {
+        outputs_[monitorIdx].level.store(0.0f, std::memory_order_relaxed);
+    };
+
     const int maxSamples = scaledBuffer_.getNumSamples();
     if (maxSamples == 0) {
         bufferTruncated_.store(true, std::memory_order_relaxed);
+        clearMonitorLevel();
         return;  // Not initialized yet
     }
     if (numSamples > maxSamples) {
@@ -66,17 +72,31 @@ void OutputRouter::routeAudio(const juce::AudioBuffer<float>& buffer, int numSam
     }
     numSamples = juce::jmin(numSamples, buffer.getNumSamples());
     const int numChannels = juce::jmin(buffer.getNumChannels(), 2);
-    if (numChannels <= 0 || numSamples <= 0)
+    if (numChannels <= 0 || numSamples <= 0) {
+        clearMonitorLevel();
         return;
+    }
 
     // Main output goes directly through the audio callback's outputChannelData.
     // OutputRouter only handles additional routing to separate shared-mode devices.
 
+    if (!outputs_[monitorIdx].enabled.load(std::memory_order_relaxed)
+        || monitorOutput_ == nullptr
+        || !monitorOutput_->isActive()) {
+        clearMonitorLevel();
+        return;
+    }
+
     // ── Monitor → Headphones (separate shared-mode device) ──
     if (outputs_[static_cast<int>(Output::Monitor)].enabled.load(std::memory_order_relaxed)
-        && monitorOutput_ != nullptr)
+        && monitorOutput_ != nullptr
+        && monitorOutput_->isActive())
     {
         float vol = outputs_[static_cast<int>(Output::Monitor)].volume.load(std::memory_order_relaxed);
+        if (vol <= 0.001f) {
+            clearMonitorLevel();
+            return;
+        }
 
         if (vol > 0.001f) {
             if (std::abs(vol - 1.0f) < 0.001f) {
@@ -128,8 +148,11 @@ float OutputRouter::getVolume(Output output) const
 void OutputRouter::setEnabled(Output output, bool enabled)
 {
     int idx = static_cast<int>(output);
-    if (idx >= 0 && idx < kOutputCount)
+    if (idx >= 0 && idx < kOutputCount) {
         outputs_[idx].enabled.store(enabled, std::memory_order_relaxed);
+        if (!enabled)
+            outputs_[idx].level.store(0.0f, std::memory_order_relaxed);
+    }
 }
 
 bool OutputRouter::isEnabled(Output output) const
