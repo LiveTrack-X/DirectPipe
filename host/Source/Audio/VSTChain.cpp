@@ -1111,7 +1111,7 @@ void VSTChain::replaceChainAsync(std::vector<PluginLoadRequest> requests,
     });
 }
 
-void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
+bool VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
                                           std::function<void()> onComplete)
 {
     auto startMs = juce::Time::getMillisecondCounter();
@@ -1126,25 +1126,30 @@ void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
     juce::String logMsg;
     juce::String auditChainOrder;
     juce::StringArray auditParams;
+    bool swapOk = false;
     {
         const juce::ScopedLock sl(chainLock_);
 
         graph_->suspendProcessing(true);
 
-        // Remove OLD chain nodes (async to defer rebuild until the end)
-        editorWindows_.clear();
-        for (auto& slot : chain_)
-            graph_->removeNode(slot.nodeId,
-                juce::AudioProcessorGraph::UpdateKind::async);
-        chain_.clear();
+        std::vector<PluginSlot> newChain;
+        newChain.reserve(preloaded.size());
+        bool failed = false;
 
         // Add pre-loaded nodes (async — single rebuild at end)
         for (auto& entry : preloaded) {
+            if (!entry.instance) {
+                juce::Logger::writeToLog("ERR [VST] Cached node missing instance: " + entry.request.name);
+                failed = true;
+                break;
+            }
+
             auto node = graph_->addNode(std::move(entry.instance), {},
                 juce::AudioProcessorGraph::UpdateKind::async);
             if (!node) {
                 juce::Logger::writeToLog("ERR [VST] Failed to add cached node to graph: " + entry.request.name);
-                continue;
+                failed = true;
+                break;
             }
 
             PluginSlot slot;
@@ -1154,7 +1159,6 @@ void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
             slot.nodeId = node->nodeID;
             slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
             slot.bypassed = entry.request.bypassed;
-            chain_.push_back(slot);
 
             if (slot.bypassed)
                 node->setBypassed(true);
@@ -1163,7 +1167,25 @@ void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
                 slot.instance->setStateInformation(
                     entry.request.stateData.getData(),
                     static_cast<int>(entry.request.stateData.getSize()));
+
+            newChain.push_back(slot);
         }
+
+        if (failed) {
+            for (auto& slot : newChain)
+                graph_->removeNode(slot.nodeId,
+                    juce::AudioProcessorGraph::UpdateKind::async);
+            graph_->suspendProcessing(false);
+            asyncLoading_.store(false);
+            juce::Logger::writeToLog("ERR [VST] Cached chain swap aborted; keeping existing chain");
+            return false;
+        }
+
+        editorWindows_.clear();
+        for (auto& slot : chain_)
+            graph_->removeNode(slot.nodeId,
+                juce::AudioProcessorGraph::UpdateKind::async);
+        chain_ = std::move(newChain);
 
         rebuildGraph();  // single rebuild with connections + suspendProcessing(false)
         auto elapsed = juce::Time::getMillisecondCounter() - startMs;
@@ -1174,6 +1196,7 @@ void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
             for (size_t i = 0; i < chain_.size(); ++i)
                 auditParams.add("[" + juce::String(i) + "] " + chain_[i].name + ": " + dumpPluginParams(chain_[i].getProcessor()));
         }
+        swapOk = true;
     }
 
     juce::Logger::writeToLog(logMsg);
@@ -1186,6 +1209,7 @@ void VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
 
     if (onChainChanged) onChainChanged();
     if (onComplete) onComplete();
+    return swapOk;
 }
 
 } // namespace directpipe

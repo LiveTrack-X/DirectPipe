@@ -26,6 +26,83 @@
 #include "../Util/AtomicFileIO.h"
 
 namespace directpipe {
+namespace {
+
+void stripSettingsOnlyPresetState(juce::DynamicObject& audioObj)
+{
+    audioObj.removeProperty("plugins");
+    audioObj.removeProperty("activeSlot");
+}
+
+juce::File slotBakFileFor(const juce::File& file)
+{
+    return file.getSiblingFile(file.getFileName() + ".bak");
+}
+
+juce::File legacySlotBackupFileFor(const juce::File& file)
+{
+    return file.withFileExtension(file.getFileExtension() + ".backup");
+}
+
+juce::File slotTempFileFor(const juce::File& file)
+{
+    return file.getSiblingFile(file.getFileName() + ".tmp");
+}
+
+juce::File getLegacyNumericSlotFile(int slotIndex)
+{
+    if (slotIndex < 0 || slotIndex >= PresetManager::kNumSlots || slotIndex == 5)
+        return {};
+
+    auto dir = ControlMappingStore::getConfigDirectory().getChildFile("Slots");
+    return dir.getChildFile("slot_" + juce::String(static_cast<int>(PresetManager::slotLabel(slotIndex))) + ".dppreset");
+}
+
+bool deleteFileIfPresent(const juce::File& file)
+{
+    return !file.existsAsFile() || file.deleteFile();
+}
+
+bool deleteSlotRestoreBackups(const juce::File& file)
+{
+    bool ok = true;
+    ok = deleteFileIfPresent(slotBakFileFor(file)) && ok;
+    ok = deleteFileIfPresent(legacySlotBackupFileFor(file)) && ok;
+    ok = deleteFileIfPresent(slotTempFileFor(file)) && ok;
+    return ok;
+}
+
+bool deleteSlotRestoreFileFamily(const juce::File& file)
+{
+    bool ok = true;
+    ok = deleteFileIfPresent(file) && ok;
+    ok = deleteSlotRestoreBackups(file) && ok;
+    return ok;
+}
+
+bool deleteSlotRestoreBackups(int slotIndex)
+{
+    bool ok = deleteSlotRestoreBackups(PresetManager::getSlotFile(slotIndex));
+
+    auto legacyFile = getLegacyNumericSlotFile(slotIndex);
+    if (legacyFile != juce::File())
+        ok = deleteSlotRestoreFileFamily(legacyFile) && ok;
+
+    return ok;
+}
+
+bool deleteSlotRestoreFileFamily(int slotIndex)
+{
+    bool ok = deleteSlotRestoreFileFamily(PresetManager::getSlotFile(slotIndex));
+
+    auto legacyFile = getLegacyNumericSlotFile(slotIndex);
+    if (legacyFile != juce::File())
+        ok = deleteSlotRestoreFileFamily(legacyFile) && ok;
+
+    return ok;
+}
+
+} // namespace
 
 juce::String SettingsExporter::getCurrentPlatform()
 {
@@ -74,7 +151,7 @@ juce::String SettingsExporter::exportAll(PresetManager& presetManager,
     if (audioParsed.isObject()) {
         auto* audioObj = audioParsed.getDynamicObject();
         if (audioObj)
-            audioObj->removeProperty("plugins");
+            stripSettingsOnlyPresetState(*audioObj);
         root->setProperty("audioSettings", audioParsed);
     }
 
@@ -114,17 +191,19 @@ bool SettingsExporter::importAll(const juce::String& json,
         return false;
     }
 
+    bool ok = true;
+
     // Import audio/output settings (strip plugins to avoid overwriting VST chain)
     if (root->hasProperty("audioSettings")) {
         auto audioSettings = root->getProperty("audioSettings");
         if (auto* audioObj = audioSettings.getDynamicObject())
-            audioObj->removeProperty("plugins");
+            stripSettingsOnlyPresetState(*audioObj);
         auto audioJson = juce::JSON::toString(audioSettings, false);
-        presetManager.importFromJSON(audioJson);
+        if (!presetManager.importFromJSON(audioJson)) {
+            ok = false;
+            Log::warn("APP", "Failed to import audio settings from backup");
+        }
     }
-
-    // Reset activeSlot to A since .dpbackup doesn't include slot files
-    presetManager.setActiveSlot(0);
 
     // Import control config
     if (root->hasProperty("controlConfig")) {
@@ -139,7 +218,7 @@ bool SettingsExporter::importAll(const juce::String& json,
     // Preset slots NOT imported — managed independently via slots A-E
     // (v1 backups with presetSlots are intentionally ignored)
 
-    return true;
+    return ok;
 }
 
 juce::String SettingsExporter::exportFullBackup(PresetManager& presetManager,
@@ -154,6 +233,12 @@ juce::String SettingsExporter::exportFullBackup(PresetManager& presetManager,
         juce::Time::getCurrentTime().toISO8601(true));
     root->setProperty("appVersion",
         juce::String(ProjectInfo::versionString));
+
+    // Keep the active quick-slot file in sync with the current chain before
+    // collecting slot files for a full backup.
+    auto activeSlot = presetManager.getActiveSlot();
+    if (activeSlot >= 0 && activeSlot < PresetManager::kNumSlots)
+        presetManager.saveSlot(activeSlot);
 
     // Audio settings (including VST chain)
     auto audioJson = presetManager.exportToJSON();
@@ -176,12 +261,10 @@ juce::String SettingsExporter::exportFullBackup(PresetManager& presetManager,
     for (int i = 0; i < PresetManager::kNumSlots; ++i) {
         char label = PresetManager::slotLabel(i);
         auto slotFile = PresetManager::getSlotFile(i);
-        if (slotFile.existsAsFile()) {
-            auto slotJson = slotFile.loadFileAsString();
-            auto slotParsed = juce::JSON::parse(slotJson);
-            if (slotParsed.isObject())
-                slots->setProperty(juce::String::charToString(label), slotParsed);
-        }
+        auto slotJson = loadFileWithBackupFallback(slotFile);
+        auto slotParsed = juce::JSON::parse(slotJson);
+        if (slotParsed.isObject())
+            slots->setProperty(juce::String::charToString(label), slotParsed);
     }
     root->setProperty("presetSlots", juce::var(slots.release()));
 
@@ -209,10 +292,15 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
         return false;
     }
 
+    bool ok = true;
+
     // Import audio settings (including VST chain)
     if (root->hasProperty("audioSettings")) {
         auto audioJson = juce::JSON::toString(root->getProperty("audioSettings"), false);
-        presetManager.importFromJSON(audioJson);
+        if (!presetManager.importFromJSON(audioJson)) {
+            ok = false;
+            Log::warn("APP", "Failed to import audio settings from full backup");
+        }
     }
 
     // Import control config
@@ -225,24 +313,53 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
         tempFile.deleteFile();
     }
 
-    // Import preset slots
+    // Import preset slots. Full restore is exact: slots missing from the
+    // backup are removed from disk instead of leaving stale local slots behind.
     if (root->hasProperty("presetSlots")) {
         auto* slots = root->getProperty("presetSlots").getDynamicObject();
-        if (slots) {
+        if (!slots) {
+            ok = false;
+        } else {
             for (int i = 0; i < PresetManager::kNumSlots; ++i) {
                 char label = PresetManager::slotLabel(i);
                 auto key = juce::String::charToString(label);
-                if (slots->hasProperty(key)) {
-                    auto slotJson = juce::JSON::toString(slots->getProperty(key), true);
-                    auto slotFile = PresetManager::getSlotFile(i);
-                    if (!atomicWriteFile(slotFile, slotJson))
-                        Log::warn("APP", "Failed to restore slot file: " + slotFile.getFileName());
+                auto slotFile = PresetManager::getSlotFile(i);
+
+                if (!slots->hasProperty(key)) {
+                    if (!deleteSlotRestoreFileFamily(i)) {
+                        ok = false;
+                        Log::warn("APP", "Failed to clear missing slot file: " + slotFile.getFileName());
+                    }
+                    continue;
+                }
+
+                auto slotVar = slots->getProperty(key);
+                if (!slotVar.isObject()) {
+                    ok = false;
+                    Log::warn("APP", "Skipped invalid slot object: " + key);
+                    continue;
+                }
+
+                auto slotJson = juce::JSON::toString(slotVar, true);
+                if (!atomicWriteFile(slotFile, slotJson)) {
+                    ok = false;
+                    Log::warn("APP", "Failed to restore slot file: " + slotFile.getFileName());
+                    continue;
+                }
+
+                if (!deleteSlotRestoreBackups(i)) {
+                    ok = false;
+                    Log::warn("APP", "Failed to clear slot restore backups: " + slotFile.getFileName());
                 }
             }
         }
+
+        presetManager.refreshSlotOccupancy();
+        presetManager.loadSlotNames();
+        presetManager.clearPreloadCache();
     }
 
-    return true;
+    return ok;
 }
 
 // ─── FileChooser dialog helpers ──────────────────────────────────────────────

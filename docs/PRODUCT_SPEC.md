@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.1.0 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.1.1 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.1.0)
+> Reverse spec — written based on currently implemented features (as of v4.1.1)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.1.0
+4.1.1
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- v4.1.0 local pre-release verification was completed on Windows. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
-- v4.1.0 로컬 릴리즈 전 검증은 Windows에서 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
+- v4.1.1 local Windows Release verification was completed. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
+- v4.1.1 로컬 Windows Release 검증은 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -100,7 +100,7 @@ Mic Input  → VST Plugin Chain   → Output
 |------|------|
 | 드라이버 타입 / Driver Type | **Windows**: 5종 — DirectSound (레거시 / legacy), WASAPI Shared (권장 / recommended), WASAPI Low Latency (IAudioClient3), WASAPI Exclusive, ASIO. **macOS**: CoreAudio. **Linux**: ALSA, JACK |
 | 드라이버 전환 / Driver Switching | 런타임 전환 가능 / Runtime switching supported. ASIO (Windows): 단일 장치, 동적 SR/BS, 채널 라우팅 / single device, dynamic SR/BS, channel routing. WASAPI: 입출력 분리 가능 / separate input/output possible |
-| ASIO SR/BS 정책 / ASIO SR/BS Policy | ASIO 장치는 SR/BS를 전역으로 소유 (장치를 공유하는 모든 앱에 영향). 시작 시 저장된 SR/BS를 ASIO에 강제하지 않고, 장치가 보고하는 현재 값을 수용 (`syncDesiredFromDevice()`). 이유: SR/BS 강제 시 ASIO 드라이버 재시작 → 다른 앱의 오디오 끊김. ASIO 컨트롤 패널에서 변경한 BS도 설정에 자동 반영. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값 강제 적용 (다른 앱에 영향 없음) / ASIO devices own SR/BS globally (affects all apps sharing the device). On startup, DirectPipe does NOT force saved SR/BS on ASIO — instead accepts whatever the device currently reports (`syncDesiredFromDevice()`). Reason: forcing SR/BS would restart the ASIO driver, disrupting audio in DAWs, media players, and other apps. ASIO control panel BS changes are automatically saved to settings. WASAPI/CoreAudio/ALSA use per-app SR/BS, so saved values are safely forced (no impact on other apps) |
+| ASIO SR/BS 정책 / ASIO SR/BS Policy | ASIO 장치는 SR/BS를 전역으로 소유 (장치를 공유하는 모든 앱에 영향). DirectPipe는 ASIO 시작/복원 시 저장된 BS를 강제하지 않고 실제 BS를 수용하지만, 저장 파일에 명시된 SR(예: 48k)이 있고 드라이버가 다른 SR(예: 44.1k)을 보고하면 그 SR을 다음 복원 대상으로 덮어쓰지 않는다. ASIO 컨트롤 패널에서 변경한 BS는 설정에 반영된다. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값 강제 적용 (다른 앱에 영향 없음) / ASIO devices own SR/BS globally. On ASIO startup/restore, DirectPipe accepts the actual buffer size without forcing a driver restart, but if settings explicitly requested a sample rate (for example 48k) and the driver reports a different rate (for example 44.1k), the requested SR is preserved for the next restore. ASIO control-panel BS changes are saved. WASAPI/CoreAudio/ALSA use per-app SR/BS, so saved values are safely forced. |
 | 시작 흐름 / Startup Flow | WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 설정 시 전환 시도 (~100ms, 창 표시 전 완료). ASIO 실패 시 WASAPI에 남아있음 / Opens WASAPI first (safe fallback) → loads saved driver type from settings → switches to ASIO if configured (~100ms, before window shown). Falls back to WASAPI if ASIO fails |
 | 채널 모드 / Channel Mode | Mono / Stereo (기본값 / default: Stereo, `channelMode_` = 2) |
 | 입력 게인 / Input Gain | 0.0x ~ 2.0x (기본 / default 1.0x). `|gain - 1.0f| > 0.001f`일 때만 SIMD 적용 / SIMD applied only when gain differs from 1.0 |
@@ -161,12 +161,12 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 감지 방식 / Detection Method | 이중 메커니즘: (1) `ChangeListener` 즉시 감지 + (2) 3초 타이머 폴링 (`checkReconnection`) / Dual mechanism: (1) `ChangeListener` immediate detection + (2) 3s timer polling (`checkReconnection`) |
 | 의도 추적 / Intent Tracking | `desiredInputDevice_` / `desiredOutputDevice_` (SpinLock 보호 / SpinLock protected) / `desiredDeviceType_` / `desiredSampleRate_` / `desiredBufferSize_` 저장 / saved |
 | 폴백 보호 / Fallback Protection | `intentionalChange_` 플래그: JUCE 자동 폴백을 성공적 재연결로 오인하는 것 방지 / `intentionalChange_` flag: prevents mistaking JUCE auto-fallback as successful reconnection |
-| 재연결 로직 / Reconnection Logic | `attemptReconnection()`: 장치 재스캔 → 가용성 확인 → desired 설정(SR/BS/채널) 복원 / device rescan → availability check → restore desired settings (SR/BS/channels). `attemptingReconnection_` 재진입 가드 / re-entrancy guard |
+| 재연결 로직 / Reconnection Logic | `attemptReconnection()`: 장치 재스캔 → 가용성 확인 → desired 설정(SR/BS/채널) 복원. 명시 채널 마스크가 현재 장치에서 거부되면 driver default 채널로 재시도하여 스테레오 장치를 모노로 강제하지 않고, 모노 장치도 기본 레이아웃으로 열 수 있게 한다 / device rescan → availability check → restore desired settings (SR/BS/channels). If an explicit channel mask is rejected, reconnect retries driver default channels so stereo devices are not forced mono and mono devices can still open with their native layout. `attemptingReconnection_` 재진입 가드 / re-entrancy guard |
 | 쿨다운 / Cooldown | `reconnectCooldown_` (30Hz 타이머 틱 / 30Hz timer ticks) |
 | 알림 / Notification | 연결 끊김 시 경고(주황), 재연결 시 정보(보라) NotificationBar 표시 / Warning (orange) on disconnect, Info (purple) on reconnect in NotificationBar |
 | 방향별 감지 / Per-Direction Detection | `inputDeviceLost_`: 입력 장치 분실 시 오디오 콜백에서 입력 무음 처리 (폴백 마이크 방지) / silences input in audio callback on input device loss (prevents fallback mic). `outputAutoMuted_`: 출력 장치 분실 시 자동 뮤트, 복원 시 자동 해제 / auto-mutes on output device loss, auto-unmutes on restore |
 | 재연결 실패 / Reconnection Failure | `reconnectMissCount_`: 5회 연속 실패(~15초) 후 현재 드라이버 장치를 수락하여 크로스 드라이버 stale name 무한 루프 방지 / after 5 consecutive failures (~15s), accepts current driver device to prevent cross-driver stale name infinite loop |
-| 드라이버 전환 복원 / Driver Switch Restore | `DriverTypeSnapshot`: 드라이버 타입별 설정(입출력 장치, SR, BS, outputNone) 저장/복원 / saves/restores per-driver-type settings (input/output device, SR, BS, outputNone). 프리셋 JSON의 `inputChannelMask`/`outputChannelMask`(인덱스 배열)도 저장/복원하여 비연속 ASIO 라우팅 유지, invalid 인덱스는 안전 기본값으로 폴백 / preset JSON `inputChannelMask`/`outputChannelMask` (index arrays) also persist/restore non-contiguous ASIO routing, with safe fallback for invalid indices |
+| 드라이버 전환 복원 / Driver Switch Restore | `DriverTypeSnapshot`: 드라이버 타입별 설정(입출력 장치, SR, BS, outputNone) 저장/복원 / saves/restores per-driver-type settings (input/output device, SR, BS, outputNone). 프리셋 JSON의 `inputChannelMask`/`outputChannelMask`(인덱스 배열)도 저장/복원하여 비연속 ASIO 라우팅 유지, 명시 마스크가 거부되면 driver default 채널로 재시도 / preset JSON `inputChannelMask`/`outputChannelMask` (index arrays) also persist/restore non-contiguous ASIO routing, retrying driver default channels when explicit masks are rejected |
 | 모니터 독립 / Monitor Independence | 모니터 장치는 retry 가능한 장치 lost만 별도 패턴으로 독립 재연결 / Monitor device reconnects independently only for retryable device loss (`monitorLost_` + own cooldown); sample-rate mismatch stays paused |
 
 #### 4.1.6 XRun 모니터링 / XRun Monitoring
@@ -312,6 +312,7 @@ rebuildGraph(bool suspend = true)
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 장치 / Device | 별도 AudioDeviceManager / Separate AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) (메인 드라이버와 독립 / independent from main driver) |
+| 채널 fallback / Channel fallback | 선택한 모니터 장치는 스테레오 출력으로 먼저 열고, 실패하면 driver default 출력 채널로 재시도한다. 단일 출력 장치 지원용이며 스테레오 장치를 모노로 고정하지 않는다 / Opens the selected monitor device as stereo first, then retries driver default output channels. This supports mono-only outputs without forcing stereo devices to mono. |
 | 링 버퍼 / Ring Buffer | AudioRingBuffer: 8192 프레임 / frames, 스테레오 / stereo, power-of-2 |
 | Drift 보정 / Drift Compensation | adaptive PLL fractional playback으로 정상 drift를 playback ratio 미세 조정으로 흡수. overflow 임박 시에만 capped emergency trim. 부분 underrun은 재생 재개 전 re-prime / Adaptive PLL fractional playback absorbs normal drift with tiny playback-ratio correction. Capped emergency trim is used only near overflow. Partial underruns re-prime before playback resumes |
 | 상태 / Status | `VirtualCableStatus` enum: NotConfigured, Active, Error, SampleRateMismatch |
@@ -942,7 +943,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.1.0" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.1.1" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1065,7 +1066,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.1.0",
+  "appVersion": "4.1.1",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1088,7 +1089,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.1.0",
+  "appVersion": "4.1.1",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1270,14 +1271,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.1.0.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.1.1.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host, 345 registered tests)
+├── tests/                          → Google Test (core + host, 362 registered tests)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin

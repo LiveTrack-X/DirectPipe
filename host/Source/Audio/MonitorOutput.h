@@ -125,6 +125,9 @@ private:
     void audioDeviceAboutToStart(juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
     void audioDeviceError(const juce::String& errorMessage) override;
+    bool hasUsableOutputChannels(juce::AudioIODevice* device) const;
+    bool recoverActiveOutputChannelsWithDriverDefaults(const juce::String& reason);
+    void scheduleActiveOutputChannelRecovery(const juce::String& reason);
 
     // ═══════════════════════════════════════════════════════════════════
     // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
@@ -146,6 +149,7 @@ private:
     // Device reconnection tracking
     std::atomic<bool> monitorLost_{false};                // [Monitor RT/Device write, Message read]
     std::atomic<bool> intentionalTeardown_{false};        // [Message write, Device callback read]
+    std::atomic<bool> activeOutputRecoveryPending_{false}; // [Monitor RT/Message write, Message read] Guards zero-active reopen retry
     int reconnectCooldown_ = 0;                           // [Message thread only] Ticks before next attempt
 
     // Drift monitoring: keeps monitor latency bounded when independent device clocks diverge.

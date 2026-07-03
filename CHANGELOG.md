@@ -8,6 +8,27 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.1.1] - 2026-07-03
+
+### Fixed
+- **Preset slot cache crash (#4)**: Slot-cache hits now compare the cached plugin chain against the saved slot file by plugin type/name/path before swapping cached instances into the active chain. Duplicate VST entries with different saved state no longer reuse an incompatible cached chain.
+- **Partial cache-swap failure recovery**: Failed cached-instance swaps leave the currently active VST chain intact and fall back to a cold slot load instead of leaving a partially moved plugin chain behind.
+- **Preset state preservation on cache fallback**: Cache-hit state refresh now copies fresh slot-file state into preloaded requests instead of moving it out before the cached graph swap succeeds, so cold fallback keeps the saved plugin state intact.
+- **Settings-only backup shape**: Settings-only `.dpbackup` exports now strip slot-chain data and `activeSlot`, so importing settings cannot silently overwrite presets or jump the active slot.
+- **Backup import failure reporting**: Settings and full-backup imports now propagate failed audio-settings imports to the caller instead of silently reporting success after a partial restore.
+- **Full backup restore exactness**: Full restore now saves the active slot before export, falls back to atomic-write backup files while importing, deletes slots that are missing from the backup, clears stale `.bak`/`.backup`/`.tmp` and legacy numeric slot families, and refreshes slot occupancy/names/preload cache after restore.
+- **Audio restore hardening**: Startup/tray restore keeps staged desired device state across invalid driver callbacks, preserves requested ASIO sample rate during restore, only clears startup restore pending after the saved targets are actually active, and recovers from zero-active-channel or mismatched explicit-channel starts without requiring manual device toggles.
+
+### Release
+- **Version metadata sync**: App, bundled Receiver plugin, Stream Deck manifest/package metadata, README, user guide, product spec, architecture notes, log rules, building docs, changelog, and release body are aligned to v4.1.1.
+- **Host-side hotfix scope**: v4.1.1 is documented as a host-side hotfix. Users do not need to reinstall Receiver VST only because of this release.
+
+### Tests
+- Added regression coverage for duplicate-plugin preset cache validation, fresh-state preservation on cache fallback, settings-only backup import shape, import failure propagation, full-backup exact slot restore, backup-family cleanup, backup-fallback import, zero-active-channel recovery, explicit-channel readiness, zero-active-monitor-output guards, and ASIO sample-rate restore preservation.
+- Rebuilt Release targets and ran full core/host validation: `directpipe-tests` 52 passed; `directpipe-host-tests` 310 tests, 308 passed, 2 environment-dependent tests skipped; `ctest` 362 registered, 0 failed, 2 skipped.
+
+---
+
 ## [4.1.0] - 2026-06-21
 
 ### Changed

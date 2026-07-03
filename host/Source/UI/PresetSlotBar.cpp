@@ -311,6 +311,10 @@ void PresetSlotBar::onSlotClicked(int slotIndex)
 {
     if (loadingSlot_) return;
 
+    juce::Logger::writeToLog("[PRESET] GUI slot click: "
+        + PresetManager::formatSlotForLog(presetManager_.getActiveSlot())
+        + " -> " + PresetManager::formatSlotForLog(slotIndex));
+
     // Same slot click = just save current state
     if (presetManager_.getActiveSlot() == slotIndex) {
         if (!partialLoad_.load())

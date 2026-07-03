@@ -175,3 +175,25 @@ TEST_F(VSTChainTest, RemoveOutOfRange) {
     EXPECT_TRUE(chain_->removePlugin(0));
     EXPECT_EQ(chain_->getPluginCount(), 0);
 }
+
+TEST_F(VSTChainTest, PreloadedSwapRejectsMissingInstanceAndKeepsOldChain) {
+    addBuiltin(PluginSlot::Type::BuiltinFilter);
+
+    VSTChain::PreloadedPlugin missing;
+    missing.request.name = "Missing cached plugin";
+    std::vector<VSTChain::PreloadedPlugin> preloaded;
+    preloaded.push_back(std::move(missing));
+
+    bool completed = false;
+    bool swapped = chain_->replaceChainWithPreloaded(
+        std::move(preloaded),
+        [&completed] { completed = true; });
+
+    EXPECT_FALSE(swapped);
+    EXPECT_FALSE(completed);
+    EXPECT_EQ(chain_->getPluginCount(), 1);
+
+    auto* slot = chain_->getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinFilter);
+}

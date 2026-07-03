@@ -39,6 +39,22 @@ constexpr int kDriftWarmupCallbacks = 50;
 #if defined(_WIN32)
 constexpr int kMonitorMmcssPriority = 0; // AVRT_PRIORITY_NORMAL; monitor must not preempt main OUT.
 #endif
+
+juce::String channelMaskToLogString(const juce::BigInteger& mask)
+{
+    juce::StringArray bits;
+    for (int bit = mask.findNextSetBit(0); bit >= 0; bit = mask.findNextSetBit(bit + 1))
+        bits.add(juce::String(bit));
+    return bits.isEmpty() ? juce::String("none") : bits.joinIntoString(",");
+}
+
+void useDefaultOutputChannels(juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    // Let the monitor driver choose its native output layout. This avoids
+    // forcing stereo on mono outputs or forcing bit 0 on stereo outputs.
+    setup.useDefaultOutputChannels = true;
+    setup.outputChannels.clear();
+}
 }
 
 MonitorOutput::MonitorOutput() = default;
@@ -82,7 +98,13 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     // Force shared-mode device type (WASAPI on Windows, CoreAudio on macOS, ALSA on Linux).
     deviceManager_->setCurrentAudioDeviceType(PlatformAudio::getDefaultSharedDeviceType(), true);
 
+    // Bootstrap the separate monitor manager. The selected monitor device below
+    // still opens stereo first, then falls back to driver defaults if needed.
     auto result = deviceManager_->initialiseWithDefaultDevices(0, 2);
+    if (result.isNotEmpty()) {
+        Log::warn("MONITOR", "Init retry with single-output default after: " + result);
+        result = deviceManager_->initialiseWithDefaultDevices(0, 1);
+    }
     if (result.isNotEmpty()) {
         Log::error("MONITOR", "Init error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
         monitorLost_.store(true, std::memory_order_relaxed);
@@ -90,7 +112,14 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
         return false;
     }
 
-    // Configure to use the specified virtual device as output
+    if (auto* type = deviceManager_->getCurrentDeviceTypeObject()) {
+        type->scanForDevices();
+        Log::info("MONITOR", "Available outputs: [" + type->getDeviceNames(false).joinIntoString(", ") + "]");
+    }
+
+    // Configure the selected monitor output. Start with stereo for normal
+    // headphone devices; on failure, retry with the driver's native default
+    // channel mask so mono outputs also work without down-grading stereo ones.
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     deviceManager_->getAudioDeviceSetup(setup);
     setup.outputDeviceName = deviceName;
@@ -100,6 +129,17 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     setup.outputChannels.setRange(0, 2, true);
 
     result = deviceManager_->setAudioDeviceSetup(setup, true);
+    if (result.isNotEmpty()) {
+        Log::warn("MONITOR", "Setup retry with driver default output channels after: " + result);
+        useDefaultOutputChannels(setup);
+        result = deviceManager_->setAudioDeviceSetup(setup, true);
+    }
+    if (result.isNotEmpty() && bufferSize > 0) {
+        Log::warn("MONITOR", "Setup retry with driver buffer after: " + result);
+        setup.bufferSize = 0;
+        useDefaultOutputChannels(setup);
+        result = deviceManager_->setAudioDeviceSetup(setup, true);
+    }
     if (result.isNotEmpty()) {
         Log::error("MONITOR", "Setup error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
         monitorLost_.store(true, std::memory_order_relaxed);
@@ -382,6 +422,81 @@ void MonitorOutput::audioDeviceIOCallbackWithContext(
     publishSnapshot((std::max)(0, available - framesConsumed), plan, pll);
 }
 
+bool MonitorOutput::hasUsableOutputChannels(juce::AudioIODevice* device) const
+{
+    return device
+        && device->getCurrentSampleRate() > 0.0
+        && device->getCurrentBufferSizeSamples() > 0
+        && device->getActiveOutputChannels().countNumberOfSetBits() > 0;
+}
+
+bool MonitorOutput::recoverActiveOutputChannelsWithDriverDefaults(const juce::String& reason)
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    const bool alreadyPending = activeOutputRecoveryPending_.exchange(true, std::memory_order_acq_rel);
+    auto finish = [this, alreadyPending](bool ok) {
+        if (!alreadyPending)
+            activeOutputRecoveryPending_.store(false, std::memory_order_release);
+        return ok;
+    };
+
+    if (!deviceManager_)
+        return finish(false);
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_->getAudioDeviceSetup(setup);
+    useDefaultOutputChannels(setup);
+
+    Log::warn("MONITOR", "Retrying active-output recovery with driver default channels: " + reason);
+    const auto result = deviceManager_->setAudioDeviceSetup(setup, true);
+    if (result.isNotEmpty()) {
+        Log::error("MONITOR", "Active-output recovery failed: " + result);
+        status_.store(VirtualCableStatus::Error, std::memory_order_release);
+        monitorLost_.store(true, std::memory_order_relaxed);
+        return finish(false);
+    }
+
+    auto* device = deviceManager_->getCurrentAudioDevice();
+    if (!hasUsableOutputChannels(device)) {
+        status_.store(VirtualCableStatus::Error, std::memory_order_release);
+        monitorLost_.store(true, std::memory_order_relaxed);
+        Log::error("MONITOR", "Active-output recovery still has no usable output channels");
+        if (device) {
+            Log::info("MONITOR", "Recovery invalid setup: activeOut=["
+                + channelMaskToLogString(device->getActiveOutputChannels())
+                + "] availableOut=" + juce::String(device->getOutputChannelNames().size()));
+        }
+        return finish(false);
+    }
+
+    monitorLost_.store(false, std::memory_order_relaxed);
+    Log::info("MONITOR", "Active-output recovery ready on " + device->getName()
+        + " activeOut=[" + channelMaskToLogString(device->getActiveOutputChannels()) + "]");
+    return finish(true);
+}
+
+void MonitorOutput::scheduleActiveOutputChannelRecovery(const juce::String& reason)
+{
+    if (activeOutputRecoveryPending_.exchange(true, std::memory_order_acq_rel)) {
+        Log::audit("MONITOR", "Active-output recovery already pending: " + reason);
+        return;
+    }
+
+    status_.store(VirtualCableStatus::Error, std::memory_order_release);
+    monitorLost_.store(true, std::memory_order_relaxed);
+
+    auto aliveFlag = alive_;
+    juce::MessageManager::callAsync([this, aliveFlag, reason] {
+        if (!aliveFlag->load())
+            return;
+
+        recoverActiveOutputChannelsWithDriverDefaults(reason);
+        activeOutputRecoveryPending_.store(false, std::memory_order_release);
+        reconnectCooldown_ = 0;
+    });
+}
+
 void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     if (!device) return;
@@ -449,6 +564,17 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         return;
     }
 
+    if (!hasUsableOutputChannels(device)) {
+        status_.store(VirtualCableStatus::Error, std::memory_order_release);
+        monitorLost_.store(true, std::memory_order_relaxed);
+        Log::warn("MONITOR", "Monitor opened without usable active output channels");
+        Log::info("MONITOR", "Inactive setup: activeOut=["
+            + channelMaskToLogString(device->getActiveOutputChannels())
+            + "] availableOut=" + juce::String(device->getOutputChannelNames().size()));
+        scheduleActiveOutputChannelRecovery("Monitor active-output recovery");
+        return;
+    }
+
     // Set non-Active before reset to prevent consumer from reading during reset
     status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
     ringBuffer_.reset();
@@ -470,6 +596,9 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
     status_.store(VirtualCableStatus::Active, std::memory_order_release);
 
     Log::info("MONITOR", "Active on " + device->getName() + " @ " + juce::String(deviceSR) + "Hz / " + juce::String(deviceBS) + " samples");
+    Log::info("MONITOR", "Active setup: activeOut=["
+        + channelMaskToLogString(device->getActiveOutputChannels())
+        + "] availableOut=" + juce::String(device->getOutputChannelNames().size()));
     if (Log::isAuditMode()) {
         Log::audit("MONITOR", "Device type: " + device->getTypeName());
         Log::audit("MONITOR", "Output channels: " + device->getOutputChannelNames().joinIntoString(", "));

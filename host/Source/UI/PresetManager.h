@@ -27,6 +27,11 @@
 #include "../Audio/AudioEngine.h"
 #include "../Audio/PluginPreloadCache.h"
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+class PresetManagerTest_CacheHitDuplicatePluginsConsumesFreshStateByIndex_Test;
+class PresetManagerTest_CacheRejectsSameNamePathWithDifferentDescription_Test;
+#endif
+
 namespace directpipe {
 
 /**
@@ -140,7 +145,7 @@ public:
     /**
      * @brief Set the active slot index (for selecting empty slots).
      */
-    void setActiveSlot(int slotIndex) { activeSlot_ = slotIndex; }
+    void setActiveSlot(int slotIndex);
 
     /**
      * @brief Get slot label character ('A'..'E', '*' for Auto slot 5).
@@ -149,6 +154,9 @@ public:
         if (slotIndex == 5) return '*';  // Auto slot
         return 'A' + static_cast<char>(slotIndex);
     }
+
+    /** @brief Format a slot index for diagnostic logs. */
+    static juce::String formatSlotForLog(int slotIndex);
 
     /**
      * @brief Get user-defined slot name (empty if not set).
@@ -211,6 +219,11 @@ public:
     std::function<void(const juce::DynamicObject& root)> onImportAppSettings;
 
 private:
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    friend class ::PresetManagerTest_CacheHitDuplicatePluginsConsumesFreshStateByIndex_Test;
+    friend class ::PresetManagerTest_CacheRejectsSameNamePathWithDifferentDescription_Test;
+#endif
+
     struct TargetPlugin {
         juce::String name, path;
         juce::PluginDescription desc;
@@ -226,11 +239,15 @@ private:
     static bool isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain);
     static bool cachedSlotMatchesTargets(const PluginPreloadCache::CachedSlot& cached,
                                          const std::vector<TargetPlugin>& targets);
+    static std::vector<VSTChain::PreloadedPlugin> buildPreloadedPluginsFromCache(
+        PluginPreloadCache::CachedSlot& cached,
+        std::vector<TargetPlugin>& freshTargets);
     static void applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
     static void applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
 
     AudioEngine& engine_;
     int activeSlot_ = -1;
+    void setActiveSlotInternal(int slotIndex, const char* reason);
 
     // Cached slot occupancy (avoids filesystem queries in hot paths like NextPreset)
     std::array<bool, kNumSlots> slotOccupiedCache_{};

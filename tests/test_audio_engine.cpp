@@ -4,11 +4,84 @@
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
 #include "Audio/AudioEngine.h"
+
 #include "Audio/AudioRingBuffer.h"
 #include "Audio/DeviceState.h"
 #include "Audio/MonitorDriftPolicy.h"
 
 using namespace directpipe;
+
+namespace {
+
+class FakeAudioIODevice final : public juce::AudioIODevice {
+public:
+    FakeAudioIODevice(const juce::String& deviceName,
+                      const juce::StringArray& inputNames,
+                      const juce::StringArray& outputNames,
+                      const juce::BigInteger& activeInput,
+                      const juce::BigInteger& activeOutput)
+        : juce::AudioIODevice(deviceName, "Fake Audio"),
+          inputNames_(inputNames),
+          outputNames_(outputNames),
+          activeInput_(activeInput),
+          activeOutput_(activeOutput)
+    {
+    }
+
+    juce::StringArray getOutputChannelNames() override { return outputNames_; }
+    juce::StringArray getInputChannelNames() override { return inputNames_; }
+
+    juce::Array<double> getAvailableSampleRates() override
+    {
+        return { 44100.0, 48000.0 };
+    }
+
+    juce::Array<int> getAvailableBufferSizes() override
+    {
+        return { 128, 256, 512 };
+    }
+
+    int getDefaultBufferSize() override { return 128; }
+
+    juce::String open(const juce::BigInteger& inputChannels,
+                      const juce::BigInteger& outputChannels,
+                      double sampleRate,
+                      int bufferSizeSamples) override
+    {
+        activeInput_ = inputChannels;
+        activeOutput_ = outputChannels;
+        sampleRate_ = sampleRate;
+        bufferSize_ = bufferSizeSamples;
+        open_ = true;
+        return {};
+    }
+
+    void close() override { open_ = false; }
+    bool isOpen() override { return open_; }
+    void start(juce::AudioIODeviceCallback*) override { playing_ = true; }
+    void stop() override { playing_ = false; }
+    bool isPlaying() override { return playing_; }
+    juce::String getLastError() override { return {}; }
+    int getCurrentBufferSizeSamples() override { return bufferSize_; }
+    double getCurrentSampleRate() override { return sampleRate_; }
+    int getCurrentBitDepth() override { return 32; }
+    juce::BigInteger getActiveOutputChannels() const override { return activeOutput_; }
+    juce::BigInteger getActiveInputChannels() const override { return activeInput_; }
+    int getOutputLatencyInSamples() override { return 0; }
+    int getInputLatencyInSamples() override { return 0; }
+
+private:
+    juce::StringArray inputNames_;
+    juce::StringArray outputNames_;
+    double sampleRate_ = 48000.0;
+    int bufferSize_ = 128;
+    juce::BigInteger activeInput_;
+    juce::BigInteger activeOutput_;
+    bool open_ = true;
+    bool playing_ = false;
+};
+
+} // namespace
 
 class AudioEngineTest : public ::testing::Test {
 protected:
@@ -70,6 +143,44 @@ TEST_F(AudioEngineTest, ReconnectionAttempt) {
     EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
 
+TEST_F(AudioEngineTest, ZeroActiveConfiguredChannelsMarkLostAndMuted) {
+    juce::StringArray inputs;
+    inputs.add("Mic In");
+    juce::StringArray outputs;
+    outputs.add("Speaker L");
+    outputs.add("Speaker R");
+    FakeAudioIODevice device("Fake Duplex", inputs, outputs, {}, {});
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(&device);
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, OutputNoneIgnoresZeroActiveOutput) {
+    engine_->setOutputNone(true);
+
+    juce::BigInteger activeMonoInput;
+    activeMonoInput.setBit(0);
+
+    juce::StringArray inputs;
+    inputs.add("Mic In");
+    juce::StringArray outputs;
+    outputs.add("Speaker L");
+    outputs.add("Speaker R");
+    FakeAudioIODevice device("Fake Input", inputs, outputs, activeMonoInput, {});
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(&device);
+
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+}
+
 TEST_F(AudioEngineTest, ReconnectionMaxRetry) {
     for (int i = 0; i < 10; ++i)
         engine_->checkReconnection();
@@ -92,6 +203,69 @@ TEST_F(AudioEngineTest, RememberRestoreTargetsArmsStartupRetryWhenDeviceUnavaila
     EXPECT_TRUE(engine_->isInputDeviceLost());
     EXPECT_TRUE(engine_->isOutputAutoMuted());
     EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, StartupRestorePendingRequiresSavedTargets) {
+    engine_->rememberRestoredDeviceTargets({}, "Boot Mic", "Boot Speakers");
+
+    juce::AudioDeviceManager::AudioDeviceSetup fallback;
+    fallback.inputDeviceName = "Fallback Mic";
+    fallback.outputDeviceName = "Fallback Speakers";
+
+    juce::AudioDeviceManager::AudioDeviceSetup target;
+    target.inputDeviceName = "Boot Mic";
+    target.outputDeviceName = "Boot Speakers";
+
+    EXPECT_TRUE(engine_->isStartupRestorePendingForTest());
+    EXPECT_FALSE(engine_->restoredDeviceTargetsSatisfiedForTest(fallback));
+    EXPECT_TRUE(engine_->restoredDeviceTargetsSatisfiedForTest(target));
+}
+
+TEST_F(AudioEngineTest, RestoreReadyKeepsOutputMutedWhenOutputNoneSelected) {
+    engine_->rememberRestoredDeviceTargets({}, "Boot Mic", "Boot Speakers");
+    ASSERT_TRUE(engine_->isOutputAutoMuted());
+
+    engine_->setOutputNone(true);
+
+    juce::AudioDeviceManager::AudioDeviceSetup target;
+    target.inputDeviceName = "Boot Mic";
+
+    EXPECT_TRUE(engine_->clearDeviceLossAfterReadyForTest(target));
+    EXPECT_TRUE(engine_->isOutputNone());
+    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+}
+
+TEST_F(AudioEngineTest, ExplicitChannelMaskMustIntersectActiveChannels) {
+    juce::BigInteger activeInput;
+    activeInput.setBit(0);
+    juce::BigInteger activeOutput;
+    activeOutput.setBit(0);
+
+    juce::StringArray inputs;
+    inputs.add("Mic 1");
+    inputs.add("Mic 2");
+    juce::StringArray outputs;
+    outputs.add("Speaker 1");
+    outputs.add("Speaker 2");
+    FakeAudioIODevice device("Fake Duplex", inputs, outputs, activeInput, activeOutput);
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Fake Duplex";
+    setup.outputDeviceName = "Fake Duplex";
+    setup.useDefaultInputChannels = false;
+    setup.useDefaultOutputChannels = false;
+    setup.inputChannels.setBit(1);
+    setup.outputChannels.setBit(1);
+
+    EXPECT_FALSE(engine_->hasUsableActiveChannelsForTest(setup, &device));
+
+    setup.inputChannels.clear();
+    setup.inputChannels.setBit(0);
+    setup.outputChannels.clear();
+    setup.outputChannels.setBit(0);
+
+    EXPECT_TRUE(engine_->hasUsableActiveChannelsForTest(setup, &device));
 }
 
 TEST_F(AudioEngineTest, XRunWindowRolling) {

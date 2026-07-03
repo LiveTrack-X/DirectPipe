@@ -28,6 +28,72 @@
 #include <cmath>
 
 namespace directpipe {
+namespace {
+
+juce::String channelMaskToLogString(const juce::BigInteger& mask)
+{
+    juce::StringArray bits;
+    for (int bit = mask.findNextSetBit(0); bit >= 0; bit = mask.findNextSetBit(bit + 1))
+        bits.add(juce::String(bit));
+    return bits.isEmpty() ? juce::String("none") : bits.joinIntoString(",");
+}
+
+void addUniqueDevice(juce::StringArray& devices, const juce::String& device)
+{
+    if (device.isNotEmpty() && !devices.contains(device))
+        devices.add(device);
+}
+
+void useDefaultConfiguredChannels(juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                  bool input, bool output)
+{
+    // Let the driver pick its native active channel mask. This is deliberately
+    // different from forcing bit 0: stereo devices stay stereo, while mono
+    // devices can still open if they only expose one usable channel.
+    if (input && setup.inputDeviceName.isNotEmpty()) {
+        setup.useDefaultInputChannels = true;
+        setup.inputChannels.clear();
+    }
+    if (output && setup.outputDeviceName.isNotEmpty()) {
+        setup.useDefaultOutputChannels = true;
+        setup.outputChannels.clear();
+    }
+}
+
+bool sampleRatesDiffer(double a, double b)
+{
+    return a > 0.0 && b > 0.0 && std::abs(a - b) > 1.0;
+}
+
+bool explicitMaskIntersectsActiveChannels(const juce::BigInteger& requested,
+                                          const juce::BigInteger& active)
+{
+    if (requested.isZero())
+        return active.countNumberOfSetBits() > 0;
+
+    for (int bit = requested.findNextSetBit(0); bit >= 0; bit = requested.findNextSetBit(bit + 1)) {
+        if (active[bit])
+            return true;
+    }
+
+    return false;
+}
+
+bool channelSelectionReady(bool configured,
+                           bool useDefaultChannels,
+                           const juce::BigInteger& requested,
+                           const juce::BigInteger& active)
+{
+    if (!configured)
+        return true;
+
+    if (useDefaultChannels)
+        return active.countNumberOfSetBits() > 0;
+
+    return explicitMaskIntersectsActiveChannels(requested, active);
+}
+
+} // namespace
 
 // SEH crash guard for VST processBlock (Windows only)
 // MSVC forbids __try/__except in functions that have C++ objects with destructors
@@ -76,7 +142,8 @@ bool AudioEngine::initialize()
     //   Forcing a saved BS on ASIO would restart the driver, disrupting other
     //   audio sources (DAWs, media players, etc.).
     // importFromJSON calls syncDesiredFromDevice() for ASIO instead of
-    //     setSampleRate/setBufferSize, accepting whatever the ASIO device reports.
+    //     setSampleRate/setBufferSize. It accepts actual BS, but preserves an
+    //     explicit requested SR if ASIO reports a mismatched value (e.g. 44.1k).
     // Non-ASIO drivers (WASAPI/CoreAudio/ALSA) use per-app SR/BS, so saved
     //     values are safely forced via setSampleRate/setBufferSize.
     //
@@ -88,6 +155,14 @@ bool AudioEngine::initialize()
         2,  // numInputChannels
         2   // numOutputChannels
     );
+    if (result.isNotEmpty()) {
+        Log::warn("AUDIO", "Default device init retry with single input after: " + result);
+        result = deviceManager_.initialiseWithDefaultDevices(1, 2);
+    }
+    if (result.isNotEmpty()) {
+        Log::warn("AUDIO", "Default device init retry with single input/output after: " + result);
+        result = deviceManager_.initialiseWithDefaultDevices(1, 1);
+    }
 
     if (result.isNotEmpty()) {
         Log::error("AUDIO", "Device manager init failed: " + result);
@@ -130,6 +205,11 @@ bool AudioEngine::initialize()
             setup.inputChannels.setRange(0, 2, true);
             setup.outputChannels.setRange(0, 2, true);
             auto setupResult = deviceManager_.setAudioDeviceSetup(setup, true);
+            if (setupResult.isNotEmpty()) {
+                Log::warn("AUDIO", "Device setup retry with driver default channels after: " + setupResult);
+                useDefaultConfiguredChannels(setup, true, !outputNone_.load(std::memory_order_relaxed));
+                setupResult = deviceManager_.setAudioDeviceSetup(setup, true);
+            }
             if (setupResult.isNotEmpty()) {
                 Log::error("AUDIO", "Device setup failed (SR=" + juce::String(static_cast<int>(setup.sampleRate))
                     + " BS=" + juce::String(setup.bufferSize) + " in='" + setup.inputDeviceName
@@ -265,6 +345,11 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
     {
         AtomicGuard intentionalGuard(intentionalChange_);
         result = deviceManager_.setAudioDeviceSetup(setup, true);
+        if (result.isNotEmpty()) {
+            Log::warn("AUDIO", "Input setup retry with driver default channels after: " + result);
+            useDefaultConfiguredChannels(setup, true, false);
+            result = deviceManager_.setAudioDeviceSetup(setup, true);
+        }
     }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set input device '" + deviceName + "': " + result;
@@ -320,6 +405,11 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
     {
         AtomicGuard intentionalGuard(intentionalChange_);
         result = deviceManager_.setAudioDeviceSetup(setup, true);
+        if (result.isNotEmpty()) {
+            Log::warn("AUDIO", "Output setup retry with driver default channels after: " + result);
+            useDefaultConfiguredChannels(setup, false, true);
+            result = deviceManager_.setAudioDeviceSetup(setup, true);
+        }
     }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set output device '" + deviceName + "': " + result;
@@ -348,6 +438,10 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
     deviceManager_.getAudioDeviceSetup(setup);
     setup.inputDeviceName = deviceName;
     setup.outputDeviceName = deviceName;
+    if (desiredSampleRate_ > 0.0)
+        setup.sampleRate = desiredSampleRate_;
+    if (desiredBufferSize_ > 0)
+        setup.bufferSize = desiredBufferSize_;
     setup.useDefaultInputChannels = false;
     setup.useDefaultOutputChannels = false;
     if (setup.inputChannels.isZero())
@@ -359,6 +453,11 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
     {
         AtomicGuard intentionalGuard(intentionalChange_);
         result = deviceManager_.setAudioDeviceSetup(setup, true);
+        if (result.isNotEmpty()) {
+            Log::warn("AUDIO", "ASIO setup retry with driver default channels after: " + result);
+            useDefaultConfiguredChannels(setup, true, true);
+            result = deviceManager_.setAudioDeviceSetup(setup, true);
+        }
     }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set ASIO device '" + deviceName + "': " + result;
@@ -419,13 +518,15 @@ void AudioEngine::syncDesiredFromDevice()
     // Sync desiredSR/BS FROM the current audio device (not TO).
     //
     // Primary use case: ASIO devices.
-    // ASIO SR/BS is global changing it restarts the driver and disrupts ALL apps
+    // ASIO SR/BS is global; changing it restarts the driver and disrupts ALL apps
     // sharing that device (DAWs, media players, etc.). Instead of forcing our saved
-    // values (which would cause an unnecessary driver restart), we accept whatever
-    // the ASIO device currently reports and save THAT as the desired value.
+    // values (which would cause an unnecessary driver restart), we accept the
+    // actual ASIO buffer size. If settings explicitly requested a sample rate,
+    // keep that requested SR when the driver reports a mismatched one.
     //
     // Called from:
-    //   - importFromJSON (ASIO path): on startup, accept device's current SR/BS
+    //   - importFromJSON (ASIO path): on startup, accept device's actual BS and
+    //     preserve explicit requested SR across accidental driver mismatch
     //   - Could also be called after ASIO control panel changes SR/BS externally
     //
     // NOT used for WASAPI/CoreAudio/ALSA those use per-app SR/BS, so forcing
@@ -442,25 +543,294 @@ void AudioEngine::syncDesiredFromDevice()
         return;
     }
 
-    if (sr > 0) {
-        currentSampleRate_ = sr;
-        desiredSampleRate_ = sr;
-    }
-    if (bs > 0) {
-        currentBufferSize_ = bs;
-        desiredBufferSize_ = bs;
-    }
-    desiredSRBSSet_ = true;
-
-    Log::info("AUDIO", "Synced desired from device: SR=" + juce::String(sr) + " BS=" + juce::String(bs));
+    syncRuntimeRateFromActual(sr, bs, "Desired sync from device", true);
 }
 
 bool AudioEngine::isCurrentAudioDeviceReady()
 {
     auto* device = deviceManager_.getCurrentAudioDevice();
     if (!device) return false;
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
     return device->getCurrentSampleRate() > 0.0
-        && device->getCurrentBufferSizeSamples() > 0;
+        && device->getCurrentBufferSizeSamples() > 0
+        && hasUsableActiveChannels(setup, device);
+}
+
+bool AudioEngine::hasUsableActiveChannels(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                          juce::AudioIODevice* device) const
+{
+    if (!device)
+        return false;
+
+    const bool inputConfigured = setup.inputDeviceName.isNotEmpty()
+        || !device->getInputChannelNames().isEmpty();
+    const bool outputConfigured = !outputNone_.load(std::memory_order_relaxed)
+        && (setup.outputDeviceName.isNotEmpty() || !device->getOutputChannelNames().isEmpty());
+
+    const bool inputReady = channelSelectionReady(inputConfigured,
+                                                  setup.useDefaultInputChannels,
+                                                  setup.inputChannels,
+                                                  device->getActiveInputChannels());
+    const bool outputReady = channelSelectionReady(outputConfigured,
+                                                   setup.useDefaultOutputChannels,
+                                                   setup.outputChannels,
+                                                   device->getActiveOutputChannels());
+
+    return inputReady && outputReady;
+}
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+bool AudioEngine::restoredDeviceTargetsSatisfiedForTest(
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup) const
+{
+    return restoredDeviceTargetsSatisfied(setup);
+}
+
+bool AudioEngine::clearDeviceLossAfterReadyForTest(
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    return clearDeviceLossAfterReady(setup);
+}
+
+bool AudioEngine::hasUsableActiveChannelsForTest(
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+    juce::AudioIODevice* device) const
+{
+    return hasUsableActiveChannels(setup, device);
+}
+#endif
+
+bool AudioEngine::restoredDeviceTargetsSatisfied(
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup) const
+{
+    if (!startupRestorePending_)
+        return true;
+
+    juce::String desiredType;
+    juce::String desiredInput;
+    juce::String desiredOutput;
+    {
+        const juce::SpinLock::ScopedLockType lock(desiredDeviceLock_);
+        desiredType = desiredDeviceType_;
+        desiredInput = desiredInputDevice_;
+        desiredOutput = desiredOutputDevice_;
+    }
+
+    const bool inputMatches = desiredInput.isEmpty() || setup.inputDeviceName == desiredInput;
+    const bool outputMatches = outputNone_.load(std::memory_order_relaxed)
+        || desiredOutput.isEmpty()
+        || setup.outputDeviceName == desiredOutput;
+    const bool typeMatches = desiredType.isEmpty() || getCurrentDeviceType() == desiredType;
+
+    return inputMatches && outputMatches && typeMatches;
+}
+
+bool AudioEngine::clearDeviceLossAfterReady(
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    if (!restoredDeviceTargetsSatisfied(setup)) {
+        deviceLost_.store(true, std::memory_order_relaxed);
+        Log::warn("AUDIO", "Audio device is open, but startup restore target is still pending: current in='"
+            + setup.inputDeviceName + "' out='" + setup.outputDeviceName + "'");
+        return false;
+    }
+
+    deviceLost_.store(false, std::memory_order_relaxed);
+    inputDeviceLost_.store(false, std::memory_order_relaxed);
+    startupRestorePending_ = false;
+    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
+        outputAutoMuted_.store(false, std::memory_order_relaxed);
+        if (!outputNone_.load(std::memory_order_relaxed))
+            outputMuted_.store(false, std::memory_order_relaxed);
+    }
+
+    return true;
+}
+
+bool AudioEngine::markActiveChannelLossIfNeeded(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                                juce::AudioIODevice* device,
+                                                const juce::String& reason)
+{
+    if (hasUsableActiveChannels(setup, device))
+        return false;
+
+    Log::warn("AUDIO", reason + ": no usable active channels");
+    logDeviceSetupSnapshot(reason.toRawUTF8(), device);
+
+    const bool inputConfigured = setup.inputDeviceName.isNotEmpty()
+        || (device && !device->getInputChannelNames().isEmpty());
+    const bool outputConfigured = !outputNone_.load(std::memory_order_relaxed)
+        && (setup.outputDeviceName.isNotEmpty()
+            || (device && !device->getOutputChannelNames().isEmpty()));
+
+    const bool inputReady = device && channelSelectionReady(inputConfigured,
+                                                            setup.useDefaultInputChannels,
+                                                            setup.inputChannels,
+                                                            device->getActiveInputChannels());
+    const bool outputReady = device && channelSelectionReady(outputConfigured,
+                                                             setup.useDefaultOutputChannels,
+                                                             setup.outputChannels,
+                                                             device->getActiveOutputChannels());
+
+    if (inputConfigured && !inputReady)
+        inputDeviceLost_.store(true, std::memory_order_relaxed);
+
+    if (outputConfigured && !outputReady) {
+        outputMuted_.store(true, std::memory_order_relaxed);
+        outputAutoMuted_.store(true, std::memory_order_relaxed);
+    }
+
+    return true;
+}
+
+bool AudioEngine::recoverActiveChannelsWithDriverDefaults(const juce::String& reason)
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    const bool alreadyPending = activeChannelRecoveryPending_.exchange(true, std::memory_order_acq_rel);
+    auto finish = [this, alreadyPending](bool ok) {
+        if (!alreadyPending)
+            activeChannelRecoveryPending_.store(false, std::memory_order_release);
+        return ok;
+    };
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+
+    Log::warn("AUDIO", "Retrying active-channel recovery with driver default channels: " + reason);
+    useDefaultConfiguredChannels(setup, true, !outputNone_.load(std::memory_order_relaxed));
+
+    juce::String result;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        result = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
+
+    if (result.isNotEmpty()) {
+        Log::error("AUDIO", "Active-channel recovery failed: " + result);
+        deviceLost_.store(true, std::memory_order_relaxed);
+        reconnectCooldown_ = 0;
+        return finish(false);
+    }
+
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    deviceManager_.getAudioDeviceSetup(appliedSetup);
+
+    if (!device || device->getCurrentSampleRate() <= 0.0 || device->getCurrentBufferSizeSamples() <= 0) {
+        Log::error("AUDIO", "Active-channel recovery reopened an invalid device");
+        logDeviceSetupSnapshot("Active-channel recovery invalid device", device);
+        deviceLost_.store(true, std::memory_order_relaxed);
+        reconnectCooldown_ = 0;
+        return finish(false);
+    }
+
+    if (markActiveChannelLossIfNeeded(appliedSetup, device, "Active-channel recovery invalid setup")) {
+        deviceLost_.store(true, std::memory_order_relaxed);
+        reconnectCooldown_ = 0;
+        return finish(false);
+    }
+
+    syncRuntimeRateFromActual(device->getCurrentSampleRate(),
+                              device->getCurrentBufferSizeSamples(),
+                              "Active-channel recovery actual rate",
+                              getCurrentDeviceType().containsIgnoreCase("ASIO"));
+    clearDeviceLossAfterReady(appliedSetup);
+    reconnectCooldown_ = 0;
+    reconnectMissCount_ = 0;
+
+    Log::info("AUDIO", "Active-channel recovery ready: " + device->getName());
+    logDeviceSetupSnapshot("Active-channel recovery ready", device);
+    return finish(true);
+}
+
+void AudioEngine::scheduleActiveChannelRecovery(const juce::String& reason)
+{
+    if (activeChannelRecoveryPending_.exchange(true, std::memory_order_acq_rel)) {
+        Log::audit("AUDIO", "Active-channel recovery already pending: " + reason);
+        return;
+    }
+
+    deviceLost_.store(true, std::memory_order_relaxed);
+    auto aliveFlag = alive_;
+    juce::MessageManager::callAsync([this, aliveFlag, reason] {
+        if (!aliveFlag->load())
+            return;
+
+        recoverActiveChannelsWithDriverDefaults(reason);
+        activeChannelRecoveryPending_.store(false, std::memory_order_release);
+        reconnectCooldown_ = 0;
+    });
+}
+
+void AudioEngine::logDeviceSetupSnapshot(const char* reason, juce::AudioIODevice* device)
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    deviceManager_.getAudioDeviceSetup(setup);
+
+    juce::BigInteger activeInput;
+    juce::BigInteger activeOutput;
+    juce::String deviceName = "(none)";
+    juce::String typeName = getCurrentDeviceType();
+    int inputChannelCount = 0;
+    int outputChannelCount = 0;
+
+    if (device) {
+        deviceName = device->getName();
+        typeName = device->getTypeName();
+        activeInput = device->getActiveInputChannels();
+        activeOutput = device->getActiveOutputChannels();
+        inputChannelCount = device->getInputChannelNames().size();
+        outputChannelCount = device->getOutputChannelNames().size();
+    }
+
+    Log::info("AUDIO", juce::String(reason)
+        + ": type='" + typeName
+        + "' device='" + deviceName
+        + "' setupIn='" + setup.inputDeviceName
+        + "' setupOut='" + setup.outputDeviceName
+        + "' activeIn=[" + channelMaskToLogString(activeInput)
+        + "] activeOut=[" + channelMaskToLogString(activeOutput)
+        + "] availableIn=" + juce::String(inputChannelCount)
+        + " availableOut=" + juce::String(outputChannelCount));
+}
+
+void AudioEngine::syncRuntimeRateFromActual(double sampleRate, int bufferSize,
+                                            const char* reason, bool preserveExplicitSampleRate)
+{
+    if (sampleRate <= 0.0 || bufferSize <= 0) {
+        Log::warn("AUDIO", juce::String(reason) + " skipped invalid SR="
+            + juce::String(sampleRate) + " BS=" + juce::String(bufferSize));
+        return;
+    }
+
+    const double requestedSampleRate = desiredSampleRate_;
+    const bool keepRequestedSampleRate = preserveExplicitSampleRate
+        && desiredSRBSSet_
+        && sampleRatesDiffer(requestedSampleRate, sampleRate);
+
+    currentSampleRate_ = sampleRate;
+    currentBufferSize_ = bufferSize;
+
+    if (keepRequestedSampleRate) {
+        Log::warn("AUDIO", juce::String(reason) + ": actual SR="
+            + juce::String(static_cast<int>(sampleRate))
+            + " differs from requested SR="
+            + juce::String(static_cast<int>(requestedSampleRate))
+            + "; preserving requested SR for next restore");
+    } else {
+        desiredSampleRate_ = sampleRate;
+    }
+
+    desiredBufferSize_ = bufferSize;
+    desiredSRBSSet_ = true;
+
+    Log::info("AUDIO", juce::String(reason) + ": actual SR="
+        + juce::String(sampleRate) + " BS=" + juce::String(bufferSize)
+        + " desired SR=" + juce::String(desiredSampleRate_)
+        + " BS=" + juce::String(desiredBufferSize_));
 }
 
 ActionResult AudioEngine::ensureAudioDeviceReady()
@@ -502,6 +872,11 @@ ActionResult AudioEngine::ensureAudioDeviceReady()
     {
         AtomicGuard intentionalGuard(intentionalChange_);
         result = deviceManager_.setAudioDeviceSetup(setup, true);
+        if (result.isNotEmpty()) {
+            Log::warn("AUDIO", "Restore reopen retry with driver default channels after: " + result);
+            useDefaultConfiguredChannels(setup, true, !outputNone_.load(std::memory_order_relaxed));
+            result = deviceManager_.setAudioDeviceSetup(setup, true);
+        }
     }
     if (result.isNotEmpty()) {
         auto msg = "Failed to reopen audio device after restore: " + result;
@@ -510,31 +885,36 @@ ActionResult AudioEngine::ensureAudioDeviceReady()
     }
 
     auto* device = deviceManager_.getCurrentAudioDevice();
-    if (!device || device->getCurrentSampleRate() <= 0.0 || device->getCurrentBufferSizeSamples() <= 0) {
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    deviceManager_.getAudioDeviceSetup(appliedSetup);
+    if (device && device->getCurrentSampleRate() > 0.0 && device->getCurrentBufferSizeSamples() > 0
+        && !hasUsableActiveChannels(appliedSetup, device)) {
+        markActiveChannelLossIfNeeded(appliedSetup, device, "Restore reopen active-channel invalid");
+        if (recoverActiveChannelsWithDriverDefaults("Restore reopen active-channel recovery")) {
+            device = deviceManager_.getCurrentAudioDevice();
+            deviceManager_.getAudioDeviceSetup(appliedSetup);
+        }
+    }
+    if (!device || device->getCurrentSampleRate() <= 0.0 || device->getCurrentBufferSizeSamples() <= 0
+        || !hasUsableActiveChannels(appliedSetup, device)) {
         auto msg = "Audio device still invalid after restore reopen";
         Log::error("AUDIO", msg);
+        logDeviceSetupSnapshot("Restore reopen invalid setup", device);
         return ActionResult::fail(msg);
     }
 
-    currentSampleRate_ = device->getCurrentSampleRate();
-    currentBufferSize_ = device->getCurrentBufferSizeSamples();
-    desiredSampleRate_ = currentSampleRate_;
-    desiredBufferSize_ = currentBufferSize_;
-    desiredSRBSSet_ = true;
-    deviceLost_.store(false, std::memory_order_relaxed);
-    inputDeviceLost_.store(false, std::memory_order_relaxed);
-    startupRestorePending_ = false;
-    if (outputAutoMuted_.load(std::memory_order_relaxed)) {
-        outputAutoMuted_.store(false, std::memory_order_relaxed);
-        if (!outputNone_.load(std::memory_order_relaxed))
-            outputMuted_.store(false, std::memory_order_relaxed);
-    }
+    syncRuntimeRateFromActual(device->getCurrentSampleRate(),
+                              device->getCurrentBufferSizeSamples(),
+                              "Restore reopen actual rate",
+                              getCurrentDeviceType().containsIgnoreCase("ASIO"));
+    clearDeviceLossAfterReady(appliedSetup);
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
 
     Log::info("AUDIO", "Audio device reopened after restore: " + device->getName()
         + " @ " + juce::String(currentSampleRate_.load()) + "Hz / "
         + juce::String(currentBufferSize_.load()) + " samples");
+    logDeviceSetupSnapshot("Restore reopen ready", device);
     return ActionResult::ok();
 }
 
@@ -601,10 +981,16 @@ void AudioEngine::rememberRestoredDeviceTargets(const juce::String& deviceType,
 ActionResult AudioEngine::applyAudioDeviceSetup(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
                                                 const juce::String& context)
 {
+    auto setupToApply = setup;
     juce::String result;
     {
         AtomicGuard intentionalGuard(intentionalChange_);
-        result = deviceManager_.setAudioDeviceSetup(setup, true);
+        result = deviceManager_.setAudioDeviceSetup(setupToApply, true);
+        if (result.isNotEmpty()) {
+            Log::warn("AUDIO", "Device setup retry with driver default channels after: " + result);
+            useDefaultConfiguredChannels(setupToApply, true, !outputNone_.load(std::memory_order_relaxed));
+            result = deviceManager_.setAudioDeviceSetup(setupToApply, true);
+        }
     }
 
     if (result.isNotEmpty()) {
@@ -615,9 +1001,30 @@ ActionResult AudioEngine::applyAudioDeviceSetup(const juce::AudioDeviceManager::
         return ActionResult::fail(msg);
     }
 
-    deviceLost_.store(false, std::memory_order_relaxed);
-    inputDeviceLost_.store(false, std::memory_order_relaxed);
-    startupRestorePending_ = false;
+    if (auto* device = deviceManager_.getCurrentAudioDevice()) {
+        juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+        deviceManager_.getAudioDeviceSetup(appliedSetup);
+        if (device->getCurrentSampleRate() > 0.0 && device->getCurrentBufferSizeSamples() > 0
+            && !hasUsableActiveChannels(appliedSetup, device)) {
+            markActiveChannelLossIfNeeded(appliedSetup, device,
+                                          context.isNotEmpty()
+                                              ? context + " active-channel invalid"
+                                              : juce::String("Audio device setup active-channel invalid"));
+            if (!recoverActiveChannelsWithDriverDefaults(context.isNotEmpty()
+                    ? context + " active-channel recovery"
+                    : juce::String("Audio device setup active-channel recovery"))) {
+                auto msg = context.isNotEmpty()
+                    ? context + " failed: device opened without usable active channels"
+                    : juce::String("Audio device setup failed: no usable active channels");
+                Log::error("AUDIO", msg);
+                return ActionResult::fail(msg);
+            }
+        }
+    }
+
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    deviceManager_.getAudioDeviceSetup(appliedSetup);
+    clearDeviceLossAfterReady(appliedSetup);
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
     return ActionResult::ok();
@@ -765,7 +1172,14 @@ ActionResult AudioEngine::setSampleRate(double sampleRate)
     }
 
     currentSampleRate_ = actual;
-    desiredSampleRate_ = actual;
+    if (getCurrentDeviceType().containsIgnoreCase("ASIO") && sampleRatesDiffer(sampleRate, actual)) {
+        desiredSampleRate_ = sampleRate;
+        Log::warn("AUDIO", "ASIO sample-rate request was not applied; preserving requested SR="
+            + juce::String(static_cast<int>(sampleRate)) + " actual SR="
+            + juce::String(static_cast<int>(actual)));
+    } else {
+        desiredSampleRate_ = actual;
+    }
     desiredSRBSSet_ = true;
     Log::audit("AUDIO", "Sample rate set: requested=" + juce::String(sampleRate)
         + " actual=" + juce::String(actual));
@@ -861,21 +1275,26 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
                 // Build ordered try-list: preferred first, then lastAsio, then rest
                 juce::StringArray tryOrder;
                 if (preferredAsioDevice.isNotEmpty() && devices.contains(preferredAsioDevice))
-                    tryOrder.add(preferredAsioDevice);
-                if (lastAsioDevice_.isNotEmpty() && devices.contains(lastAsioDevice_)
-                    && !tryOrder.contains(lastAsioDevice_))
-                    tryOrder.add(lastAsioDevice_);
+                    addUniqueDevice(tryOrder, preferredAsioDevice);
+                if (lastAsioDevice_.isNotEmpty() && devices.contains(lastAsioDevice_))
+                    addUniqueDevice(tryOrder, lastAsioDevice_);
                 for (auto& d : devices) {
-                    if (!tryOrder.contains(d))
-                        tryOrder.add(d);
+                    addUniqueDevice(tryOrder, d);
                 }
+                Log::info("AUDIO", "ASIO device try order: [" + tryOrder.joinIntoString(", ")
+                    + "] preferred='" + preferredAsioDevice + "' last='" + lastAsioDevice_ + "'");
 
                 // Use snapshot SR/BS if available (known to work on this ASIO device),
                 // otherwise fall back to current values from the old driver.
-                double sr = currentSampleRate_;
-                int bs = currentBufferSize_;
+                double sr = desiredSampleRate_ > 0.0
+                    ? desiredSampleRate_
+                    : currentSampleRate_.load();
+                int bs = desiredBufferSize_ > 0
+                    ? desiredBufferSize_
+                    : currentBufferSize_.load();
                 if (hasSnapshot) {
-                    if (snapIt->second.sampleRate > 0) sr = snapIt->second.sampleRate;
+                    if (!desiredSRBSSet_ && snapIt->second.sampleRate > 0)
+                        sr = snapIt->second.sampleRate;
                     if (snapIt->second.bufferSize > 0) bs = snapIt->second.bufferSize;
                 }
 
@@ -900,13 +1319,32 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
                     auto result = deviceManager_.setAudioDeviceSetup(setup, true);
                     if (result.isNotEmpty()) {
                         Log::warn("AUDIO", "ASIO setup failed (device='" + deviceToUse + "' SR=" + juce::String(sr) + " BS=" + juce::String(bs) + "): " + result);
-                        // Try with device defaults
-                        setup.sampleRate = 0;  // let device choose
-                        setup.bufferSize = 0;
+                        // First relax only the channel mask. If the explicit
+                        // mask was the problem, keep the requested SR/BS so a
+                        // 48k restore does not unnecessarily fall through to a
+                        // driver-chosen 44.1k mode.
+                        useDefaultConfiguredChannels(setup, true, true);
                         result = deviceManager_.setAudioDeviceSetup(setup, true);
+                        if (result.isNotEmpty()) {
+                            Log::warn("AUDIO", "ASIO default-channel retry failed (device='" + deviceToUse + "'): " + result);
+                            // Last resort: let the ASIO driver choose SR/BS as
+                            // well, still using its native channel layout.
+                            setup.sampleRate = 0;
+                            setup.bufferSize = 0;
+                            useDefaultConfiguredChannels(setup, true, true);
+                            result = deviceManager_.setAudioDeviceSetup(setup, true);
+                        }
                         if (result.isNotEmpty()) {
                             Log::warn("AUDIO", "ASIO fallback also failed (device='" + deviceToUse + "'): " + result);
                             continue;  // try next device
+                        }
+                    }
+                    if (auto* opened = deviceManager_.getCurrentAudioDevice()) {
+                        const auto actualSR = opened->getCurrentSampleRate();
+                        if (sampleRatesDiffer(sr, actualSR)) {
+                            Log::warn("AUDIO", "ASIO opened at unexpected sample rate (device='"
+                                + deviceToUse + "' requested SR=" + juce::String(static_cast<int>(sr))
+                                + " actual SR=" + juce::String(static_cast<int>(actualSR)) + ")");
                         }
                     }
                     asioOpened = true;
@@ -974,25 +1412,28 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         else
             setup.outputChannels.setRange(0, 2, true);
         auto restoreErr = deviceManager_.setAudioDeviceSetup(setup, true);
-        if (restoreErr.isNotEmpty())
+        if (restoreErr.isNotEmpty()) {
             Log::warn("AUDIO", "Snapshot restore failed: " + restoreErr);
+            useDefaultConfiguredChannels(setup, true, !outputNone_.load(std::memory_order_relaxed));
+            restoreErr = deviceManager_.setAudioDeviceSetup(setup, true);
+            if (restoreErr.isNotEmpty())
+                Log::warn("AUDIO", "Snapshot default-channel restore failed: " + restoreErr);
+        }
     }
     intentionalChange_.store(false, std::memory_order_release);
 
-    // Update current + desired SR/BS from the ACTUAL device after type switch.
+    // Update current runtime SR/BS from the ACTUAL device after type switch.
     // The device may have opened at a different SR/BS than the snapshot requested
     // (e.g., ASIO ignores our request and uses its global setting).
-    // Syncing desiredSR/BS ensures exportToJSON saves what's actually running,
-    // not the stale snapshot value that may have been rejected by the driver.
+    // For ASIO, preserve an explicit requested SR so accidental 44.1k reports do
+    // not become the next startup target; still save the actual buffer size.
     bool switchedDeviceReady = false;
     if (auto* device = deviceManager_.getCurrentAudioDevice()) {
         auto sr = device->getCurrentSampleRate();
         auto bs = device->getCurrentBufferSizeSamples();
         if (sr > 0.0 && bs > 0) {
-            currentSampleRate_ = sr;
-            currentBufferSize_ = bs;
-            desiredSampleRate_ = sr;
-            desiredBufferSize_ = bs;
+            syncRuntimeRateFromActual(sr, bs, "Driver switch actual rate",
+                                      typeName.containsIgnoreCase("ASIO"));
             switchedDeviceReady = true;
         } else {
             Log::warn("AUDIO", "Driver switch reported invalid SR=" + juce::String(sr)
@@ -1144,6 +1585,7 @@ void AudioEngine::updateXRunTracking()
         std::memset(xrunHistory_, 0, sizeof(xrunHistory_));
         xrunHistoryIdx_ = 0;
         lastXRunBucketTime_ = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+        lastXRunWarningTime_ = 0.0;
         recentXRuns_.store(0, std::memory_order_relaxed);
         return;
     }
@@ -1192,6 +1634,18 @@ void AudioEngine::updateXRunTracking()
         for (int i = 0; i < 60; ++i)
             total += xrunHistory_[i];
         recentXRuns_.store(total, std::memory_order_relaxed);
+
+        if (now - lastXRunWarningTime_ >= 1.0) {
+            lastXRunWarningTime_ = now;
+            Log::warn("AUDIO", "XRun increased: delta=" + juce::String(delta)
+                + " recent60=" + juce::String(total)
+                + " total=" + juce::String(static_cast<juce::int64>(
+                    totalXRunEvents_.load(std::memory_order_relaxed)))
+                + " device='" + device->getName()
+                + "' SR=" + juce::String(device->getCurrentSampleRate())
+                + " BS=" + juce::String(device->getCurrentBufferSizeSamples()));
+            logDeviceSetupSnapshot("XRun device setup", device);
+        }
     }
 }
 
@@ -1621,6 +2075,11 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     s.sampleRate = desiredSR;
                     s.bufferSize = desiredBS;
                     restoreError = deviceManager_.setAudioDeviceSetup(s, true);
+                    if (restoreError.isNotEmpty()) {
+                        Log::warn("AUDIO", "Fallback restore retry with driver default channels after: " + restoreError);
+                        useDefaultConfiguredChannels(s, inAvail, outAvail && !outputNone_.load(std::memory_order_relaxed));
+                        restoreError = deviceManager_.setAudioDeviceSetup(s, true);
+                    }
                 }
 
                 if (restoreError.isNotEmpty()) {
@@ -1653,8 +2112,8 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             auto aliveFlag = alive_;
             auto inName = setup.inputDeviceName;
             auto outName = setup.outputDeviceName;
-            auto sr = setup.sampleRate;
-            auto bs = setup.bufferSize;
+            auto sr = reportedSampleRate;
+            auto bs = reportedBufferSize;
             bool isAsio = device->getTypeName().containsIgnoreCase("ASIO");
             juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs, isAsio] {
                 if (!aliveFlag->load()) return;
@@ -1667,25 +2126,15 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                         desiredOutputDevice_ = outName;
                 }
                 if (isAsio) {
-                    // ASIO: device owns SR/BS globally (shared across all apps).
-                    // ALWAYS sync desiredSR/BS from the device, regardless of
-                    // desiredSRBSSet_. This ensures:
-                    //   1. ASIO control panel BS changes are saved to settings
-                    //   2. Next restart won't force an old BS, avoiding driver
-                    //      restart that disrupts other audio sources
-                    // 3. exportToJSON getDesiredBufferSize() returns the
-                    //      actual ASIO value, not a stale saved value
-                    if (sr > 0.0 && bs > 0) {
-                        desiredSampleRate_ = sr;
-                        desiredBufferSize_ = bs;
-                        desiredSRBSSet_ = true;
-                    }
+                    // ASIO may report a global SR owned by the driver. Keep the
+                    // actual runtime values, but do not let an accidental 44.1k
+                    // report overwrite an explicit 48k settings request.
+                    syncRuntimeRateFromActual(sr, bs, "Device callback actual rate", true);
                 } else if (!desiredSRBSSet_ && sr > 0.0 && bs > 0) {
                     // Non-ASIO first launch (no saved settings): accept device
                     // defaults. Once settings are loaded (desiredSRBSSet_=true),
                     // this branch is skipped and saved values are preserved.
-                    desiredSampleRate_ = sr;
-                    desiredBufferSize_ = bs;
+                    syncRuntimeRateFromActual(sr, bs, "Device callback actual rate", false);
                 }
             });
         }
@@ -1693,6 +2142,14 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     currentSampleRate_ = reportedSampleRate;
     currentBufferSize_ = reportedBufferSize;
+
+    {
+        juce::AudioDeviceManager::AudioDeviceSetup activeSetup;
+        deviceManager_.getAudioDeviceSetup(activeSetup);
+        if (markActiveChannelLossIfNeeded(activeSetup, device, "Device active-channel warning")) {
+            scheduleActiveChannelRecovery("Device active-channel recovery");
+        }
+    }
 
     // Log device capabilities for diagnostics
     {
@@ -1788,6 +2245,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     Log::info("AUDIO", "Device ready: " + device->getName()
         + " @ " + juce::String(currentSampleRate_) + "Hz"
         + " / " + juce::String(currentBufferSize_) + " samples");
+    logDeviceSetupSnapshot("Device ready setup", device);
 }
 
 void AudioEngine::audioDeviceStopped()
@@ -1992,27 +2450,52 @@ void AudioEngine::attemptReconnection()
     setup.sampleRate = desiredSampleRate_;
     setup.bufferSize = desiredBufferSize_;
 
+    auto setupToApply = setup;
     juce::String result;
     {
         AtomicGuard intentionalGuard(intentionalChange_);
-        result = deviceManager_.setAudioDeviceSetup(setup, true);
+        result = deviceManager_.setAudioDeviceSetup(setupToApply, true);
+        if (result.isNotEmpty()) {
+            Log::warn("AUDIO", "Reconnection retry with driver default channels after: " + result);
+            useDefaultConfiguredChannels(setupToApply, true, !outputNone_.load(std::memory_order_relaxed));
+            result = deviceManager_.setAudioDeviceSetup(setupToApply, true);
+        }
     }
     if (result.isEmpty()) {
-        // Explicitly clear audioDeviceAboutToStart may keep it true
-        // due to ASIO device name mismatch (single device vs desired I/O names)
-        deviceLost_.store(false, std::memory_order_relaxed);
-        inputDeviceLost_.store(false, std::memory_order_relaxed);
-        if (outputAutoMuted_.load(std::memory_order_relaxed)) {
-            outputAutoMuted_.store(false, std::memory_order_relaxed);
-            // Keep outputMuted_ true if user intentionally selected "None"
-            if (!outputNone_.load(std::memory_order_relaxed))
-                outputMuted_.store(false, std::memory_order_relaxed);
+        auto* device = deviceManager_.getCurrentAudioDevice();
+        juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+        deviceManager_.getAudioDeviceSetup(appliedSetup);
+        bool readyAfterReconnect = device
+            && device->getCurrentSampleRate() > 0.0
+            && device->getCurrentBufferSizeSamples() > 0
+            && hasUsableActiveChannels(appliedSetup, device);
+
+        if (!readyAfterReconnect && device
+            && device->getCurrentSampleRate() > 0.0
+            && device->getCurrentBufferSizeSamples() > 0) {
+            markActiveChannelLossIfNeeded(appliedSetup, device, "Reconnection active-channel invalid");
+            readyAfterReconnect = recoverActiveChannelsWithDriverDefaults("Reconnection active-channel recovery");
+            device = deviceManager_.getCurrentAudioDevice();
+            deviceManager_.getAudioDeviceSetup(appliedSetup);
         }
-        startupRestorePending_ = false;
+
+        if (!readyAfterReconnect) {
+            Log::error("AUDIO", "Reconnection opened an invalid or zero-active device");
+            logDeviceSetupSnapshot("Reconnection invalid setup", device);
+            deviceLost_.store(true, std::memory_order_relaxed);
+            reconnectCooldown_ = 0;
+            return;
+        }
+
+        if (!clearDeviceLossAfterReady(appliedSetup)) {
+            reconnectCooldown_ = 0;
+            reconnectMissCount_ = 0;
+            return;
+        }
         reconnectCooldown_ = 0;
         reconnectMissCount_ = 0;
-        Log::info("AUDIO", "Device reconnected: " + setup.inputDeviceName + " / " + setup.outputDeviceName);
-        Log::audit("AUDIO", "Reconnection success: SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
+        Log::info("AUDIO", "Device reconnected: " + setupToApply.inputDeviceName + " / " + setupToApply.outputDeviceName);
+        Log::audit("AUDIO", "Reconnection success: SR=" + juce::String(setupToApply.sampleRate) + " BS=" + juce::String(setupToApply.bufferSize));
         pushNotification("Device reconnected", NotificationLevel::Info);
         if (onDeviceReconnected) onDeviceReconnected();
     } else {

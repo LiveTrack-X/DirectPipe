@@ -156,6 +156,36 @@ PresetManager::PresetManager(AudioEngine& engine)
     loadSlotNames();
 }
 
+juce::String PresetManager::formatSlotForLog(int slotIndex)
+{
+    if (slotIndex < 0)
+        return "none";
+    if (slotIndex == 5)
+        return "Auto(5)";
+    if (slotIndex >= 0 && slotIndex < 5)
+        return juce::String::charToString(slotLabel(slotIndex)) + "(" + juce::String(slotIndex) + ")";
+    return "invalid(" + juce::String(slotIndex) + ")";
+}
+
+void PresetManager::setActiveSlotInternal(int slotIndex, const char* reason)
+{
+    const int previous = activeSlot_;
+    activeSlot_ = slotIndex;
+
+    if (previous != activeSlot_) {
+        juce::String message = "[PRESET] Active slot changed: "
+            + formatSlotForLog(previous) + " -> " + formatSlotForLog(activeSlot_);
+        if (reason != nullptr && reason[0] != '\0')
+            message += " (" + juce::String(reason) + ")";
+        juce::Logger::writeToLog(message);
+    }
+}
+
+void PresetManager::setActiveSlot(int slotIndex)
+{
+    setActiveSlotInternal(slotIndex, "setActiveSlot");
+}
+
 bool PresetManager::savePreset(const juce::File& file)
 {
     auto json = exportToJSON();
@@ -331,7 +361,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
     // Restore active slot (clamp to valid range: -1 to kNumSlots-1, i.e. -1 to 5)
     if (root->hasProperty("activeSlot")) {
         int slot = static_cast<int>(root->getProperty("activeSlot"));
-        activeSlot_ = juce::jlimit(-1, kNumSlots - 1, slot);
+        setActiveSlotInternal(juce::jlimit(-1, kNumSlots - 1, slot), "importFromJSON activeSlot");
     }
 
     // Pre-set SR/BS before device type switch so the new driver opens with
@@ -371,9 +401,10 @@ bool PresetManager::importFromJSON(const juce::String& json)
     // SR/BS restore policy: ASIO vs Non-ASIO
     //
     // ASIO: device owns SR/BS globally. All apps sharing the device see the
-    // same SR/BS. Forcing our saved values would restart the ASIO driver and
-    // disrupt other audio sources (DAWs, media players, voice chat, etc.).
-    // Accept the device's current SR/BS via syncDesiredFromDevice().
+    // same SR/BS. Forcing saved BS would restart the ASIO driver and disrupt
+    // other audio sources (DAWs, media players, voice chat, etc.).
+    // syncDesiredFromDevice() accepts the actual BS, but preserves an explicit
+    // requested SR if the driver reports a mismatched one (e.g. 48k -> 44.1k).
     //
     // Non-ASIO (WASAPI/CoreAudio/ALSA): SR/BS is per-app. Other apps are
     // unaffected by our changes. Safe to force saved values.
@@ -454,35 +485,25 @@ bool PresetManager::importFromJSON(const juce::String& json)
         auto maskResult = engine_.applyAudioDeviceSetup(setup, "Channel mask restore");
         if (!maskResult) {
             juce::Logger::writeToLog("[PRESET] " + maskResult.message);
-            // Retry with minimal explicit masks, then driver defaults as final fallback.
-            auto retrySetup = setup;
+            // Retry with driver defaults so stereo devices stay stereo and mono
+            // devices can still open through their native default layout.
+            auto defaultSetup = setup;
             bool hasExplicitMask = false;
             if (root->hasProperty("inputChannelMask")) {
-                retrySetup.useDefaultInputChannels = false;
-                retrySetup.inputChannels.clear();
-                retrySetup.inputChannels.setBit(0);
+                defaultSetup.useDefaultInputChannels = true;
+                defaultSetup.inputChannels.clear();
                 hasExplicitMask = true;
             }
             if (root->hasProperty("outputChannelMask")) {
-                retrySetup.useDefaultOutputChannels = false;
-                retrySetup.outputChannels.clear();
-                retrySetup.outputChannels.setBit(0);
+                defaultSetup.useDefaultOutputChannels = true;
+                defaultSetup.outputChannels.clear();
                 hasExplicitMask = true;
             }
 
             if (hasExplicitMask) {
-                auto retryResult = engine_.applyAudioDeviceSetup(retrySetup, "Channel mask minimal fallback");
-                if (!retryResult) {
-                    juce::Logger::writeToLog("[PRESET] " + retryResult.message);
-                    auto defaultSetup = retrySetup;
-                    if (root->hasProperty("inputChannelMask"))
-                        defaultSetup.useDefaultInputChannels = true;
-                    if (root->hasProperty("outputChannelMask"))
-                        defaultSetup.useDefaultOutputChannels = true;
-                    auto defaultResult = engine_.applyAudioDeviceSetup(defaultSetup, "Channel mask default fallback");
-                    if (!defaultResult)
-                        juce::Logger::writeToLog("[PRESET] " + defaultResult.message);
-                }
+                auto defaultResult = engine_.applyAudioDeviceSetup(defaultSetup, "Channel mask default fallback");
+                if (!defaultResult)
+                    juce::Logger::writeToLog("[PRESET] " + defaultResult.message);
             }
         }
     }
@@ -685,9 +706,57 @@ bool PresetManager::cachedSlotMatchesTargets(const PluginPreloadCache::CachedSlo
 
         if (target.name != entry.name || target.path != entry.path)
             return false;
+
+        if (target.hasDesc && entry.desc.name.isNotEmpty()) {
+            if (target.desc.uniqueId != entry.desc.uniqueId ||
+                target.desc.fileOrIdentifier != entry.desc.fileOrIdentifier ||
+                target.desc.pluginFormatName != entry.desc.pluginFormatName)
+                return false;
+        }
     }
 
     return true;
+}
+
+std::vector<VSTChain::PreloadedPlugin> PresetManager::buildPreloadedPluginsFromCache(
+    PluginPreloadCache::CachedSlot& cached,
+    std::vector<TargetPlugin>& freshTargets)
+{
+    std::vector<VSTChain::PreloadedPlugin> preloaded;
+    preloaded.reserve(cached.entries.size());
+
+    for (size_t i = 0; i < cached.entries.size(); ++i) {
+        auto& ce = cached.entries[i];
+
+        VSTChain::PreloadedPlugin pp;
+        pp.instance = std::move(ce.instance);
+        pp.request.desc = ce.desc;
+        pp.request.name = ce.name;
+        pp.request.path = ce.path;
+        pp.request.bypassed = ce.bypassed;
+        pp.request.stateData = std::move(ce.stateData);
+        pp.request.hasState = ce.hasState && pp.request.stateData.getSize() > 0;
+
+        // cachedSlotMatchesTargets() validates exact order before this helper is
+        // used. Consume fresh state by instance index so duplicate plugin names
+        // do not all steal the first matching target's moved-out state block.
+        if (i < freshTargets.size()) {
+            auto& ft = freshTargets[i];
+            if (ft.type == PluginSlot::Type::VST &&
+                ft.name == ce.name &&
+                ft.path == ce.path) {
+                if (ft.hasDesc)
+                    pp.request.desc = ft.desc;
+                pp.request.bypassed = ft.bypassed;
+                pp.request.stateData = ft.stateData;
+                pp.request.hasState = ft.hasState && pp.request.stateData.getSize() > 0;
+            }
+        }
+
+        preloaded.push_back(std::move(pp));
+    }
+
+    return preloaded;
 }
 
 void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
@@ -933,7 +1002,7 @@ bool PresetManager::saveSlot(int slotIndex)
     // DO NOT replace with file.replaceWithText() that can lose data on crash.
     bool ok = atomicWriteFile(file, json);
     if (ok) {
-        activeSlot_ = slotIndex;
+        setActiveSlotInternal(slotIndex, "saveSlot");
         // Invalidate cache only if chain STRUCTURE changed (names/paths/order).
         // Parameter-only changes (bypass, state) don't need invalidation because
         // loadSlotAsync re-reads fresh state from the file at load time.
@@ -980,7 +1049,7 @@ bool PresetManager::loadSlot(int slotIndex)
 
     bool ok = importChainFromJSON(json);
     if (ok) {
-        activeSlot_ = slotIndex;
+        setActiveSlotInternal(slotIndex, "loadSlot");
         // Read slot name from file
         auto parsed = juce::JSON::parse(json);
         if (auto* root = parsed.getDynamicObject()) {
@@ -1051,7 +1120,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
     if (isSameChain(targets, chain)) {
         applyFastPath(targets, chain);
         juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex)) + ": fast path (" + juce::String(targets.size()) + " plugins)");
-        activeSlot_ = slotIndex;
+        setActiveSlotInternal(slotIndex, "loadSlotAsync fast path");
         if (onComplete) onComplete(true);
         // Defer preload to avoid blocking message thread
         auto alivePreload = alive_;
@@ -1097,53 +1166,33 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
             // Request preload stop (non-blocking) thread will finish current plugin then exit
             preloadCache_.requestCancel();
 
-            std::vector<VSTChain::PreloadedPlugin> preloaded;
-            for (auto& ce : cached->entries) {
-                VSTChain::PreloadedPlugin pp;
-                pp.instance = std::move(ce.instance);
-                pp.request.desc = ce.desc;
-                pp.request.name = ce.name;
-                pp.request.path = ce.path;
-                pp.request.bypassed = ce.bypassed;
-
-                // Use fresh state from file if available (matches by name)
-                bool foundFresh = false;
-                for (auto& ft : freshTargets) {
-                    if (ft.name == ce.name && ft.path == ce.path) {
-                        pp.request.stateData = std::move(ft.stateData);
-                        pp.request.hasState = ft.hasState;
-                        pp.request.bypassed = ft.bypassed;
-                        foundFresh = true;
-                        break;
-                    }
-                }
-                if (!foundFresh) {
-                    pp.request.stateData = std::move(ce.stateData);
-                    pp.request.hasState = ce.hasState;
-                }
-                preloaded.push_back(std::move(pp));
-            }
+            auto preloaded = buildPreloadedPluginsFromCache(*cached, freshTargets);
 
             int expectedCount = static_cast<int>(preloaded.size());
             juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex))
                 + ": cache hit (" + juce::String(expectedCount) + " plugins)");
 
-            chain.replaceChainWithPreloaded(std::move(preloaded),
+            const bool swapped = chain.replaceChainWithPreloaded(std::move(preloaded),
                 [this, slotIndex, expectedCount, onComplete]() {
-                    activeSlot_ = slotIndex;
+                    setActiveSlotInternal(slotIndex, "loadSlotAsync cache");
                     bool allLoaded = (engine_.getVSTChain().getPluginCount() == expectedCount);
                     if (onComplete) onComplete(allLoaded);
                 });
-
-            // Defer preload restart triggerPreload is non-blocking (old thread
-            // joined on new preload thread, not message thread).
-            auto alivePreload = alive_;
-            juce::MessageManager::callAsync([this, alivePreload]() {
-                if (!alivePreload->load()) return;
-                if (suppressPreload_.load()) return;  // async load in progress, skip
-                triggerPreload();
-            });
-            return;
+            if (!swapped) {
+                Log::audit("PRESET", "Cache swap failed for slot " + juce::String(slotIndex)
+                    + " - using async load path");
+                cached.reset();
+            } else {
+                // Defer preload restart triggerPreload is non-blocking (old thread
+                // joined on new preload thread, not message thread).
+                auto alivePreload = alive_;
+                juce::MessageManager::callAsync([this, alivePreload]() {
+                    if (!alivePreload->load()) return;
+                    if (suppressPreload_.load()) return;  // async load in progress, skip
+                    triggerPreload();
+                });
+                return;
+            }
         }
     }
 
@@ -1199,7 +1248,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
     chain.replaceChainAsync(std::move(requests),
         [this, slot, expectedCount, onComplete, aliveFlag]() {
             if (!aliveFlag->load()) return;
-            activeSlot_ = slot;
+            setActiveSlotInternal(slot, "loadSlotAsync async");
             // Report failure if some plugins failed to load (prevents auto-save of incomplete chain)
             bool allLoaded = (engine_.getVSTChain().getPluginCount() == expectedCount);
             if (!allLoaded)
@@ -1258,7 +1307,7 @@ bool PresetManager::deleteSlot(int slotIndex)
     if (ok) {
         // If we deleted the active slot, clear activeSlot
         if (activeSlot_ == slotIndex)
-            activeSlot_ = -1;
+            setActiveSlotInternal(-1, "deleteSlot");
         preloadCache_.invalidateSlot(slotIndex);
         slotOccupiedCache_[static_cast<size_t>(slotIndex)] = false;
         slotNames_[static_cast<size_t>(slotIndex)] = {};
@@ -1324,7 +1373,7 @@ void PresetManager::clearPreloadCache()
 
 void PresetManager::clearRuntimeSlotState()
 {
-    activeSlot_ = -1;
+    setActiveSlotInternal(-1, "clearRuntimeSlotState");
     slotOccupiedCache_.fill(false);
     for (auto& name : slotNames_)
         name = {};

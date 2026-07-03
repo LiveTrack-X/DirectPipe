@@ -1,11 +1,40 @@
 // tests/test_preset_manager.cpp
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
-#include "UI/PresetSlotBar.h"
+#include <cstring>
+
 #include "UI/PresetManager.h"
+#include "UI/PresetSlotBar.h"
 #include "Util/AtomicFileIO.h"
 
 using namespace directpipe;
+
+namespace {
+
+juce::MemoryBlock blockFromText(const char* text)
+{
+    return juce::MemoryBlock(text, std::strlen(text));
+}
+
+juce::String blockToString(const juce::MemoryBlock& block)
+{
+    return juce::String::fromUTF8(static_cast<const char*>(block.getData()),
+                                  static_cast<int>(block.getSize()));
+}
+
+juce::PluginDescription makeDescription(const juce::String& name,
+                                        const juce::String& path,
+                                        int uniqueId)
+{
+    juce::PluginDescription desc;
+    desc.name = name;
+    desc.fileOrIdentifier = path;
+    desc.uniqueId = uniqueId;
+    desc.pluginFormatName = "VST3";
+    return desc;
+}
+
+} // namespace
 
 // Test at JSON/file level — no AudioEngine needed for most tests
 class PresetManagerTest : public ::testing::Test {
@@ -162,6 +191,64 @@ TEST_F(PresetManagerTest, CacheInvalidationDuringAutosave) {
     EXPECT_FALSE(slotFile.existsAsFile());
     auto parsed = juce::JSON::parse(file.loadFileAsString());
     EXPECT_TRUE(parsed.isObject());
+}
+
+TEST_F(PresetManagerTest, CacheHitDuplicatePluginsConsumesFreshStateByIndex) {
+    constexpr const char* pluginName = "reafir_standalone";
+    constexpr const char* pluginPath = "/fake/reafir_standalone.vst3";
+
+    PluginPreloadCache::CachedSlot cached;
+    cached.entries.resize(2);
+    for (auto& entry : cached.entries) {
+        entry.name = pluginName;
+        entry.path = pluginPath;
+        entry.hasState = true;
+        entry.stateData = blockFromText("cached-stale-state");
+    }
+
+    std::vector<PresetManager::TargetPlugin> freshTargets(2);
+    for (auto& target : freshTargets) {
+        target.name = pluginName;
+        target.path = pluginPath;
+        target.type = PluginSlot::Type::VST;
+        target.hasState = true;
+    }
+    freshTargets[0].bypassed = true;
+    freshTargets[0].stateData = blockFromText("fresh-first-state");
+    freshTargets[1].bypassed = false;
+    freshTargets[1].stateData = blockFromText("fresh-second-state");
+
+    auto preloaded = PresetManager::buildPreloadedPluginsFromCache(cached, freshTargets);
+
+    ASSERT_EQ(preloaded.size(), 2u);
+    EXPECT_TRUE(preloaded[0].request.hasState);
+    EXPECT_TRUE(preloaded[1].request.hasState);
+    EXPECT_EQ(blockToString(preloaded[0].request.stateData), "fresh-first-state");
+    EXPECT_EQ(blockToString(preloaded[1].request.stateData), "fresh-second-state");
+    EXPECT_EQ(blockToString(freshTargets[0].stateData), "fresh-first-state");
+    EXPECT_EQ(blockToString(freshTargets[1].stateData), "fresh-second-state");
+    EXPECT_TRUE(preloaded[0].request.bypassed);
+    EXPECT_FALSE(preloaded[1].request.bypassed);
+}
+
+TEST_F(PresetManagerTest, CacheRejectsSameNamePathWithDifferentDescription) {
+    constexpr const char* pluginName = "same_plugin_name";
+    constexpr const char* pluginPath = "/fake/shared-plugin.vst3";
+
+    PluginPreloadCache::CachedSlot cached;
+    cached.entries.resize(1);
+    cached.entries[0].name = pluginName;
+    cached.entries[0].path = pluginPath;
+    cached.entries[0].desc = makeDescription(pluginName, pluginPath, 1001);
+
+    std::vector<PresetManager::TargetPlugin> freshTargets(1);
+    freshTargets[0].name = pluginName;
+    freshTargets[0].path = pluginPath;
+    freshTargets[0].type = PluginSlot::Type::VST;
+    freshTargets[0].hasDesc = true;
+    freshTargets[0].desc = makeDescription(pluginName, pluginPath, 2002);
+
+    EXPECT_FALSE(PresetManager::cachedSlotMatchesTargets(cached, freshTargets));
 }
 
 TEST_F(PresetManagerTest, SlotNamingKorean) {

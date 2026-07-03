@@ -308,7 +308,7 @@ public:
      * @param preloaded Pre-created plugin instances with metadata.
      * @param onComplete Called after swap is complete.
      */
-    void replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
+    bool replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
                                    std::function<void()> onComplete);
 
     /** @brief True while async chain loading is in progress. */

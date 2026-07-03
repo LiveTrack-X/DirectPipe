@@ -157,6 +157,11 @@ MainComponent::MainComponent(bool enableExternalControls)
         if (loadingSlot_) return;
 
         int autoIdx = PresetSlotBar::kAutoSlotIndex;
+        if (presetManager_) {
+            juce::Logger::writeToLog("[PRESET] GUI auto click: "
+                + PresetManager::formatSlotForLog(presetManager_->getActiveSlot())
+                + " -> " + PresetManager::formatSlotForLog(autoIdx));
+        }
 
         // Already on Auto slot just save current state
         if (presetManager_ && presetManager_->getActiveSlot() == autoIdx) {
@@ -864,6 +869,11 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                 if (menuResult == 1) {
                     if (loadingSlot_) return;
                     loadingSlot_ = true;
+                    if (presetManager_) {
+                        juce::Logger::writeToLog("[PRESET] GUI auto reset: "
+                            + PresetManager::formatSlotForLog(presetManager_->getActiveSlot())
+                            + " -> " + PresetManager::formatSlotForLog(PresetSlotBar::kAutoSlotIndex));
+                    }
 
                     // Reset: clear chain, add default processors, save
                     auto& chain = audioEngine_.getVSTChain();

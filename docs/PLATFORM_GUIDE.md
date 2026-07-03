@@ -10,13 +10,13 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 
 | 플랫폼 / Platform | 릴리즈 상태 / Release status | 빌드/배포 상태 / Build & distribution | 검증 메모 / Validation notes |
 |---|---|---|---|
-| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release ZIP 및 CI `windows-latest` | v4.1.0 릴리즈 전 로컬 검증 완료. WASAPI/ASIO 문제 대응의 기준 플랫폼. |
+| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release ZIP 및 CI `windows-latest` | v4.1.1 로컬 Windows Release 검증 완료. WASAPI/ASIO 문제 대응의 기준 플랫폼. |
 | **macOS 10.15+ universal** | 베타 / Beta | CI `macos-14` DMG | CMake/CI 빌드 경로와 CoreAudio 구현은 유지. 실기기 오디오 검증 범위는 제한적. |
 | **Linux x86_64** | 실험적 / Experimental | CI `ubuntu-24.04` tar.gz | ALSA/JACK 경로는 유지. 배포판/데스크톱/오디오 서버 조합별 편차가 있을 수 있음. |
 | **Stream Deck plugin** | 별도 크로스 플랫폼 패키지 / Separate cross-platform package | CI `ubuntu-latest` `.streamDeckPlugin` | Manifest 기준 Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
 
-> v4.1.0 릴리즈 문서의 "지원"은 소스/CI 빌드 경로와 플랫폼 구현 존재를 의미합니다. 안정도와 실기기 검증 수준은 위 표의 상태를 따릅니다.
-> In v4.1.0 release docs, "supported" means the source/CI path and platform implementation exist. Release maturity and hardware validation follow the table above.
+> v4.1.1 릴리즈 문서의 "지원"은 소스/CI 빌드 경로와 플랫폼 구현 존재를 의미합니다. 안정도와 실기기 검증 수준은 위 표의 상태를 따릅니다.
+> In v4.1.1 release docs, "supported" means the source/CI path and platform implementation exist. Release maturity and hardware validation follow the table above.
 
 ## 플랫폼별 기능 비교 / Feature Comparison
 
@@ -50,11 +50,11 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 - **DirectSound** — 레거시, 사용 비추천
 - **ASIO** — 전문 오디오 인터페이스용, 최저 지연
 
-> **ASIO SR/BS 정책**: ASIO 장치는 SR(샘플레이트)/BS(버퍼 크기)를 전역으로 소유합니다 — 장치를 공유하는 모든 앱에 영향을 줍니다. DirectPipe는 시작 시 저장된 SR/BS를 ASIO에 강제하지 않고, 장치가 보고하는 현재 값을 수용합니다. 이유: SR/BS를 강제하면 ASIO 드라이버가 재시작되어 DAW, 미디어 플레이어 등 다른 앱의 오디오가 끊깁니다. ASIO 컨트롤 패널에서 BS를 변경하면 DirectPipe 설정에 자동으로 반영됩니다. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값이 안전하게 적용됩니다 (다른 앱에 영향 없음).
+> **ASIO SR/BS 정책**: ASIO 장치는 SR(샘플레이트)/BS(버퍼 크기)를 전역으로 소유합니다 — 장치를 공유하는 모든 앱에 영향을 줍니다. DirectPipe는 ASIO 시작/복원 시 저장된 BS를 강제하지 않고 실제 BS를 수용하지만, 저장 파일에 명시된 SR(예: 48k)이 있고 드라이버가 다른 SR(예: 44.1k)을 보고하면 그 SR을 다음 복원 대상으로 덮어쓰지 않습니다. ASIO 컨트롤 패널에서 BS를 변경하면 DirectPipe 설정에 자동으로 반영됩니다. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값이 안전하게 적용됩니다 (다른 앱에 영향 없음).
 >
 > **시작 흐름**: WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 전환 시도. ASIO 실패 시 WASAPI에 남아있음.
 >
-> **ASIO SR/BS Policy**: ASIO devices own SR (sample rate) / BS (buffer size) globally — affects all apps sharing the device. On startup, DirectPipe does NOT force saved SR/BS on ASIO; instead it accepts whatever the device currently reports. Reason: forcing SR/BS would restart the ASIO driver, disrupting audio in DAWs, media players, and other apps. When BS is changed from the ASIO control panel, DirectPipe automatically saves the new value to settings. WASAPI/CoreAudio/ALSA use per-app SR/BS, so saved values are safely applied (no impact on other apps).
+> **ASIO SR/BS Policy**: ASIO devices own SR (sample rate) / BS (buffer size) globally — affects all apps sharing the device. On ASIO startup/restore, DirectPipe accepts the actual buffer size without forcing a driver restart, but if settings explicitly requested a sample rate (for example 48k) and the driver reports a different rate (for example 44.1k), the requested SR is preserved for the next restore. ASIO control-panel BS changes are saved. WASAPI/CoreAudio/ALSA use per-app SR/BS, so saved values are safely applied (no impact on other apps).
 >
 > **Startup flow**: Opens WASAPI first (safe fallback) → loads saved driver type from settings → switches to ASIO. Falls back to WASAPI if ASIO fails.
 

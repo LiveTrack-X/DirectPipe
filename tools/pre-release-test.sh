@@ -123,6 +123,13 @@ fi
 echo ""
 
 if $VERSION_ONLY; then
+  for r in "${RESULTS[@]}"; do
+    status="${r#*|}"
+    if [[ "$status" == FAIL* ]]; then
+      echo "Done (--version-only): FAIL"
+      exit 1
+    fi
+  done
   echo "Done (--version-only)"
   exit 0
 fi

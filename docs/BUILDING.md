@@ -1,13 +1,13 @@
 # Building DirectPipe / 빌드 가이드
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적입니다. v4.1.0 로컬 릴리즈 전 검증은 Windows에서 완료했으며, macOS/Linux는 CI 빌드와 소스 경로를 유지하지만 실기기 오디오 테스트가 제한적입니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. macOS 10.15+ universal is beta. Linux x86_64 is experimental. v4.1.0 local pre-release verification was completed on Windows; macOS/Linux keep CI and source support but have limited real-hardware audio testing.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적입니다. v4.1.1 로컬 Windows Release 검증은 완료했으며, macOS/Linux는 CI 빌드와 소스 경로를 유지하지만 실기기 오디오 테스트가 제한적입니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. macOS 10.15+ universal is beta. Linux x86_64 is experimental. v4.1.1 local Windows Release verification was completed; macOS/Linux keep CI and source support but have limited real-hardware audio testing.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Locally verified for v4.1.0 pre-release. |
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Locally verified for v4.1.1 Release. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -198,9 +198,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Current v4.1.0 test inventory: **345 registered tests** across 32 test suites (52 core in 6 suites + 293 host in 26 suites). In the current Windows verification run, 2 host tests are environment-dependent skips.
+Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Current v4.1.1 test inventory: **362 registered tests** across 32 test suites (52 core in 6 suites + 310 host in 26 suites). In the current Windows verification run, 2 host tests are environment-dependent skips.
 
-두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 현재 v4.1.0 기준 총 **345개 등록 테스트**, 32개 테스트 스위트(코어 52개/6스위트 + 호스트 293개/26스위트)입니다. 현재 Windows 검증 기준으로 호스트 테스트 2개는 환경 의존 skip입니다.
+두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 현재 v4.1.1 기준 총 **362개 등록 테스트**, 32개 테스트 스위트(코어 52개/6스위트 + 호스트 310개/26스위트)입니다. 현재 Windows 검증 기준으로 호스트 테스트 2개는 환경 의존 skip입니다.
 
 ### directpipe-tests (Core)
 
@@ -223,14 +223,14 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 | ActionResultTest | 12 | ActionResult data type: ok/fail factory methods, bool conversion, message propagation / ActionResult 데이터 타입 테스트 |
 | ControlMappingTest | 16 | Hotkey/MIDI/server config serialization roundtrip, defaults, error handling / 핫키/MIDI/서버 설정 직렬화, 기본값, 오류 처리 |
 | NotificationQueueTest | 10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐 |
-| PresetManagerTest + constants | 30 | Preset slot save/load, import/export, Auto slot, factory reset, constants / 프리셋 슬롯 저장/로드, 가져오기/내보내기, Auto 슬롯, 상수 |
-| SettingsExporterTest | 10 | Settings export/import roundtrip, migration / 설정 내보내기/가져오기, 마이그레이션 |
+| PresetManagerTest + constants | 33 | Preset slot save/load, import/export, cache-hit duplicate-plugin guards, Auto slot, factory reset, constants / 프리셋 슬롯 저장/로드, 가져오기/내보내기, 캐시 hit 중복 플러그인 보호, Auto 슬롯, 상수 |
+| SettingsExporterTest | 14 | Settings export/import roundtrip, `.dpbackup` active-slot preservation, full-backup exact restore and backup fallback / 설정 내보내기/가져오기, `.dpbackup` active-slot 보존, full-backup 정확 복원과 backup fallback |
 | SettingsAutosaverTest | 11 | Dirty-flag + debounce auto-save, startup guard restore paths / 더티 플래그 + 디바운스 자동 저장, 시작 보호 복원 경로 |
 | OutputRouterTest | 10 | Monitor output routing, mute state, inactive meter reset / 모니터 출력 라우팅, 뮤트 상태, 비활성 meter reset |
-| AudioEngineTest | 15 | Driver snapshot, device reconnection, XRun, buffer fallback, sample-rate propagation / 드라이버 스냅샷, 장치 재연결, XRun, 버퍼 폴백, 샘플레이트 전파 |
+| AudioEngineTest | 17 | Driver snapshot, device reconnection, zero-active-channel recovery, XRun, buffer fallback, sample-rate propagation / 드라이버 스냅샷, 장치 재연결, zero-active-channel 복구, XRun, 버퍼 폴백, 샘플레이트 전파 |
 | AudioRingBufferTest | 8 | Lock-free audio ring buffer reset/discard and fractional interpolation behavior / 오디오 링 버퍼 reset/discard 및 fractional interpolation 동작 |
 | MonitorDriftPolicyTest | 10 | Adaptive monitor target, PLL ratio, and emergency trim policy / adaptive 모니터 target, PLL ratio, emergency trim 정책 |
-| MonitorOutputTest | 4 | Monitor callback priming, runtime block-size re-prime, underrun re-prime, and normal drift no-trim regression / MonitorOutput 콜백 상태 회귀 |
+| MonitorOutputTest | 6 | Monitor callback priming, zero-active-output guard, runtime block-size re-prime, underrun re-prime, and normal drift no-trim regression / MonitorOutput 콜백 상태 회귀 |
 | DeviceStateTest | 10 | Device state FSM and invalid-state guards / 장치 상태 FSM 및 invalid-state 방어 |
 | MidiHandlerTest | 8 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
@@ -238,7 +238,7 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 | BuiltinFilterTest | 8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
 | BuiltinNoiseRemovalTest + FIFO | 8 | RNNoise VAD thresholds, non-48k passthrough, latency, FIFO overflow guard / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시, FIFO overflow 보호 |
 | BuiltinAutoGainTest | 8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
-| VSTChainTest | 9 | VST chain operations, plugin ordering / VST 체인 연산, 플러그인 순서 |
+| VSTChainTest | 10 | VST chain operations, plugin ordering, cached-swap partial-failure guard / VST 체인 연산, 플러그인 순서, cached swap 부분 실패 보호 |
 | PlatformTest | 7 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
 
 Host test source files: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_monitor_output.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.

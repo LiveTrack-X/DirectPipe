@@ -2,6 +2,33 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## DirectPipe v4.1.1
+
+v4.1.1 is a host-side hotfix after v4.1.0. It fixes the issue #4 preset-slot cache crash with duplicate VST plugins, tightens settings backup/full restore behavior, and includes audio-device restore hardening for channel fallback, ASIO sample-rate preservation, and zero-active-channel recovery.
+
+v4.1.0 이후 호스트 쪽 안정화 핫픽스입니다. issue #4 프리셋 슬롯 캐시 크래시를 수정하고, 설정/전체 백업 복원 정확도와 시작 시 저장 장치 복원 대기, 채널 fallback, ASIO 샘플레이트 보존, zero-active-channel 복구를 강화했습니다.
+
+### Highlights / 주요 변경
+- Duplicate-plugin preset cache hits now refresh state by plugin index and reject descriptor mismatches.
+- Failed cached graph swaps keep the old chain alive, preserve fresh saved plugin state for fallback, and fall back to normal async loading.
+- `.dpbackup` restore no longer changes `activeSlot` or imports chain state.
+- `.dpfullbackup` restore is exact: missing slots are removed, restored slots clear `.bak`/`.backup`/`.tmp` and legacy numeric slot families, failed audio-settings imports are reported, and slot/preload caches are refreshed.
+- Device restore/reconnect paths retry driver-default channels when explicit masks fail, only clear startup restore pending after saved targets are active, and monitor output no longer reports Active with zero active output channels.
+
+### Upgrade Notes / 업그레이드 안내
+- **No API/state model break / API 및 상태 모델 호환 유지**: Stream Deck, HTTP, WebSocket, presets, settings backups, and full backups remain compatible.
+- **No Receiver VST replacement required for these host-side fixes**: existing Receiver VST installs do not need manual replacement for these host-side fixes.
+- **Full restore behavior is stricter / 전체 복원 동작 강화**: full restore now removes local quick slots that are absent from the backup.
+
+### Validation / 검증
+- Windows Release build passed for `DirectPipe`, `DirectPipeReceiver_VST3`, `DirectPipeReceiver_VST`, `directpipe-tests`, and `directpipe-host-tests`.
+- `directpipe-tests`: 52 passed.
+- `directpipe-host-tests`: 310 tests; 308 passed, 2 environment-dependent tests skipped.
+- `ctest`: 362 registered; 0 failed, 2 skipped.
+- Stream Deck JSON metadata parsed at version `4.1.1` / `4.1.1.0`; text integrity, version-only, and `git diff --check` passed with expected CRLF warnings.
+
+---
+
 ## DirectPipe v4.1.0
 
 v4.1.0 is the next public release after v4.0.9. It includes the startup/tray device-restore and Audit Mode work prepared after v4.0.9, plus the adaptive PLL monitor-output bridge.

@@ -12,6 +12,71 @@ using namespace directpipe;
 
 namespace {
 
+class FakeAudioIODevice final : public juce::AudioIODevice {
+public:
+    FakeAudioIODevice(const juce::String& deviceName, double sampleRate, int bufferSize,
+                      const juce::BigInteger& activeOutput)
+        : juce::AudioIODevice(deviceName, "Fake Audio"),
+          sampleRate_(sampleRate),
+          bufferSize_(bufferSize),
+          activeOutput_(activeOutput)
+    {
+        outputNames_.add("Out L");
+        outputNames_.add("Out R");
+    }
+
+    juce::StringArray getOutputChannelNames() override { return outputNames_; }
+    juce::StringArray getInputChannelNames() override { return {}; }
+
+    juce::Array<double> getAvailableSampleRates() override
+    {
+        return { 44100.0, 48000.0 };
+    }
+
+    juce::Array<int> getAvailableBufferSizes() override
+    {
+        return { 128, 256, 512 };
+    }
+
+    int getDefaultBufferSize() override { return 128; }
+
+    juce::String open(const juce::BigInteger& inputChannels,
+                      const juce::BigInteger& outputChannels,
+                      double sampleRate,
+                      int bufferSizeSamples) override
+    {
+        activeInput_ = inputChannels;
+        activeOutput_ = outputChannels;
+        sampleRate_ = sampleRate;
+        bufferSize_ = bufferSizeSamples;
+        open_ = true;
+        return {};
+    }
+
+    void close() override { open_ = false; }
+    bool isOpen() override { return open_; }
+    void start(juce::AudioIODeviceCallback*) override { playing_ = true; }
+    void stop() override { playing_ = false; }
+    bool isPlaying() override { return playing_; }
+    juce::String getLastError() override { return {}; }
+    int getCurrentBufferSizeSamples() override { return bufferSize_; }
+    double getCurrentSampleRate() override { return sampleRate_; }
+    int getCurrentBitDepth() override { return 32; }
+    juce::BigInteger getActiveOutputChannels() const override { return activeOutput_; }
+    juce::BigInteger getActiveInputChannels() const override { return activeInput_; }
+    int getOutputLatencyInSamples() override { return 0; }
+    int getInputLatencyInSamples() override { return 0; }
+
+private:
+    juce::StringArray outputNames_;
+    double sampleRate_ = 48000.0;
+    int bufferSize_ = 128;
+    juce::BigInteger activeInput_;
+    juce::BigInteger activeOutput_;
+    bool open_ = true;
+    bool playing_ = false;
+};
+
 void prepareActiveMonitor(MonitorOutput& monitor, int producerBlock, int consumerBlock)
 {
     monitor.ringBuffer_.initialize(8192, 2);
@@ -56,6 +121,44 @@ void expectSilence(const std::vector<float>& left, const std::vector<float>& rig
 }
 
 } // namespace
+
+TEST(MonitorOutputTest, ZeroActiveOutputDoesNotReportActive)
+{
+    MonitorOutput monitor;
+    monitor.deviceName_ = "Monitor Device";
+    monitor.sampleRate_ = 48000.0;
+    monitor.bufferSize_ = 128;
+
+    juce::BigInteger noActiveOutput;
+    FakeAudioIODevice device("Monitor Device", 48000.0, 128, noActiveOutput);
+
+    juce::AudioIODeviceCallback& callback = monitor;
+    callback.audioDeviceAboutToStart(&device);
+
+    EXPECT_EQ(monitor.getStatus(), VirtualCableStatus::Error);
+    EXPECT_TRUE(monitor.monitorLost_.load(std::memory_order_relaxed));
+    EXPECT_TRUE(monitor.activeOutputRecoveryPending_.load(std::memory_order_relaxed));
+    EXPECT_FALSE(monitor.isActive());
+}
+
+TEST(MonitorOutputTest, ActiveOutputCanReportActive)
+{
+    MonitorOutput monitor;
+    monitor.deviceName_ = "Monitor Device";
+    monitor.sampleRate_ = 48000.0;
+    monitor.bufferSize_ = 128;
+
+    juce::BigInteger activeStereo;
+    activeStereo.setRange(0, 2, true);
+    FakeAudioIODevice device("Monitor Device", 48000.0, 128, activeStereo);
+
+    juce::AudioIODeviceCallback& callback = monitor;
+    callback.audioDeviceAboutToStart(&device);
+
+    EXPECT_EQ(monitor.getStatus(), VirtualCableStatus::Active);
+    EXPECT_FALSE(monitor.monitorLost_.load(std::memory_order_relaxed));
+    EXPECT_TRUE(monitor.isActive());
+}
 
 TEST(MonitorOutputTest, PrimingOutputsSilenceUntilAdaptiveTargetFill)
 {

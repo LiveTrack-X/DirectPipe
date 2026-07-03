@@ -133,6 +133,7 @@ if(DIRECTPIPE_BUILD_HOST)
         JUCE_USE_CURL=0
         JUCE_PLUGINHOST_VST3=1
         JUCE_DISPLAY_SPLASH_SCREEN=0
+        DIRECTPIPE_ENABLE_TEST_ACCESS=1
     )
 
     target_link_libraries(directpipe-host-tests PRIVATE

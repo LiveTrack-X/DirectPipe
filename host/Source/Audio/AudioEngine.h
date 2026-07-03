@@ -262,6 +262,14 @@ public:
     /** Drain pending notifications (call from message thread timer). */
     bool popNotification(PendingNotification& out);
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    bool isStartupRestorePendingForTest() const noexcept { return startupRestorePending_; }
+    bool restoredDeviceTargetsSatisfiedForTest(const juce::AudioDeviceManager::AudioDeviceSetup& setup) const;
+    bool clearDeviceLossAfterReadyForTest(const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+    bool hasUsableActiveChannelsForTest(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                        juce::AudioIODevice* device) const;
+#endif
+
 private:
     void pushNotification(const juce::String& msg, NotificationLevel level);
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
@@ -280,6 +288,18 @@ private:
     void audioDeviceError(const juce::String& errorMessage) override;
 
     static float calculateRMS(const float* data, int numSamples);
+    bool hasUsableActiveChannels(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                 juce::AudioIODevice* device) const;
+    bool restoredDeviceTargetsSatisfied(const juce::AudioDeviceManager::AudioDeviceSetup& setup) const;
+    bool clearDeviceLossAfterReady(const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+    bool markActiveChannelLossIfNeeded(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                       juce::AudioIODevice* device,
+                                       const juce::String& reason);
+    bool recoverActiveChannelsWithDriverDefaults(const juce::String& reason);
+    void scheduleActiveChannelRecovery(const juce::String& reason);
+    void logDeviceSetupSnapshot(const char* reason, juce::AudioIODevice* device = nullptr);
+    void syncRuntimeRateFromActual(double sampleRate, int bufferSize,
+                                   const char* reason, bool preserveExplicitSampleRate);
 
     // ============================================================================
     // Thread Ownership - update Audio/README.md "Thread Model" when this changes.
@@ -330,6 +350,7 @@ private:
     int xrunHistory_[60] = {};                          // [Message thread only]
     int xrunHistoryIdx_ = 0;                            // [Message thread only]
     double lastXRunBucketTime_ = juce::Time::getMillisecondCounterHiRes() / 1000.0;  // [Message thread only]
+    double lastXRunWarningTime_ = 0.0;                  // [Message thread only] throttles normal-mode diagnostics
 
     // Device reconnection tracking (Message thread only, except atomics)
     mutable juce::SpinLock desiredDeviceLock_;           // Protects desiredInputDevice_ / desiredOutputDevice_
@@ -346,6 +367,7 @@ private:
     std::atomic<bool> outputAutoMuted_{false};          // [RT/Device write, Message read] Output auto-muted due to device loss
     bool attemptingReconnection_ = false;               // [Message thread only] Re-entrancy guard
     std::atomic<bool> intentionalChange_{false};        // [Message write, Device thread read] Guards audioDeviceStopped from setting deviceLost_ during intentional changes
+    std::atomic<bool> activeChannelRecoveryPending_{false}; // [Device/Message write, Message read] Guards zero-active reopen retry
     bool startupRestorePending_ = false;                // [Message thread only] Saved startup target is not active yet; keep retrying instead of accepting fallback
     int reconnectCooldown_ = 0;                         // [Message thread only] Ticks before next reconnect attempt (30Hz timer)
     int reconnectMissCount_ = 0;                        // [Message thread only] Consecutive failed reconnect attempts

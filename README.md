@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.1.0-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.1.1-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.1.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
+- **Latest (최신)**: [v4.1.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
 
-> **지원/검증 범위**: v4.1.0 로컬 릴리즈 전 검증은 Windows 10/11 x64 기준으로 완료했습니다. macOS/Linux는 CMake/CI 빌드 경로와 플랫폼 구현이 유지되지만, 베타/실험적 빌드로 취급하며 실기기 오디오 테스트 범위가 제한적입니다.
-> **Support/validation scope**: v4.1.0 local pre-release verification was completed on Windows 10/11 x64. macOS/Linux keep source and CI build support, but remain beta/experimental with limited real-hardware audio validation.
+> **지원/검증 범위**: v4.1.1 로컬 Windows Release 검증은 Windows 10/11 x64 기준으로 완료했습니다. macOS/Linux는 CMake/CI 빌드 경로와 플랫폼 구현이 유지되지만, 베타/실험적 빌드로 취급하며 실기기 오디오 테스트 범위가 제한적입니다.
+> **Support/validation scope**: v4.1.1 local Windows Release verification was completed on Windows 10/11 x64. macOS/Linux keep source and CI build support, but remain beta/experimental with limited real-hardware audio validation.
 
 
 
@@ -747,7 +747,7 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 - Main Output과는 별도의 shared-mode 오디오 장치를 사용하므로 **독립적으로 동작** (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 - **MON** 버튼으로 켜기/끄기
 
-> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하므로, 장치/드라이버/버퍼 설정에 따라 보통 **추가 지연이 느껴질 수 있습니다**. 4.1.0부터 MonitorOutput은 adaptive PLL fractional playback으로 독립 장치 클록의 작은 drift를 흡수해, 정상 drift 상황에서 오래된 프레임을 버리지 않습니다. 부분 underrun 후에는 다시 prime하며, Windows 모니터 콜백은 main OUT 콜백보다 높은 우선순위로 실행되지 않습니다. 가장 낮은 모니터 지연이 필요하다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
+> **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하므로, 장치/드라이버/버퍼 설정에 따라 보통 **추가 지연이 느껴질 수 있습니다**. v4.1.1은 adaptive PLL fractional playback으로 독립 장치 클록의 작은 drift를 흡수해, 정상 drift 상황에서 오래된 프레임을 버리지 않습니다. 부분 underrun 후에는 다시 prime하며, Windows 모니터 콜백은 main OUT 콜백보다 높은 우선순위로 실행되지 않습니다. 가장 낮은 모니터 지연이 필요하다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
 
 ---
 
@@ -757,7 +757,7 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 - Uses a separate shared-mode audio device from the Main Output, so it **works independently** (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 - Toggle on/off with the **MON** button
 
-> **Latency note**: Monitor output uses a separate audio device, so you will usually hear some extra latency depending on the device, driver, and buffer settings. Since 4.1.0, MonitorOutput uses adaptive PLL fractional playback to absorb small independent-device clock drift without dropping frames during normal correction. Near-overflow trim remains only as a safety fallback, playback re-primes after partial underruns, and the monitor callback no longer runs above the main OUT callback priority. For the lowest monitor latency, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
+> **Latency note**: Monitor output uses a separate audio device, so you will usually hear some extra latency depending on the device, driver, and buffer settings. DirectPipe v4.1.1 uses adaptive PLL fractional playback to absorb small independent-device clock drift without dropping frames during normal correction. Near-overflow trim remains only as a safety fallback, playback re-primes after partial underruns, and the monitor callback no longer runs above the main OUT callback priority. For the lowest monitor latency, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
 </details>
 
 <details>
@@ -1144,7 +1144,7 @@ This short gap is a major improvement over v3's 1-3 second mute gap. With the pr
 **원인:**
 1. **모니터 장치의 버퍼 크기** — 별도 shared-mode 장치의 실제 버퍼 크기를 사용합니다 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 2. **샘플레이트 불일치** — 메인 장치와 모니터 장치의 샘플레이트가 다르면 리샘플링 지연 발생
-3. **독립 장치 클록 드리프트** — 서로 다른 물리 장치가 장시간 동작하면 clock drift가 생길 수 있습니다. 4.1.0부터 DirectPipe는 adaptive PLL fractional playback으로 작은 drift를 흡수하고, near-overflow 상황에서만 emergency trim을 사용합니다
+3. **독립 장치 클록 드리프트** — 서로 다른 물리 장치가 장시간 동작하면 clock drift가 생길 수 있습니다. DirectPipe v4.1.1은 adaptive PLL fractional playback으로 작은 drift를 흡수하고, near-overflow 상황에서만 emergency trim을 사용합니다
 
 **해결 방법:**
 - 메인 장치와 모니터 장치의 샘플레이트를 일치시키기 (Audio 탭에서 확인)
@@ -1158,7 +1158,7 @@ Monitor output uses a **separate audio device** from the main output, which can 
 **Causes:**
 1. **Monitor device buffer size** — Uses the actual buffer size of the separate shared-mode device (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
 2. **Sample rate mismatch** — Different sample rates between main and monitor devices cause resampling delay
-3. **Independent device clock drift** — Separate physical devices can drift over long sessions. Since 4.1.0, DirectPipe uses adaptive PLL fractional playback for small drift and reserves emergency trim only for near-overflow recovery
+3. **Independent device clock drift** — Separate physical devices can drift over long sessions. DirectPipe v4.1.1 uses adaptive PLL fractional playback for small drift and reserves emergency trim only for near-overflow recovery
 
 **Solutions:**
 - Match sample rates between main and monitor devices (check in Audio tab)

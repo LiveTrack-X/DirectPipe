@@ -36,7 +36,7 @@ Portable mode (all platforms): `./config/directpipe.log`
 ### Example / 예시
 
 ```
-[11:23:45.123] INF [APP] DirectPipe v4.1.0 started
+[11:23:45.123] INF [APP] DirectPipe v4.1.1 started
 [11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200          (Windows)
                                  macOS 15.2 (Sequoia)            (macOS)
                                  Ubuntu 24.04 LTS (6.8.0-45)     (Linux)
@@ -119,6 +119,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 - IPC 상태 변경 상세 / IPC state change details
 - 채널 라우팅 변경 / Channel routing changes
 - AUDIO audit snapshots include `xruns60` as the current 60-second rolling display count and `xrunDelta` as the monotonic device XRun events since the previous audit snapshot.
+- Normal AUDIO warnings may include driver-default channel retries, active-channel snapshots (`activeIn`, `activeOut`, available channel counts), ASIO requested-vs-actual SR mismatches, and throttled `XRun increased` diagnostics.
 
 ---
 
@@ -153,13 +154,15 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 | 이벤트 / Event | INF/WRN/ERR | AUD (audit mode) |
 |--------|-------------|-------------------|
 | 초기화 성공 / Init success | 드라이버, 장치, SR, BS / Driver, device, SR, BS | **전체** available device types, 각 type별 input/output 장치 목록 / **All** available device types, input/output device list per type |
-| 디바이스 시작 / Device start | 장치명, type, SR, BS, available BS / Device name, type, SR, BS, available BS | **전체** available SR, available BS, input/output 채널명, active 채널 비트, input/output latency, desired device names / **All** available SR, available BS, input/output channel names, active channel bits, input/output latency, desired device names |
+| 디바이스 시작 / Device start | 장치명, type, SR, BS, available BS, active-channel snapshot(`activeIn`, `activeOut`, available counts) / Device name, type, SR, BS, available BS, active-channel snapshot | **전체** available SR, available BS, input/output 채널명, active 채널 비트, input/output latency, desired device names / **All** available SR, available BS, input/output channel names, active channel bits, input/output latency, desired device names |
 | 드라이버 전환 / Driver switch | 전환 결과, 새 type, SR, BS / Switch result, new type, SR, BS | 전환 전후 디바이스 capabilities (available SR/BS, 채널명) / Pre/post device capabilities (available SR/BS, channel names) |
 | 디바이스 변경 / Device change | 새 장치명 / New device name | 변경 전 setup (SR, BS), 사용 가능 장치 목록 / Previous setup (SR, BS), available device list |
 | 재연결 시도 / Reconnection attempt | 대기 중 / 성공 / 실패 / Waiting / success / failure | scan 결과 (available inputs/outputs), desired device names, setup 파라미터 / Scan results (available inputs/outputs), desired device names, setup params |
+| 채널 fallback / Channel fallback | 명시 채널 실패 후 driver default 채널 재시도 / driver default channel retry after explicit-channel failure | active-channel snapshot when available |
 | 채널 변경 / Channel change | 결과 / Result | first channel, num channels |
 | 버퍼 변경 / Buffer change | 요청 → 실제 / Requested → actual | available buffer sizes 전체 / All available buffer sizes |
 | SR 변경 / SR change | 결과 / Result | 요청값 / Requested value |
+| XRun 증가 / XRun increase | throttled `XRun increased`: delta, 60초 rolling count, total count, device, SR, BS / throttled diagnostic details | active-channel snapshot |
 | 디바이스 중지 / Device stop | "Device stopped" | IPC 상태 (ipcWasEnabled) / IPC state (ipcWasEnabled) |
 | 에러 / Error | 에러 메시지 / Error message | — |
 
@@ -241,7 +244,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 Log the following information at startup, in available order:
 
 ```
-INF [APP] DirectPipe v4.1.0 started
+INF [APP] DirectPipe v4.1.1 started
 INF [APP] OS: Windows 11 Pro 10.0.26200       (or macOS 15.2 Sequoia / Ubuntu 24.04 LTS)
 INF [APP] Process priority: HIGH_PRIORITY_CLASS  (Windows; macOS/Linux use equivalent scheduling)
 INF [APP] Timer resolution: 1ms                  (Windows; macOS/Linux use platform timers)
@@ -352,7 +355,7 @@ Log::setAuditMode(false);  // disable (default)
 }  // → "INF [VST] Cached chain swap: 3 plugins (15ms)"
 
 // Session header (call once at startup)
-Log::sessionStart("4.1.0");
+Log::sessionStart("4.1.1");
 Log::audioConfig(driverType, inputDevice, outputDevice, sr, bs);
 ```
 
