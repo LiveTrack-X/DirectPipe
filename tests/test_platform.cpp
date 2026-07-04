@@ -7,13 +7,85 @@
 #include "Platform/ProcessPriority.h"
 #include "Platform/MultiInstanceLock.h"
 
+#if JUCE_WINDOWS
+#include <Windows.h>
+#include <string>
+#include <utility>
+#include <vector>
+#endif
+
 using namespace directpipe;
 
 class PlatformTest : public ::testing::Test {
 protected:
+#if JUCE_WINDOWS
+    struct RegistryValueSnapshot {
+        std::wstring name;
+        bool existed = false;
+        DWORD type = REG_NONE;
+        std::vector<BYTE> data;
+    };
+
+    void SetUp() override {
+        captureAutoStartRegistry();
+    }
+
+    void TearDown() override {
+        restoreAutoStartRegistry();
+    }
+
+private:
+    static constexpr const wchar_t* kRunKeyPath = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+    void captureAutoStartRegistry() {
+        autoStartSnapshots_.clear();
+        for (const auto* name : {L"DirectPipe", L"DirectPipe (Portable)"}) {
+            RegistryValueSnapshot snapshot;
+            snapshot.name = name;
+
+            HKEY key = nullptr;
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, KEY_READ, &key) == ERROR_SUCCESS) {
+                DWORD size = 0;
+                snapshot.existed = RegQueryValueExW(key, name, nullptr, &snapshot.type, nullptr, &size) == ERROR_SUCCESS;
+                if (snapshot.existed && size > 0) {
+                    snapshot.data.resize(size);
+                    auto result = RegQueryValueExW(key, name, nullptr, &snapshot.type, snapshot.data.data(), &size);
+                    if (result == ERROR_SUCCESS)
+                        snapshot.data.resize(size);
+                    else
+                        snapshot.existed = false;
+                }
+                RegCloseKey(key);
+            }
+
+            autoStartSnapshots_.push_back(std::move(snapshot));
+        }
+    }
+
+    void restoreAutoStartRegistry() {
+        HKEY key = nullptr;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS)
+            return;
+
+        for (const auto& snapshot : autoStartSnapshots_) {
+            if (snapshot.existed) {
+                RegSetValueExW(key, snapshot.name.c_str(), 0, snapshot.type,
+                               snapshot.data.empty() ? nullptr : snapshot.data.data(),
+                               static_cast<DWORD>(snapshot.data.size()));
+            } else {
+                RegDeleteValueW(key, snapshot.name.c_str());
+            }
+        }
+
+        RegCloseKey(key);
+    }
+
+    std::vector<RegistryValueSnapshot> autoStartSnapshots_;
+#else
     void TearDown() override {
         Platform::setAutoStartEnabled(false);
     }
+#endif
 };
 
 TEST_F(PlatformTest, AutoStartToggle) {
