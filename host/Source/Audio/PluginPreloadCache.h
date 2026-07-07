@@ -106,7 +106,7 @@ public:
     void cancelAndWait();
 
     /** @brief Request cancel (non-blocking). Thread will stop at next check. */
-    void requestCancel() { cancelPreload_.store(true); }
+    void requestCancel() { state_->cancelPreload.store(true); }
 
     /**
      * @brief Wait for preload thread to finish (blocking).
@@ -117,19 +117,23 @@ public:
     static constexpr int kNumSlots = 6;  // A-E (0-4) + Auto (5)
 
 private:
+    struct SharedState {
+        std::map<int, std::unique_ptr<CachedSlot>> cache;    // [Protected by cacheMutex]
+        std::mutex cacheMutex;                               // [Protects cache]
+        std::mutex threadMutex;                              // [Protects preloadThread access]
+        std::unique_ptr<std::thread> preloadThread;          // [Protected by threadMutex]
+        std::atomic<bool> cancelPreload{false};              // [Message write, BG read] Cancellation flag
+        std::atomic<uint32_t> preloadGeneration{0};          // [Message write, BG read] Generation counter for superseding old preloads
+        // [Message write (invalidateSlot/invalidateAll), BG read (preloadAllSlots)]
+        // Per-slot version counter — prevents stale preload store after invalidation
+        std::array<std::atomic<uint32_t>, kNumSlots> slotVersions{};
+    };
+
     // ═══════════════════════════════════════════════════════════════════
     // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
     // ═══════════════════════════════════════════════════════════════════
 
-    std::map<int, std::unique_ptr<CachedSlot>> cache_;    // [Protected by cacheMutex_]
-    std::mutex cacheMutex_;                               // [Protects cache_]
-    std::mutex threadMutex_;                              // [Protects preloadThread_ access]
-    std::unique_ptr<std::thread> preloadThread_;          // [Protected by threadMutex_]
-    std::atomic<bool> cancelPreload_{false};              // [Message write, BG read] Cancellation flag
-    std::atomic<uint32_t> preloadGeneration_{0};          // [Message write, BG read] Generation counter for superseding old preloads
-    // [Message write (invalidateSlot/invalidateAll), BG read (preloadAllSlots)]
-    // Per-slot version counter — prevents stale preload store after invalidation
-    std::array<std::atomic<uint32_t>, kNumSlots> slotVersions_{};
+    std::shared_ptr<SharedState> state_ = std::make_shared<SharedState>();
 };
 
 } // namespace directpipe

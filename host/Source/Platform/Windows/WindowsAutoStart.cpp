@@ -26,6 +26,12 @@ static const wchar_t* getRunValueName()
     return ControlMappingStore::isPortableMode() ? kRunValueNamePortable : kRunValueName;
 }
 
+static juce::String quoteForRunKey(const juce::String& path)
+{
+    auto quoted = path.quoted();
+    return quoted.isNotEmpty() ? quoted : path;
+}
+
 bool isAutoStartEnabled()
 {
     HKEY hKey = nullptr;
@@ -47,8 +53,9 @@ bool setAutoStartEnabled(bool enable)
 
     if (enable) {
         auto exePath = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                           .getFullPathName();
-        auto wPath = exePath.toWideCharPointer();
+                            .getFullPathName();
+        const auto command = quoteForRunKey(exePath);
+        auto wPath = command.toWideCharPointer();
         auto result = RegSetValueExW(hKey, getRunValueName(), 0, REG_SZ,
                        reinterpret_cast<const BYTE*>(wPath),
                        static_cast<DWORD>((wcslen(wPath) + 1) * sizeof(wchar_t)));

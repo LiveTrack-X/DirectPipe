@@ -172,6 +172,29 @@ TEST_F(SettingsAutosaverTest, PresetManagerRoundtripSupportsCustomAppSettings) {
     EXPECT_TRUE(restoredStartMinimizedToTray);
 }
 
+TEST_F(SettingsAutosaverTest, LoadFromFileMarksPartialLoadWhenPresetChainIncomplete) {
+    auto file = getAutoSaveFile();
+    file.replaceWithText(R"({
+        "version": 4,
+        "activeSlot": 0,
+        "plugins": [
+            {
+                "name": "MissingPlugin",
+                "path": "/tmp/directpipe-missing-plugin.vst3",
+                "bypassed": false
+            }
+        ],
+        "outputMuted": false
+    })");
+
+    partialLoad_ = false;
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(partialLoad_.load());
+    EXPECT_FALSE(loadingSlot_.load());
+    EXPECT_EQ(engine_->getVSTChain().getPluginCount(), 0);
+}
+
 TEST_F(SettingsAutosaverTest, StartupGuardRestoresMuteWhenNoSettingsFile) {
     auto file = getAutoSaveFile();
     file.deleteFile();

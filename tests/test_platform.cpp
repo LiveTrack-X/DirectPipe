@@ -81,6 +81,34 @@ private:
     }
 
     std::vector<RegistryValueSnapshot> autoStartSnapshots_;
+
+protected:
+    static std::wstring readAutoStartCommand() {
+        HKEY key = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, KEY_READ, &key) != ERROR_SUCCESS)
+            return {};
+
+        std::wstring command;
+        for (const auto* name : {L"DirectPipe", L"DirectPipe (Portable)"}) {
+            DWORD type = REG_NONE;
+            DWORD size = 0;
+            if (RegQueryValueExW(key, name, nullptr, &type, nullptr, &size) != ERROR_SUCCESS
+                || type != REG_SZ
+                || size < sizeof(wchar_t)) {
+                continue;
+            }
+
+            std::vector<wchar_t> buffer(size / sizeof(wchar_t), L'\0');
+            if (RegQueryValueExW(key, name, nullptr, &type,
+                                 reinterpret_cast<BYTE*>(buffer.data()), &size) == ERROR_SUCCESS) {
+                command.assign(buffer.data());
+                break;
+            }
+        }
+
+        RegCloseKey(key);
+        return command;
+    }
 #else
     void TearDown() override {
         Platform::setAutoStartEnabled(false);
@@ -95,6 +123,17 @@ TEST_F(PlatformTest, AutoStartToggle) {
     Platform::setAutoStartEnabled(true);
     EXPECT_TRUE(Platform::isAutoStartEnabled());
 }
+
+#if JUCE_WINDOWS
+TEST_F(PlatformTest, AutoStartRunCommandQuotesExecutablePath) {
+    ASSERT_TRUE(Platform::setAutoStartEnabled(true));
+
+    auto command = readAutoStartCommand();
+    ASSERT_GE(command.size(), 2u);
+    EXPECT_EQ(command.front(), L'"');
+    EXPECT_EQ(command.back(), L'"');
+}
+#endif
 
 TEST_F(PlatformTest, AutoStartDisable) {
     if (!Platform::isAutoStartSupported()) {

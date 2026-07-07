@@ -25,10 +25,40 @@
 #include "PluginLoadHelper.h"
 
 #if JUCE_WINDOWS
+ #include <windows.h>  // PeekMessage / DispatchMessage for safe message-thread joins
  #include <objbase.h>   // CoInitializeEx / CoUninitialize (VST3 COM requirement)
 #endif
 
 namespace directpipe {
+namespace {
+
+void waitForJoinSlice(bool onMessageThread, juce::MessageManager* messageManager)
+{
+#if JUCE_WINDOWS
+    if (onMessageThread) {
+        MSG msg;
+        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return;
+    }
+#endif
+
+#if defined(JUCE_MODAL_LOOPS_PERMITTED) && JUCE_MODAL_LOOPS_PERMITTED
+    if (onMessageThread && messageManager) {
+        messageManager->runDispatchLoopUntil(10);
+        return;
+    }
+#else
+    juce::ignoreUnused(onMessageThread, messageManager);
+#endif
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+}
+
+} // namespace
 
 PluginPreloadCache::~PluginPreloadCache()
 {
@@ -38,36 +68,38 @@ PluginPreloadCache::~PluginPreloadCache()
 std::unique_ptr<PluginPreloadCache::CachedSlot> PluginPreloadCache::take(
     int slotIndex, double currentSR, int currentBS)
 {
-    std::lock_guard<std::mutex> lock(cacheMutex_);
-    auto it = cache_.find(slotIndex);
-    if (it == cache_.end()) return nullptr;
+    auto state = state_;
+    std::lock_guard<std::mutex> lock(state->cacheMutex);
+    auto it = state->cache.find(slotIndex);
+    if (it == state->cache.end()) return nullptr;
 
     auto& cached = it->second;
     // SR/BS mismatch → stale cache
     if (cached->sampleRate != currentSR || cached->blockSize != currentBS) {
-        cache_.erase(it);
+        state->cache.erase(it);
         return nullptr;
     }
 
     auto result = std::move(it->second);
-    cache_.erase(it);
+    state->cache.erase(it);
     return result;
 }
 
 bool PluginPreloadCache::isCached(int slotIndex, double currentSR, int currentBS)
 {
-    std::lock_guard<std::mutex> lock(cacheMutex_);
-    auto it = cache_.find(slotIndex);
-    if (it == cache_.end()) return false;
+    auto state = state_;
+    std::lock_guard<std::mutex> lock(state->cacheMutex);
+    auto it = state->cache.find(slotIndex);
+    if (it == state->cache.end()) return false;
     return it->second->sampleRate == currentSR && it->second->blockSize == currentBS;
 }
 
 // ─── Background Preload Thread ──────────────────────────────────────
 // BG 스레드에서 실행 — Message thread 아님
 // WARNING: Windows에서 COM STA 초기화 필수 (CoInitializeEx)
-// slotVersions_: 프리로드 시작 시 캡처, 완료 시 재확인 (중간에 invalidate되면 폐기)
-// preloadGeneration_: 전체 프리로드 세션 카운터 (새 요청이 이전 요청을 대체)
-// cancelPreload_: non-blocking 취소 플래그
+// SharedState::slotVersions: 프리로드 시작 시 캡처, 완료 시 재확인 (중간에 invalidate되면 폐기)
+// SharedState::preloadGeneration: 전체 프리로드 세션 카운터 (새 요청이 이전 요청을 대체)
+// SharedState::cancelPreload: non-blocking 취소 플래그
 // ────────────────────────────────────────────────────────────────────
 void PluginPreloadCache::preloadAllSlots(
     int exceptSlot, double sr, int bs,
@@ -76,10 +108,13 @@ void PluginPreloadCache::preloadAllSlots(
     std::function<juce::String(int)> slotFileReader,
     std::function<void()> onComplete)
 {
+    juce::ignoreUnused(formatMgr);
+    auto state = state_;
+
     // Generation counter: each invocation gets a unique generation.
     // Old threads detect they've been superseded and exit immediately.
-    // Do NOT reset cancelPreload_ here — old threads still need to see it.
-    auto myGeneration = preloadGeneration_.fetch_add(1) + 1;
+    // Do NOT reset cancelPreload here — old threads still need to see it.
+    auto myGeneration = state->preloadGeneration.fetch_add(1) + 1;
 
     // Persistent cache: do NOT clear existing entries.
     // Already-cached slots with matching SR/BS are reused (skip re-creation).
@@ -98,13 +133,13 @@ void PluginPreloadCache::preloadAllSlots(
         if (i == exceptSlot) continue;
         auto json = slotFileReader(i);
         if (json.isNotEmpty())
-            slotsToLoad.push_back({i, json, slotVersions_[static_cast<size_t>(i)].load()});
+            slotsToLoad.push_back({i, json, state->slotVersions[static_cast<size_t>(i)].load()});
     }
     // Also load the active slot (lower priority — last in queue)
     if (exceptSlot >= 0 && exceptSlot < kNumSlots) {
         auto json = slotFileReader(exceptSlot);
         if (json.isNotEmpty())
-            slotsToLoad.push_back({exceptSlot, json, slotVersions_[static_cast<size_t>(exceptSlot)].load()});
+            slotsToLoad.push_back({exceptSlot, json, state->slotVersions[static_cast<size_t>(exceptSlot)].load()});
     }
 
     if (slotsToLoad.empty()) {
@@ -118,11 +153,11 @@ void PluginPreloadCache::preloadAllSlots(
     // Single lock: move old thread out AND set new thread (no window for cancelAndWait to miss).
     std::unique_ptr<std::thread> oldThread;
     {
-    std::lock_guard<std::mutex> lock(threadMutex_);
-    oldThread = std::move(preloadThread_);
-    preloadThread_ = std::make_unique<std::thread>(
-        [this, myGeneration, slotsToLoad = std::move(slotsToLoad), sr, bs,
-         &formatMgr, knownTypes = std::move(knownTypes),
+    std::lock_guard<std::mutex> lock(state->threadMutex);
+    oldThread = std::move(state->preloadThread);
+    state->preloadThread = std::make_unique<std::thread>(
+        [state, myGeneration, slotsToLoad = std::move(slotsToLoad), sr, bs,
+         knownTypes = std::move(knownTypes),
          oldThread = oldThread.release(),
          onComplete = std::move(onComplete)]() mutable
     {
@@ -141,21 +176,24 @@ void PluginPreloadCache::preloadAllSlots(
 
         // Reset cancel flag AFTER old thread is joined and only if this is
         // still the current generation (avoids un-cancelling for newer invocations)
-        if (preloadGeneration_.load() == myGeneration)
-            cancelPreload_.store(false);
+        if (state->preloadGeneration.load() == myGeneration)
+            state->cancelPreload.store(false);
+
+        juce::AudioPluginFormatManager threadFormatManager;
+        threadFormatManager.addDefaultFormats();
 
         // Collect partially-built slots here so we never destroy plugin
         // instances on this background thread (DLL unload race condition).
         std::vector<std::unique_ptr<CachedSlot>> pendingDestroy;
 
         for (auto& slotData : slotsToLoad) {
-            if (cancelPreload_.load() || preloadGeneration_.load() != myGeneration) break;
+            if (state->cancelPreload.load() || state->preloadGeneration.load() != myGeneration) break;
 
             // Skip if already cached with matching SR/BS (persistent cache)
             {
-                std::lock_guard<std::mutex> lock(cacheMutex_);
-                auto it = cache_.find(slotData.index);
-                if (it != cache_.end() &&
+                std::lock_guard<std::mutex> lock(state->cacheMutex);
+                auto it = state->cache.find(slotData.index);
+                if (it != state->cache.end() &&
                     it->second->sampleRate == sr &&
                     it->second->blockSize == bs) {
                     continue;
@@ -176,7 +214,7 @@ void PluginPreloadCache::preloadAllSlots(
             cachedSlot->blockSize = bs;
 
             for (auto& pluginVar : *pluginsArray) {
-                if (cancelPreload_.load() || preloadGeneration_.load() != myGeneration) break;
+                if (state->cancelPreload.load() || state->preloadGeneration.load() != myGeneration) break;
 
                 auto* pluginObj = pluginVar.getDynamicObject();
                 if (!pluginObj) continue;
@@ -219,7 +257,7 @@ void PluginPreloadCache::preloadAllSlots(
 
                 juce::String error;
                 try {
-                    entry.instance = createPluginOnCorrectThread(formatMgr, entry.desc, sr, static_cast<int>(bs), error, nullptr, &cancelPreload_);
+                    entry.instance = createPluginOnCorrectThread(threadFormatManager, entry.desc, sr, static_cast<int>(bs), error, nullptr, &state->cancelPreload);
                 } catch (const std::exception& e) {
                     juce::Logger::writeToLog("[VST] Preload crashed: " + entry.name + " - " + juce::String(e.what()));
                     continue;
@@ -235,7 +273,7 @@ void PluginPreloadCache::preloadAllSlots(
                 cachedSlot->entries.push_back(std::move(entry));
             }
 
-            if (cancelPreload_.load() || preloadGeneration_.load() != myGeneration) {
+            if (state->cancelPreload.load() || state->preloadGeneration.load() != myGeneration) {
                 // Don't destroy plugin instances on background thread!
                 // Move to pendingDestroy → cleaned up on message thread.
                 if (!cachedSlot->entries.empty())
@@ -249,25 +287,25 @@ void PluginPreloadCache::preloadAllSlots(
                 // This prevents the race where a stale preload overwrites
                 // a cache entry that was just invalidated by saveSlot.
                 if (slotData.index >= 0 && slotData.index < kNumSlots &&
-                    slotVersions_[static_cast<size_t>(slotData.index)].load() != slotData.version) {
+                    state->slotVersions[static_cast<size_t>(slotData.index)].load() != slotData.version) {
                     pendingDestroy.push_back(std::move(cachedSlot));
                 } else {
-                    std::lock_guard<std::mutex> lock(cacheMutex_);
+                    std::lock_guard<std::mutex> lock(state->cacheMutex);
                     // Move old entry to pendingDestroy (plugin instances must be
                     // destroyed on message thread, not this background thread)
-                    auto it = cache_.find(slotData.index);
-                    if (it != cache_.end() && it->second && !it->second->entries.empty())
+                    auto it = state->cache.find(slotData.index);
+                    if (it != state->cache.end() && it->second && !it->second->entries.empty())
                         pendingDestroy.push_back(std::move(it->second));
-                    cache_[slotData.index] = std::move(cachedSlot);
+                    state->cache[slotData.index] = std::move(cachedSlot);
                 }
             }
         }
 
-        if (!cancelPreload_.load() && preloadGeneration_.load() == myGeneration) {
+        if (!state->cancelPreload.load() && state->preloadGeneration.load() == myGeneration) {
             int cachedCount = 0;
             {
-                std::lock_guard<std::mutex> lock(cacheMutex_);
-                cachedCount = static_cast<int>(cache_.size());
+                std::lock_guard<std::mutex> lock(state->cacheMutex);
+                cachedCount = static_cast<int>(state->cache.size());
             }
             juce::Logger::writeToLog("[VST] Preload complete: " + juce::String(cachedCount) + " slots cached");
         }
@@ -286,28 +324,30 @@ void PluginPreloadCache::preloadAllSlots(
         if (onComplete)
             juce::MessageManager::callAsync(std::move(onComplete));
     });
-    } // threadMutex_
+    } // threadMutex
 }
 
 void PluginPreloadCache::invalidateSlot(int slotIndex)
 {
+    auto state = state_;
     if (slotIndex >= 0 && slotIndex < kNumSlots)
-        slotVersions_[static_cast<size_t>(slotIndex)].fetch_add(1);
-    std::lock_guard<std::mutex> lock(cacheMutex_);
-    cache_.erase(slotIndex);
+        state->slotVersions[static_cast<size_t>(slotIndex)].fetch_add(1);
+    std::lock_guard<std::mutex> lock(state->cacheMutex);
+    state->cache.erase(slotIndex);
 }
 
 void PluginPreloadCache::invalidateAll()
 {
+    auto state = state_;
     // Bump all slot versions so running preload thread discards stale results
     for (int i = 0; i < kNumSlots; ++i)
-        slotVersions_[static_cast<size_t>(i)].fetch_add(1);
+        state->slotVersions[static_cast<size_t>(i)].fetch_add(1);
     // Do NOT join the thread here — this method is called on the message thread.
     // Joining can deadlock if the preload thread is in createPluginInstance
     // waiting for COM STA dispatch on the message thread (VST3 plugins).
     // The next preloadAllSlots() will join the old thread on its background thread.
-    cancelPreload_.store(true);
-    preloadGeneration_.fetch_add(1);  // supersede running thread — exits on next check
+    state->cancelPreload.store(true);
+    state->preloadGeneration.fetch_add(1);  // supersede running thread — exits on next check
     // Cache NOT cleared here — stale entries (SR/BS mismatch) are rejected by take()
     // and overwritten by next preloadAllSlots(). Avoids slow synchronous destruction
     // of dozens of plugin instances on the message thread during driver switches.
@@ -315,43 +355,48 @@ void PluginPreloadCache::invalidateAll()
 
 void PluginPreloadCache::clearAll()
 {
-    cancelPreload_.store(true);
-    preloadGeneration_.fetch_add(1);  // supersede running thread
+    auto state = state_;
+    state->cancelPreload.store(true);
+    state->preloadGeneration.fetch_add(1);  // supersede running thread
 
     for (int i = 0; i < kNumSlots; ++i)
-        slotVersions_[static_cast<size_t>(i)].fetch_add(1);
+        state->slotVersions[static_cast<size_t>(i)].fetch_add(1);
 
     std::map<int, std::unique_ptr<CachedSlot>> oldCache;
     {
-        std::lock_guard<std::mutex> lock(cacheMutex_);
-        oldCache.swap(cache_);
+        std::lock_guard<std::mutex> lock(state->cacheMutex);
+        oldCache.swap(state->cache);
     }
 }
 
 void PluginPreloadCache::cancelAndWait()
 {
-    cancelPreload_.store(true);
-    preloadGeneration_.fetch_add(1);  // supersede running thread
+    auto state = state_;
+    state->cancelPreload.store(true);
+    state->preloadGeneration.fetch_add(1);  // supersede running thread
 
     // Try to join with a timeout to avoid deadlock.
     // VST3 COM STA plugins may need message thread dispatch during
     // createPluginInstance — if we block the message thread on join(),
     // that dispatch can never happen → deadlock.
-    std::unique_lock<std::mutex> lock(threadMutex_, std::try_to_lock);
-    if (!lock.owns_lock()) return;  // another thread holds it, bail out
+    std::unique_lock<std::mutex> lock(state->threadMutex);
 
-    if (preloadThread_ && preloadThread_->joinable()) {
-        // Release lock, join outside (thread may need threadMutex_ too)
-        auto thread = std::move(preloadThread_);
+    if (state->preloadThread && state->preloadThread->joinable()) {
+        // Release lock, join outside (thread may need the shared thread mutex too)
+        auto thread = std::move(state->preloadThread);
         lock.unlock();
 
-        // Non-blocking wait: poll for up to 10 seconds, then leak
+        // Wait with message pumping on the message thread. Some VST3/COM
+        // teardown paths need message dispatch while the background thread is
+        // joining; a plain message-thread join can deadlock.
         auto start = std::chrono::steady_clock::now();
         constexpr auto kTimeout = std::chrono::seconds(10);
-        bool joined = false;
+        bool timeoutLogged = false;
+        auto* messageManager = juce::MessageManager::getInstanceWithoutCreating();
+        const bool onMessageThread = messageManager != nullptr
+            && messageManager->isThisTheMessageThread();
 
-        // Can't poll std::thread directly — use a helper thread to join.
-        // Heap-allocate shared state so detached joiner doesn't access destroyed locals.
+        // Can't poll std::thread directly; use a helper thread to join.
         auto joinDone = std::make_shared<std::atomic<bool>>(false);
         auto heapThread = std::make_shared<std::unique_ptr<std::thread>>(std::move(thread));
         std::thread joiner([heapThread, joinDone] {
@@ -361,46 +406,33 @@ void PluginPreloadCache::cancelAndWait()
         });
 
         while (!joinDone->load()) {
-            if (std::chrono::steady_clock::now() - start > kTimeout) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (!timeoutLogged && std::chrono::steady_clock::now() - start > kTimeout) {
+                juce::Logger::writeToLog("[VST] WARNING: Preload thread join exceeded timeout; continuing cleanup in background");
+                timeoutLogged = true;
+                joiner.detach();
+                return;
+            }
+
+            waitForJoinSlice(onMessageThread, messageManager);
         }
 
-        if (joinDone->load()) {
-            joiner.join();
-            joined = true;
-        } else {
-            // Do NOT detach — the preload thread still accesses our members (cancelPreload_,
-            // cacheMutex_, cache_). Detaching would cause use-after-free when PluginPreloadCache
-            // is destroyed. Instead, leak the joiner thread. This is a last-resort fallback
-            // for pathologically slow plugin destructors and should never occur in normal operation.
-            juce::Logger::writeToLog("[VST] CRITICAL: Preload thread did not finish in timeout — leaking joiner to avoid use-after-free");
-            // Move joiner to heap to prevent its destructor from calling std::terminate
-            auto* leaked = new std::thread(std::move(joiner));
-            (void)leaked;  // intentional leak — better than undefined behavior
-        }
-
-        if (!joined) {
-            // Thread still running but detached — don't reset preloadThread_
-            // since we moved it out already.
-        }
+        joiner.join();
     }
 }
 
 void PluginPreloadCache::joinPreloadThread()
 {
-    std::lock_guard<std::mutex> lock(threadMutex_);
-    if (preloadThread_ && preloadThread_->joinable())
-        preloadThread_->join();
-    preloadThread_.reset();
+    cancelAndWait();
 }
 
 bool PluginPreloadCache::isCachedWithStructure(
     int slotIndex, double currentSR, int currentBS,
     const std::vector<std::pair<juce::String, juce::String>>& chainStructure)
 {
-    std::lock_guard<std::mutex> lock(cacheMutex_);
-    auto it = cache_.find(slotIndex);
-    if (it == cache_.end()) return true;  // not cached → no mismatch
+    auto state = state_;
+    std::lock_guard<std::mutex> lock(state->cacheMutex);
+    auto it = state->cache.find(slotIndex);
+    if (it == state->cache.end()) return true;  // not cached → no mismatch
     if (it->second->sampleRate != currentSR || it->second->blockSize != currentBS)
         return true;  // SR/BS mismatch → will be rejected by take() anyway
     auto& entries = it->second->entries;

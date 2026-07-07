@@ -108,6 +108,7 @@ void SettingsAutosaver::loadFromFile()
     if (file.existsAsFile()) {
         loadingSlot_ = true;
         const bool loaded = presetMgr_.loadPreset(file);
+        partialLoad_ = !loaded;
         const bool hasOutputMutedField = loaded && presetDeclaresOutputMuted(file);
 
         // Self-healing: if settings.dppreset had an empty/corrupt chain but the

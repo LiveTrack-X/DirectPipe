@@ -218,6 +218,14 @@ public:
     /** Optional hook for importing app-level settings not owned by PresetManager. */
     std::function<void(const juce::DynamicObject& root)> onImportAppSettings;
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    static juce::String selectAsioRestoreDeviceForTest(const juce::String& inputDevice,
+                                                       const juce::String& outputDevice);
+    static bool isAsioRestoreDeviceActiveForTest(
+        const juce::String& restoredAsioDevice,
+        const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+#endif
+
 private:
 #if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
     friend class ::PresetManagerTest_CacheHitDuplicatePluginsConsumesFreshStateByIndex_Test;
@@ -237,8 +245,16 @@ private:
     static std::vector<TargetPlugin> parseTargetPlugins(const juce::Array<juce::var>* pluginsArray);
     static std::vector<TargetPlugin> parseSlotFile(int slotIndex);
     static bool isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain);
+    static bool loadedChainMatchesTargets(const std::vector<TargetPlugin>& targets,
+                                          VSTChain& chain,
+                                          const char* context);
+    static juce::String selectAsioRestoreDevice(const juce::String& inputDevice,
+                                                const juce::String& outputDevice);
+    static bool isAsioRestoreDeviceActive(
+        const juce::String& restoredAsioDevice,
+        const juce::AudioDeviceManager::AudioDeviceSetup& setup);
     static bool cachedSlotMatchesTargets(const PluginPreloadCache::CachedSlot& cached,
-                                         const std::vector<TargetPlugin>& targets);
+                                          const std::vector<TargetPlugin>& targets);
     static std::vector<VSTChain::PreloadedPlugin> buildPreloadedPluginsFromCache(
         PluginPreloadCache::CachedSlot& cached,
         std::vector<TargetPlugin>& freshTargets);

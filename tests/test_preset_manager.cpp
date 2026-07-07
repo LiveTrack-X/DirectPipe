@@ -92,6 +92,23 @@ protected:
         return juce::JSON::toString(juce::var(root.release()), true);
     }
 
+    juce::String makeBuiltinChainJSON()
+    {
+        auto root = std::make_unique<juce::DynamicObject>();
+        root->setProperty("version", 4);
+        root->setProperty("type", "chain");
+
+        juce::Array<juce::var> plugins;
+        auto p = new juce::DynamicObject();
+        p->setProperty("name", "Filter");
+        p->setProperty("type", "builtin_filter");
+        p->setProperty("bypassed", false);
+        plugins.add(juce::var(p));
+        root->setProperty("plugins", plugins);
+
+        return juce::JSON::toString(juce::var(root.release()), true);
+    }
+
     juce::File tempDir_;
 };
 
@@ -420,6 +437,82 @@ TEST_F(PresetManagerTest, SafetyLimiterHeadroomExportImportRoundtrip) {
     ASSERT_TRUE(targetManager.importFromJSON(json));
     EXPECT_FALSE(targetEngine.isSafetyHeadroomEnabled());
     EXPECT_NEAR(targetEngine.getSafetyHeadroomdB(), -1.7f, 0.001f);
+}
+
+TEST_F(PresetManagerTest, ImportChainReportsMissingVstPluginFailure) {
+    AudioEngine targetEngine;
+    targetEngine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager targetManager(targetEngine);
+
+    EXPECT_FALSE(targetManager.importChainFromJSON(makeChainJSON(1)));
+    EXPECT_EQ(targetEngine.getVSTChain().getPluginCount(), 0);
+}
+
+TEST_F(PresetManagerTest, ImportFromJSONReportsIncompletePluginChain) {
+    AudioEngine targetEngine;
+    targetEngine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager targetManager(targetEngine);
+
+    EXPECT_FALSE(targetManager.importFromJSON(makeSettingsJSON(makeChainJSON(1))));
+    EXPECT_EQ(targetEngine.getVSTChain().getPluginCount(), 0);
+}
+
+TEST_F(PresetManagerTest, ImportFromJSONRejectsMalformedPluginChainBeforeApplyingState) {
+    AudioEngine targetEngine;
+    PresetManager targetManager(targetEngine);
+    targetManager.setActiveSlot(3);
+
+    juce::String nonArrayPlugins = R"({
+        "version": 4,
+        "activeSlot": 1,
+        "plugins": "not an array"
+    })";
+    EXPECT_FALSE(targetManager.importFromJSON(nonArrayPlugins));
+    EXPECT_EQ(targetManager.getActiveSlot(), 3);
+
+    juce::String malformedEntry = R"({
+        "version": 4,
+        "activeSlot": 1,
+        "plugins": ["not an object"]
+    })";
+    EXPECT_FALSE(targetManager.importFromJSON(malformedEntry));
+    EXPECT_EQ(targetManager.getActiveSlot(), 3);
+}
+
+TEST_F(PresetManagerTest, ImportChainAcceptsBuiltinOnlyChain) {
+    AudioEngine targetEngine;
+    targetEngine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager targetManager(targetEngine);
+
+    EXPECT_TRUE(targetManager.importChainFromJSON(makeBuiltinChainJSON()));
+    EXPECT_EQ(targetEngine.getVSTChain().getPluginCount(), 1);
+    auto* slot = targetEngine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinFilter);
+}
+
+TEST_F(PresetManagerTest, AsioRestoreDevicePrefersInputForMismatchedDuplexNames) {
+    EXPECT_EQ(PresetManager::selectAsioRestoreDeviceForTest("FL Studio ASIO", "Realtek ASIO"),
+              "FL Studio ASIO");
+    EXPECT_EQ(PresetManager::selectAsioRestoreDeviceForTest({}, "Realtek ASIO"),
+              "Realtek ASIO");
+}
+
+TEST_F(PresetManagerTest, AsioRestoreDeviceMustMatchBeforeApplyingAsioDetails) {
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "FL Studio ASIO";
+    setup.outputDeviceName = "FL Studio ASIO";
+
+    EXPECT_FALSE(PresetManager::isAsioRestoreDeviceActiveForTest("Realtek ASIO", setup));
+    EXPECT_TRUE(PresetManager::isAsioRestoreDeviceActiveForTest("FL Studio ASIO", setup));
+    EXPECT_TRUE(PresetManager::isAsioRestoreDeviceActiveForTest({}, setup));
+
+    setup.outputDeviceName = "Realtek ASIO";
+    EXPECT_FALSE(PresetManager::isAsioRestoreDeviceActiveForTest("FL Studio ASIO", setup));
+
+    setup.inputDeviceName = "Realtek ASIO";
+    setup.outputDeviceName = "FL Studio ASIO";
+    EXPECT_FALSE(PresetManager::isAsioRestoreDeviceActiveForTest("FL Studio ASIO", setup));
 }
 
 TEST_F(PresetManagerTest, ImportRemembersUnavailableStartupDevicesForRetry) {

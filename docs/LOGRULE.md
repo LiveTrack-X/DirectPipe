@@ -36,7 +36,7 @@ Portable mode (all platforms): `./config/directpipe.log`
 ### Example / 예시
 
 ```
-[11:23:45.123] INF [APP] DirectPipe v4.1.1 started
+[11:23:45.123] INF [APP] DirectPipe v4.1.2 started
 [11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200          (Windows)
                                  macOS 15.2 (Sequoia)            (macOS)
                                  Ubuntu 24.04 LTS (6.8.0-45)     (Linux)
@@ -93,8 +93,10 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 - Device disconnected (auto-reconnect will try) / 장치 연결 끊김
 - Sample rate mismatch / 샘플레이트 불일치
 - Partial preset load / 프리셋 부분 로드
+- Malformed plugin-chain import rejected before restore / 잘못된 플러그인 체인 import가 복원 전 거부됨
 - Hotkey registration failure / 단축키 등록 실패
 - Plugin preload cancelled / 프리로드 취소
+- Plugin preload shutdown exceeded bounded wait / 플러그인 프리로드 종료가 제한 대기 시간을 초과
 - Cache miss / 캐시 미스
 
 **INF — 정상 동작 / Normal operation:**
@@ -177,6 +179,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 | 에디터 닫기 / Editor close | — | name, index |
 | 체인 교체 (async) / Chain swap (async) | plugin count | 체인 순서 + 각 플러그인 전체 파라미터 값 / Chain order + all plugin parameter values |
 | 체인 교체 (cached) / Chain swap (cached) | plugin count, 소요시간 / duration | 체인 순서 + 각 플러그인 전체 파라미터 값 / Chain order + all plugin parameter values |
+| 프리로드 취소/종료 / Preload cancel/shutdown | cancel, timeout warning, background cleanup continuation / 취소, timeout 경고, background cleanup 지속 | generation, cached slot count, cancellation state / generation, cached slot count, cancellation state |
 
 ### [MONITOR] MonitorOutput
 
@@ -224,6 +227,9 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 | 캐시 히트 / Cache hit | slot, plugin count | 캐시된 플러그인 목록 / Cached plugin list |
 | 캐시 미스 / Cache miss | slot | — |
 | 프리로드 / Preload | slot count | 프리로드 대상 슬롯 목록 / Target slot list for preload |
+| 설정 import 사전 검증 / Settings import prevalidation | malformed plugin array or malformed plugin entry rejected before active slot/audio state changes / 잘못된 plugin 배열 또는 entry를 active slot/audio 상태 변경 전에 거부 | imported JSON shape summary when audit logging is enabled / audit mode에서 import JSON 구조 요약 |
+| 부분 체인 복원 / Partial chain restore | incomplete plugin-chain import, partial-load guard armed / 불완전한 plugin-chain import, partial-load guard 설정 | requested vs loaded plugin count / 요청 plugin 수와 실제 로드 수 |
+| Full backup slot rollback / 전체 백업 슬롯 롤백 | exact slot clear/write failure triggers rollback of touched quick-slot files / 정확한 slot clear/write 실패 시 건드린 quick-slot 파일 롤백 | affected slot file family and rollback incomplete warning if any file cannot be restored / 영향받은 slot file family 및 복원 실패 시 rollback incomplete 경고 |
 
 ### [IPC] SharedMemWriter
 
@@ -244,7 +250,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 Log the following information at startup, in available order:
 
 ```
-INF [APP] DirectPipe v4.1.1 started
+INF [APP] DirectPipe v4.1.2 started
 INF [APP] OS: Windows 11 Pro 10.0.26200       (or macOS 15.2 Sequoia / Ubuntu 24.04 LTS)
 INF [APP] Process priority: HIGH_PRIORITY_CLASS  (Windows; macOS/Linux use equivalent scheduling)
 INF [APP] Timer resolution: 1ms                  (Windows; macOS/Linux use platform timers)
@@ -355,7 +361,7 @@ Log::setAuditMode(false);  // disable (default)
 }  // → "INF [VST] Cached chain swap: 3 plugins (15ms)"
 
 // Session header (call once at startup)
-Log::sessionStart("4.1.1");
+Log::sessionStart("4.1.2");
 Log::audioConfig(driverType, inputDevice, outputDevice, sr, bs);
 ```
 
@@ -438,6 +444,15 @@ Reconnection with Audit ON:
 [11:25:10.000] INF [AUDIO] Reconnection: waiting for devices (input: Microphone (USB))
 [11:25:10.001] AUD [AUDIO] Reconnection scan: inputs=[마이크 (Realtek)] outputs=[Speakers (Realtek)]
 [11:25:10.001] AUD [AUDIO] Reconnection desired: in='Microphone (USB)' out='Speakers (Realtek)'
+```
+
+Audit ON 상태에서 저장된 ASIO 장치 대기:
+
+Waiting for saved ASIO device with Audit ON:
+```
+[11:25:12.000] ERR [AUDIO] Preferred ASIO device not available: TOPPING Pro USB Audio Device
+[11:25:12.001] AUD [AUDIO] Reconnection ASIO scan: devices=[FL Studio ASIO, Realtek ASIO] preferred='TOPPING Pro USB Audio Device'
+[11:25:12.001] INF [AUDIO] Reconnection: waiting for ASIO device 'TOPPING Pro USB Audio Device'
 ```
 
 ---

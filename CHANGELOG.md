@@ -8,6 +8,32 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.1.2] - 2026-07-07
+
+### Fixed
+- **Device-change input loss guard**: External device stops/errors now immediately mark input lost, auto-mute output, and clear meters; reconnection no longer accepts a fallback/current device while `inputDeviceLost_` is waiting for the saved input target. Same-device Windows endpoint restarts, such as microphone enhancement toggles, keep the loss state until DirectPipe re-opens the same device setup, preventing wrong-input capture, silent receive, or buzz-like audio after device changes.
+- **Immediate retry on device-list changes**: Device-list notifications now bypass the 3-second reconnect polling cooldown, so a returning microphone/output endpoint is retried immediately instead of waiting for the next timer tick.
+- **Manual device-toggle workaround removal**: Same-device restarts now force a same-setup re-open after a short settle delay, replacing the previous workaround of switching to another input device and switching back.
+- **Per-direction manual device selection**: Manual input selection no longer clears pending output loss/auto-mute, and manual output selection no longer clears pending input loss. ASIO/full driver selection still clears both directions only after the combined device switch succeeds.
+- **Stale reconnect callback guard**: Pending delayed same-device re-open callbacks are generation-guarded and canceled when the user changes driver/device type or ASIO device, so an old Windows endpoint-restart timer cannot reopen a superseded setup.
+- **Intentional-change reconnect race**: Immediate reconnect from device-list notifications is ignored while an intentional device reconfiguration is in progress.
+- **Strict ASIO startup restore**: Saved ASIO startup restore now treats ASIO as one duplex driver. Mismatched saved input/output names are normalized to one ASIO target, saved ASIO targets no longer fall through to other ASIO drivers such as FL Studio ASIO or Realtek ASIO when the saved device is missing, and ASIO SR/BS/channel-mask restore is delayed until that saved ASIO device is actually active.
+- **Plugin-chain partial restore detection**: Preset and settings imports now report failure when a requested VST entry cannot be loaded, and malformed plugin-chain JSON is rejected before audio/slot state is applied, so incomplete plugin-chain restores arm the partial-load guard instead of being treated as clean loads.
+- **Settings/full-backup restore prevalidation**: Settings-only and full-backup imports validate audio, control, and slot payload shape before applying dependent sections, reducing half-applied restore states after invalid backup content.
+- **Full-backup slot rollback**: Full-backup slot-file restore now snapshots existing slot files and rolls them back if the exact slot clear/write phase fails, preventing partially updated quick-slot files after file-system errors.
+- **Preload shutdown join cleanup**: Plugin preload cancellation now moves background work onto shared state with bounded message-thread shutdown cleanup, avoiding indefinite waits or owner lifetime hazards if a preload is stuck.
+- **Windows auto-start command quoting**: The HKCU Run entry now stores the executable path as a quoted command, so installs under paths with spaces such as `Program Files` start correctly after reboot.
+
+### Release
+- **Version metadata sync**: App, bundled Receiver plugin metadata, Stream Deck manifest/package metadata, README, user guide, product spec, architecture notes, log rules, building docs, changelog, and release body are aligned to v4.1.2.
+- **Host-side hotfix scope**: v4.1.2 is documented as a host-side audio-device recovery and save/restore hardening hotfix. Users do not need to reinstall Receiver VST only because of this release.
+
+### Tests
+- Added regression coverage for input-loss retry protection, external device stop/error muting, same-device endpoint restarts, cooldown bypass on device-list changes, per-direction manual device-loss clearing, strict ASIO duplex restore, malformed/incomplete plugin-chain import reporting, partial-load autosave guards, backup prevalidation, full-backup slot rollback, and quoted Windows auto-start commands.
+- Rebuilt Release app, Receiver, and test targets, then ran core/host validation: `directpipe-tests` 52 passed; `directpipe-host-tests` 329 tests, 327 passed, 2 environment-dependent tests skipped; `ctest` 381 registered, 0 failed, 2 skipped.
+
+---
+
 ## [4.1.1] - 2026-07-03
 
 ### Fixed

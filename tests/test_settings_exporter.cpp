@@ -5,11 +5,15 @@
 #include "Control/ControlMapping.h"
 #include "Util/AtomicFileIO.h"
 
+#if JUCE_WINDOWS
+#include <windows.h>
+#endif
+
 using namespace directpipe;
 
 namespace {
 
-juce::var makeAudioSettings(int activeSlot = -1)
+juce::var makeAudioSettings(int activeSlot = -1, bool includePlugins = true)
 {
     auto audio = new juce::DynamicObject();
     audio->setProperty("version", 4);
@@ -18,13 +22,15 @@ juce::var makeAudioSettings(int activeSlot = -1)
     if (activeSlot >= -1)
         audio->setProperty("activeSlot", activeSlot);
 
-    juce::Array<juce::var> plugins;
-    auto plugin = new juce::DynamicObject();
-    plugin->setProperty("name", "ShouldNotImport");
-    plugin->setProperty("path", "/tmp/should-not-import.vst3");
-    plugin->setProperty("bypassed", false);
-    plugins.add(juce::var(plugin));
-    audio->setProperty("plugins", plugins);
+    if (includePlugins) {
+        juce::Array<juce::var> plugins;
+        auto plugin = new juce::DynamicObject();
+        plugin->setProperty("name", "ShouldNotImport");
+        plugin->setProperty("path", "/tmp/should-not-import.vst3");
+        plugin->setProperty("bypassed", false);
+        plugins.add(juce::var(plugin));
+        audio->setProperty("plugins", plugins);
+    }
 
     return juce::var(audio);
 }
@@ -46,12 +52,27 @@ juce::var makeSlot(const juce::String& name)
     return juce::var(slot);
 }
 
-juce::String makeExporterBackupJSON(const juce::var& audioSettings)
+juce::var makeControlConfig(int websocketPort)
+{
+    auto controls = new juce::DynamicObject();
+    auto server = new juce::DynamicObject();
+    server->setProperty("websocketPort", websocketPort);
+    server->setProperty("websocketEnabled", true);
+    server->setProperty("httpPort", 8766);
+    server->setProperty("httpEnabled", true);
+    controls->setProperty("server", juce::var(server));
+    return juce::var(controls);
+}
+
+juce::String makeExporterBackupJSON(const juce::var& audioSettings,
+                                    const juce::var& controlConfig = {})
 {
     auto root = new juce::DynamicObject();
     root->setProperty("version", 2);
     root->setProperty("platform", SettingsExporter::getCurrentPlatform());
     root->setProperty("audioSettings", audioSettings);
+    if (!controlConfig.isVoid())
+        root->setProperty("controlConfig", controlConfig);
     return juce::JSON::toString(juce::var(root), true);
 }
 
@@ -61,7 +82,7 @@ juce::String makeFullRestoreJSON(const juce::var& presetSlots)
     root->setProperty("version", 2);
     root->setProperty("type", "full");
     root->setProperty("platform", SettingsExporter::getCurrentPlatform());
-    root->setProperty("audioSettings", makeAudioSettings(-1));
+    root->setProperty("audioSettings", makeAudioSettings(-1, false));
     root->setProperty("presetSlots", presetSlots);
     return juce::JSON::toString(juce::var(root), true);
 }
@@ -254,6 +275,24 @@ TEST_F(SettingsExporterTest, ImportAllReturnsFalseWhenAudioSettingsInvalid) {
     EXPECT_FALSE(SettingsExporter::importAll(json, presetManager, controlStore));
 }
 
+TEST_F(SettingsExporterTest, ImportAllDoesNotApplyControlsWhenAudioSettingsInvalid) {
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+
+    auto original = ControlMappingStore::createDefaults();
+    original.server.websocketPort = 9001;
+    ASSERT_TRUE(controlStore.save(original));
+
+    auto json = makeExporterBackupJSON(
+        juce::var("not-json-object"),
+        makeControlConfig(12345));
+
+    EXPECT_FALSE(SettingsExporter::importAll(json, presetManager, controlStore));
+    EXPECT_EQ(controlStore.load().server.websocketPort, 9001);
+}
+
 TEST_F(SettingsExporterTest, ImportFullBackupClearsSlotsMissingFromBackup) {
     AudioEngine engine;
     engine.getVSTChain().prepareToPlay(48000.0, 512);
@@ -353,6 +392,67 @@ TEST_F(SettingsExporterTest, ImportFullBackupReturnsFalseWhenAudioSettingsInvali
 
     EXPECT_FALSE(SettingsExporter::importFullBackup(json, presetManager, controlStore));
 }
+
+TEST_F(SettingsExporterTest, ImportFullBackupPrevalidatesSlotsBeforeWriting) {
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+
+    auto slotA = PresetManager::getSlotFile(0);
+    ASSERT_TRUE(atomicWriteFile(slotA, juce::JSON::toString(makeSlot("ExistingA"), true)));
+
+    auto slots = new juce::DynamicObject();
+    slots->setProperty("A", makeSlot("RestoredA"));
+    slots->setProperty("B", juce::var("not-a-slot-object"));
+    auto json = makeFullRestoreJSON(juce::var(slots));
+
+    EXPECT_FALSE(SettingsExporter::importFullBackup(json, presetManager, controlStore));
+
+    auto parsed = juce::JSON::parse(slotA.loadFileAsString());
+    ASSERT_TRUE(parsed.isObject());
+    EXPECT_EQ(parsed.getDynamicObject()->getProperty("name").toString(), juce::String("ExistingA"));
+}
+
+#if JUCE_WINDOWS
+TEST_F(SettingsExporterTest, ImportFullBackupRollsBackSlotFilesWhenExactClearFails) {
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+
+    auto slotA = PresetManager::getSlotFile(0);
+    auto slotB = PresetManager::getSlotFile(1);
+    ASSERT_TRUE(atomicWriteFile(slotA, juce::JSON::toString(makeSlot("ExistingA"), true)));
+    ASSERT_TRUE(atomicWriteFile(slotB, juce::JSON::toString(makeSlot("ExistingB"), true)));
+
+    auto lockedHandle = CreateFileW(slotB.getFullPathName().toWideCharPointer(),
+                                   GENERIC_READ,
+                                   0,
+                                   nullptr,
+                                   OPEN_EXISTING,
+                                   FILE_ATTRIBUTE_NORMAL,
+                                   nullptr);
+    if (lockedHandle == INVALID_HANDLE_VALUE)
+        GTEST_SKIP() << "Could not lock slot file for delete-failure simulation";
+
+    auto slots = new juce::DynamicObject();
+    slots->setProperty("A", makeSlot("RestoredA"));
+    auto json = makeFullRestoreJSON(juce::var(slots));
+
+    EXPECT_FALSE(SettingsExporter::importFullBackup(json, presetManager, controlStore));
+
+    CloseHandle(lockedHandle);
+
+    auto parsedA = juce::JSON::parse(slotA.loadFileAsString());
+    ASSERT_TRUE(parsedA.isObject());
+    EXPECT_EQ(parsedA.getDynamicObject()->getProperty("name").toString(), juce::String("ExistingA"));
+
+    auto parsedB = juce::JSON::parse(slotB.loadFileAsString());
+    ASSERT_TRUE(parsedB.isObject());
+    EXPECT_EQ(parsedB.getDynamicObject()->getProperty("name").toString(), juce::String("ExistingB"));
+}
+#endif
 
 TEST_F(SettingsExporterTest, ExportFullBackupUsesSlotBackupFallback) {
     AudioEngine engine;

@@ -260,6 +260,7 @@ void DirectPipeReceiverProcessor::saveLastOutput(const juce::AudioBuffer<float>&
 
     size_t needed = static_cast<size_t>(samplesToSave) * static_cast<size_t>(chToSave);
     jassert(lastOutputBuffer_.size() >= needed);  // pre-allocated in prepareToPlay
+    juce::ignoreUnused(needed);
 
     for (int ch = 0; ch < chToSave; ++ch) {
         const float* src = buffer.getReadPointer(ch) + offset;

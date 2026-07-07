@@ -187,6 +187,100 @@ TEST_F(AudioEngineTest, ReconnectionMaxRetry) {
     EXPECT_FALSE(engine_->isDeviceLost());
 }
 
+TEST_F(AudioEngineTest, InputLossKeepsWaitingForExplicitTargetAfterMaxMisses) {
+    engine_->markInputDeviceLostForTest("Missing Boot Mic");
+    engine_->forceReconnectMissCountForTest(4);
+
+    engine_->checkReconnection();
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "Missing Boot Mic");
+}
+
+TEST_F(AudioEngineTest, ExternalDeviceStopSilencesInputAndAutoMutesOutput) {
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceStopped();
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, SameDeviceExternalRestartKeepsInputLostUntilForcedReopen) {
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceStopped();
+
+    juce::BigInteger activeInput;
+    activeInput.setBit(0);
+    activeInput.setBit(1);
+    juce::BigInteger activeOutput;
+    activeOutput.setBit(0);
+    activeOutput.setBit(1);
+
+    juce::StringArray inputs;
+    inputs.add("Mic L");
+    inputs.add("Mic R");
+    juce::StringArray outputs;
+    outputs.add("Speaker L");
+    outputs.add("Speaker R");
+    FakeAudioIODevice device("Same Device", inputs, outputs, activeInput, activeOutput);
+
+    callback.audioDeviceAboutToStart(&device);
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, DeviceListChangeRetriesInputLossWithoutCooldown) {
+    engine_->markInputDeviceLostForTest("Missing Boot Mic");
+    engine_->forceReconnectCooldownForTest(90);
+
+    juce::ChangeListener& listener = *engine_;
+    listener.changeListenerCallback(nullptr);
+
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 0);
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+}
+
+TEST_F(AudioEngineTest, DeviceErrorSilencesInputAndRequestsReconnection) {
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceError("device property changed");
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, ManualInputSelectionDoesNotClearPendingOutputLoss) {
+    engine_->markOutputDeviceLostForTest("Missing Speakers");
+
+    engine_->clearLossAfterManualInputSelectionForTest();
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "Missing Speakers");
+}
+
+TEST_F(AudioEngineTest, ManualOutputSelectionDoesNotClearPendingInputLoss) {
+    engine_->markInputDeviceLostForTest("Missing Boot Mic");
+
+    engine_->clearLossAfterManualOutputSelectionForTest();
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "Missing Boot Mic");
+}
+
 TEST_F(AudioEngineTest, FallbackProtection) {
     EXPECT_FALSE(engine_->isDeviceLost());
     // intentionalChange_ is private, but public API should reflect no fallback
@@ -203,6 +297,18 @@ TEST_F(AudioEngineTest, RememberRestoreTargetsArmsStartupRetryWhenDeviceUnavaila
     EXPECT_TRUE(engine_->isInputDeviceLost());
     EXPECT_TRUE(engine_->isOutputAutoMuted());
     EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, AsioRestoreTargetsAreNormalizedToSingleDuplexDevice) {
+    engine_->rememberRestoredDeviceTargets("ASIO", "FL Studio ASIO", "Realtek ASIO");
+
+    EXPECT_EQ(engine_->getDesiredDeviceType(), "ASIO");
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "FL Studio ASIO");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "FL Studio ASIO");
+    EXPECT_TRUE(engine_->isStartupRestorePendingForTest());
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
 }
 
 TEST_F(AudioEngineTest, StartupRestorePendingRequiresSavedTargets) {

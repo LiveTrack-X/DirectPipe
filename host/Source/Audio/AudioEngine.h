@@ -268,12 +268,26 @@ public:
     bool clearDeviceLossAfterReadyForTest(const juce::AudioDeviceManager::AudioDeviceSetup& setup);
     bool hasUsableActiveChannelsForTest(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
                                         juce::AudioIODevice* device) const;
+    void markInputDeviceLostForTest(const juce::String& desiredInputDevice);
+    void markOutputDeviceLostForTest(const juce::String& desiredOutputDevice);
+    void clearLossAfterManualInputSelectionForTest() { clearLossAfterManualInputSelection(); }
+    void clearLossAfterManualOutputSelectionForTest() { clearLossAfterManualOutputSelection(); }
+    void forceReconnectCooldownForTest(int ticks) noexcept { reconnectCooldown_ = ticks; }
+    void forceReconnectMissCountForTest(int count) noexcept { reconnectMissCount_ = count; }
+    int getReconnectCooldownForTest() const noexcept { return reconnectCooldown_; }
 #endif
 
 private:
     void pushNotification(const juce::String& msg, NotificationLevel level);
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+    void requestImmediateReconnect();
+    void attemptImmediateReconnectionFromMessageThread();
     void attemptReconnection();
+    void cancelPendingExternalRestartReopen() noexcept;
+    void clearLossAfterManualInputSelection();
+    void clearLossAfterManualOutputSelection();
+    void scheduleSameDeviceReopenAfterExternalRestart(
+        const juce::AudioDeviceManager::AudioDeviceSetup& setup);
     // [RT thread only]
     void audioDeviceIOCallbackWithContext(
         const float* const* inputChannelData,
@@ -368,6 +382,9 @@ private:
     bool attemptingReconnection_ = false;               // [Message thread only] Re-entrancy guard
     std::atomic<bool> intentionalChange_{false};        // [Message write, Device thread read] Guards audioDeviceStopped from setting deviceLost_ during intentional changes
     std::atomic<bool> activeChannelRecoveryPending_{false}; // [Device/Message write, Message read] Guards zero-active reopen retry
+    std::atomic<bool> externalDeviceRestartPending_{false}; // [Device write, Message read] External same-device restart needs a forced re-open before clearing loss
+    std::atomic<bool> sameDeviceReopenPending_{false};  // [Device/Message write, Message read] Debounces Windows endpoint property-change re-open
+    std::atomic<uint64_t> sameDeviceReopenGeneration_{0}; // [Message write/read] Invalidates stale delayed same-device reopen callbacks
     bool startupRestorePending_ = false;                // [Message thread only] Saved startup target is not active yet; keep retrying instead of accepting fallback
     int reconnectCooldown_ = 0;                         // [Message thread only] Ticks before next reconnect attempt (30Hz timer)
     int reconnectMissCount_ = 0;                        // [Message thread only] Consecutive failed reconnect attempts

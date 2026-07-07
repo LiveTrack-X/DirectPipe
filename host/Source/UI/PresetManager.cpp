@@ -353,9 +353,29 @@ bool PresetManager::importFromJSON(const juce::String& json)
     int version = root->getProperty("version");
     if (version < 1) return false;
 
+    // Validate plugin-chain shape before applying audio/slot state. A malformed
+    // settings export must fail atomically instead of half-restoring devices.
+    if (root->hasProperty("plugins")) {
+        auto* pluginsArray = root->getProperty("plugins").getArray();
+        if (!pluginsArray) {
+            juce::Logger::writeToLog("[PRESET] Plugin chain import failed: plugins is not an array");
+            return false;
+        }
+
+        auto targets = parseTargetPlugins(pluginsArray);
+        if (targets.size() != static_cast<size_t>(pluginsArray->size())) {
+            juce::Logger::writeToLog("[PRESET] Plugin chain import failed: malformed plugin entry");
+            return false;
+        }
+    }
+
+    bool ok = true;
+
     juce::String restoredDeviceType;
     juce::String restoredInputDevice;
     juce::String restoredOutputDevice;
+    juce::String restoredAsioDevice;
+    bool restoreDevicesAsAsio = false;
     bool outputNone = false;
 
     // Restore active slot (clamp to valid range: -1 to kNumSlots-1, i.e. -1 to 5)
@@ -384,10 +404,19 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 restoredDeviceType = deviceType;
                 juce::String preferredDev;
                 if (deviceType.containsIgnoreCase("ASIO")) {
-                    if (root->hasProperty("inputDevice"))
-                        preferredDev = root->getProperty("inputDevice").toString();
-                    else if (root->hasProperty("outputDevice"))
-                        preferredDev = root->getProperty("outputDevice").toString();
+                    restoreDevicesAsAsio = true;
+                    const juce::String savedInput = root->hasProperty("inputDevice")
+                        ? root->getProperty("inputDevice").toString()
+                        : juce::String{};
+                    const juce::String savedOutput = root->hasProperty("outputDevice")
+                        ? root->getProperty("outputDevice").toString()
+                        : juce::String{};
+                    restoredAsioDevice = selectAsioRestoreDevice(savedInput, savedOutput);
+                    preferredDev = restoredAsioDevice;
+                    if (savedInput.isNotEmpty() && savedOutput.isNotEmpty() && savedInput != savedOutput) {
+                        juce::Logger::writeToLog("[PRESET] ASIO input/output mismatch in preset; using '"
+                            + restoredAsioDevice + "' for both devices");
+                    }
                 }
                 auto result = engine_.setAudioDeviceType(deviceType, preferredDev);
                 if (!result)
@@ -410,10 +439,19 @@ bool PresetManager::importFromJSON(const juce::String& json)
     // unaffected by our changes. Safe to force saved values.
     // Apply via setSampleRate/setBufferSize as before.
     //
+    auto restoredAsioDeviceIsActive = [this, &restoredAsioDevice]() {
+        if (!engine_.getCurrentDeviceType().containsIgnoreCase("ASIO"))
+            return false;
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        engine_.getDeviceManager().getAudioDeviceSetup(setup);
+        return isAsioRestoreDeviceActive(restoredAsioDevice, setup);
+    };
+
     bool isAsio = engine_.getCurrentDeviceType().containsIgnoreCase("ASIO");
-    if (isAsio) {
+    restoreDevicesAsAsio = restoreDevicesAsAsio || isAsio;
+    if (isAsio && restoredAsioDeviceIsActive()) {
         engine_.syncDesiredFromDevice();
-    } else {
+    } else if (!restoreDevicesAsAsio) {
         if (root->hasProperty("sampleRate")) {
             auto result = engine_.setSampleRate(root->getProperty("sampleRate"));
             if (!result)
@@ -424,6 +462,8 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (!result)
                 juce::Logger::writeToLog("[PRESET] Buffer-size restore failed: " + result.message);
         }
+    } else {
+        juce::Logger::writeToLog("[PRESET] Delaying ASIO SR/BS restore until saved ASIO device is active");
     }
     if (root->hasProperty("inputGain")) {
         engine_.setInputGain(static_cast<float>((double)root->getProperty("inputGain")));
@@ -432,30 +472,62 @@ bool PresetManager::importFromJSON(const juce::String& json)
         engine_.setMuted(static_cast<bool>(root->getProperty("muted")));
     }
 
-    // Restore devices (use engine methods for intentionalChange_ guard + desiredDevice tracking)
-    if (root->hasProperty("inputDevice")) {
-        restoredInputDevice = root->getProperty("inputDevice").toString();
-        if (restoredInputDevice.isNotEmpty()) {
-            auto result = engine_.setInputDevice(restoredInputDevice);
-            if (!result)
-                juce::Logger::writeToLog("[PRESET] Input device restore failed: " + result.message);
-        }
-    }
-    // Restore output "None" mode first (before output device)
+    // Restore output "None" mode before device targets.
     if (root->hasProperty("outputNone"))
         outputNone = static_cast<bool>(root->getProperty("outputNone"));
     engine_.setOutputNone(outputNone);
 
-    if (!outputNone && root->hasProperty("outputDevice")) {
-        restoredOutputDevice = root->getProperty("outputDevice").toString();
-        if (restoredOutputDevice.isNotEmpty() && restoredOutputDevice != "None") {
-            auto result = engine_.setOutputDevice(restoredOutputDevice);
-            if (!result)
-                juce::Logger::writeToLog("[PRESET] Output device restore failed: " + result.message);
+    // Restore devices (use engine methods for intentionalChange_ guard + desiredDevice tracking).
+    // ASIO exposes one duplex driver; do not replay saved input/output as independent devices.
+    if (restoreDevicesAsAsio) {
+        if (restoredAsioDevice.isEmpty()) {
+            const juce::String savedInput = root->hasProperty("inputDevice")
+                ? root->getProperty("inputDevice").toString()
+                : juce::String{};
+            const juce::String savedOutput = root->hasProperty("outputDevice")
+                ? root->getProperty("outputDevice").toString()
+                : juce::String{};
+            restoredAsioDevice = selectAsioRestoreDevice(savedInput, savedOutput);
+            if (savedInput.isNotEmpty() && savedOutput.isNotEmpty() && savedInput != savedOutput) {
+                juce::Logger::writeToLog("[PRESET] ASIO input/output mismatch in preset; using '"
+                    + restoredAsioDevice + "' for both devices");
+            }
+        }
+
+        restoredInputDevice = restoredAsioDevice;
+        restoredOutputDevice = outputNone ? juce::String{} : restoredAsioDevice;
+
+        if (isAsio && restoredAsioDevice.isNotEmpty() && !restoredAsioDeviceIsActive()) {
+            juce::AudioDeviceManager::AudioDeviceSetup setup;
+            engine_.getDeviceManager().getAudioDeviceSetup(setup);
+            if (setup.inputDeviceName != restoredAsioDevice || setup.outputDeviceName != restoredAsioDevice) {
+                auto result = engine_.setAsioDevice(restoredAsioDevice);
+                if (!result)
+                    juce::Logger::writeToLog("[PRESET] ASIO device restore failed: " + result.message);
+            }
+        }
+    } else {
+        if (root->hasProperty("inputDevice")) {
+            restoredInputDevice = root->getProperty("inputDevice").toString();
+            if (restoredInputDevice.isNotEmpty()) {
+                auto result = engine_.setInputDevice(restoredInputDevice);
+                if (!result)
+                    juce::Logger::writeToLog("[PRESET] Input device restore failed: " + result.message);
+            }
+        }
+
+        if (!outputNone && root->hasProperty("outputDevice")) {
+            restoredOutputDevice = root->getProperty("outputDevice").toString();
+            if (restoredOutputDevice.isNotEmpty() && restoredOutputDevice != "None") {
+                auto result = engine_.setOutputDevice(restoredOutputDevice);
+                if (!result)
+                    juce::Logger::writeToLog("[PRESET] Output device restore failed: " + result.message);
+            }
         }
     }
 
-    if (root->hasProperty("inputChannelMask") || root->hasProperty("outputChannelMask")) {
+    const bool canRestoreChannelMasks = !restoreDevicesAsAsio || restoredAsioDeviceIsActive();
+    if (canRestoreChannelMasks && (root->hasProperty("inputChannelMask") || root->hasProperty("outputChannelMask"))) {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
         auto& dm = engine_.getDeviceManager();
         dm.getAudioDeviceSetup(setup);
@@ -506,6 +578,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
                     juce::Logger::writeToLog("[PRESET] " + defaultResult.message);
             }
         }
+    } else if (!canRestoreChannelMasks
+               && (root->hasProperty("inputChannelMask") || root->hasProperty("outputChannelMask"))) {
+        juce::Logger::writeToLog("[PRESET] Delaying ASIO channel mask restore until saved ASIO device is active");
     }
 
     // VST Chain load plugins (with fast-path for identical chain)
@@ -516,7 +591,13 @@ bool PresetManager::importFromJSON(const juce::String& json)
             auto chainRoot = std::make_unique<juce::DynamicObject>();
             chainRoot->setProperty("plugins", root->getProperty("plugins"));
             auto chainJson = juce::JSON::toString(juce::var(chainRoot.release()), false);
-            importChainFromJSON(chainJson);
+            if (!importChainFromJSON(chainJson)) {
+                ok = false;
+                juce::Logger::writeToLog("[PRESET] Plugin chain import incomplete");
+            }
+        } else {
+            ok = false;
+            juce::Logger::writeToLog("[PRESET] Plugin chain import failed: plugins is not an array");
         }
     }
 
@@ -603,10 +684,42 @@ bool PresetManager::importFromJSON(const juce::String& json)
     if (!readyResult)
         juce::Logger::writeToLog("[PRESET] Audio device restore refresh failed: " + readyResult.message);
 
-    return true;
+    return ok;
 }
 
 // Shared chain helpers
+
+juce::String PresetManager::selectAsioRestoreDevice(const juce::String& inputDevice,
+                                                    const juce::String& outputDevice)
+{
+    return inputDevice.isNotEmpty() ? inputDevice : outputDevice;
+}
+
+bool PresetManager::isAsioRestoreDeviceActive(
+    const juce::String& restoredAsioDevice,
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    if (restoredAsioDevice.isEmpty())
+        return true;
+
+    return setup.inputDeviceName == restoredAsioDevice
+        && setup.outputDeviceName == restoredAsioDevice;
+}
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+juce::String PresetManager::selectAsioRestoreDeviceForTest(const juce::String& inputDevice,
+                                                           const juce::String& outputDevice)
+{
+    return selectAsioRestoreDevice(inputDevice, outputDevice);
+}
+
+bool PresetManager::isAsioRestoreDeviceActiveForTest(
+    const juce::String& restoredAsioDevice,
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    return isAsioRestoreDeviceActive(restoredAsioDevice, setup);
+}
+#endif
 
 std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
     const juce::Array<juce::var>* pluginsArray)
@@ -689,6 +802,20 @@ bool PresetManager::isSameChain(const std::vector<TargetPlugin>& targets, VSTCha
         }
     }
     return true;
+}
+
+bool PresetManager::loadedChainMatchesTargets(const std::vector<TargetPlugin>& targets,
+                                              VSTChain& chain,
+                                              const char* context)
+{
+    if (isSameChain(targets, chain))
+        return true;
+
+    juce::String details = "expected=" + juce::String(static_cast<int>(targets.size()))
+        + " actual=" + juce::String(chain.getPluginCount());
+    juce::Logger::writeToLog("[PRESET] Partial chain import in "
+        + juce::String(context ? context : "unknown") + ": " + details);
+    return false;
 }
 
 bool PresetManager::cachedSlotMatchesTargets(const PluginPreloadCache::CachedSlot& cached,
@@ -917,12 +1044,19 @@ bool PresetManager::importChainFromJSON(const juce::String& json)
 
     auto& chain = engine_.getVSTChain();
     auto targets = parseTargetPlugins(pluginsArray);
+    if (targets.size() != static_cast<size_t>(pluginsArray->size())) {
+        juce::Logger::writeToLog("[PRESET] Plugin chain import failed: malformed plugin entry");
+        return false;
+    }
 
     if (isSameChain(targets, chain)) {
         applyFastPath(targets, chain);
     } else {
         applySlowPath(targets, chain);
     }
+
+    if (!loadedChainMatchesTargets(targets, chain, "importChainFromJSON"))
+        return false;
 
     // Bypass state validation force-sync runtime state to match saved state
     // (addresses v3.10.1 bypass corruption bug)

@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.1.1 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.1.2 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.1.1)
+> Reverse spec — written based on currently implemented features (as of v4.1.2)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.1.1
+4.1.2
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- v4.1.1 local Windows Release verification was completed. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
-- v4.1.1 로컬 Windows Release 검증은 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
+- v4.1.2 local Windows Release verification was completed. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
+- v4.1.2 로컬 Windows Release 검증은 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -99,9 +99,9 @@ Mic Input  → VST Plugin Chain   → Output
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 드라이버 타입 / Driver Type | **Windows**: 5종 — DirectSound (레거시 / legacy), WASAPI Shared (권장 / recommended), WASAPI Low Latency (IAudioClient3), WASAPI Exclusive, ASIO. **macOS**: CoreAudio. **Linux**: ALSA, JACK |
-| 드라이버 전환 / Driver Switching | 런타임 전환 가능 / Runtime switching supported. ASIO (Windows): 단일 장치, 동적 SR/BS, 채널 라우팅 / single device, dynamic SR/BS, channel routing. WASAPI: 입출력 분리 가능 / separate input/output possible |
+| 드라이버 전환 / Driver Switching | 런타임 전환 가능 / Runtime switching supported. ASIO (Windows): 입력/출력을 하나의 duplex 드라이버로 취급, 동적 SR/BS, 채널 라우팅 / treats input/output as one duplex driver, dynamic SR/BS, channel routing. WASAPI: 입출력 분리 가능 / separate input/output possible |
 | ASIO SR/BS 정책 / ASIO SR/BS Policy | ASIO 장치는 SR/BS를 전역으로 소유 (장치를 공유하는 모든 앱에 영향). DirectPipe는 ASIO 시작/복원 시 저장된 BS를 강제하지 않고 실제 BS를 수용하지만, 저장 파일에 명시된 SR(예: 48k)이 있고 드라이버가 다른 SR(예: 44.1k)을 보고하면 그 SR을 다음 복원 대상으로 덮어쓰지 않는다. ASIO 컨트롤 패널에서 변경한 BS는 설정에 반영된다. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값 강제 적용 (다른 앱에 영향 없음) / ASIO devices own SR/BS globally. On ASIO startup/restore, DirectPipe accepts the actual buffer size without forcing a driver restart, but if settings explicitly requested a sample rate (for example 48k) and the driver reports a different rate (for example 44.1k), the requested SR is preserved for the next restore. ASIO control-panel BS changes are saved. WASAPI/CoreAudio/ALSA use per-app SR/BS, so saved values are safely forced. |
-| 시작 흐름 / Startup Flow | WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 설정 시 전환 시도 (~100ms, 창 표시 전 완료). ASIO 실패 시 WASAPI에 남아있음 / Opens WASAPI first (safe fallback) → loads saved driver type from settings → switches to ASIO if configured (~100ms, before window shown). Falls back to WASAPI if ASIO fails |
+| 시작 흐름 / Startup Flow | WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 설정 시 저장된 ASIO 장치로만 전환 시도 (~100ms, 창 표시 전 완료). 저장된 ASIO가 없으면 FL Studio ASIO/Realtek ASIO 같은 다른 ASIO로 넘어가지 않고 WASAPI에 남아 저장 target을 기다림 / Opens WASAPI first (safe fallback) → loads saved driver type from settings → switches only to the saved ASIO device if configured (~100ms, before window shown). If the saved ASIO device is missing, DirectPipe stays on WASAPI and waits for the saved target instead of falling through to other ASIO drivers such as FL Studio ASIO or Realtek ASIO |
 | 채널 모드 / Channel Mode | Mono / Stereo (기본값 / default: Stereo, `channelMode_` = 2) |
 | 입력 게인 / Input Gain | 0.0x ~ 2.0x (기본 / default 1.0x). `|gain - 1.0f| > 0.001f`일 때만 SIMD 적용 / SIMD applied only when gain differs from 1.0 |
 | 샘플레이트 / Sample Rate | 장치 지원 범위 (일반적 44.1kHz ~ 192kHz) / Device-supported range (typically 44.1kHz ~ 192kHz) |
@@ -158,14 +158,14 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 #### 4.1.5 장치 자동 재연결 / Device Auto-Reconnection
 | 항목 / Item | 상세 / Details |
 |------|------|
-| 감지 방식 / Detection Method | 이중 메커니즘: (1) `ChangeListener` 즉시 감지 + (2) 3초 타이머 폴링 (`checkReconnection`) / Dual mechanism: (1) `ChangeListener` immediate detection + (2) 3s timer polling (`checkReconnection`) |
+| 감지 방식 / Detection Method | 이중 메커니즘: (1) `ChangeListener` 즉시 감지(장치 목록 변경 시 쿨다운 우회) + (2) 3초 타이머 폴링 (`checkReconnection`) / Dual mechanism: (1) `ChangeListener` immediate detection (bypasses cooldown on device-list changes) + (2) 3s timer polling (`checkReconnection`) |
 | 의도 추적 / Intent Tracking | `desiredInputDevice_` / `desiredOutputDevice_` (SpinLock 보호 / SpinLock protected) / `desiredDeviceType_` / `desiredSampleRate_` / `desiredBufferSize_` 저장 / saved |
 | 폴백 보호 / Fallback Protection | `intentionalChange_` 플래그: JUCE 자동 폴백을 성공적 재연결로 오인하는 것 방지 / `intentionalChange_` flag: prevents mistaking JUCE auto-fallback as successful reconnection |
-| 재연결 로직 / Reconnection Logic | `attemptReconnection()`: 장치 재스캔 → 가용성 확인 → desired 설정(SR/BS/채널) 복원. 명시 채널 마스크가 현재 장치에서 거부되면 driver default 채널로 재시도하여 스테레오 장치를 모노로 강제하지 않고, 모노 장치도 기본 레이아웃으로 열 수 있게 한다 / device rescan → availability check → restore desired settings (SR/BS/channels). If an explicit channel mask is rejected, reconnect retries driver default channels so stereo devices are not forced mono and mono devices can still open with their native layout. `attemptingReconnection_` 재진입 가드 / re-entrancy guard |
+| 재연결 로직 / Reconnection Logic | `attemptReconnection()`: 장치 재스캔 → 가용성 확인 → desired 설정(SR/BS/채널) 복원. 같은 장치 외부 재시작(예: Windows 마이크 향상 기능 토글)은 짧게 안정화 후 같은 설정을 강제 재오픈. 명시 채널 마스크가 현재 장치에서 거부되면 driver default 채널로 재시도하여 스테레오 장치를 모노로 강제하지 않고, 모노 장치도 기본 레이아웃으로 열 수 있게 한다 / device rescan → availability check → restore desired settings (SR/BS/channels). Same-device external restarts (for example Windows microphone enhancement toggles) force a same-setup re-open after a short settle delay. If an explicit channel mask is rejected, reconnect retries driver default channels so stereo devices are not forced mono and mono devices can still open with their native layout. `attemptingReconnection_` 재진입 가드 / re-entrancy guard |
 | 쿨다운 / Cooldown | `reconnectCooldown_` (30Hz 타이머 틱 / 30Hz timer ticks) |
 | 알림 / Notification | 연결 끊김 시 경고(주황), 재연결 시 정보(보라) NotificationBar 표시 / Warning (orange) on disconnect, Info (purple) on reconnect in NotificationBar |
 | 방향별 감지 / Per-Direction Detection | `inputDeviceLost_`: 입력 장치 분실 시 오디오 콜백에서 입력 무음 처리 (폴백 마이크 방지) / silences input in audio callback on input device loss (prevents fallback mic). `outputAutoMuted_`: 출력 장치 분실 시 자동 뮤트, 복원 시 자동 해제 / auto-mutes on output device loss, auto-unmutes on restore |
-| 재연결 실패 / Reconnection Failure | `reconnectMissCount_`: 5회 연속 실패(~15초) 후 현재 드라이버 장치를 수락하여 크로스 드라이버 stale name 무한 루프 방지 / after 5 consecutive failures (~15s), accepts current driver device to prevent cross-driver stale name infinite loop |
+| 재연결 실패 / Reconnection Failure | `reconnectMissCount_`: 5회 연속 실패(~15초) 후에도 크로스 드라이버 stale name 상황에서만 현재 드라이버 장치를 수락하고, 시작 복원/입력 손실/출력 자동 뮤트가 명시 대상 대기 중이면 폴백을 수락하지 않음 / after 5 consecutive failures (~15s), accepts current driver device only for stale cross-driver names. Startup restore, input loss, and output auto-mute keep waiting for the explicit target instead of accepting fallback |
 | 드라이버 전환 복원 / Driver Switch Restore | `DriverTypeSnapshot`: 드라이버 타입별 설정(입출력 장치, SR, BS, outputNone) 저장/복원 / saves/restores per-driver-type settings (input/output device, SR, BS, outputNone). 프리셋 JSON의 `inputChannelMask`/`outputChannelMask`(인덱스 배열)도 저장/복원하여 비연속 ASIO 라우팅 유지, 명시 마스크가 거부되면 driver default 채널로 재시도 / preset JSON `inputChannelMask`/`outputChannelMask` (index arrays) also persist/restore non-contiguous ASIO routing, retrying driver default channels when explicit masks are rejected |
 | 모니터 독립 / Monitor Independence | 모니터 장치는 retry 가능한 장치 lost만 별도 패턴으로 독립 재연결 / Monitor device reconnects independently only for retryable device loss (`monitorLost_` + own cooldown); sample-rate mismatch stays paused |
 
@@ -271,11 +271,11 @@ AudioProcessorGraph:
 | 저장 위치 / Storage Location | 앱 데이터 디렉토리 / App data directory `Slots/slot_A.dppreset` ~ `slot_E.dppreset` (Windows: `%AppData%/DirectPipe/`, macOS/Linux: see platform paths above) |
 | 전환 속도 / Switch Speed | 캐시 히트 / Cache hit: 10-50ms, DLL 로딩 / DLL loading: 200-500ms |
 | 전환 방식 / Switch Method | **Keep-Old-Until-Ready**: 이전 체인이 오디오 처리 계속 → 새 체인 준비 완료 시 메시지 스레드에서 원자적 교체 / Old chain continues audio processing → atomic swap on message thread when new chain is ready |
-| 프리로드 / Preload | `PluginPreloadCache`: 슬롯 로드 후 백그라운드에서 다른 슬롯 플러그인 미리 로드 / After slot load, preloads other slot plugins in background. SR/BS 변경, 구조 변경(이름/경로/순서) 시 무효화 / Invalidated on SR/BS change or structure change (name/path/order). Cache hit 전 현재 슬롯 파일의 plugin type/name/path와 재검증, 불일치 시 stale cache 폐기 후 async load / Cache hits are revalidated against current slot-file plugin type/name/path; mismatches discard stale cache and fall back to async load. Per-slot 버전 카운터로 프리로드 중 무효화 경합 방지 / Per-slot version counter prevents invalidation race during preload |
+| 프리로드 / Preload | `PluginPreloadCache`: 슬롯 로드 후 백그라운드에서 다른 슬롯 플러그인 미리 로드 / After slot load, preloads other slot plugins in background. SR/BS 변경, 구조 변경(이름/경로/순서) 시 무효화 / Invalidated on SR/BS change or structure change (name/path/order). Cache hit 전 현재 슬롯 파일의 plugin type/name/path와 재검증, 불일치 시 stale cache 폐기 후 async load / Cache hits are revalidated against current slot-file plugin type/name/path; mismatches discard stale cache and fall back to async load. 공유 상태의 per-slot 버전 카운터로 프리로드 중 무효화 경합 방지, 종료 시 제한된 message-thread 대기 후 background cleanup 지속 / Shared-state per-slot version counters prevent invalidation races during preload; shutdown uses bounded message-thread waiting and continues background cleanup if needed |
 | 자동 저장 / Auto-Save | 플러그인 에디터 닫을 때 (`onEditorClosed`) 활성 슬롯에 자동 저장 / Auto-saves to active slot when plugin editor closes (`onEditorClosed`) |
 | 슬롯 이름 / Slot Naming | 커스텀 이름 지원 / Custom names supported. 표시 / Display: `A\|게임` (파이프 구분자, 최대 8자 + ".." 자동 잘림 / pipe delimiter, max 8 chars + ".." auto-truncation). `.dppreset` JSON `"name"` 필드에 저장 / stored in `"name"` field. StateBroadcaster `slot_names` 배열로 외부 전달 / externally delivered via `slot_names` array |
 | 관리 / Management | 우클릭 메뉴 / Right-click menu: Rename, Copy A→B/C/D/E, Delete, Export (.dppreset), Import (.dppreset). 활성 슬롯 Copy 시 라이브 상태 캡처 / Active slot Copy captures live state |
-| 보호 / Protection | 빈 체인 저장 방지 / Prevents saving empty chains. `partialLoad_` 부분 로드 감지 / partial load detection. `loadingSlot_` 동시 전환 방지 / concurrent switch prevention |
+| 보호 / Protection | 빈 체인 저장 방지 / Prevents saving empty chains. `partialLoad_` 부분 로드 감지 / partial load detection. 잘못된 plugin-chain JSON은 active slot/audio 상태 적용 전에 거부 / Malformed plugin-chain JSON is rejected before active slot/audio state is applied. `loadingSlot_` 동시 전환 방지 / concurrent switch prevention |
 | 점유 캐시 / Occupancy Cache | `slotOccupiedCache_[5]` — 파일시스템 조회 없이 빠른 점유 확인 / Fast occupancy check without filesystem queries (NextPreset 사이클링용 / for NextPreset cycling) |
 
 #### 4.2.5 비동기 체인 로딩 / Async Chain Loading (replaceChainAsync)
@@ -943,7 +943,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.1.1" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.1.2" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1007,6 +1007,9 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 - Dirty-flag 패턴 + 1초 디바운스 (30Hz 타이머에서 30틱 카운트다운) / Dirty-flag pattern + 1-second debounce (30-tick countdown at 30Hz timer)
 - `onSettingsChanged` 콜백 → `markSettingsDirty()` → 카운터 리셋 → 0 도달 시 `saveSettings()` / callback → `markSettingsDirty()` → counter reset → `saveSettings()` on reaching 0
 - `loadingSlot_` 또는 `isLoading()` true면 저장 스킵 (부분 상태 손상 방지) / Saves skipped when `loadingSlot_` or `isLoading()` is true (prevents partial state corruption)
+- 불완전한 settings preset load 후 `partialLoad_`를 설정하여 quick-slot autosave가 깨진 체인을 덮어쓰지 않게 함 / Incomplete settings preset loads set `partialLoad_` so quick-slot autosave cannot overwrite a slot with a broken chain
+- `plugins` 배열이 아니거나 entry 구조가 잘못된 settings JSON은 active slot, audio state, output state 적용 전에 실패 / Settings JSON with a non-array `plugins` field or malformed plugin entries fails before active slot, audio state, or output state is applied
+- Full-backup slot restore는 파일 clear/write 단계 전에 기존 quick-slot file family를 snapshot하고 실패 시 롤백 / Full-backup slot restore snapshots existing quick-slot file families before the clear/write phase and rolls them back on failure
 - 저장 위치 / Storage location: Windows `%AppData%/DirectPipe/settings.dppreset`, macOS `~/Library/Application Support/DirectPipe/`, Linux `~/.config/DirectPipe/` (JSON, 버전 / version 4)
 
 #### 4.11.2 프리셋 파일 형식 / Preset File Format (JSON, version 4)
@@ -1066,7 +1069,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.1.1",
+  "appVersion": "4.1.2",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1089,7 +1092,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.1.1",
+  "appVersion": "4.1.2",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
@@ -1106,7 +1109,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 | 기능 / Feature | 동작 / Action | 확인 / Confirmation |
 |------|------|------|
 | Full Backup | `.dpfullbackup`으로 전체 백업 / Full backup to `.dpfullbackup` | 파일 선택 / File chooser |
-| Full Restore | `.dpfullbackup`에서 전체 복원 (같은 OS만 — 크로스 OS 복원 차단) / Full restore from `.dpfullbackup` (same OS only — cross-OS restore blocked) | 확인 다이얼로그 / Confirmation dialog |
+| Full Restore | `.dpfullbackup`에서 전체 복원 (같은 OS만 — 크로스 OS 복원 차단, slot clear/write 실패 시 quick-slot 파일 롤백) / Full restore from `.dpfullbackup` (same OS only — cross-OS restore blocked, quick-slot files roll back if slot clear/write fails) | 확인 다이얼로그 / Confirmation dialog |
 | Clear Plugin Cache | 스캔 캐시 XML 삭제 / Delete scan cache XML | 확인 다이얼로그 / Confirmation dialog |
 | Clear All Presets | 슬롯 A-E + Auto 파일 + 백업/임시 파일 삭제, 활성 체인과 런타임 슬롯 상태/프리로드 캐시 초기화 / Delete slots A-E + Auto files + backup/temp files, reset active chain and runtime slot/preload state | 확인 다이얼로그 / Confirmation dialog |
 | Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정), 슬롯 이름/점유 캐시/프리로드 캐시도 초기화 / Delete all data (settings, controls, presets (A-E + Auto), cache, recording config), also clear slot names, occupancy cache, and preload cache | 확인 다이얼로그 / Confirmation dialog |
@@ -1163,7 +1166,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 
 | 기능 / Feature | 상세 / Details |
 |------|------|
-| **시스템 시작 / System Startup** | Windows: 레지스트리 / Registry `HKCU\...\Run\DirectPipe`. macOS: LaunchAgent (`~/Library/LaunchAgents/com.directpipe.host.plist`). Linux: `~/.config/autostart/directpipe.desktop`. 트레이 메뉴 + Settings 탭에서 토글 / Toggle in tray menu + Settings tab |
+| **시스템 시작 / System Startup** | Windows: 따옴표로 감싼 실행 파일 command를 레지스트리 `HKCU\...\Run\DirectPipe`에 저장 / quoted executable command in Registry `HKCU\...\Run\DirectPipe`. macOS: LaunchAgent (`~/Library/LaunchAgents/com.directpipe.host.plist`). Linux: `~/.config/autostart/directpipe.desktop`. 트레이 메뉴 + Settings 탭에서 토글 / Toggle in tray menu + Settings tab |
 | **단일 인스턴스 / Single Instance** | `moreThanOneInstanceAllowed()` = false. `--scan` 인자 시에만 복수 허용 / Multiple instances only with `--scan` argument. 포터블 모드에서는 true (다중 인스턴스 허용, 폴더별 InterProcessLock으로 같은 폴더 중복만 차단) / true in portable mode (multiple instances allowed, per-folder InterProcessLock blocks same-folder duplicates only) |
 | **프로세스 우선순위 / Process Priority** | `HIGH_PRIORITY_CLASS` |
 | **포터블 모드 / Portable Mode** | exe 옆 `portable.flag` → 설정을 `./config/`에 저장 / `portable.flag` next to exe → config stored in `./config/`. `ControlMappingStore::getConfigDirectory()` 사용 / used |
@@ -1271,14 +1274,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.1.1.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.1.2.0
 │   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host, 362 registered tests)
+├── tests/                          → Google Test (core + host, 381 registered tests)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin
