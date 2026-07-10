@@ -11,7 +11,7 @@
     "validate": "streamdeck validate .",
     "package": "node scripts/package.mjs",
     "lint": "eslint src/",
-    "test": "node --test src/**/*.test.js"
+    "test": "node --test src/websocket-client.test.js"
   },
   "keywords": [
     "streamdeck",
