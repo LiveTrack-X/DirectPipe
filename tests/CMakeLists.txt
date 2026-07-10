@@ -185,6 +185,8 @@ if(DIRECTPIPE_BUILD_HOST)
 
     target_compile_definitions(directpipe-endpoint-watcher-tests PRIVATE
         DIRECTPIPE_ENABLE_TEST_ACCESS=1
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
     )
 
     target_link_libraries(directpipe-endpoint-watcher-tests PRIVATE
