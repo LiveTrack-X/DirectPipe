@@ -4,6 +4,11 @@
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
 
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <thread>
+
 #define private public
 #include "Audio/MonitorOutput.h"
 #undef private
@@ -82,6 +87,7 @@ void prepareActiveMonitor(MonitorOutput& monitor, int producerBlock, int consume
     monitor.ringBuffer_.initialize(8192, 2);
     monitor.capacityFrames_.store(8192, std::memory_order_relaxed);
     monitor.status_.store(VirtualCableStatus::Active, std::memory_order_release);
+    monitor.producerWriteAdmission_.store(true, std::memory_order_seq_cst);
     monitor.actualSampleRate_.store(48000.0, std::memory_order_relaxed);
     monitor.actualBufferSize_.store(consumerBlock, std::memory_order_relaxed);
     monitor.producerBlockSize_.store(producerBlock, std::memory_order_relaxed);
@@ -120,7 +126,149 @@ void expectSilence(const std::vector<float>& left, const std::vector<float>& rig
         EXPECT_FLOAT_EQ(sample, 0.0f);
 }
 
+struct MonitorWriteBarrier {
+    std::atomic<bool> entered{false};
+    std::atomic<bool> release{false};
+
+    static void wait(void* context)
+    {
+        auto& barrier = *static_cast<MonitorWriteBarrier*>(context);
+        barrier.entered.store(true, std::memory_order_release);
+        while (!barrier.release.load(std::memory_order_acquire))
+            std::this_thread::yield();
+    }
+};
+
+template <typename Predicate>
+bool spinWaitUntil(Predicate&& predicate, std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::yield();
+    }
+    return true;
+}
+
 } // namespace
+
+TEST(MonitorOutputTest, ShutdownWaitsForInFlightProducerBeforeReset)
+{
+    MonitorOutput monitor;
+    prepareActiveMonitor(monitor, 64, 64);
+
+    MonitorWriteBarrier barrier;
+    monitor.testWriteBarrier_ = &MonitorWriteBarrier::wait;
+    monitor.testWriteBarrierContext_ = &barrier;
+
+    std::array<float, 64> left{};
+    std::array<float, 64> right{};
+    const float* channels[] = { left.data(), right.data() };
+    std::thread writer([&] { monitor.writeAudio(channels, 2, 64); });
+
+    if (!spinWaitUntil([&] { return barrier.entered.load(std::memory_order_acquire); },
+                       std::chrono::seconds(2))) {
+        barrier.release.store(true, std::memory_order_release);
+        writer.join();
+        FAIL() << "writeAudio did not reach the deterministic barrier";
+        return;
+    }
+
+    std::atomic<bool> shutdownReturned{false};
+    std::thread shutdown([&] {
+        monitor.shutdown();
+        shutdownReturned.store(true, std::memory_order_release);
+    });
+
+    if (!spinWaitUntil([&] {
+            return monitor.getStatus() == VirtualCableStatus::NotConfigured;
+        }, std::chrono::seconds(2))) {
+        barrier.release.store(true, std::memory_order_release);
+        writer.join();
+        shutdown.join();
+        FAIL() << "shutdown did not close producer admission";
+        return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const auto waitedForWriter = !shutdownReturned.load(std::memory_order_acquire);
+
+    barrier.release.store(true, std::memory_order_release);
+    writer.join();
+    shutdown.join();
+
+    EXPECT_TRUE(waitedForWriter)
+        << "shutdown reset the ring while writeAudio was still in flight";
+}
+
+TEST(MonitorOutputTest, ShutdownInvalidatesDeferredLifecycleWork)
+{
+    MonitorOutput monitor;
+    const auto previousGeneration = monitor.lifecycleGeneration_.load(std::memory_order_acquire);
+
+    monitor.shutdown();
+
+    EXPECT_NE(previousGeneration,
+              monitor.lifecycleGeneration_.load(std::memory_order_acquire));
+    EXPECT_FALSE(monitor.activeOutputRecoveryPending_.load(std::memory_order_acquire));
+}
+
+TEST(MonitorOutputTest, DeviceRestartWaitsForInFlightProducerBeforeReset)
+{
+    MonitorOutput monitor;
+    monitor.deviceName_ = "Monitor Device";
+    monitor.sampleRate_ = 48000.0;
+    monitor.bufferSize_ = 64;
+    prepareActiveMonitor(monitor, 64, 64);
+
+    MonitorWriteBarrier barrier;
+    monitor.testWriteBarrier_ = &MonitorWriteBarrier::wait;
+    monitor.testWriteBarrierContext_ = &barrier;
+
+    std::array<float, 64> left{};
+    std::array<float, 64> right{};
+    const float* channels[] = { left.data(), right.data() };
+    std::thread writer([&] { monitor.writeAudio(channels, 2, 64); });
+
+    if (!spinWaitUntil([&] { return barrier.entered.load(std::memory_order_acquire); },
+                       std::chrono::seconds(2))) {
+        barrier.release.store(true, std::memory_order_release);
+        writer.join();
+        FAIL() << "writeAudio did not reach the deterministic barrier";
+        return;
+    }
+
+    juce::BigInteger activeStereo;
+    activeStereo.setRange(0, 2, true);
+    FakeAudioIODevice device("Monitor Device", 48000.0, 64, activeStereo);
+    std::atomic<bool> restartEntered{false};
+    std::atomic<bool> restartReturned{false};
+    std::thread restart([&] {
+        restartEntered.store(true, std::memory_order_release);
+        juce::AudioIODeviceCallback& callback = monitor;
+        callback.audioDeviceAboutToStart(&device);
+        restartReturned.store(true, std::memory_order_release);
+    });
+
+    if (!spinWaitUntil([&] { return restartEntered.load(std::memory_order_acquire); },
+                       std::chrono::seconds(2))) {
+        barrier.release.store(true, std::memory_order_release);
+        writer.join();
+        restart.join();
+        FAIL() << "device restart thread did not start";
+        return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const auto waitedForWriter = !restartReturned.load(std::memory_order_acquire);
+
+    barrier.release.store(true, std::memory_order_release);
+    writer.join();
+    restart.join();
+
+    EXPECT_TRUE(waitedForWriter)
+        << "device restart reset the ring while writeAudio was still in flight";
+    EXPECT_EQ(monitor.getStatus(), VirtualCableStatus::Active);
+}
 
 TEST(MonitorOutputTest, ZeroActiveOutputDoesNotReportActive)
 {
@@ -158,6 +306,26 @@ TEST(MonitorOutputTest, ActiveOutputCanReportActive)
     EXPECT_EQ(monitor.getStatus(), VirtualCableStatus::Active);
     EXPECT_FALSE(monitor.monitorLost_.load(std::memory_order_relaxed));
     EXPECT_TRUE(monitor.isActive());
+}
+
+TEST(MonitorOutputTest, FallbackWithSampleRateMismatchRemainsRetryable)
+{
+    MonitorOutput monitor;
+    monitor.deviceName_ = "Desired Monitor";
+    monitor.sampleRate_ = 48000.0;
+    monitor.bufferSize_ = 128;
+
+    juce::BigInteger activeStereo;
+    activeStereo.setRange(0, 2, true);
+    FakeAudioIODevice device("Fallback Monitor", 44100.0, 128, activeStereo);
+
+    juce::AudioIODeviceCallback& callback = monitor;
+    callback.audioDeviceAboutToStart(&device);
+
+    EXPECT_EQ(monitor.getStatus(), VirtualCableStatus::Error);
+    EXPECT_TRUE(monitor.monitorLost_.load(std::memory_order_relaxed));
+    EXPECT_TRUE(monitor.isDeviceLost());
+    EXPECT_FALSE(monitor.isActive());
 }
 
 TEST(MonitorOutputTest, PrimingOutputsSilenceUntilAdaptiveTargetFill)

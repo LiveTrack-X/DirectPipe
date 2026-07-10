@@ -67,6 +67,8 @@ if(DIRECTPIPE_BUILD_HOST)
         test_vst_chain.cpp
         # Slice 4: Platform
         test_platform.cpp
+        test_endpoint_change_watcher.cpp
+        test_update_script.cpp
         # Host source files needed by tests
         ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Control/StateBroadcaster.cpp
@@ -95,6 +97,9 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinAutoGain.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinNoiseRemoval.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/PluginPreloadCache.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Platform/EndpointChangeWatcher.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/UpdateChecker.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/UpdateScript.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/FilterEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/NoiseRemovalEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/AGCEditPanel.cpp
@@ -147,6 +152,7 @@ if(DIRECTPIPE_BUILD_HOST)
         juce::juce_audio_processors
         juce::juce_audio_utils
         juce::juce_core
+        juce::juce_cryptography
         juce::juce_data_structures
         juce::juce_events
         juce::juce_gui_basics
@@ -155,8 +161,45 @@ if(DIRECTPIPE_BUILD_HOST)
     )
 
     if(WIN32)
-        target_link_libraries(directpipe-host-tests PRIVATE kernel32)
+        target_link_libraries(directpipe-host-tests PRIVATE kernel32 ole32 uuid)
     endif()
 
     gtest_discover_tests(directpipe-host-tests)
+
+    # Focused endpoint-notification tests remain buildable even when unrelated
+    # host sources are temporarily under active development.
+    juce_add_console_app(directpipe-endpoint-watcher-tests
+        PRODUCT_NAME "DirectPipeEndpointWatcherTests"
+    )
+
+    target_sources(directpipe-endpoint-watcher-tests PRIVATE
+        test_endpoint_change_watcher.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Platform/EndpointChangeWatcher.cpp
+    )
+
+    juce_generate_juce_header(directpipe-endpoint-watcher-tests)
+
+    target_include_directories(directpipe-endpoint-watcher-tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/host/Source
+    )
+
+    target_compile_definitions(directpipe-endpoint-watcher-tests PRIVATE
+        DIRECTPIPE_ENABLE_TEST_ACCESS=1
+    )
+
+    target_link_libraries(directpipe-endpoint-watcher-tests PRIVATE
+        GTest::gtest
+        GTest::gtest_main
+        juce::juce_core
+        juce::juce_events
+        juce::juce_recommended_config_flags
+    )
+
+    if(WIN32)
+        target_link_libraries(directpipe-endpoint-watcher-tests PRIVATE ole32 uuid)
+    endif()
+
+    gtest_discover_tests(directpipe-endpoint-watcher-tests
+        TEST_PREFIX "EndpointWatcher."
+    )
 endif()

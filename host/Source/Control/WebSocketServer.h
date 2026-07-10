@@ -41,6 +41,10 @@
 
 namespace directpipe {
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+class WebSocketServerTestAccess;
+#endif
+
 /**
  * @brief RFC 6455 WebSocket server for Stream Deck and external clients.
  *
@@ -62,21 +66,43 @@ public:
     int getClientCount() const { return clientCount_.load(std::memory_order_relaxed); }
     int getPort() const { return port_; }
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    void processMessageForTest(const std::string& message) { processMessage(message); }
+#endif
+
     // StateListener
     void onStateChanged(const AppState& state) override;
 
 private:
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    friend class WebSocketServerTestAccess;
+#endif
+
     struct ClientConnection {
         std::unique_ptr<juce::StreamingSocket> socket;
         std::thread thread;
         std::mutex sendMutex;  // [Protects concurrent writes to client socket]
+        std::atomic<bool> socketCloseStarted{false};
+        std::atomic<bool> readyForBroadcast{false};
+        std::atomic<bool> threadFinished{false};
+
+        // May be called concurrently with a blocked sender. Exactly one caller
+        // closes the JUCE socket object; the close interrupts the OS send/read.
+        void requestSocketClose()
+        {
+            if (socket
+                && !socketCloseStarted.exchange(true, std::memory_order_acq_rel)) {
+                socket->close();
+            }
+        }
     };
 
     void serverThread();                                   // [Server thread — accept loop, runs until running_==false]
     void clientThread(ClientConnection* conn);              // [Per-client thread — read loop, one per connection]
     void processMessage(const std::string& message);       // [Per-client thread → ActionDispatcher → Message thread]
     void broadcastToClients(const std::string& message);   // [Broadcast thread — sweeps dead clients under clientsMutex_, writes outside lock]
-    void sendDiscoveryBroadcast();                         // [Server thread]
+    void sweepFinishedClients();                           // [Server/Broadcast thread — joins outside clientsMutex_]
+    void sendDiscoveryBroadcast(bool logEvent = true);     // [Server thread]
 
     // RFC 6455 WebSocket helpers
     static bool performHandshake(juce::StreamingSocket* client);
@@ -97,7 +123,7 @@ private:
     int port_ = 8765;
     // [Protects clients_. NEVER join threads inside this lock.]
     std::mutex clientsMutex_;
-    std::vector<std::unique_ptr<ClientConnection>> clients_;  // [Protected by clientsMutex_]
+    std::vector<std::shared_ptr<ClientConnection>> clients_;  // [Protected by clientsMutex_]
 
     // Async broadcast: queue JSON on any thread, send from dedicated thread
     std::thread broadcastThread_;

@@ -12,9 +12,9 @@ DirectPipe는 두 가지 네트워크 인터페이스를 제공한다: 실시간
 | HTTP | 8766 | http://127.0.0.1 |
 | UDP Discovery | 8767 | 127.0.0.1 (broadcast) |
 
-Both WebSocket and HTTP bind to localhost only for security. Ports configurable in Controls > Stream Deck tab (accessible even without Stream Deck installed). DirectPipe sends a `DIRECTPIPE_READY:<port>` UDP packet to port 8767 when the WebSocket server starts, enabling instant client connection without polling.
+Both WebSocket and HTTP bind to localhost only for security. Ports configurable in Controls > Stream Deck tab (accessible even without Stream Deck installed). DirectPipe sends `DIRECTPIPE_READY:<actualPort>` to UDP port 8767 immediately and every 2 seconds while the WebSocket server runs, so a plugin started later can still discover a fallback port without scanning.
 
-WebSocket과 HTTP는 보안을 위해 localhost만 바인딩. 포트는 Controls > Stream Deck 탭에서 변경 가능 (Stream Deck 미설치 상태에서도 접근 가능). DirectPipe는 WebSocket 서버 시작 시 UDP 8767로 `DIRECTPIPE_READY:<port>` 패킷을 전송하여 클라이언트가 폴링 없이 즉시 연결 가능.
+WebSocket과 HTTP는 보안을 위해 localhost만 바인딩. 포트는 Controls > Stream Deck 탭에서 변경 가능 (Stream Deck 미설치 상태에서도 접근 가능). DirectPipe는 WebSocket 서버 시작 즉시, 그리고 실행 중 2초마다 UDP 8767로 `DIRECTPIPE_READY:<actualPort>`를 보내 나중에 시작한 플러그인도 포트 스캔 없이 fallback 포트를 찾을 수 있습니다.
 
 ---
 
@@ -37,6 +37,10 @@ All messages are JSON with a `type` field. / 모든 메시지는 `type` 필드�
 { "type": "action", "action": "<action_name>", "params": { ... } }
 ```
 
+When present, WebSocket action parameters are type- and range-strict. Numeric fields must be finite JSON numbers within the ranges documented below; boolean and string fields are not coerced from other JSON types. A field with an invalid type or range is rejected without dispatching an action. Some omitted fields retain legacy defaults for compatibility, but clients should still send every field marked Required.
+
+WebSocket action parameter는 값이 있을 때 타입과 범위를 엄격히 검사합니다. 숫자 필드는 아래 범위 안의 유한한 JSON number여야 하며, boolean/string 필드는 다른 JSON 타입에서 자동 변환하지 않습니다. 타입이나 범위가 잘못된 필드는 action을 실행하지 않고 거부합니다. 생략된 일부 필드는 호환성을 위해 기존 기본값을 유지하지만, client는 Required로 표시된 필드를 모두 전송해야 합니다.
+
 **Server -> Client (state update):**
 ```json
 { "type": "state", "data": { ... } }
@@ -51,7 +55,9 @@ State updates are pushed automatically on every state change. / 상태 변경 �
 ### Connection Notes / 연결 참고
 
 - Server implements RFC 6455 with custom SHA-1 handshake / RFC 6455 구현 (커스텀 SHA-1)
-- Dead clients are automatically cleaned up during broadcast / 브로드캐스트 시 죽은 클라이언트 자동 정리
+- A client becomes broadcast-visible only after the HTTP upgrade and initial state frame complete. / HTTP 업그레이드와 초기 상태 프레임이 끝난 뒤에만 브로드캐스트 대상으로 등록
+- Finished or failed clients are reclaimed periodically while idle and during broadcasts. / 종료·실패한 클라이언트는 유휴 중 주기적으로, 그리고 브로드캐스트 시 정리
+- Numeric and boolean parameters use strict JSON types, finite-value checks, and documented ranges; invalid messages are ignored. / 숫자·불리언 파라미터는 엄격한 JSON 타입·유한값·문서화된 범위를 검사하며 잘못된 메시지는 무시
 - Multiple clients can connect simultaneously / 다중 클라이언트 동시 연결 가능
 
 ---
@@ -99,7 +105,7 @@ State updates are pushed automatically on every state change. / 상태 변경 �
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `target` | string | No | `"input"`, `"output"`, `"monitor"`, or `""` (all) |
+| `target` | string | No | `"input"`, `"output"`, `"monitor"`, `"all"`, or `""` (all; default) |
 
 ---
 
@@ -131,7 +137,7 @@ Immediately mutes all output paths and stops active recording. Send again to unm
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `delta` | number | Yes | Step count (±1 = ±0.1 linear gain, range 0.0-2.0). Default: 1.0 / 스텝 수 (±1 = ±0.1 선형 게인 변화) |
+| `delta` | number | No | Step count from -20 to +20 (±1 = ±0.1 linear gain). Default: 1.0; the resulting input gain is clamped to 0.0-2.0. / -20~+20 스텝 (±1 = ±0.1 선형 게인 변화), 기본값 1.0, 결과 gain은 0.0-2.0으로 제한 |
 
 > **Note**: `delta`는 dB가 아닌 스텝 카운트입니다. 1 스텝 = 선형 게인 0.1 변화. 실제 게인을 직접 설정하려면 `set_volume` 액션에 `target: "input"`, `value: 0.0-2.0`을 사용하세요.
 > `delta` is a step count, NOT dB. 1 step = 0.1 linear gain change. To set absolute gain, use `set_volume` with `target: "input"` and `value: 0.0-2.0`.

@@ -7,6 +7,10 @@
 #include "UI/PresetSlotBar.h"
 #include "Util/AtomicFileIO.h"
 
+#if JUCE_WINDOWS
+#include <windows.h>
+#endif
+
 using namespace directpipe;
 
 namespace {
@@ -110,6 +114,32 @@ protected:
     }
 
     juce::File tempDir_;
+};
+
+class PresetManagerPortableTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        const auto exeDir = juce::File::getSpecialLocation(
+            juce::File::currentExecutableFile).getParentDirectory();
+        portableFlag_ = exeDir.getChildFile("portable.flag");
+        hadPortableFlag_ = portableFlag_.existsAsFile();
+        if (!hadPortableFlag_)
+            ASSERT_TRUE(portableFlag_.create());
+
+        configDir_ = exeDir.getChildFile("config");
+        configDir_.deleteRecursively();
+        ASSERT_TRUE(configDir_.createDirectory());
+    }
+
+    void TearDown() override {
+        configDir_.deleteRecursively();
+        if (!hadPortableFlag_)
+            portableFlag_.deleteFile();
+    }
+
+    juce::File portableFlag_;
+    juce::File configDir_;
+    bool hadPortableFlag_ = false;
 };
 
 TEST_F(PresetManagerTest, SaveLoadRoundtrip) {
@@ -477,6 +507,64 @@ TEST_F(PresetManagerTest, ImportFromJSONRejectsMalformedPluginChainBeforeApplyin
     })";
     EXPECT_FALSE(targetManager.importFromJSON(malformedEntry));
     EXPECT_EQ(targetManager.getActiveSlot(), 3);
+
+    targetEngine.setInputGain(0.6f);
+    juce::String emptyPluginObject = R"({
+        "version": 4,
+        "activeSlot": 1,
+        "inputGain": 1.7,
+        "plugins": [{}]
+    })";
+    EXPECT_FALSE(targetManager.importFromJSON(emptyPluginObject));
+    EXPECT_EQ(targetManager.getActiveSlot(), 3);
+    EXPECT_FLOAT_EQ(targetEngine.getInputGain(), 0.6f);
+}
+
+TEST_F(PresetManagerTest, StructuralValidationRejectsMalformedFileWithoutImporting) {
+    AudioEngine engine;
+    PresetManager manager(engine);
+    auto file = tempDir_.getChildFile("candidate.dppreset");
+
+    ASSERT_TRUE(file.replaceWithText(R"({"version":4,"plugins":[{}]})"));
+    EXPECT_FALSE(manager.isPresetFileStructurallyValid(file));
+
+    ASSERT_TRUE(file.replaceWithText(makeBuiltinChainJSON()));
+    EXPECT_TRUE(manager.isPresetFileStructurallyValid(file));
+}
+
+TEST_F(PresetManagerTest, InvalidPluginStateFallsBackToStructurallyValidBackup) {
+    auto file = tempDir_.getChildFile("invalid-state.dppreset");
+    const juce::String invalidPrimary = R"({
+        "version": 4,
+        "plugins": [{
+            "name": "CorruptState",
+            "path": "/tmp/corrupt-state.vst3",
+            "state": "1.!!!!"
+        }]
+    })";
+    const auto validBackup = makeBuiltinChainJSON();
+
+    ASSERT_TRUE(file.replaceWithText(invalidPrimary));
+    ASSERT_TRUE(file.getSiblingFile(file.getFileName() + ".bak")
+                    .replaceWithText(validBackup));
+
+    const auto recovered = PresetManager::loadPresetJSONWithBackupFallback(file, true);
+    EXPECT_EQ(recovered, validBackup);
+    EXPECT_EQ(file.loadFileAsString(), validBackup);
+}
+
+TEST_F(PresetManagerTest, ValidBackupLoadsWhenPrimaryRepairFails) {
+    auto blockedPrimary = tempDir_.getChildFile("blocked-primary.dppreset");
+    ASSERT_TRUE(blockedPrimary.createDirectory());
+    ASSERT_TRUE(blockedPrimary.getChildFile("write-blocker").replaceWithText("blocked"));
+
+    const auto validBackup = makeBuiltinChainJSON();
+    ASSERT_TRUE(blockedPrimary.getSiblingFile(blockedPrimary.getFileName() + ".bak")
+                    .replaceWithText(validBackup));
+
+    EXPECT_EQ(PresetManager::loadPresetJSONWithBackupFallback(blockedPrimary, true),
+              validBackup);
+    EXPECT_TRUE(blockedPrimary.isDirectory());
 }
 
 TEST_F(PresetManagerTest, ImportChainAcceptsBuiltinOnlyChain) {
@@ -610,6 +698,131 @@ TEST_F(PresetManagerTest, MultiplePluginChainRoundtrip) {
 }
 
 // ─── Auto Slot Constants ───
+
+TEST_F(PresetManagerPortableTest, CopySlotPreservesDestinationWhenSourceIsCorrupt) {
+    AudioEngine engine;
+    PresetManager manager(engine);
+
+    auto source = PresetManager::getSlotFile(0);
+    auto destination = PresetManager::getSlotFile(1);
+    const juce::String destinationJson =
+        R"({"version":4,"name":"KeepMe","plugins":[]})";
+
+    ASSERT_TRUE(source.replaceWithText("CORRUPTED"));
+    ASSERT_TRUE(destination.replaceWithText(destinationJson));
+
+    EXPECT_FALSE(manager.copySlot(0, 1));
+    EXPECT_EQ(destination.loadFileAsString(), destinationJson);
+}
+
+TEST_F(PresetManagerPortableTest, CopySlotPreservesDestinationWhenSourceIsParseableButInvalid) {
+    AudioEngine engine;
+    PresetManager manager(engine);
+
+    const auto source = PresetManager::getSlotFile(0);
+    const auto destination = PresetManager::getSlotFile(1);
+    const juce::String destinationJson = R"({"version":4,"type":"chain","plugins":[]})";
+
+    ASSERT_TRUE(source.replaceWithText("{}"));
+    ASSERT_TRUE(destination.replaceWithText(destinationJson));
+
+    EXPECT_FALSE(manager.copySlot(0, 1));
+    EXPECT_EQ(destination.loadFileAsString(), destinationJson);
+}
+
+TEST_F(PresetManagerPortableTest, CopySlotUsesStructurallyValidBackup) {
+    AudioEngine engine;
+    PresetManager manager(engine);
+
+    const auto source = PresetManager::getSlotFile(0);
+    const auto backup = source.getSiblingFile(source.getFileName() + ".bak");
+    const auto destination = PresetManager::getSlotFile(1);
+    const juce::String validBackup = R"({"version":4,"type":"chain","plugins":[]})";
+
+    ASSERT_TRUE(source.replaceWithText("{}"));
+    ASSERT_TRUE(backup.replaceWithText(validBackup));
+
+    EXPECT_TRUE(manager.copySlot(0, 1));
+    EXPECT_EQ(destination.loadFileAsString(), validBackup);
+    EXPECT_EQ(source.loadFileAsString(), validBackup);
+
+    // A crash during the old numeric-name era can leave only .bak or
+    // .backup. Both families must migrate to the canonical letter name so
+    // load/copy/full-backup callers can resolve the occupied slot.
+    const auto slotsDir = configDir_.getChildFile("Slots");
+    const auto legacyC = slotsDir.getChildFile("slot_67.dppreset");
+    const auto legacyCBackup = legacyC.getSiblingFile(legacyC.getFileName() + ".bak");
+    ASSERT_TRUE(legacyCBackup.replaceWithText(validBackup));
+    const auto canonicalC = PresetManager::getSlotFile(2);
+    EXPECT_EQ(canonicalC.loadFileAsString(), validBackup);
+    EXPECT_FALSE(legacyCBackup.existsAsFile());
+
+    const auto legacyD = slotsDir.getChildFile("slot_68.dppreset");
+    const auto legacyDBackup = legacyD.withFileExtension(legacyD.getFileExtension() + ".backup");
+    ASSERT_TRUE(legacyDBackup.replaceWithText(validBackup));
+    const auto canonicalD = PresetManager::getSlotFile(3);
+    EXPECT_EQ(canonicalD.loadFileAsString(), validBackup);
+    EXPECT_FALSE(legacyDBackup.existsAsFile());
+}
+
+TEST_F(PresetManagerPortableTest, AsyncSlotLoadRejectsMalformedEntriesAtomically) {
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    auto addResult = engine.getVSTChain().addBuiltinProcessor(PluginSlot::Type::BuiltinFilter);
+    ASSERT_TRUE(addResult.success);
+
+    PresetManager manager(engine);
+    manager.setActiveSlot(2);
+
+    auto slot = PresetManager::getSlotFile(0);
+    ASSERT_TRUE(slot.replaceWithText(R"({
+        "version": 4,
+        "name": "Malformed",
+        "plugins": [
+            {"name":"Filter","type":"builtin_filter","bypassed":false},
+            "junk"
+        ]
+    })"));
+
+    bool callbackCalled = false;
+    bool callbackResult = true;
+    manager.loadSlotAsync(0, [&](bool ok) {
+        callbackCalled = true;
+        callbackResult = ok;
+    });
+
+    EXPECT_TRUE(callbackCalled);
+    EXPECT_FALSE(callbackResult);
+    EXPECT_EQ(manager.getActiveSlot(), 2);
+    EXPECT_EQ(engine.getVSTChain().getPluginCount(), 1);
+}
+
+#if JUCE_WINDOWS
+TEST_F(PresetManagerPortableTest, DeleteSlotKeepsStateWhenFileDeletionFails) {
+    auto slot = PresetManager::getSlotFile(0);
+    ASSERT_TRUE(slot.replaceWithText(R"({"version":4,"plugins":[]})"));
+
+    AudioEngine engine;
+    PresetManager manager(engine);
+    ASSERT_TRUE(manager.isSlotOccupied(0));
+
+    const auto path = slot.getFullPathName();
+    auto lockedFile = CreateFileW(path.toWideCharPointer(),
+                                  GENERIC_READ,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  nullptr);
+    ASSERT_NE(lockedFile, INVALID_HANDLE_VALUE) << GetLastError();
+
+    EXPECT_FALSE(manager.deleteSlot(0));
+    EXPECT_TRUE(slot.existsAsFile());
+    EXPECT_TRUE(manager.isSlotOccupied(0));
+
+    CloseHandle(lockedFile);
+}
+#endif
 
 TEST(PresetSlotBarConstants, AutoSlotIndex) {
     EXPECT_EQ(PresetSlotBar::kAutoSlotIndex, 5);

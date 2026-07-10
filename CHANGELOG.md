@@ -8,6 +8,49 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.2.0] - 2026-07-10
+
+### Added
+- **Selected-input endpoint watcher**: Windows Core Audio property/state notifications for the selected capture endpoint now drive same-device recovery for **Audio enhancements**, **Voice Clarity**, **Voice focus**, default-format, and exclusive-mode changes even when JUCE emits no stop callback. Recovery is endpoint-event based, not silence based.
+- **Dedicated endpoint tests**: Added a focused endpoint-watcher executable and CI/pre-release coverage alongside the core and host suites.
+- **Stream Deck reconnect tests**: Added Node coverage for discovered-port use, stale socket cleanup, and reconnect scheduling.
+
+### Changed
+- **Monitor clock bridge and lifecycle**: MonitorOutput keeps adaptive fractional playback, bounds target fill, drains in-flight main-RT writes before ring mutation, and rejects stale recovery/reinitialize callbacks with lifecycle generations.
+- **Control-server ownership**: HTTP client sockets use shared lifetime ownership and stable plugin snapshots. WebSocket clients become broadcast-visible only after handshake/initial-state completion, queued state is re-snapshotted before send, and shared connection snapshots stay alive through writes.
+- **Exact backup semantics**: Settings-only and full-backup import now operate as rollback-capable transactions. Restore entry points atomically claim the single load owner and reject another active load, a partial chain, or an unstable VST transition; full restore additionally requires explicit stable-runtime proof. Full export applies the same loading/partial/unstable guard and reports active-slot, control staging, or structurally corrupt slot failures instead of overwriting a valid slot or emitting an incomplete backup.
+- **Strict control schema**: WebSocket numeric/string/boolean parameters, imported optional action fields, action enums, MIDI type/CC/note/channel ranges, server ports, and boolean fields are validated before conversion or dispatch.
+- **Release workflow gates**: CI checks out a requested release tag, verifies it against the canonical version, and runs Stream Deck tests/validation. Version-only checks now cover Receiver and package-lock metadata plus current/versioned release bodies.
+- **Stream Deck dependency security refresh**: Updated the production `ws` dependency to 8.21.0 and refreshed the transitive lockfile; full and production-only `npm audit` now report 0 vulnerabilities.
+
+### Fixed
+- **Manual output mute preservation**: Manual and automatic device-loss mute ownership are tracked separately. Endpoint/panic recovery no longer clears user mute intent, while clearing manual mute cannot bypass an active automatic loss mute.
+- **Stale monitor callbacks**: Queued fallback/recovery and main-device restart callbacks can no longer close or revert a newly selected monitor device.
+- **RT teardown races**: Monitor and SharedMemWriter close admission and drain in-flight writes before resetting ring memory or unmapping shared memory.
+- **Preset structural recovery**: Parseable corrupt primaries such as `{}`, malformed plugin entries, or non-canonical Base64 state no longer overwrite destinations or block recovery from valid `.bak`/legacy backups; a valid backup can still load if primary self-repair copying fails. Legacy numeric slot families whose only surviving file is `.bak` or `.backup` migrate to the canonical letter slot, so occupied slots remain loadable and are included in full backups. Startup autosave recovery also honors an explicit `outputMuted` value from a backup-only or locked-primary family, including partial plugin loads.
+- **Settings rollback gap**: A late control-config save failure no longer leaves already-applied audio settings behind.
+- **Control mapping defaults**: Invalid persisted actions no longer silently become `PanicMute`, and invalid MIDI enums no longer create dead mappings.
+- **Updater transaction and command safety**: The Windows updater stages replacements, preserves/rolls back a known-good executable, escapes literal percent paths, rejects non-strict release tags, and waits only for the exact launching DirectPipe PID. Finished/failed download workers are reaped so a later update attempt can retry, and a lifecycle mutex serializes reap/start/destruction around the reusable `std::thread`.
+- **WebSocket dead-client accumulation**: Close/read-error/failed-handshake exits close their sockets and are swept even while no state broadcasts occur, so idle dead clients cannot consume the client limit.
+- **Device state reporting**: Directional input/output losses now report `InputLost`/`OutputLost` instead of being masked as `BothLost` by the generic loss flag. Output None selection or manual output-loss clearing publishes direction-first and rechecks/re-arms recovery, so a concurrent input loss cannot be cleared from aggregate `deviceLost` state.
+- **Stream Deck discovery/reconnect**: The host announces the actual WebSocket port immediately and every 2 seconds; the plugin binds UDP discovery before its first WebSocket attempt, uses the discovered port, and clears stale socket state across close/error paths.
+
+### Upgrade
+- For **Windows v4.1.2 → v4.2.0**, use the GitHub Windows ZIP once. The new transactional updater protects updates initiated by v4.2.0 and later, but cannot change updater code already installed in v4.1.2.
+- Receiver VST replacement is not required for these host-side fixes; the control API and Receiver IPC protocol remain compatible.
+- Update the Stream Deck plugin to 4.2.0 for discovery/reconnect fixes. GitHub provides the manual package; Marketplace publication remains a separate submission step.
+
+### Tests
+- Release build completed for the app, Receiver VST2/VST3, and all test targets.
+- `directpipe-tests`: 52/52 passed.
+- `directpipe-host-tests`: 391 total, 389 passed, 2 environment-dependent skips.
+- `directpipe-endpoint-watcher-tests`: 2/2 passed.
+- CTest: 445 registered, 0 failures, 2 environment-dependent skips.
+- Stream Deck tests: 5/5 passed; build and package validation passed.
+- Focused endpoint automation passed; real-device **Audio enhancements**, **Voice Clarity**, **Voice focus**, and default-format changes remain an unexecuted manual field check for this local run.
+
+---
+
 ## [4.1.2] - 2026-07-07
 
 ### Fixed

@@ -35,6 +35,7 @@
 #include "AudioRecorder.h"
 #include "SafetyLimiter.h"
 #include "../IPC/SharedMemWriter.h"
+#include "../Platform/EndpointChangeWatcher.h"
 
 #include <atomic>
 #include <functional>
@@ -175,11 +176,25 @@ public:
     void setInputMuted(bool muted) { inputMuted_.store(muted, std::memory_order_relaxed); }
     bool isInputMuted() const { return inputMuted_.load(std::memory_order_relaxed); }
 
-    void setOutputMuted(bool muted) { outputMuted_.store(muted, std::memory_order_relaxed); }
-    bool isOutputMuted() const { return outputMuted_.load(std::memory_order_relaxed); }
+    void setOutputMuted(bool muted)
+    {
+        // User/settings intent is independent from the automatic safety mute.
+        // Device recovery must never overwrite a concurrent manual mute.
+        outputMuted_.store(muted, std::memory_order_seq_cst);
+    }
+    bool isOutputManuallyMuted() const
+    {
+        return outputMuted_.load(std::memory_order_seq_cst);
+    }
+    bool isOutputMuted() const
+    {
+        return outputMuted_.load(std::memory_order_seq_cst)
+            || outputAutoMuted_.load(std::memory_order_seq_cst)
+            || outputNone_.load(std::memory_order_seq_cst);
+    }
 
     /** Output "None" mode: user selected no output device (persists across restart). */
-    void setOutputNone(bool none) { outputNone_.store(none, std::memory_order_relaxed); setOutputMuted(none); }
+    void setOutputNone(bool none);
     bool isOutputNone() const { return outputNone_.load(std::memory_order_relaxed); }
 
     void setIpcEnabled(bool enabled);
@@ -217,9 +232,7 @@ public:
     /** @brief True if the input device was lost (audio callback zeroes input). */
     bool isInputDeviceLost() const { return inputDeviceLost_.load(std::memory_order_relaxed); }
     /** @brief True if output was auto-muted due to device loss. */
-    bool isOutputAutoMuted() const { return outputAutoMuted_.load(std::memory_order_relaxed); }
-    /** @brief Clear auto-mute tracking (call when user manually controls output mute). */
-    void clearOutputAutoMute() { outputAutoMuted_.store(false, std::memory_order_relaxed); }
+    bool isOutputAutoMuted() const { return outputAutoMuted_.load(std::memory_order_seq_cst); }
 
     /**
      * @brief Get the current device state as an explicit enum.
@@ -237,14 +250,14 @@ public:
         bool devLost = deviceLost_.load(std::memory_order_relaxed);
         bool inLost = inputDeviceLost_.load(std::memory_order_relaxed);
         bool outMuted = outputAutoMuted_.load(std::memory_order_relaxed);
-        if (devLost)
-            return DeviceState::BothLost;
         if (inLost && outMuted)
             return DeviceState::BothLost;
         if (inLost)
             return DeviceState::InputLost;
         if (outMuted)
             return DeviceState::OutputLost;
+        if (devLost)
+            return DeviceState::BothLost;
         return DeviceState::Running;
     }
 
@@ -270,11 +283,22 @@ public:
                                         juce::AudioIODevice* device) const;
     void markInputDeviceLostForTest(const juce::String& desiredInputDevice);
     void markOutputDeviceLostForTest(const juce::String& desiredOutputDevice);
+    void forceAggregateDeviceLostForTest(bool lost) noexcept
+    {
+        deviceLost_.store(lost, std::memory_order_release);
+    }
     void clearLossAfterManualInputSelectionForTest() { clearLossAfterManualInputSelection(); }
     void clearLossAfterManualOutputSelectionForTest() { clearLossAfterManualOutputSelection(); }
     void forceReconnectCooldownForTest(int ticks) noexcept { reconnectCooldown_ = ticks; }
     void forceReconnectMissCountForTest(int count) noexcept { reconnectMissCount_ = count; }
+    void forceSameDeviceReopenPendingForTest(bool pending) noexcept {
+        sameDeviceReopenPending_.store(pending, std::memory_order_release);
+    }
+    void attemptImmediateReconnectionForTest() { attemptImmediateReconnectionFromMessageThread(); }
     int getReconnectCooldownForTest() const noexcept { return reconnectCooldown_; }
+    void setDesiredInputDeviceForTest(const juce::String& desiredInputDevice);
+    bool markInputEndpointRestartPendingForTest(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                                const juce::String& reason);
 #endif
 
 private:
@@ -284,6 +308,10 @@ private:
     void attemptImmediateReconnectionFromMessageThread();
     void attemptReconnection();
     void cancelPendingExternalRestartReopen() noexcept;
+    void updateInputEndpointWatcherTarget(const juce::String& inputDeviceName);
+    void handleInputEndpointChanged(const juce::String& deviceName, const juce::String& reason);
+    bool markInputEndpointRestartPending(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                         const juce::String& reason);
     void clearLossAfterManualInputSelection();
     void clearLossAfterManualOutputSelection();
     void scheduleSameDeviceReopenAfterExternalRestart(
@@ -306,6 +334,9 @@ private:
                                  juce::AudioIODevice* device) const;
     bool restoredDeviceTargetsSatisfied(const juce::AudioDeviceManager::AudioDeviceSetup& setup) const;
     bool clearDeviceLossAfterReady(const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+    void autoMuteOutputForDeviceLoss() noexcept;
+    void releaseAutomaticOutputMute() noexcept;
+    void publishInputDeviceLoss() noexcept;
     bool markActiveChannelLossIfNeeded(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
                                        juce::AudioIODevice* device,
                                        const juce::String& reason);
@@ -328,6 +359,7 @@ private:
     AudioRecorder recorder_;
     SafetyLimiter safetyLimiter_;
     SharedMemWriter sharedMemWriter_;
+    EndpointChangeWatcher endpointChangeWatcher_;
 
     // Cross-thread atomics
     std::atomic<bool> ipcEnabled_{false};              // [Message write, RT read]
@@ -346,7 +378,7 @@ private:
     std::atomic<int> channelMode_{2};                   // [Message write, RT read]
     std::atomic<bool> muted_{false};                    // [Message write, RT read]
     std::atomic<bool> inputMuted_{false};               // [Any thread write, RT read] Independent input mute: silences input, chain keeps running
-    std::atomic<bool> outputMuted_{false};              // [Message write, RT read]
+    std::atomic<bool> outputMuted_{false};              // [Message write, RT read] Manual/settings mute intent only
     std::atomic<bool> outputNone_{false};               // [Message write, RT read] "None" output device (persists)
 
     std::atomic<double> currentSampleRate_{48000.0};    // [Message write, RT read]
@@ -379,6 +411,7 @@ private:
     std::atomic<bool> deviceLost_{false};               // [RT/Device write, Message read]
     std::atomic<bool> inputDeviceLost_{false};          // [RT/Device write, Message read] Input specifically lost: zero input in audio callback
     std::atomic<bool> outputAutoMuted_{false};          // [RT/Device write, Message read] Output auto-muted due to device loss
+    std::atomic<uint64_t> monitorConfigurationGeneration_{0}; // [Device/Message write, Message read] Invalidates stale deferred monitor reopens
     bool attemptingReconnection_ = false;               // [Message thread only] Re-entrancy guard
     std::atomic<bool> intentionalChange_{false};        // [Message write, Device thread read] Guards audioDeviceStopped from setting deviceLost_ during intentional changes
     std::atomic<bool> activeChannelRecoveryPending_{false}; // [Device/Message write, Message read] Guards zero-active reopen retry

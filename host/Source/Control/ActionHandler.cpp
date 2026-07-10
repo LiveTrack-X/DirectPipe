@@ -55,7 +55,7 @@ void ActionHandler::doPanicMute(bool mute)
     if (mute) {
         engine_.setMuted(true);
         preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-        preMuteOutputMuted_ = engine_.isOutputMuted();
+        preMuteOutputMuted_ = engine_.isOutputManuallyMuted();
         preMuteVstEnabled_ = engine_.isIpcEnabled();
         preMuteRecordingActive_ = engine_.getRecorder().isRecording();
         panicRestorePending_ = true;
@@ -96,7 +96,7 @@ void ActionHandler::restorePanicMuteFromSettings()
     if (!engine_.isMuted()) return;
     auto& router = engine_.getOutputRouter();
     preMuteMonitorEnabled_ = router.isEnabled(OutputRouter::Output::Monitor);
-    preMuteOutputMuted_ = engine_.isOutputMuted();
+    preMuteOutputMuted_ = engine_.isOutputManuallyMuted();
     preMuteVstEnabled_ = engine_.isIpcEnabled();
     preMuteRecordingActive_ = false;
     panicRestorePending_ = true;
@@ -111,9 +111,8 @@ void ActionHandler::toggleOutputMute()
 {
     if (engine_.isMuted()) return;
     if (engine_.isOutputNone()) return;
-    bool outputMuted = !engine_.isOutputMuted();
+    bool outputMuted = !engine_.isOutputManuallyMuted();
     engine_.setOutputMuted(outputMuted);
-    engine_.clearOutputAutoMute();
     if (onDirty) onDirty();
 }
 
@@ -187,9 +186,8 @@ void ActionHandler::handle(const ActionEvent& event)
             } else if (event.stringParam == "output") {
                 if (engine_.isMuted()) break;
                 if (engine_.isOutputNone()) break;
-                bool outputMuted = !engine_.isOutputMuted();
+                bool outputMuted = !engine_.isOutputManuallyMuted();
                 engine_.setOutputMuted(outputMuted);
-                engine_.clearOutputAutoMute();
             } else {
                 doPanicMute(!engine_.isMuted());
                 return;  // doPanicMute already calls onDirty

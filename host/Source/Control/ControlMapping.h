@@ -117,7 +117,7 @@ public:
 
 private:
     static juce::var actionEventToVar(const ActionEvent& event);
-    static ActionEvent varToActionEvent(const juce::var& v);
+    static bool varToActionEvent(const juce::var& v, ActionEvent& event);
 };
 
 } // namespace directpipe

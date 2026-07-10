@@ -5,6 +5,10 @@
 #include "UI/PresetManager.h"
 #include "Audio/AudioEngine.h"
 
+#if JUCE_WINDOWS
+#include <windows.h>
+#endif
+
 using namespace directpipe;
 
 class SettingsAutosaverTest : public ::testing::Test {
@@ -105,6 +109,25 @@ TEST_F(SettingsAutosaverTest, ForceAfterMaxDefer) {
     EXPECT_TRUE(file.existsAsFile());
 }
 
+TEST_F(SettingsAutosaverTest, DeferredAutosaveRemainsPendingAfterMaxDefer) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+
+    loadingSlot_ = true;
+    autosaver_->markDirty();
+
+    // Initial debounce plus all prolonged-defer retries.
+    for (int i = 0; i < 600; ++i) autosaver_->tick();
+    EXPECT_FALSE(file.existsAsFile());
+
+    // Stabilizing the chain must be enough. The caller should not have to
+    // generate another setting change to recover the discarded dirty flag.
+    loadingSlot_ = false;
+    for (int i = 0; i < 10; ++i) autosaver_->tick();
+
+    EXPECT_TRUE(file.existsAsFile());
+}
+
 TEST_F(SettingsAutosaverTest, SaveNowSkipsDuringLoading) {
     auto file = getAutoSaveFile();
     file.deleteFile();
@@ -112,6 +135,17 @@ TEST_F(SettingsAutosaverTest, SaveNowSkipsDuringLoading) {
     loadingSlot_ = true;
     autosaver_->saveNow();
     EXPECT_FALSE(file.existsAsFile());
+}
+
+TEST_F(SettingsAutosaverTest, SaveNowPreservesSettingsFileDuringPartialLoad) {
+    auto file = getAutoSaveFile();
+    const juce::String original = R"({"version":4,"plugins":[{"name":"MissingPlugin"}]})";
+    ASSERT_TRUE(file.replaceWithText(original));
+
+    partialLoad_ = true;
+    autosaver_->saveNow();
+
+    EXPECT_EQ(file.loadFileAsString(), original);
 }
 
 TEST_F(SettingsAutosaverTest, DebounceTiming) {
@@ -230,5 +264,64 @@ TEST_F(SettingsAutosaverTest, StartupGuardKeepsExplicitOutputMutedFromPreset) {
     engine_->setOutputMuted(false);
     autosaver_->loadFromFile();
 
+    EXPECT_TRUE(engine_->isOutputMuted());
+
+    // Atomic writes may be interrupted after primary -> .bak rotation. The
+    // backup-only family must still restore settings and explicit mute intent.
+    auto backup = file.getSiblingFile(file.getFileName() + ".bak");
+    ASSERT_TRUE(backup.replaceWithText(R"({
+        "version": 4,
+        "outputMuted": true
+    })"));
+    ASSERT_TRUE(file.deleteFile());
+    engine_->setOutputMuted(false);
+
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(engine_->isOutputMuted());
+
+#if JUCE_WINDOWS
+    // When a corrupt primary cannot be repaired because another process has
+    // it open, the loaded backup JSON remains the authority for safety fields.
+    ASSERT_TRUE(file.replaceWithText("{corrupt"));
+    ASSERT_TRUE(backup.replaceWithText(R"({
+        "version": 4,
+        "outputMuted": true
+    })"));
+    auto lockedPrimary = CreateFileW(file.getFullPathName().toWideCharPointer(),
+                                     GENERIC_READ,
+                                     FILE_SHARE_READ,
+                                     nullptr,
+                                     OPEN_EXISTING,
+                                     FILE_ATTRIBUTE_NORMAL,
+                                     nullptr);
+    ASSERT_NE(lockedPrimary, INVALID_HANDLE_VALUE) << GetLastError();
+    engine_->setOutputMuted(false);
+
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(engine_->isOutputMuted());
+    CloseHandle(lockedPrimary);
+#endif
+}
+
+TEST_F(SettingsAutosaverTest, PartialLoadKeepsExplicitOutputMutedFromPreset) {
+    auto file = getAutoSaveFile();
+    file.replaceWithText(R"({
+        "version": 4,
+        "plugins": [
+            {
+                "name": "MissingPlugin",
+                "path": "/tmp/directpipe-missing-plugin.vst3",
+                "bypassed": false
+            }
+        ],
+        "outputMuted": true
+    })");
+
+    engine_->setOutputMuted(false);
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(partialLoad_.load());
     EXPECT_TRUE(engine_->isOutputMuted());
 }

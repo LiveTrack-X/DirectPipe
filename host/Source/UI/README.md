@@ -54,7 +54,8 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `SettingsExporter.h/cpp` | 설정 내보내기/가져오기 — `.dpbackup` (설정만) / `.dpfullbackup` (전체) + 크로스-OS 보호 |
 | `StatusUpdater.h/cpp` | 30Hz 타이머 틱에서 UI 상태 업데이트 (뮤트/레이턴시/CPU/레벨/게인 동기화). 색상 체계: INPUT(녹색/빨강), OUT/MON/VST(녹색/사용자뮤트빨강/패닉잠금진빨강), PANIC(대기=빨강, 활성=녹색 `UNMUTE`) |
 | `StreamDeckTab.h/cpp` | WebSocket/HTTP 서버 상태 표시 + Start/Stop 토글 |
-| `UpdateChecker.h/cpp` | 백그라운드 GitHub 릴리스 확인 + 업데이트 다이얼로그 + Windows 인앱 자동 업데이트 |
+| `UpdateChecker.h/cpp` | 백그라운드 GitHub 릴리스 확인 + 업데이트 다이얼로그 + Windows 인앱 자동 업데이트. 실행 중/완료 worker 상태를 분리해 실패 후 재시도 가능 |
+| `UpdateScript.h/cpp` | Windows 업데이트 설치 배치의 staging/교체/rollback 구문을 생성하는 상태 없는 테스트 가능 헬퍼 |
 | `FilterEditPanel.h/cpp` | 내장 Filter 설정 패널 (AudioProcessorEditor). HPF/LPF 프리셋 + 커스텀 슬라이더 |
 | `NoiseRemovalEditPanel.h/cpp` | 내장 Noise Removal 설정 패널. 강도 프리셋 (약/중/강) + VAD 임계값 |
 | `AGCEditPanel.h/cpp` | 내장 Auto Gain 설정 패널. LUFS 타겟 슬라이더 + 실시간 측정 + 고급 설정 |
@@ -73,7 +74,7 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `PresetManager` | `[Message thread]` | `loadSlotAsync`는 `VSTChain::replaceChainAsync` → BG 스레드 로드 후 callAsync 완료 |
 | `PresetSlotBar` | `[Message thread]` | — |
 | `StatusUpdater` | `[Message thread]` | MainComponent의 timerCallback에서 tick() 호출 |
-| `UpdateChecker` | `[BG thread]` | `checkForUpdate()`는 `std::thread`로 GitHub API 폴링. 결과는 callAsync로 메시지 스레드 전달. `alive_` 플래그로 수명 보호 |
+| `UpdateChecker` | `[BG thread]` | `checkForUpdate()`는 GitHub API 폴링, `downloadThread_`는 다운로드/검증/설치 스크립트 준비. 결과는 callAsync로 메시지 스레드 전달. running/finished atomic과 `alive_` 플래그로 재시도·수명 보호 |
 | `LevelMeter` | `[RT thread]` → `[Message thread]` | `setLevel()`은 RT 스레드에서 호출 가능 (atomic write). `tick()/paint()`는 메시지 스레드 |
 | `DirectPipeLogger` | 모든 스레드 | `logMessage()`는 어떤 스레드에서든 호출 가능 (mutex 보호). `drain()`은 메시지 스레드 전용 |
 | `NotificationBar` | `[Message thread]` | — |
@@ -124,6 +125,7 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 ### 1. UpdateChecker 백그라운드 스레드 수명 관리
 - `updateCheckThread_`와 `downloadThread_`(Windows)는 `std::thread`로 실행된다.
 - 소멸자에서 반드시 join해야 한다 (detach 금지).
+- `std::thread::joinable()`은 worker 종료 후에도 true이므로 진행 상태로 사용하지 않는다. `downloadInProgress_`/`downloadThreadFinished_`로 구분하고 다음 시도 전에 완료 thread를 reap한다.
 - callAsync 람다에서 `alive_` 플래그 (`shared_ptr<atomic<bool>>`)를 캡처하여 소멸 후 접근을 방지한다.
 - **위반 시**: use-after-delete 크래시.
 

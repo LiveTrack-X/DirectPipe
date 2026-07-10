@@ -26,20 +26,20 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
    ctest --test-dir build -C Release --output-on-failure
    ```
 4. Action/API/상태 모델 변경 시 동기화 문서를 함께 갱신하세요 (`README.md`, `docs/USER_GUIDE.md`, `docs/PRODUCT_SPEC.md`, `docs/CONTROL_API.md`, `docs/ReleaseNote.md`, `TESTING.md`) / When changing Action/API/state model behavior, update sync docs (`README.md`, `docs/USER_GUIDE.md`, `docs/PRODUCT_SPEC.md`, `docs/CONTROL_API.md`, `docs/ReleaseNote.md`, `TESTING.md`)
-5. 유지보수 기준 문서인 `docs/MAINTENANCE_RULES.md`의 Behavior Sync Checklist를 기준으로 검토하세요 / Use `docs/MAINTENANCE_RULES.md` Behavior Sync Checklist as source of truth
+5. 릴리즈/검증 기준은 [Build Guide](docs/BUILDING.md)와 [Testing Guide](TESTING.md)를 따르세요 / Follow the [Build Guide](docs/BUILDING.md) and [Testing Guide](TESTING.md) for release and validation rules
 6. 문서 업데이트도 포함해 주세요 (해당 시) / Include documentation updates when applicable
 
 ## 테스트 / Testing
 
-- Google Test 기반 295 테스트 / 295 tests
-- `tools/pre-release-test.sh` — 빌드 + 단위 테스트 + API 테스트 / Build + unit tests + API tests (Windows Git Bash 환경 기준)
+- Google Test 기반 **CTest 445개 등록**: core 52 + host 391 + focused endpoint 2 (현재 Windows 검증에서 host 2개는 환경 의존 skip) / **445 CTest registrations**: 52 core + 391 host + 2 focused endpoint tests (2 host tests are environment-dependent skips in the current Windows run)
+- `tools/pre-release-test.sh` — `--version-only` metadata gate, exact candidate `--api-only`, candidate 종료 후 `--skip-api` Release build/core/host/endpoint/Stream Deck 검증 / `--version-only` metadata gate, exact-candidate `--api-only`, then `--skip-api` Release build/core/host/endpoint/Stream Deck verification after closing the candidate (Windows Git Bash)
 - `tools/pre-release-dashboard.html` — 수동 테스트 대시보드 / Manual test dashboard
 
 ## 버그 리포트 / Bug Reports
 
-[GitHub Issues](../../issues)에 버그를 보고해 주세요. 다음 정보를 포함하면 더 빠르게 대응할 수 있습니다:
+[GitHub Issues](https://github.com/LiveTrack-X/DirectPipe/issues)에 버그를 보고해 주세요. 다음 정보를 포함하면 더 빠르게 대응할 수 있습니다:
 
-Please report bugs via [GitHub Issues](../../issues). Include the following for faster resolution:
+Please report bugs via [GitHub Issues](https://github.com/LiveTrack-X/DirectPipe/issues). Include the following for faster resolution:
 
 - OS 및 버전 / OS and version
 - 오디오 드라이버 타입 (WASAPI/ASIO/CoreAudio 등) / Audio driver type

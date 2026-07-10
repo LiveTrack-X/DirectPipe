@@ -2,6 +2,103 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## DirectPipe v4.2.0
+
+v4.2.0 is a substantial reliability release covering Windows endpoint recovery, real-time lifecycle safety, transactional settings and preset handling, control-server shutdown, the Windows updater, and Stream Deck reconnect/discovery behavior.
+
+v4.2.0은 Windows endpoint 복구, 실시간 처리 수명 안전성, 설정 및 프리셋 트랜잭션, 제어 서버 종료, Windows updater, Stream Deck 재연결/검색 동작을 함께 강화한 대규모 안정성 릴리즈입니다.
+
+This release does not change the control API, preset schema, Stream Deck action schema, or Receiver IPC protocol.
+
+이번 릴리즈는 control API, preset schema, Stream Deck action schema, Receiver IPC protocol을 변경하지 않습니다.
+
+---
+
+### Highlights / 주요 변경
+
+#### 1) Windows selected-input endpoint recovery / Windows 선택 입력 endpoint 복구
+- DirectPipe now listens for Windows Core Audio property/state notifications for the selected capture endpoint. Changes to **Audio enhancements**, **Voice Clarity**, **Voice focus**, default format, or exclusive mode can trigger a short same-device settle and reopen even when JUCE emits no stop callback.
+- DirectPipe는 선택된 capture endpoint의 Windows Core Audio 속성/상태 알림을 감지합니다. **오디오 향상 기능**, **Voice Clarity**, **음성 포커스**, 기본 형식, 독점 모드 변경 시 JUCE stop callback이 없어도 안정화 후 같은 장치를 다시 엽니다.
+- Recovery is endpoint-event based, not silence based; physical microphone mute and normal silence do not trigger a reopen.
+- 복구는 무음이 아닌 endpoint 이벤트 기반이므로 물리 마이크 mute와 정상 무음은 재오픈을 유발하지 않습니다.
+
+#### 2) Audio and monitor lifecycle safety / 오디오 및 모니터 수명 안전성
+- Saved targets remain authoritative during fallback/recovery, manual and automatic loss mutes retain separate ownership, and zero-active-channel setups retry with driver defaults. Output None selection or manual output-loss clearing cannot erase a concurrent input loss from aggregate device state or stop its recovery timer.
+- fallback/복구 중에도 저장 target을 유지하고 수동 mute와 자동 loss mute ownership을 분리하며, zero-active-channel setup은 driver default로 재시도합니다. Output None 선택 또는 수동 output-loss 해제가 동시에 발생한 input loss를 aggregate device state에서 지우거나 복구 timer를 멈추지 않습니다.
+- Deferred monitor work uses lifecycle generations, and MonitorOutput/SharedMemWriter drain in-flight real-time writes before ring reset or IPC unmap.
+- 지연된 모니터 작업은 lifecycle generation을 확인하고, MonitorOutput/SharedMemWriter는 ring reset 또는 IPC unmap 전에 진행 중 RT write를 배출합니다.
+
+#### 3) Control servers and Stream Deck / 제어 서버 및 Stream Deck
+- WebSocket clients wait for handshake/initial-state completion before broadcasts, queued state is re-snapshotted, strict action parameters are enforced, and failed/dead clients are swept even while idle. HTTP uses validated fields plus stable plugin snapshots.
+- WebSocket은 handshake/initial-state 완료 후 broadcast하고 queued state를 다시 snapshot하며 action parameter를 엄격히 검증하고 idle 상태에서도 실패/dead client를 sweep합니다. HTTP는 검증된 필드와 안정된 plugin snapshot을 사용합니다.
+- The host announces its actual WebSocket port immediately and every 2 seconds; Stream Deck binds UDP discovery before its first WebSocket attempt, uses that port, and clears stale socket state across close/error/reconnect paths.
+- host는 실제 WebSocket port를 시작 즉시와 2초마다 알리고, Stream Deck은 첫 WebSocket 연결 전에 UDP discovery를 bind하여 해당 port를 사용하며 close/error/reconnect 경로의 stale socket state를 정리합니다.
+- Stream Deck production `ws` is updated to 8.21.0 with refreshed transitive dependencies; full and production-only `npm audit` report 0 vulnerabilities.
+- Stream Deck production `ws`를 8.21.0으로 올리고 transitive dependency를 갱신했으며 전체/production-only `npm audit` 모두 취약점 0건입니다.
+
+#### 4) Transactional settings and presets / 설정 및 프리셋 트랜잭션
+- Settings-only/full-backup imports prevalidate audio, control, MIDI, and slots, then roll back touched state/files on late failure. Restore atomically claims the single load owner and refuses another active load, a partial chain, or an unstable VST transition; full restore requires explicit stable-runtime proof. Full export applies the same runtime guard before it can overwrite a valid slot.
+- Settings-only/full-backup import는 audio, control, MIDI, slot을 먼저 검증하고 후반 실패 시 변경한 상태/파일을 롤백합니다. Restore는 단일 load ownership을 원자적으로 획득하고 다른 load, partial chain, unstable VST transition 중에는 시작하지 않으며 full restore는 명시적 stable-runtime proof를 요구합니다. Full export도 유효 slot을 덮어쓰기 전에 같은 runtime guard를 적용합니다.
+- Structurally invalid preset objects, including non-canonical Base64 plugin state, no longer overwrite valid slots or block backup recovery even when primary repair-copy fails. Backup-only or locked-primary autosave recovery preserves an explicit `outputMuted` value, including during partial plugin loads. Incomplete full-backup export is reported as failure.
+- non-canonical Base64 plugin state 등 구조적으로 잘못된 preset object는 유효 slot을 덮어쓰지 않으며 primary repair-copy가 실패해도 backup 복구를 막지 않습니다. primary가 없거나 잠긴 autosave family를 backup에서 복구할 때도 partial plugin load를 포함해 명시적 `outputMuted` 값을 보존합니다. 불완전한 full-backup export는 실패로 보고합니다.
+- Legacy numeric slot families with only `.bak` or `.backup` remaining now migrate to canonical letter slots, keeping them loadable and present in full backups.
+- 기본 파일 없이 `.bak` 또는 `.backup`만 남은 구형 숫자 슬롯도 표준 문자 슬롯으로 마이그레이션되어, 불러오기와 전체 백업에서 누락되지 않습니다.
+
+#### 5) Safer Windows updater / 더 안전한 Windows updater
+- Replacement files are staged before rotation, a known-good executable is retained for rollback, literal-percent paths are preserved, and release tags must be strict `MAJOR.MINOR.PATCH`.
+- 교체 파일을 staging한 뒤 회전하고 known-good executable을 rollback용으로 유지하며, literal `%` path를 보존하고 엄격한 `MAJOR.MINOR.PATCH` tag만 허용합니다.
+- The installer waits only for the exact DirectPipe PID that launched it, so another portable/installed instance cannot block the update forever.
+- installer는 자신을 실행한 정확한 DirectPipe PID만 기다리므로 다른 portable/installed instance가 업데이트를 무기한 막지 않습니다.
+- Finished/failed download workers are reaped so a later Update Now attempt can retry normally; a lifecycle mutex serializes worker reap/start/destruction around the reusable `std::thread`.
+- 완료/실패한 download worker를 회수하여 이후 Update Now를 정상적으로 다시 시도할 수 있으며, lifecycle mutex가 재사용되는 `std::thread`의 회수/시작/종료를 직렬화합니다.
+
+#### 6) Release gates and documentation / 릴리즈 게이트 및 문서
+- Version gates cover app/Receiver/Stream Deck/package-lock/release bodies; CI runs Stream Deck tests/validation, endpoint tests, and verifies upload tag/source-version identity.
+- version gate는 app/Receiver/Stream Deck/package-lock/release body를 확인하고, CI는 Stream Deck 및 endpoint 테스트와 upload tag/source version 일치를 검증합니다.
+
+---
+
+### Upgrade Notes / 업그레이드 안내
+- **Windows v4.1.2 → v4.2.0: use the GitHub Windows ZIP once.** The new transactional updater protects updates performed by v4.2.0 and later, but cannot retroactively protect updater code already installed in v4.1.2.
+- **Windows v4.1.2 → v4.2.0은 이번 한 번 GitHub Windows ZIP으로 수동 설치를 권장합니다.** 새 updater 보호는 v4.2.0 이후 업데이트부터 적용됩니다.
+- **No Receiver VST replacement is required for these host-side fixes.** The control API and Receiver IPC protocol are unchanged; the bundled Receiver remains version-aligned for new installs.
+- **호스트 쪽 수정에 Receiver VST 교체는 필요하지 않습니다.** control API와 Receiver IPC protocol은 동일하며 새 설치용 번들은 버전에 맞춰 유지됩니다.
+- **Update the Stream Deck plugin to 4.2.0** for discovery/reconnect fixes. Install the GitHub `.streamDeckPlugin` manually until a separate Marketplace update is published.
+- **검색/재연결 수정을 적용하려면 Stream Deck plugin을 4.2.0으로 업데이트하세요.** 별도 Marketplace 업데이트 전에는 GitHub `.streamDeckPlugin`을 수동 설치할 수 있습니다.
+- Release assets are built by GitHub Actions after a notes-only release is created.
+- notes-only release 생성 후 GitHub Actions가 최종 산출물을 빌드합니다.
+
+---
+
+### Validation / 검증
+- Local Windows Release build passed for the app, Receiver VST2/VST3, core/host tests, and endpoint-watcher tests.
+- 로컬 Windows Release에서 앱, Receiver VST2/VST3, core/host 및 endpoint-watcher 테스트 빌드가 통과했습니다.
+- `directpipe-tests`: 52/52 passed.
+- `directpipe-host-tests`: 391 total; 389 passed, 2 environment-dependent skips.
+- `directpipe-endpoint-watcher-tests`: 2/2 passed.
+- CTest: 445 registered, 0 failures, 2 environment-dependent skips.
+- Stream Deck tests: 5/5 passed; build, package validation, and full/production-only `npm audit` (0 vulnerabilities) passed.
+- version-only metadata, UTF-8 text integrity, JSON validation, and `git diff --check` passed.
+- Focused endpoint automation passed; real-device **Audio enhancements**, **Voice Clarity**, **Voice focus**, and default-format changes remain an unexecuted manual field check for this local run.
+- endpoint 집중 자동 테스트는 통과했지만 실제 장치의 **오디오 향상 기능**, **Voice Clarity**, **음성 포커스**, 기본 형식 변경은 이번 로컬 실행에서 수행하지 않아 수동 실기기 확인 항목으로 남습니다.
+- Windows is the locally validated stable target; macOS remains beta and Linux remains experimental pending release CI and broader hardware validation.
+- Windows는 로컬 검증된 stable target이며 macOS는 beta, Linux는 experimental입니다.
+
+---
+
+### Downloads / 다운로드
+- `DirectPipe-v4.2.0-Windows.zip` — Windows stable artifact, CI-built.
+- `DirectPipe-v4.2.0-macOS.dmg` — macOS beta artifact, CI-built.
+- `DirectPipe-v4.2.0-Linux.tar.gz` — Linux experimental artifact, CI-built.
+- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 4.2.0 package, CI-built.
+- `checksums.sha256` — CI-generated integrity hashes for all uploaded assets.
+
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.1.2...v4.2.0
+
+**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.1.2...v4.2.0
+
+---
+
 ## DirectPipe v4.1.2
 
 v4.1.2 is a host-side audio-device recovery and save/restore hardening hotfix after v4.1.1. It focuses on microphone recovery after Windows endpoint restarts, including sound-property changes such as toggling microphone enhancement features, strict ASIO startup restore, and preventing partial restore states from being saved as clean presets.

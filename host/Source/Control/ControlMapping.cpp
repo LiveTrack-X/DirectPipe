@@ -26,7 +26,40 @@
 #include "MidiHandler.h"
 #include "../Util/AtomicFileIO.h"
 
+#include <cmath>
+#include <limits>
+
 namespace directpipe {
+
+namespace {
+
+bool readIntegerInRange(const juce::var& value, juce::int64 minimum,
+                        juce::int64 maximum, int& result)
+{
+    if (!value.isInt() && !value.isInt64())
+        return false;
+    const auto integer = static_cast<juce::int64>(value);
+    if (integer < minimum || integer > maximum)
+        return false;
+    result = static_cast<int>(integer);
+    return true;
+}
+
+bool readFiniteFloat(const juce::var& value, float& result)
+{
+    if (!value.isDouble() && !value.isInt() && !value.isInt64())
+        return false;
+
+    const auto number = static_cast<double>(value);
+    const auto maximum = static_cast<double>((std::numeric_limits<float>::max)());
+    if (!std::isfinite(number) || number < -maximum || number > maximum)
+        return false;
+
+    result = static_cast<float>(number);
+    return true;
+}
+
+} // namespace
 
 /// Get the application root directory.
 /// On macOS .app bundles, currentExecutableFile points to Contents/MacOS/binary,
@@ -135,11 +168,21 @@ ControlConfig ControlMappingStore::load(const juce::File& file)
     if (auto* hotkeys = root->getProperty("hotkeys").getArray()) {
         for (const auto& hk : *hotkeys) {
             if (auto* obj = hk.getDynamicObject()) {
+                int modifiers = 0;
+                int virtualKey = 0;
+                ActionEvent action;
+                if (!readIntegerInRange(obj->getProperty("modifiers"), 0,
+                                        (std::numeric_limits<int>::max)(), modifiers)
+                    || !readIntegerInRange(obj->getProperty("virtualKey"), 0,
+                                           (std::numeric_limits<int>::max)(), virtualKey)
+                    || !varToActionEvent(obj->getProperty("action"), action)) {
+                    continue;
+                }
                 HotkeyMapping mapping;
-                mapping.modifiers = static_cast<uint32_t>(static_cast<int>(obj->getProperty("modifiers")));
-                mapping.virtualKey = static_cast<uint32_t>(static_cast<int>(obj->getProperty("virtualKey")));
+                mapping.modifiers = static_cast<uint32_t>(modifiers);
+                mapping.virtualKey = static_cast<uint32_t>(virtualKey);
                 mapping.displayName = obj->getProperty("displayName").toString().toStdString();
-                mapping.action = varToActionEvent(obj->getProperty("action"));
+                mapping.action = action;
                 config.hotkeys.push_back(mapping);
             }
         }
@@ -149,13 +192,25 @@ ControlConfig ControlMappingStore::load(const juce::File& file)
     if (auto* midi = root->getProperty("midi").getArray()) {
         for (const auto& m : *midi) {
             if (auto* obj = m.getDynamicObject()) {
+                int cc = -1;
+                int note = -1;
+                int channel = 0;
+                int type = 0;
+                ActionEvent action;
+                if (!readIntegerInRange(obj->getProperty("cc"), -1, 127, cc)
+                    || !readIntegerInRange(obj->getProperty("note"), -1, 127, note)
+                    || !readIntegerInRange(obj->getProperty("channel"), 0, 16, channel)
+                    || !readIntegerInRange(obj->getProperty("type"), 0, 3, type)
+                    || !varToActionEvent(obj->getProperty("action"), action)) {
+                    continue;
+                }
                 MidiMapping mapping;
-                mapping.cc = obj->getProperty("cc");
-                mapping.note = obj->getProperty("note");
-                mapping.channel = obj->getProperty("channel");
-                mapping.type = static_cast<MidiMappingType>(static_cast<int>(obj->getProperty("type")));
+                mapping.cc = cc;
+                mapping.note = note;
+                mapping.channel = channel;
+                mapping.type = static_cast<MidiMappingType>(type);
                 mapping.deviceName = obj->getProperty("deviceName").toString().toStdString();
-                mapping.action = varToActionEvent(obj->getProperty("action"));
+                mapping.action = action;
                 config.midiMappings.push_back(mapping);
             }
         }
@@ -163,10 +218,22 @@ ControlConfig ControlMappingStore::load(const juce::File& file)
 
     // Server
     if (auto* server = root->getProperty("server").getDynamicObject()) {
-        config.server.websocketPort = server->getProperty("websocketPort");
-        config.server.websocketEnabled = server->getProperty("websocketEnabled");
-        config.server.httpPort = server->getProperty("httpPort");
-        config.server.httpEnabled = server->getProperty("httpEnabled");
+        const auto loadPort = [server](const juce::Identifier& property, int fallback) {
+            if (!server->hasProperty(property))
+                return fallback;
+            int port = fallback;
+            return readIntegerInRange(server->getProperty(property), 1, 65535, port)
+                ? port : fallback;
+        };
+
+        config.server.websocketPort = loadPort("websocketPort", config.server.websocketPort);
+        config.server.httpPort = loadPort("httpPort", config.server.httpPort);
+        if (server->hasProperty("websocketEnabled")
+            && server->getProperty("websocketEnabled").isBool())
+            config.server.websocketEnabled = static_cast<bool>(server->getProperty("websocketEnabled"));
+        if (server->hasProperty("httpEnabled")
+            && server->getProperty("httpEnabled").isBool())
+            config.server.httpEnabled = static_cast<bool>(server->getProperty("httpEnabled"));
     }
 
     return config;
@@ -260,19 +327,46 @@ juce::var ControlMappingStore::actionEventToVar(const ActionEvent& event)
     return juce::var(obj);
 }
 
-ActionEvent ControlMappingStore::varToActionEvent(const juce::var& v)
+bool ControlMappingStore::varToActionEvent(const juce::var& v, ActionEvent& event)
 {
-    ActionEvent event;
-    if (auto* obj = v.getDynamicObject()) {
-        int actionVal = static_cast<int>(obj->getProperty("action"));
-        if (actionVal >= 0 && actionVal <= static_cast<int>(Action::AutoProcessorsAdd))
-            event.action = static_cast<Action>(actionVal);
-        event.intParam = obj->getProperty("intParam");
-        event.floatParam = static_cast<float>(static_cast<double>(obj->getProperty("floatParam")));
-        event.stringParam = obj->getProperty("stringParam").toString().toStdString();
-        event.intParam2 = obj->getProperty("intParam2");
+    auto* obj = v.getDynamicObject();
+    if (!obj)
+        return false;
+
+    int actionValue = 0;
+    if (!readIntegerInRange(obj->getProperty("action"),
+                            static_cast<int>(Action::PluginBypass),
+                            static_cast<int>(Action::AutoProcessorsAdd), actionValue)) {
+        return false;
     }
-    return event;
+
+    ActionEvent parsed;
+    parsed.action = static_cast<Action>(actionValue);
+
+    if (obj->hasProperty("intParam")
+        && !readIntegerInRange(obj->getProperty("intParam"),
+                               (std::numeric_limits<int>::min)(),
+                               (std::numeric_limits<int>::max)(), parsed.intParam)) {
+        return false;
+    }
+    if (obj->hasProperty("intParam2")
+        && !readIntegerInRange(obj->getProperty("intParam2"),
+                               (std::numeric_limits<int>::min)(),
+                               (std::numeric_limits<int>::max)(), parsed.intParam2)) {
+        return false;
+    }
+    if (obj->hasProperty("floatParam")) {
+        if (!readFiniteFloat(obj->getProperty("floatParam"), parsed.floatParam))
+            return false;
+    }
+    if (obj->hasProperty("stringParam")) {
+        if (!obj->getProperty("stringParam").isString())
+            return false;
+        parsed.stringParam = obj->getProperty("stringParam").toString().toStdString();
+    }
+
+    event = std::move(parsed);
+    return true;
 }
 
 } // namespace directpipe

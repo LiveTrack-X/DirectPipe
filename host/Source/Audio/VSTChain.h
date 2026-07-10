@@ -46,6 +46,15 @@ struct PluginLatencyInfo {
     float latencyMs = 0.0f;
 };
 
+/** Immutable plugin metadata copied while holding the chain lock. */
+struct PluginStatusSnapshot {
+    juce::String name;
+    bool bypassed = false;
+    bool loaded = false;
+    int parameterCount = 0;
+    int latencySamples = 0;
+};
+
 /**
  * @brief Information about a loaded plugin in the chain.
  *
@@ -217,6 +226,9 @@ public:
 
     /** Get per-plugin latency info. [Message thread — acquires chainLock_] */
     std::vector<PluginLatencyInfo> getPluginLatencies() const;
+
+    /** Copy HTTP/UI-safe plugin metadata under one chain lock. */
+    std::vector<PluginStatusSnapshot> getPluginStatusSnapshot() const;
 
     /** Get total chain PDC from AudioProcessorGraph. [Message thread — acquires chainLock_] */
     int getTotalChainPDC() const;

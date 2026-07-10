@@ -1,6 +1,8 @@
 #!/bin/bash
 # DirectPipe Pre-Release Test Suite / 릴리스 전 테스트 스위트
 # Usage: bash tools/pre-release-test.sh [--skip-build] [--skip-api] [--api-only] [--version-only]
+# The script never terminates a running DirectPipe process. Run --api-only
+# against a deliberately started test instance, then close it before building.
 set -eo pipefail
 
 # ─── Colors ───
@@ -33,6 +35,28 @@ cd "$PROJECT_ROOT"
 RESULTS=()
 add_result() { RESULTS+=("$1"); }
 
+verify_api_candidate_version() {
+  local expected="$1"
+  local powershell="/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+  if [[ ! -x "$powershell" ]]; then
+    fail "Cannot identify the DirectPipe process listening on port 8766"
+    return 1
+  fi
+
+  local actual
+  actual=$("$powershell" -NoProfile -Command \
+    "\$c = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if (\$null -eq \$c) { exit 2 }; \$p = Get-Process -Id \$c.OwningProcess -ErrorAction Stop; (Get-Item -LiteralPath \$p.Path).VersionInfo.ProductVersion" \
+    2>/dev/null | tr -d '\r' | tail -n 1)
+
+  if [[ "$actual" != "$expected" && "$actual" != "${expected}.0" ]]; then
+    fail "Port 8766 belongs to DirectPipe v${actual:-unknown}, expected v$expected"
+    return 1
+  fi
+
+  pass "API candidate version v$actual"
+  return 0
+}
+
 echo ""
 echo "============================================"
 echo "  DirectPipe Pre-Release Test Suite"
@@ -61,6 +85,13 @@ else
     fail "host/CMakeLists.txt"; VER_FAIL=$((VER_FAIL+1))
   fi
 
+  # bundled Receiver plugin
+  if grep -q "VERSION \"$CANONICAL\"" plugins/receiver/CMakeLists.txt 2>/dev/null; then
+    pass "plugins/receiver/CMakeLists.txt"
+  else
+    fail "plugins/receiver/CMakeLists.txt"; VER_FAIL=$((VER_FAIL+1))
+  fi
+
   # Stream Deck manifest.json
   if grep -q "\"Version\": \"${CANONICAL}.0\"" com.directpipe.directpipe.sdPlugin/manifest.json 2>/dev/null; then
     pass "SD manifest.json"
@@ -75,10 +106,21 @@ else
     fail "SD package.json"; VER_FAIL=$((VER_FAIL+1))
   fi
 
+  # Stream Deck package-lock.json (both root metadata copies)
+  if command -v node &> /dev/null && node -e '
+    const p=require("./com.directpipe.directpipe.sdPlugin/package-lock.json");
+    const v=process.argv[1];
+    process.exit(p.version===v && p.packages && p.packages[""].version===v ? 0 : 1);
+  ' "$CANONICAL"; then
+    pass "SD package-lock.json"
+  else
+    fail "SD package-lock.json"; VER_FAIL=$((VER_FAIL+1))
+  fi
+
   # README.md badge/link (optional -- may not have version badge)
   if [[ -f README.md ]]; then
     if grep -Eq "(version-|latest-v|v)[0-9]+\.[0-9]+\.[0-9]+" README.md 2>/dev/null; then
-      if grep -Eq "(version-|latest-v|v)$CANONICAL" README.md 2>/dev/null; then
+      if grep -q "latest-v${CANONICAL}-" README.md 2>/dev/null; then
         pass "README.md badge"
       else
         fail "README.md badge"; VER_FAIL=$((VER_FAIL+1))
@@ -87,6 +129,37 @@ else
       skip "README.md (no version badge found)"
     fi
   fi
+
+
+  # Current release documents. Historical entries may retain older versions.
+  if [[ "$(grep -m1 -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | sed -E 's/^## \[([^]]+)\].*/\1/')" == "$CANONICAL" ]]; then
+    pass "CHANGELOG.md current entry"
+  else
+    fail "CHANGELOG.md current entry"; VER_FAIL=$((VER_FAIL+1))
+  fi
+
+  if [[ "$(grep -m1 -E '^## DirectPipe v[0-9]+\.[0-9]+\.[0-9]+' docs/ReleaseNote.md | sed -E 's/^## DirectPipe v([^ ]+).*/\1/')" == "$CANONICAL" ]]; then
+    pass "docs/ReleaseNote.md current entry"
+  else
+    fail "docs/ReleaseNote.md current entry"; VER_FAIL=$((VER_FAIL+1))
+  fi
+
+  VERSIONED_RELEASE_BODY="dist/release_body_v${CANONICAL}.md"
+  if grep -q "^## DirectPipe v${CANONICAL}$" dist/release_body.md 2>/dev/null \
+      && [[ -f "$VERSIONED_RELEASE_BODY" ]] \
+      && cmp -s dist/release_body.md "$VERSIONED_RELEASE_BODY"; then
+    pass "release body current/versioned match"
+  else
+    fail "release body current/versioned match"; VER_FAIL=$((VER_FAIL+1))
+  fi
+
+  for doc in docs/ARCHITECTURE.md docs/BUILDING.md docs/PRODUCT_SPEC.md; do
+    if grep -m1 -q "$CANONICAL" "$doc" 2>/dev/null; then
+      pass "$doc"
+    else
+      fail "$doc"; VER_FAIL=$((VER_FAIL+1))
+    fi
+  done
 
   # docs/USER_GUIDE.md
   if [[ -f docs/USER_GUIDE.md ]]; then
@@ -136,11 +209,13 @@ fi
 
 if $API_ONLY; then
   # Jump to API tests
-  echo "[Step 5] API Integration Tests"
+  echo "[Step 7] API Integration Tests"
   echo "─────────────────────────────────────"
   if curl -s --connect-timeout 2 http://127.0.0.1:8766/api/status > /dev/null 2>&1; then
     info "DirectPipe detected on port 8766"
-    if command -v node &> /dev/null && [[ -f test_api.js ]]; then
+    if ! verify_api_candidate_version "$CANONICAL"; then
+      add_result "API Tests|FAIL:wrong candidate version"
+    elif command -v node &> /dev/null && [[ -f test_api.js ]]; then
       if node test_api.js; then
         pass "API tests completed"
         add_result "API Tests|PASS"
@@ -149,12 +224,12 @@ if $API_ONLY; then
         add_result "API Tests|FAIL"
       fi
     else
-      skip "node or test_api.js not found"
-      add_result "API Tests|SKIP"
+      fail "node or test_api.js not found"
+      add_result "API Tests|FAIL"
     fi
   else
-    skip "DirectPipe not running on port 8766"
-    add_result "API Tests|SKIP"
+    fail "DirectPipe not running on port 8766"
+    add_result "API Tests|FAIL"
   fi
   echo ""
   # Print summary and exit
@@ -192,15 +267,12 @@ if $SKIP_BUILD; then
 else
   echo "[Step 2] Release Build"
   echo "─────────────────────────────────────"
-  # Kill running process
-  taskkill //F //IM DirectPipe.exe 2>/dev/null && info "Killed running DirectPipe.exe" || true
-
   # Delete stale .rc files
   rm -f "$BUILD_DIR/host/DirectPipe_artefacts/JuceLibraryCode/DirectPipe_resources.rc" 2>/dev/null
   rm -f "$BUILD_DIR/plugins/receiver/DirectPipeReceiver_artefacts/JuceLibraryCode/DirectPipeReceiver_resources.rc" 2>/dev/null
 
   # Build targets — VST2 only if SDK is present
-  TARGETS="DirectPipe DirectPipeReceiver_VST3 directpipe-tests directpipe-host-tests"
+  TARGETS="DirectPipe DirectPipeReceiver_VST3 directpipe-tests directpipe-host-tests directpipe-endpoint-watcher-tests"
   if [[ -f "$PROJECT_ROOT/thirdparty/VST2_SDK/pluginterfaces/vst2.x/aeffect.h" ]]; then
     TARGETS="$TARGETS DirectPipeReceiver_VST"
   fi
@@ -234,8 +306,8 @@ if [[ -f "$CORE_TEST_EXE" ]]; then
   fi
   [[ -f "$CORE_JSON" ]] && info "JSON report: $CORE_JSON"
 else
-  skip "Core test exe not found ($CORE_TEST_EXE)"
-  add_result "Core Tests|SKIP"
+  fail "Core test exe not found ($CORE_TEST_EXE)"
+  add_result "Core Tests|FAIL"
 fi
 echo ""
 
@@ -256,23 +328,70 @@ if [[ -f "$HOST_TEST_EXE" ]]; then
   fi
   [[ -f "$HOST_JSON" ]] && info "JSON report: $HOST_JSON"
 else
-  skip "Host test exe not found ($HOST_TEST_EXE)"
-  add_result "Host Tests|SKIP"
+  fail "Host test exe not found ($HOST_TEST_EXE)"
+  add_result "Host Tests|FAIL"
 fi
 echo ""
 
 # ═══════════════════════════════════════════════
-# Step 5: API Integration Tests
+# Step 5: Focused Endpoint Tests
+# ═══════════════════════════════════════════════
+echo "[Step 5] Focused Endpoint Tests"
+echo "─────────────────────────────────────"
+ENDPOINT_TEST_EXE="$BUILD_DIR/tests/directpipe-endpoint-watcher-tests_artefacts/Release/directpipe-endpoint-watcher-tests.exe"
+if [[ -f "$ENDPOINT_TEST_EXE" ]]; then
+  if "$ENDPOINT_TEST_EXE" 2>&1 | tail -3; then
+    pass "Endpoint watcher tests"
+    add_result "Endpoint Tests|PASS"
+  else
+    fail "Endpoint watcher tests"
+    add_result "Endpoint Tests|FAIL"
+  fi
+else
+  fail "Endpoint test exe not found ($ENDPOINT_TEST_EXE)"
+  add_result "Endpoint Tests|FAIL"
+fi
+echo ""
+
+# ═══════════════════════════════════════════════
+# Step 6: Stream Deck Tests and Validation
+# ═══════════════════════════════════════════════
+echo "[Step 6] Stream Deck Tests and Validation"
+echo "─────────────────────────────────────"
+if command -v npm &> /dev/null; then
+  if (cd com.directpipe.directpipe.sdPlugin \
+      && npm ci \
+      && npm audit --audit-level=high \
+      && npm audit --omit=dev --audit-level=high \
+      && npm test \
+      && npm run build \
+      && npm run validate); then
+    pass "Stream Deck test/build/validate"
+    add_result "Stream Deck|PASS"
+  else
+    fail "Stream Deck test/build/validate"
+    add_result "Stream Deck|FAIL"
+  fi
+  else
+  fail "npm not found"
+  add_result "Stream Deck|FAIL"
+fi
+echo ""
+
+# ═══════════════════════════════════════════════
+# Step 7: API Integration Tests
 # ═══════════════════════════════════════════════
 if $SKIP_API; then
   skip "API Tests (--skip-api)"
   add_result "API Tests|SKIP"
 else
-  echo "[Step 5] API Integration Tests"
+  echo "[Step 7] API Integration Tests"
   echo "─────────────────────────────────────"
   if curl -s --connect-timeout 2 http://127.0.0.1:8766/api/status > /dev/null 2>&1; then
     info "DirectPipe detected on port 8766"
-    if command -v node &> /dev/null && [[ -f test_api.js ]]; then
+    if ! verify_api_candidate_version "$CANONICAL"; then
+      add_result "API Tests|FAIL:wrong candidate version"
+    elif command -v node &> /dev/null && [[ -f test_api.js ]]; then
       if node test_api.js; then
         pass "API tests"
         add_result "API Tests|PASS"
@@ -281,20 +400,20 @@ else
         add_result "API Tests|FAIL"
       fi
     else
-      skip "node or test_api.js not found"
-      add_result "API Tests|SKIP"
+      fail "node or test_api.js not found"
+      add_result "API Tests|FAIL"
     fi
   else
-    skip "DirectPipe not running on port 8766"
-    add_result "API Tests|SKIP"
+    fail "DirectPipe not running on port 8766"
+    add_result "API Tests|FAIL"
   fi
   echo ""
 fi
 
 # ═══════════════════════════════════════════════
-# Step 6: Git Status
+# Step 8: Git Status
 # ═══════════════════════════════════════════════
-echo "[Step 6] Git Status"
+echo "[Step 8] Git Status"
 echo "─────────────────────────────────────"
 DIRTY_COUNT=$(git status --porcelain 2>/dev/null | grep -c "^" || true)
 if [[ "$DIRTY_COUNT" -eq 0 ]]; then

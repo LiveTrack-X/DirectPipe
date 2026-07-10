@@ -64,6 +64,23 @@ TEST_F(VSTChainTest, AddRemovePlugin) {
 }
 
 // Test 4: movePlugin swaps order — Filter+NR → NR+Filter after move(0,1)
+TEST_F(VSTChainTest, PluginStatusSnapshotSurvivesLaterChainMutation) {
+    addBuiltin(PluginSlot::Type::BuiltinFilter);
+    chain_->setPluginBypassed(0, true);
+    const int expectedParameterCount = chain_->getPluginParameterCount(0);
+
+    const auto snapshot = chain_->getPluginStatusSnapshot();
+    ASSERT_EQ(snapshot.size(), 1u);
+
+    ASSERT_TRUE(chain_->removePlugin(0));
+    EXPECT_EQ(chain_->getPluginCount(), 0);
+
+    EXPECT_TRUE(snapshot[0].bypassed);
+    EXPECT_TRUE(snapshot[0].loaded);
+    EXPECT_FALSE(snapshot[0].name.isEmpty());
+    EXPECT_EQ(snapshot[0].parameterCount, expectedParameterCount);
+}
+
 TEST_F(VSTChainTest, MovePlugin) {
     addBuiltin(PluginSlot::Type::BuiltinFilter);
     addBuiltin(PluginSlot::Type::BuiltinNoiseRemoval);

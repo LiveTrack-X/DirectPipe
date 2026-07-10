@@ -181,6 +181,29 @@ TEST_F(AudioEngineTest, OutputNoneIgnoresZeroActiveOutput) {
     EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
 
+TEST_F(AudioEngineTest, OutputNoneClearsPendingOutputLoss) {
+    engine_->markOutputDeviceLostForTest("Missing Speakers");
+    ASSERT_TRUE(engine_->isDeviceLost());
+    ASSERT_TRUE(engine_->isOutputAutoMuted());
+
+    engine_->setOutputNone(true);
+
+    EXPECT_TRUE(engine_->isOutputNone());
+    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+    EXPECT_FALSE(engine_->isDeviceLost());
+}
+
+TEST_F(AudioEngineTest, OutputNonePreservesPendingInputLoss) {
+    engine_->markInputDeviceLostForTest("Missing Mic");
+
+    engine_->setOutputNone(true);
+
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isDeviceLost());
+}
+
 TEST_F(AudioEngineTest, ReconnectionMaxRetry) {
     for (int i = 0; i < 10; ++i)
         engine_->checkReconnection();
@@ -197,6 +220,30 @@ TEST_F(AudioEngineTest, InputLossKeepsWaitingForExplicitTargetAfterMaxMisses) {
     EXPECT_TRUE(engine_->isInputDeviceLost());
     EXPECT_FALSE(engine_->isOutputAutoMuted());
     EXPECT_EQ(engine_->getDesiredInputDevice(), "Missing Boot Mic");
+}
+
+TEST_F(AudioEngineTest, SameDeviceReopenDelayBlocksGenericReconnect) {
+    engine_->markInputDeviceLostForTest("Restarting Mic");
+    engine_->forceSameDeviceReopenPendingForTest(true);
+    engine_->forceReconnectCooldownForTest(0);
+
+    engine_->checkReconnection();
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 0);
+}
+
+TEST_F(AudioEngineTest, SameDeviceReopenDelayBlocksImmediateReconnect) {
+    engine_->markInputDeviceLostForTest("Restarting Mic");
+    engine_->forceSameDeviceReopenPendingForTest(true);
+    engine_->forceReconnectCooldownForTest(37);
+
+    engine_->attemptImmediateReconnectionForTest();
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 37);
 }
 
 TEST_F(AudioEngineTest, ExternalDeviceStopSilencesInputAndAutoMutesOutput) {
@@ -256,6 +303,116 @@ TEST_F(AudioEngineTest, DeviceErrorSilencesInputAndRequestsReconnection) {
     EXPECT_TRUE(engine_->isInputDeviceLost());
     EXPECT_TRUE(engine_->isOutputAutoMuted());
     EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, EndpointPropertyChangeMarksSameInputLost) {
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Microphone(Yeti Stereo Microphone)";
+    setup.outputDeviceName = "CABLE Input(VB-Audio Virtual Cable)";
+
+    EXPECT_TRUE(engine_->markInputEndpointRestartPendingForTest(
+        setup, "capture endpoint property changed"));
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 0);
+    EXPECT_EQ(engine_->getDesiredInputDevice(), setup.inputDeviceName);
+}
+
+TEST_F(AudioEngineTest, EndpointRecoveryPreservesManualOutputMute) {
+    engine_->setOutputMuted(true);
+    ASSERT_FALSE(engine_->isOutputAutoMuted());
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Microphone(Yeti Stereo Microphone)";
+    setup.outputDeviceName = "CABLE Input(VB-Audio Virtual Cable)";
+
+    ASSERT_TRUE(engine_->markInputEndpointRestartPendingForTest(
+        setup, "capture endpoint property changed"));
+    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+
+    EXPECT_TRUE(engine_->clearDeviceLossAfterReadyForTest(setup));
+    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+}
+
+TEST_F(AudioEngineTest, AutomaticOutputMuteDoesNotOverwriteConcurrentManualIntent) {
+    engine_->setOutputMuted(false);
+    engine_->markOutputDeviceLostForTest("Missing Speakers");
+    ASSERT_TRUE(engine_->isOutputAutoMuted());
+
+    // A user mute while recovery is pending must remain after the automatic
+    // safety reason is released.
+    engine_->setOutputMuted(true);
+    engine_->clearLossAfterManualOutputSelectionForTest();
+
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputManuallyMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, AutomaticOutputMuteRemainsEffectiveWhenManualMuteIsCleared) {
+    engine_->setOutputMuted(true);
+    engine_->markOutputDeviceLostForTest("Missing Speakers");
+    ASSERT_TRUE(engine_->isOutputAutoMuted());
+
+    engine_->setOutputMuted(false);
+
+    EXPECT_FALSE(engine_->isOutputManuallyMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+
+    engine_->clearLossAfterManualOutputSelectionForTest();
+    EXPECT_FALSE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, DeviceStatePreservesDirectionalLoss) {
+    engine_->markInputDeviceLostForTest("Missing Mic");
+    EXPECT_EQ(engine_->getDeviceState(), DeviceState::InputLost);
+
+    // Model an output-only state clear racing after the input-loss aggregate
+    // publication. The next reconnect tick must not leave input permanently
+    // silent with the aggregate gate disabled.
+    engine_->forceAggregateDeviceLostForTest(false);
+    engine_->forceReconnectCooldownForTest(2);
+    engine_->checkReconnection();
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 1);
+
+    engine_->setOutputMuted(false);
+    engine_->markOutputDeviceLostForTest("Missing Speakers");
+    EXPECT_EQ(engine_->getDeviceState(), DeviceState::OutputLost);
+}
+
+TEST_F(AudioEngineTest, EndpointPropertyChangeIgnoresNonDesiredInput) {
+    engine_->setDesiredInputDeviceForTest("Microphone(Yeti Stereo Microphone)");
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "CABLE Output(VB-Audio Virtual Cable)";
+    setup.outputDeviceName = "CABLE Input(VB-Audio Virtual Cable)";
+
+    EXPECT_FALSE(engine_->markInputEndpointRestartPendingForTest(
+        setup, "capture endpoint property changed"));
+
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+}
+
+TEST_F(AudioEngineTest, EndpointPropertyChangeRejectsDuplicateNameSuffix) {
+    engine_->setDesiredInputDeviceForTest("USB Microphone");
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "USB Microphone (2)";
+    setup.outputDeviceName = "Speakers";
+
+    EXPECT_FALSE(engine_->markInputEndpointRestartPendingForTest(
+        setup, "capture endpoint property changed"));
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
 }
 
 TEST_F(AudioEngineTest, ManualInputSelectionDoesNotClearPendingOutputLoss) {

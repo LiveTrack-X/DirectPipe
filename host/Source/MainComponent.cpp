@@ -333,14 +333,28 @@ MainComponent::MainComponent(bool enableExternalControls)
             SettingsExporter::showLoadDialog("*.dpbackup",
                 [safeThis](const juce::String& json) -> bool {
                     if (!safeThis) return false;
-                    safeThis->loadingSlot_ = true;
+                    bool expected = false;
+                    if (!safeThis->loadingSlot_.compare_exchange_strong(
+                            expected, true, std::memory_order_acq_rel,
+                            std::memory_order_acquire)) {
+                        juce::Logger::writeToLog(
+                            "[APP] Settings import blocked while another load is active");
+                        return false;
+                    }
+                    if (safeThis->partialLoad_.load(std::memory_order_acquire)
+                        || !safeThis->audioEngine_.getVSTChain().isStable()) {
+                        safeThis->loadingSlot_.store(false, std::memory_order_release);
+                        juce::Logger::writeToLog(
+                            "[APP] Settings import blocked while runtime state is unstable");
+                        return false;
+                    }
                     if (!SettingsExporter::importAll(json, *safeThis->presetManager_,
                                                      safeThis->controlManager_->getConfigStore())) {
-                        safeThis->loadingSlot_ = false;
+                        safeThis->loadingSlot_.store(false, std::memory_order_release);
                         return false;
                     }
                     safeThis->controlManager_->reloadConfig();
-                    safeThis->loadingSlot_ = false;
+                    safeThis->loadingSlot_.store(false, std::memory_order_release);
                     safeThis->markSettingsDirty();
                     safeThis->refreshUI();
                     safeThis->presetSlotBar_->updateSlotButtonStates();
@@ -351,9 +365,16 @@ MainComponent::MainComponent(bool enableExternalControls)
             SettingsExporter::showSaveDialog("DirectPipe_full.dpfullbackup", "*.dpfullbackup", "dpfullbackup",
                 [safeThis]() -> juce::String {
                     if (!safeThis) return {};
+                    const bool runtimeStateIsStable =
+                        !safeThis->loadingSlot_.load(std::memory_order_acquire)
+                        && !safeThis->partialLoad_.load(std::memory_order_acquire)
+                        && safeThis->audioEngine_.getVSTChain().isStable();
                     auto json = SettingsExporter::exportFullBackup(*safeThis->presetManager_,
-                                                                    safeThis->controlManager_->getConfigStore());
-                    juce::Logger::writeToLog("[APP] Full backup saved");
+                                                                    safeThis->controlManager_->getConfigStore(),
+                                                                    runtimeStateIsStable);
+                    juce::Logger::writeToLog(json.isNotEmpty()
+                        ? "[APP] Full backup prepared"
+                        : "[APP] Full backup failed; no file was written");
                     return json;
                 });
         };
@@ -361,17 +382,34 @@ MainComponent::MainComponent(bool enableExternalControls)
             SettingsExporter::showLoadDialog("*.dpfullbackup",
                 [safeThis](const juce::String& json) -> bool {
                     if (!safeThis) return false;
-                    safeThis->loadingSlot_ = true;
+                    bool expected = false;
+                    if (!safeThis->loadingSlot_.compare_exchange_strong(
+                            expected, true, std::memory_order_acq_rel,
+                            std::memory_order_acquire)) {
+                        juce::Logger::writeToLog(
+                            "[APP] Full backup restore blocked while another load is active");
+                        return false;
+                    }
+                    const bool runtimeStateWasStable =
+                        !safeThis->partialLoad_.load(std::memory_order_acquire)
+                        && safeThis->audioEngine_.getVSTChain().isStable();
+                    if (!runtimeStateWasStable) {
+                        safeThis->loadingSlot_.store(false, std::memory_order_release);
+                        juce::Logger::writeToLog(
+                            "[APP] Full backup restore blocked while runtime state is unstable");
+                        return false;
+                    }
                     if (!SettingsExporter::importFullBackup(json, *safeThis->presetManager_,
-                                                            safeThis->controlManager_->getConfigStore())) {
-                        safeThis->loadingSlot_ = false;
+                                                            safeThis->controlManager_->getConfigStore(),
+                                                            runtimeStateWasStable)) {
+                        safeThis->loadingSlot_.store(false, std::memory_order_release);
                         return false;
                     }
                     safeThis->controlManager_->reloadConfig();
                     safeThis->presetManager_->refreshSlotOccupancy();
                     safeThis->presetManager_->loadSlotNames();
                     safeThis->presetManager_->clearPreloadCache();
-                    safeThis->loadingSlot_ = false;
+                    safeThis->loadingSlot_.store(false, std::memory_order_release);
                     safeThis->markSettingsDirty();
                     safeThis->refreshUI();
                     safeThis->presetSlotBar_->updateSlotButtonStates();
@@ -480,10 +518,24 @@ MainComponent::MainComponent(bool enableExternalControls)
             if (!safeThis) return;
             auto file = fc.getResult();
             if (file.existsAsFile()) {
+                if (!safeThis->presetManager_->isPresetFileStructurallyValid(file)) {
+                    safeThis->showNotification(
+                        "Preset is invalid and was not loaded.",
+                        NotificationLevel::Warning);
+                    return;
+                }
+
                 safeThis->loadingSlot_ = true;
-                safeThis->presetManager_->loadPreset(file);
+                const bool loaded = safeThis->presetManager_->loadPreset(file);
+                safeThis->partialLoad_ = !loaded;
                 safeThis->loadingSlot_ = false;
-                safeThis->markSettingsDirty();
+                if (loaded) {
+                    safeThis->markSettingsDirty();
+                } else {
+                    safeThis->showNotification(
+                        "Preset could not be loaded completely; saved settings were preserved.",
+                        NotificationLevel::Warning);
+                }
                 safeThis->refreshUI();
                 safeThis->presetSlotBar_->updateSlotButtonStates();
             }

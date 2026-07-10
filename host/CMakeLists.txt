@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "4.1.2"
+    VERSION "4.2.0"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -81,6 +81,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/StatusUpdater.cpp
     Source/UI/UpdateChecker.h
     Source/UI/UpdateChecker.cpp
+    Source/UI/UpdateScript.h
+    Source/UI/UpdateScript.cpp
     Source/UI/FilterEditPanel.h
     Source/UI/FilterEditPanel.cpp
     Source/UI/NoiseRemovalEditPanel.h
@@ -113,6 +115,8 @@ target_sources(DirectPipe PRIVATE
     Source/IPC/SharedMemWriter.cpp
     # Platform abstraction headers
     Source/Platform/PlatformAudio.h
+    Source/Platform/EndpointChangeWatcher.h
+    Source/Platform/EndpointChangeWatcher.cpp
     Source/Platform/AutoStart.h
     Source/Platform/ProcessPriority.h
     Source/Platform/MultiInstanceLock.h
@@ -185,6 +189,7 @@ if(WIN32)
     if(DIRECTPIPE_HAS_ASIO)
         target_include_directories(DirectPipe PRIVATE "${ASIO_SDK_DIR}/common")
     endif()
+    target_link_libraries(DirectPipe PRIVATE ole32 uuid)
 endif()
 
 # ─── macOS-specific definitions ───

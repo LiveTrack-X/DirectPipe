@@ -35,6 +35,15 @@ const MAX_RECONNECT_INTERVAL_MS = 10000;
 const RECONNECT_BACKOFF_FACTOR = 1.5;
 const PING_INTERVAL_MS = 15000;
 
+function parseDirectPipeReady(message) {
+    const text = message == null ? "" : message.toString().trim();
+    const match = /^DIRECTPIPE_READY:(\d+)$/.exec(text);
+    if (!match) return null;
+
+    const port = Number(match[1]);
+    return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+}
+
 /**
  * WebSocket client that connects to the DirectPipe host application.
  *
@@ -54,7 +63,7 @@ class DirectPipeClient extends EventEmitter {
      * @param {object} [options] - Optional configuration.
      * @param {boolean} [options.autoReconnect=true] - Automatically reconnect on disconnect.
      * @param {number} [options.reconnectInterval=2000] - Initial reconnect delay in ms.
-     * @param {number} [options.maxReconnectInterval=30000] - Maximum reconnect delay in ms.
+     * @param {number} [options.maxReconnectInterval=10000] - Maximum reconnect delay in ms.
      */
     constructor(url, options = {}) {
         super();
@@ -208,14 +217,29 @@ class DirectPipeClient extends EventEmitter {
      *
      * Useful when an external signal (e.g., UDP discovery or user interaction)
      * indicates the server is likely available now.
+     * @param {string} [nextUrl] - Optional replacement WebSocket URL.
      */
-    reconnectNow() {
-        if (this._connected) return;
+    reconnectNow(nextUrl) {
+        const urlChanged = typeof nextUrl === "string" && nextUrl !== this.url;
+
+        if (this._connected && !urlChanged) return;
         // Avoid duplicate connections if already attempting
-        if (this._ws && this._ws.readyState === WebSocket.CONNECTING) return;
+        if (!urlChanged && this._ws && this._ws.readyState === WebSocket.CONNECTING) return;
+
+        if (urlChanged) {
+            this.url = nextUrl;
+            this._connected = false;
+
+            if (this._ws) {
+                const previousSocket = this._ws;
+                this._ws = null;
+                previousSocket.close(1000, "Endpoint changed");
+            }
+        }
 
         this._stopReconnectTimer();
         this._currentReconnectDelay = this.reconnectInterval;
+        this.emit("connecting");
         this._createConnection();
     }
 
@@ -228,18 +252,23 @@ class DirectPipeClient extends EventEmitter {
     _createConnection() {
         this._stopReconnectTimer();
 
+        let socket;
         try {
-            this._ws = new WebSocket(this.url);
+            socket = new WebSocket(this.url);
+            this._ws = socket;
         } catch (err) {
             console.error("[DirectPipeClient] Failed to create WebSocket:", err.message);
             this._scheduleReconnect();
             return;
         }
 
-        this._ws.on("open", () => {
+        socket.on("open", () => {
+            if (this._ws !== socket) return;
+
             this._connected = true;
             this._reconnectAttempts = 0;
             this._currentReconnectDelay = this.reconnectInterval;
+            this._stopReconnectTimer();
 
             console.log(`[DirectPipeClient] Connected to ${this.url}`);
             this.emit("connected");
@@ -251,13 +280,17 @@ class DirectPipeClient extends EventEmitter {
             this._startPingTimer();
         });
 
-        this._ws.on("message", (data) => {
+        socket.on("message", (data) => {
+            if (this._ws !== socket) return;
             this._handleMessage(data);
         });
 
-        this._ws.on("close", (code, reason) => {
+        socket.on("close", (code, reason) => {
+            if (this._ws !== socket) return;
+
             const wasConnected = this._connected;
             this._connected = false;
+            this._ws = null;
             this._stopPingTimer();
 
             const reasonStr = reason ? reason.toString() : "unknown";
@@ -274,14 +307,17 @@ class DirectPipeClient extends EventEmitter {
             }
         });
 
-        this._ws.on("error", (err) => {
+        socket.on("error", (err) => {
+            if (this._ws !== socket) return;
+
             console.error("[DirectPipeClient] WebSocket error:", err.message);
             this.emit("error", err);
 
             // The "close" event will fire after "error", which triggers reconnect
         });
 
-        this._ws.on("pong", () => {
+        socket.on("pong", () => {
+            if (this._ws !== socket) return;
             // Server responded to ping — connection is alive
         });
     }
@@ -386,4 +422,4 @@ class DirectPipeClient extends EventEmitter {
     }
 }
 
-module.exports = { DirectPipeClient };
+module.exports = { DirectPipeClient, parseDirectPipeReady };

@@ -22,8 +22,12 @@
  */
 
 #include "UpdateChecker.h"
+#include "UpdateScript.h"
+
+#include <exception>
 
 #if JUCE_WINDOWS
+#include <windows.h>
 namespace {
     constexpr const char* kUpdateBatchFile = "_update.bat";
     constexpr const char* kUpdateDir       = "_update";
@@ -42,12 +46,73 @@ UpdateChecker::~UpdateChecker()
 {
     alive_->store(false);
 #if JUCE_WINDOWS
-    if (downloadThread_.joinable())
-        downloadThread_.join();
+    {
+        std::lock_guard<std::mutex> lock(downloadThreadMutex_);
+        if (downloadThread_.joinable())
+            downloadThread_.join();
+        downloadInProgress_.store(false, std::memory_order_release);
+        downloadThreadFinished_.store(false, std::memory_order_release);
+    }
 #endif
     if (updateCheckThread_.joinable())
         updateCheckThread_.join();
 }
+
+#if JUCE_WINDOWS
+bool UpdateChecker::startDownloadWorker(std::function<void()> work)
+{
+    if (!work)
+        return false;
+
+    // Serialize the std::thread object itself. Atomics describe worker state,
+    // but they cannot make "finished old thread -> assign new thread" atomic;
+    // assigning over a still-joinable std::thread would call std::terminate.
+    std::lock_guard<std::mutex> lock(downloadThreadMutex_);
+    if (downloadInProgress_.load(std::memory_order_acquire))
+        return false;
+
+    if (downloadThread_.joinable())
+        downloadThread_.join();
+
+    downloadThreadFinished_.store(false, std::memory_order_release);
+    downloadInProgress_.store(true, std::memory_order_release);
+    try {
+        downloadThread_ = std::thread([this, work = std::move(work)]() mutable {
+            try {
+                work();
+            } catch (const std::exception& error) {
+                juce::Logger::writeToLog(
+                    "[APP] Update worker failed with exception: " + juce::String(error.what()));
+            } catch (...) {
+                juce::Logger::writeToLog("[APP] Update worker failed with unknown exception");
+            }
+
+            // Publish completion before clearing in-progress. The next attempt
+            // can then join/reap this finished std::thread before replacing it.
+            downloadThreadFinished_.store(true, std::memory_order_release);
+            downloadInProgress_.store(false, std::memory_order_release);
+        });
+    } catch (...) {
+        downloadThreadFinished_.store(false, std::memory_order_release);
+        downloadInProgress_.store(false, std::memory_order_release);
+        return false;
+    }
+
+    return true;
+}
+
+void UpdateChecker::reapFinishedDownloadThread()
+{
+    std::lock_guard<std::mutex> lock(downloadThreadMutex_);
+    if (downloadInProgress_.load(std::memory_order_acquire))
+        return;
+
+    if (downloadThread_.joinable())
+        downloadThread_.join();
+
+    downloadThreadFinished_.store(false, std::memory_order_release);
+}
+#endif
 
 void UpdateChecker::cleanupPreviousUpdate()
 {
@@ -88,20 +153,23 @@ void UpdateChecker::checkForUpdate()
         auto parsed = juce::JSON::parse(response);
         if (auto* obj = parsed.getDynamicObject()) {
             auto tagName = obj->getProperty("tag_name").toString();
-            if (tagName.startsWithChar('v') || tagName.startsWithChar('V'))
-                tagName = tagName.substring(1);
+            std::array<int, 3> releaseVersion{};
+            std::array<int, 3> installedVersion{};
+            juce::String canonicalReleaseVersion;
+            juce::String canonicalInstalledVersion;
+            if (!update_detail::parseStrictReleaseVersion(
+                    tagName, releaseVersion, canonicalReleaseVersion)) {
+                juce::Logger::writeToLog("[APP] Ignoring malformed release tag: " + tagName);
+                return;
+            }
+            if (!update_detail::parseStrictReleaseVersion(
+                    currentVersion, installedVersion, canonicalInstalledVersion)) {
+                juce::Logger::writeToLog("[APP] Installed version is not strict semver: " + currentVersion);
+                return;
+            }
 
-            if (tagName.isNotEmpty() && tagName != currentVersion) {
-                auto parseVer = [](const juce::String& v) -> std::tuple<int,int,int> {
-                    auto parts = juce::StringArray::fromTokens(v, ".", "");
-                    return { parts.size() > 0 ? parts[0].getIntValue() : 0,
-                             parts.size() > 1 ? parts[1].getIntValue() : 0,
-                             parts.size() > 2 ? parts[2].getIntValue() : 0 };
-                };
-                auto [rMaj, rMin, rPat] = parseVer(tagName);
-                auto [cMaj, cMin, cPat] = parseVer(currentVersion);
-
-                if (std::tie(rMaj, rMin, rPat) > std::tie(cMaj, cMin, cPat)) {
+            if (canonicalReleaseVersion != canonicalInstalledVersion) {
+                if (releaseVersion > installedVersion) {
                     // Find download URL from assets — platform-aware selection
                     // 1st pass: match platform-tagged asset (e.g. "DirectPipe-...-Windows.zip")
                     // 2nd pass: fallback to any "DirectPipe*.zip/exe" (legacy releases without platform tag)
@@ -148,14 +216,14 @@ void UpdateChecker::checkForUpdate()
                         if (downloadUrl.isEmpty()) downloadUrl = fallbackExeUrl;
                     }
 
-                    juce::MessageManager::callAsync([this, alive, tagName, downloadUrl]() {
+                    juce::MessageManager::callAsync([this, alive, canonicalReleaseVersion, downloadUrl]() {
                         if (!alive->load()) return;
-                        latestVersion_ = tagName;
+                        latestVersion_ = canonicalReleaseVersion;
                         latestDownloadUrl_ = downloadUrl;
                         updateAvailable_ = true;
 
                         if (onUpdateAvailable)
-                            onUpdateAvailable(tagName, downloadUrl);
+                            onUpdateAvailable(canonicalReleaseVersion, downloadUrl);
                     });
                 }
             }
@@ -211,6 +279,19 @@ void UpdateChecker::performUpdate()
         return;
     }
 
+    // std::thread::joinable() remains true after a worker has returned. Reap a
+    // completed attempt first, then use the explicit running flag to distinguish
+    // a real in-progress download from a finished thread awaiting join().
+    reapFinishedDownloadThread();
+    if (downloadInProgress_.load(std::memory_order_acquire)) {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon,
+            "Update in Progress",
+            "A download is already in progress. Please wait for it to finish.",
+            "OK");
+        return;
+    }
+
     // Determine paths
     auto currentExe = juce::File::getSpecialLocation(
         juce::File::currentExecutableFile);
@@ -228,19 +309,25 @@ void UpdateChecker::performUpdate()
 
     auto downloadUrl = latestDownloadUrl_;
     auto version = latestVersion_;
-    bool isZip = downloadUrl.endsWithIgnoreCase(".zip");
-
-    // If a previous download is still running, reject the request (don't block message thread)
-    if (downloadThread_.joinable()) {
+    std::array<int, 3> versionComponents{};
+    juce::String canonicalVersion;
+    if (!update_detail::parseStrictReleaseVersion(version, versionComponents, canonicalVersion)) {
+        (*progressDlg)->exitModalState(0);
         juce::AlertWindow::showMessageBoxAsync(
             juce::MessageBoxIconType::WarningIcon,
-            "Update in Progress",
-            "A download is already in progress. Please wait for it to finish.",
+            "Update Error",
+            "The release version is invalid. Please download manually from GitHub.",
             "OK");
-        (*progressDlg)->exitModalState(0);
         return;
     }
-    downloadThread_ = std::thread([alive = alive_, downloadUrl, updateDir, batchFile, currentExe, version, isZip, progressDlg]() {
+
+    version = canonicalVersion;
+    bool isZip = downloadUrl.endsWithIgnoreCase(".zip");
+    const auto currentProcessId = static_cast<unsigned long>(::GetCurrentProcessId());
+
+    const bool workerStarted = startDownloadWorker(
+        [alive = alive_, downloadUrl, updateDir, batchFile, currentExe,
+         version, isZip, currentProcessId, progressDlg]() {
         // Download the file
         juce::URL url(downloadUrl);
         int statusCode = 0;
@@ -371,72 +458,78 @@ void UpdateChecker::performUpdate()
         }
 
         // Create update batch script
-        auto exeDir = currentExe.getParentDirectory().getFullPathName().replace("/", "\\");
         auto currentPath = currentExe.getFullPathName().replace("/", "\\");
         auto downloadPath = downloadFile.getFullPathName().replace("/", "\\");
         auto backupPath = currentExe.getSiblingFile(kBackupExe)
                               .getFullPathName().replace("/", "\\");
-        auto batchPath = batchFile.getFullPathName().replace("/", "\\");
         auto updateDirPath = updateDir.getFullPathName().replace("/", "\\");
-
-        // Escape single quotes for PowerShell string literals ('...')
-        // e.g. O'Brien becomes O''Brien
-        auto escapePSQuote = [](const juce::String& s) -> juce::String {
-            return s.replace("'", "''");
-        };
 
         juce::String script;
         script << "@echo off\r\n";
         script << "chcp 65001 > nul\r\n";
         script << "echo.\r\n";
         script << "echo  Updating DirectPipe to v" << version << " ...\r\n";
-        script << "echo  Waiting for DirectPipe to close...\r\n";
-        script << "timeout /t 3 /nobreak > nul\r\n";
-        script << ":waitloop\r\n";
-        script << "tasklist /FI \"IMAGENAME eq DirectPipe.exe\" 2>nul | find /I \"DirectPipe.exe\" > nul\r\n";
-        script << "if not errorlevel 1 (\r\n";
-        script << "    timeout /t 1 /nobreak > nul\r\n";
-        script << "    goto waitloop\r\n";
-        script << ")\r\n";
+        script << update_detail::buildWindowsUpdateWaitScript(currentProcessId);
 
         auto flagPath = currentExe.getSiblingFile(kUpdatedFlag)
                             .getFullPathName().replace("/", "\\");
 
-        if (isZip) {
-            script << "echo  Extracting update...\r\n";
-            script << "if exist \"" << updateDirPath << "\" rd /s /q \"" << updateDirPath << "\"\r\n";
-            script << "powershell -NoProfile -Command \"Expand-Archive -Path '" << escapePSQuote(downloadPath)
-                   << "' -DestinationPath '" << escapePSQuote(updateDirPath) << "' -Force\"\r\n";
-            script << "if exist \"" << backupPath << "\" del /f \"" << backupPath << "\"\r\n";
-            script << "move /y \"" << currentPath << "\" \"" << backupPath << "\"\r\n";
-            script << "powershell -NoProfile -Command \"$f = Get-ChildItem -Path '" << escapePSQuote(updateDirPath)
-                   << "' -Recurse -Filter 'DirectPipe.exe' | Select-Object -First 1; "
-                   << "if ($f) { Copy-Item $f.FullName -Destination '" << escapePSQuote(currentPath) << "' -Force }\"\r\n";
-            script << "rd /s /q \"" << updateDirPath << "\"\r\n";
-            script << "del /f \"" << downloadPath << "\"\r\n";
-            script << "del /f \"" << backupPath << "\"\r\n";
-        } else {
-            script << "echo  Applying update...\r\n";
-            script << "if exist \"" << backupPath << "\" del /f \"" << backupPath << "\"\r\n";
-            script << "move /y \"" << currentPath << "\" \"" << backupPath << "\"\r\n";
-            script << "move /y \"" << downloadPath << "\" \"" << currentPath << "\"\r\n";
-            script << "del /f \"" << backupPath << "\"\r\n";
-        }
+        auto stagedPath = currentExe.getSiblingFile(kUpdateExe)
+                              .getFullPathName().replace("/", "\\");
+        script << update_detail::buildWindowsUpdateInstallScript({
+            currentPath,
+            downloadPath,
+            stagedPath,
+            backupPath,
+            updateDirPath,
+            isZip,
+        });
 
-        script << "echo " << version << " > \"" << flagPath << "\"\r\n";
-        script << "powershell -NoProfile -Command \"Start-Process -FilePath '" << escapePSQuote(currentPath) << "'\"\r\n";
+        script << update_detail::buildWindowsUpdateCompletionScript(
+            version, flagPath, currentPath);
         script << "exit\r\n";
 
-        batchFile.replaceWithText(script);
+        if (!batchFile.replaceWithText(script)) {
+            juce::Logger::writeToLog("[APP] Failed to create update installer script: "
+                + batchFile.getFullPathName());
+            juce::MessageManager::callAsync([alive, progressDlg]() {
+                if (!alive->load()) return;
+                if (*progressDlg)
+                    (*progressDlg)->exitModalState(0);
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::WarningIcon,
+                    "Update Failed",
+                    "Could not create the update installer. DirectPipe was not changed.",
+                    "OK");
+            });
+            return;
+        }
 
         juce::MessageManager::callAsync([alive, batchFile, progressDlg]() {
             if (!alive->load()) return;
             if (*progressDlg)
                 (*progressDlg)->exitModalState(0);
-            batchFile.startAsProcess();
+            if (!batchFile.startAsProcess()) {
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::WarningIcon,
+                    "Update Failed",
+                    "Could not launch the update installer. DirectPipe was not changed.",
+                    "OK");
+                return;
+            }
             juce::JUCEApplication::getInstance()->systemRequestedQuit();
         });
-    });
+        });
+
+    if (!workerStarted) {
+        if (*progressDlg)
+            (*progressDlg)->exitModalState(0);
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon,
+            "Update Error",
+            "Could not start the update worker. Please try again.",
+            "OK");
+    }
 }
 #endif // JUCE_WINDOWS
 

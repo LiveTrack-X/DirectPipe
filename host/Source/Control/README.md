@@ -67,7 +67,7 @@ StateBroadcaster.updateState()
 | `SettingsAutosaver.h/cpp` | Dirty-flag 패턴 + 1초 디바운스 자동 저장. `markDirty()` / `tick()` / `saveNow()` |
 | `HotkeyHandler.h/cpp` | 글로벌 키보드 단축키. Windows: `RegisterHotKey` + 메시지 창. macOS: `CGEventTap`. Linux: stub |
 | `MidiHandler.h/cpp` | MIDI CC/Note 매핑 및 Learn 모드. 핫플러그 감지. LED 피드백. `bindingsMutex_`로 바인딩 보호 |
-| `WebSocketServer.h/cpp` | RFC 6455 WebSocket 서버 (port 8765). Stream Deck 연동. UDP 디스커버리 (port 8767). 전용 broadcast 스레드 |
+| `WebSocketServer.h/cpp` | RFC 6455 WebSocket 서버 (port 8765). 초기 상태 완료 후 broadcast-ready, 최신 상태 재조회, strict JSON 파라미터 검증, 유휴 중 client thread 회수. 실제 포트를 시작 즉시/2초 주기로 알리는 Stream Deck UDP 디스커버리 (port 8767) |
 | `HttpApiServer.h/cpp` | REST API 서버 (port 8766). GET-only. CORS/OPTIONS 지원. 상태 코드 404/405/400. 엔드포인트: status/perf/xrun-reset, volume, preset/slot, gain, bypass, recording, ipc, panic/input-mute, plugin param, **plugins (목록)**, **plugin/:idx/params**, **auto/add**, MIDI test injection |
 | `StateBroadcaster.h/cpp` | 앱 상태 스냅샷 (`AppState`) 관리 및 브로드캐스트. 메시지 스레드 리스너 전달 보장 |
 | `Log.h/cpp` | 구조화 로깅 헬퍼. severity 레벨 (info/warn/error/audit), 카테고리 태그, RAII 타이머, 세션 헤더 |
@@ -93,7 +93,7 @@ StateBroadcaster.updateState()
 | MidiHandler | `getBindings` | Any thread | `bindingsMutex_` 잠금 후 복사본 반환 |
 | WebSocketServer | `serverThread` | `[Server thread]` | accept 루프 |
 | WebSocketServer | `clientThread` | `[Server thread]` (per-client) | 각 클라이언트 전용 스레드. `sendMutex`로 송신 보호 |
-| WebSocketServer | `processMessage` | `[Server thread]` | JSON 파싱 -> ActionDispatcher.dispatch |
+| WebSocketServer | `processMessage` | `[Server thread]` | JSON 타입·유한값·액션별 범위 검증 -> ActionDispatcher.dispatch |
 | WebSocketServer | `broadcastThreadFunc` | `[BG thread]` | 전용 broadcast 스레드. `broadcastMutex_` + CV |
 | WebSocketServer | `onStateChanged` | `[Message thread]` | StateBroadcaster 콜백 -> broadcast 큐에 push |
 | HttpApiServer | `serverThread` | `[Server thread]` | accept 루프 |
@@ -116,7 +116,7 @@ StateBroadcaster.updateState()
 | `MidiHandler` | ControlManager::initialize | ControlManager (stack) | ControlManager::shutdown | MIDI 디바이스 핸들, learnTimer_ |
 | `learnTimer_` (MidiHandler) | MidiHandler::startLearn | MidiHandler (unique_ptr) | stopLearn() / 소멸자 | JUCE Timer — Message thread에서만 파괴 가능 |
 | `WebSocketServer` | ControlManager::initialize | ControlManager (unique_ptr) | ControlManager::shutdown | serverThread_, broadcastThread_, clientThreads |
-| `ClientConnection` (WS) | serverThread accept | clients_ 벡터 (unique_ptr) | broadcastToClients sweep 또는 stop() | socket + thread + sendMutex. clientThread 종료 시 socket->close() 필수 |
+| `ClientConnection` (WS) | serverThread accept | clients_ 벡터 (`shared_ptr`) + 전송 snapshot | accept/broadcast sweep 또는 stop() | socket + thread + sendMutex + ready/finished atomics. clientThread 종료 시 socket->close() 필수 |
 | `HttpApiServer` | ControlManager::initialize | ControlManager (unique_ptr) | ControlManager::shutdown | serverThread_, handlerThreads_ |
 | `HandlerThread` (HTTP) | serverThread accept | handlerThreads_ 벡터 | stop() 또는 done sweep | running_ 체크 후에만 삽입 (TOCTOU 방지) |
 | `ActionHandler` | MainComponent 생성자 | MainComponent (unique_ptr) | MainComponent 소멸자 | engine_, presetMgr_ 참조 보유 |
@@ -134,7 +134,9 @@ StateBroadcaster.updateState()
     |  clients_ 벡터에 추가      | SHA-1 challenge/response
     |  (clientsMutex_ 보호)     | Sec-WebSocket-Accept 헤더
     |                          v
-    |                     [Connected]
+    |                     [Initial State]
+    |                          |
+    |                     [Broadcast Ready]
     |                          |
     |  clientThread 시작        | readFrame 루프
     |                          | - Text(0x1): processMessage -> ActionDispatcher
@@ -145,8 +147,8 @@ StateBroadcaster.updateState()
     |                     [Disconnecting]
     |                          |
     |  conn->socket->close()   | clientCount_--
-    |  (broadcastToClients     |
-    |   sweep에서 감지)         v
+    |  (accept/broadcast       |
+    |   periodic sweep)        v
     |                     [Dead -> Join]
     |                          |
     v                          | thread.join() (clientsMutex_ 바깥에서!)
@@ -220,9 +222,9 @@ ActionHandler::handle(event)
 
 3. **ActionDispatcher/StateBroadcaster listener 순회 시 copy-before-iterate**: 리스너 콜백이 add/remove를 호출할 수 있으므로, 순회 전 리스너 목록을 복사. iterator invalidation 방지.
 
-4. **WebSocket broadcast 경로 락 규칙**: `broadcastToClients`는 `clientsMutex_`를 짧게 잡아 snapshot만 만든 뒤 해제하고, 실제 socket write는 lock 밖에서 수행한다. per-connection `sendMutex`를 유지해 프레임 손상을 막는다 (broadcast vs client pong/close 동시 전송 충돌 방지).
+4. **WebSocket broadcast 경로 락 규칙**: `broadcastToClients`는 `clientsMutex_`를 짧게 잡아 `shared_ptr` snapshot만 만든 뒤 해제하고, 실제 socket write는 lock 밖에서 수행한다. per-connection `sendMutex` 획득 후 최신 상태를 다시 읽어 handshake catch-up보다 오래된 queued frame이 뒤늦게 전송되지 않게 한다.
 
-4a. **WebSocket 소켓 수명 관리**: write 실패 시 `conn->socket->close()`로 dead client를 즉시 표시하고, `stop()`에서는 모든 client socket을 먼저 close한 뒤 thread를 join한다. 이 순서를 바꾸면 종료 지연/유령 연결이 남을 수 있다.
+4a. **WebSocket 연결 준비/수명 관리**: HTTP 101과 초기 상태 frame이 끝나기 전에는 `readyForBroadcast=false`를 유지한다. write 실패 시 dead client socket을 즉시 닫고 accept/broadcast 경로가 완료 thread를 주기적으로 sweep한다. `stop()`은 모든 client socket을 먼저 close한 뒤 `clientsMutex_` 밖에서 thread를 join한다.
 
 5. **Panic mute 중 액션 차단**: `ActionHandler::handle()`에서 `engine_.isMuted()` 체크. 대부분 액션(PluginBypass, LoadPreset, RecordingToggle 등) 차단. 예외 액션은 `PanicMute`, `InputMuteToggle`, `XRunReset`, `SafetyLimiterToggle`, `SetSafetyLimiterCeiling`, `AutoProcessorsAdd`. 새 Action 추가 시 이 가드/예외 집합을 명시적으로 검토하지 않으면 panic 정책 우회.
 

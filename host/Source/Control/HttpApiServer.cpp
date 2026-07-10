@@ -24,6 +24,7 @@
 #include "HttpApiServer.h"
 #include "Log.h"
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <mutex>
@@ -41,6 +42,8 @@ static std::string floatToString(float value)
 static int safeAtoi(const std::string& s)
 {
     if (s.empty() || s.size() > 9) return -1;  // max 999,999,999
+    if (!std::all_of(s.begin(), s.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+        return -1;
     return std::atoi(s.c_str());
 }
 
@@ -89,20 +92,27 @@ HttpApiServer::~HttpApiServer()
 bool HttpApiServer::start(int port)
 {
     if (running_.load()) return true;
+    if (port < 1 || port > 65535) {
+        Log::error("HTTP", "Invalid listen port: " + juce::String(port));
+        return false;
+    }
 
+    alive_->store(true, std::memory_order_release);
     port_ = port;
     serverSocket_ = std::make_unique<juce::StreamingSocket>();
 
     if (!serverSocket_->createListener(port, "127.0.0.1")) {
         // Try fallback ports
-        for (int fallback = port + 1; fallback <= port + 5; ++fallback) {
+        const int lastFallback = (std::min)(port + 5, 65535);
+        for (int fallback = port + 1; fallback <= lastFallback; ++fallback) {
             if (serverSocket_->createListener(fallback, "127.0.0.1")) {
                 port_ = fallback;
                 break;
             }
         }
         if (!serverSocket_->isConnected()) {
-            Log::error("HTTP", "Failed to start on any port (tried " + juce::String(port) + "-" + juce::String(port + 5) + ")");
+            Log::error("HTTP", "Failed to start on any port (tried " + juce::String(port) + "-"
+                + juce::String((std::min)(port + 5, 65535)) + ")");
             return false;
         }
     }
@@ -127,12 +137,16 @@ void HttpApiServer::stop()
         serverThread_.join();
     }
 
-    // Close all client sockets first to unblock read() in handler threads
+    // Keep sockets alive while closing them. Completed handlers may already
+    // have released their local reference before stop() reaches the registry.
+    std::vector<std::shared_ptr<juce::StreamingSocket>> socketsToClose;
     {
         std::lock_guard<std::mutex> lock(handlersMutex_);
         for (auto& h : handlerThreads_)
-            if (h.socket) h.socket->close();
+            if (h.socket) socketsToClose.push_back(h.socket);
     }
+    for (auto& socket : socketsToClose)
+        socket->close();
 
     // Move threads out before joining to avoid deadlock (same pattern as WebSocketServer).
     std::vector<std::thread> toJoin;
@@ -185,23 +199,23 @@ void HttpApiServer::serverThread()
                     delete client;
                     continue;
                 }
+                auto clientSocket = std::shared_ptr<juce::StreamingSocket>(client);
                 auto doneFlag = std::make_shared<std::atomic<bool>>(false);
                 handlerThreads_.push_back({
-                    std::thread([this, client, aliveFlag, doneFlag]() {
-                        auto clientPtr = std::unique_ptr<juce::StreamingSocket>(client);
+                    std::thread([this, clientSocket, aliveFlag, doneFlag]() {
                         if (aliveFlag->load())
-                            handleClient(std::move(clientPtr));
+                            handleClient(clientSocket);
                         doneFlag->store(true, std::memory_order_release);
                     }),
                     doneFlag,
-                    client  // store raw pointer for stop() to close
+                    clientSocket
                 });
             }
         }
     }
 }
 
-void HttpApiServer::handleClient(std::unique_ptr<juce::StreamingSocket> client)
+void HttpApiServer::handleClient(const std::shared_ptr<juce::StreamingSocket>& client)
 {
     if (!alive_->load()) return;
     if (!client || !client->isConnected()) return;
@@ -334,6 +348,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
 
     // GET /api/bypass/:index/toggle
     if (action == "bypass" && segments.size() >= 3) {
+        if (segments.size() != 4 || segments[3] != "toggle")
+            return {404, R"({"error": "Not found"})"};
         if (segments[2] == "master") {
             dispatcher_.masterBypass();
             return {200, R"({"ok": true, "action": "master_bypass"})"};
@@ -343,6 +359,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         int index = safeAtoi(segments[2]);
         if (index < 0)
             return {400, R"({"error": "Invalid index"})"};
+        if (index >= engine_.getVSTChain().getPluginCount())
+            return {404, R"({"error": "Plugin not found"})"};
         dispatcher_.pluginBypass(index);
         return {200, R"({"ok": true, "action": "plugin_bypass", "index": )" +
                std::to_string(index) + "}"};
@@ -439,18 +457,16 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     if (action == "plugins" && segments.size() == 2) {
         auto& chain = engine_.getVSTChain();
         juce::Array<juce::var> arr;
-        int count = chain.getPluginCount();
-        auto latencies = chain.getPluginLatencies();
-        for (int i = 0; i < count; ++i) {
-            auto* slot = chain.getPluginSlot(i);
+        const auto plugins = chain.getPluginStatusSnapshot();
+        for (size_t i = 0; i < plugins.size(); ++i) {
+            const auto& plugin = plugins[i];
             auto obj = new juce::DynamicObject();
-            obj->setProperty("index", i);
-            obj->setProperty("name", slot ? juce::String(slot->name) : "");
-            obj->setProperty("bypassed", slot ? slot->bypassed : false);
-            obj->setProperty("loaded", slot && slot->getProcessor() != nullptr);
-            obj->setProperty("parameterCount", chain.getPluginParameterCount(i));
-            obj->setProperty("latencySamples",
-                (static_cast<size_t>(i) < latencies.size()) ? latencies[static_cast<size_t>(i)].latencySamples : 0);
+            obj->setProperty("index", static_cast<int>(i));
+            obj->setProperty("name", plugin.name);
+            obj->setProperty("bypassed", plugin.bypassed);
+            obj->setProperty("loaded", plugin.loaded);
+            obj->setProperty("parameterCount", plugin.parameterCount);
+            obj->setProperty("latencySamples", plugin.latencySamples);
             arr.add(juce::var(obj));
         }
         return {200, juce::JSON::toString(juce::var(arr), true).toStdString()};

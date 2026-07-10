@@ -5,20 +5,41 @@
 릴리스 전에 아래 3단계를 순서대로 실행합니다.
 Run the following 3 steps in order before each release.
 
-### Step 1: 자동 테스트 스크립트 (~3-5분)
+### Step 1: 자동 릴리즈 게이트 / Automated release gates (~3-5분)
 
 ```bash
-bash tools/pre-release-test.sh
+# 1) Version/release metadata, UTF-8, and patch hygiene
+bash tools/pre-release-test.sh --version-only
+python tools/check_text_integrity.py --repo-root .
+git diff --check
+(cd com.directpipe.directpipe.sdPlugin && npm audit && npm audit --omit=dev)
+
+# 2) Start the exact newly built DirectPipe candidate, then verify its API.
+#    The script rejects a process on port 8766 whose ProductVersion differs
+#    from the canonical CMake version. Close the candidate after this passes.
+bash tools/pre-release-test.sh --api-only
+
+# 3) With DirectPipe closed, build and run automated non-API suites.
+bash tools/pre-release-test.sh --skip-api
+ctest --test-dir build --build-config Release --output-on-failure
 ```
 
 수행 항목:
-- Version consistency check (7개 파일)
+- App/Receiver/Stream Deck/package-lock/current release docs/versioned release body version consistency
+- UTF-8 text integrity and `git diff --check`
+- Stream Deck full and production-only dependency audit (0 vulnerabilities required)
+- Exact-candidate API integration tests (`test_api.js`, HTTP port 8766)
 - Release build
-- Google Test unit tests (core + host)
-- API integration tests (앱 실행 중일 때)
+- Google Test unit tests (core + host + focused endpoint watcher)
+- Full CTest registration/integration pass
+- Stream Deck test, build, and package validation
 - Git status check
 
 옵션: `--skip-build`, `--skip-api`, `--api-only`, `--version-only`
+
+> `bash tools/pre-release-test.sh`를 인자 없이 실행하면 Windows에서 실행 중인 candidate와 EXE relink가 충돌할 수 있습니다. 위 순서대로 `--api-only` 검증 후 candidate를 종료하고 `--skip-api`를 실행합니다.
+>
+> A one-shot invocation without arguments can conflict with relinking a running Windows executable. Run `--api-only` against the exact candidate, close it, then run `--skip-api` as shown above.
 
 ### Step 2: GUI 대시보드 + AI 코드 리뷰
 
@@ -150,6 +171,17 @@ node test_api.js
 20. 재연결 후 SR/BS/채널 설정 보존 확인
 21. 모니터 장치 분리 → 독립적으로 monitor_lost 감지
 22. 모니터 장치 재연결 → 독립적으로 자동 재연결
+
+### Windows 입력 endpoint 속성 복구 / Windows input endpoint property recovery
+
+- [ ] 선택된 마이크에서 **Audio enhancements / 오디오 향상 기능**을 변경한 뒤 짧은 settle 후 같은 장치가 다시 열리고 입력이 복구되는지 확인합니다. 다른 마이크로 fallback되면 안 됩니다.
+- [ ] 지원 장치에서 **Voice Clarity** 및 **Voice focus / 음성 포커스**를 각각 변경한 뒤 same-device reopen/recovery를 확인합니다.
+- [ ] 선택된 마이크의 **Default format / 기본 형식**을 변경한 뒤 같은 endpoint recovery와 SR/BS 상태 갱신을 확인합니다.
+- [ ] 마이크의 물리 mute 버튼을 켜거나 정상적인 무음을 유지해도 endpoint loss/reopen 또는 장치 전환이 발생하지 않는지 확인합니다.
+
+> 이 항목은 실제 Windows 오디오 장치가 필요한 수동 검증입니다. 이번 릴리즈의 현재 로컬 자동 검증에서는 실행하지 않았으며, 실기기에서 직접 확인한 뒤에만 체크합니다.
+>
+> These checks require real Windows audio hardware. They were not executed by the current release's local automated run; mark them complete only after direct hardware verification.
 
 ### VST 플러그인 스캐너
 23. 플러그인 스캐너 열기 → 스캔 시작

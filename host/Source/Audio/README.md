@@ -89,9 +89,10 @@ LatencyMonitor.markCallbackEnd()
 | VSTChain | `replaceChainAsync` | `[Message thread]` -> `[BG thread]` -> `[Message thread]` | DLL 로딩은 BG, graph 삽입은 callAsync |
 | VSTChain | `replaceChainWithPreloaded` | `[Message thread]` | 프리로드 캐시 사용 시 동기 swap |
 | OutputRouter | `routeAudio` | `[RT thread]` | atomic 볼륨/활성화. scaledBuffer_ 용량 클램프 |
-| MonitorOutput | `writeAudio` | `[RT thread]` | AudioRingBuffer producer (lock-free) |
-| MonitorOutput | `audioDeviceIOCallbackWithContext` | `[Monitor RT thread]` | AudioRingBuffer consumer (lock-free) |
-| MonitorOutput | `initialize`, `setDevice`, `checkReconnection` | `[Message thread]` | 별도 AudioDeviceManager 조작 |
+| MonitorOutput | `writeAudio` | `[RT thread]` | AudioRingBuffer producer. SC admission + in-flight counter only; no mutex, wait, or allocation |
+| MonitorOutput | `audioDeviceIOCallbackWithContext` | `[Monitor RT thread]` | AudioRingBuffer consumer. JUCE `audioCallbackLock` serializes it against `audioDeviceAboutToStart` and `removeAudioCallback` |
+| MonitorOutput | `audioDeviceAboutToStart` | `[Device lifecycle thread]` | Runs under JUCE `audioCallbackLock`; closes producer admission and drains an in-flight write before ring reset |
+| MonitorOutput | `initialize`, `shutdown`, `setDevice`, `checkReconnection` | `[Message thread]` | Close producer admission and drain the bounded in-flight write before ring reset/resize; lifecycle generations reject stale deferred device work; JUCE callback removal drains the consumer |
 | AudioRingBuffer | `write` (producer) | `[RT thread]` | SPSC. capacity는 power-of-2 필수 |
 | AudioRingBuffer | `read` / `readInterpolated` (consumer) | `[Monitor RT thread]` | SPSC 단일 소비자 |
 | AudioRecorder | `writeBlock` | `[RT thread]` | try-lock 후 ThreadedWriter FIFO에 push, teardown 경합 시 drop. jassert: NOT message thread |
@@ -217,7 +218,7 @@ LatencyMonitor.markCallbackEnd()
 
 5. **OutputRouter `routeAudio`에서 `numSamples` 클램프 필수**: `scaledBuffer_` 용량을 초과하면 buffer overrun. `bufferTruncated_` 플래그로 진단.
 
-6. **SharedMemWriter `shutdown()` 순서**: `producer_active=false` -> `ringBuffer_.detach()` -> `dataEvent_.close()` -> `sharedMemory_.close()`. 순서 뒤바뀌면 consumer가 dangling pointer 접근.
+6. **SharedMemWriter `shutdown()` 순서**: `connected_=false` -> in-flight writer drain -> `producer_active=false` -> `ringBuffer_.detach()` -> `dataEvent_.close()` -> `sharedMemory_.close()`. admission/drain 또는 detach/unmap 순서가 바뀌면 dangling pointer 접근 위험.
 
 7. **IPC 토글 race window**: `setIpcEnabled(false)` 후에도 RT 스레드가 `ipcEnabled_=true`를 읽을 수 있음. `interleaveBuffer_`를 `shutdown()`에서 해제하면 안 되는 이유.
 

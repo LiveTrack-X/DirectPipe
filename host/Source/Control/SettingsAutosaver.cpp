@@ -27,9 +27,9 @@
 
 namespace directpipe {
 namespace {
-bool presetDeclaresOutputMuted(const juce::File& file)
+bool presetJSONDeclaresOutputMuted(const juce::String& json)
 {
-    auto parsed = juce::JSON::parse(file.loadFileAsString());
+    auto parsed = juce::JSON::parse(json);
     if (auto* root = parsed.getDynamicObject())
         return root->hasProperty("outputMuted");
     return false;
@@ -62,14 +62,24 @@ void SettingsAutosaver::tick()
     if (!dirty_ || cooldown_ <= 0) return;
 
     if (--cooldown_ == 0) {
+        // A partial plugin chain must never replace the last complete preset.
+        // Keep the user's pending changes until a later successful full load.
+        if (partialLoad_.load()) {
+            cooldown_ = 10;
+            return;
+        }
+
         // Defer save if chain is in transitional state (async loading or not yet prepared)
         if (loadingSlot_.load() || !engine_.getVSTChain().isStable()) {
             if (++deferCount_ >= kMaxDeferCount) {
-                // Force save after ~15s of deferred attempts to prevent data loss
-                juce::Logger::writeToLog("[PRESET] Autosave forced after " + juce::String(kMaxDeferCount) + " deferred attempts");
+                // The chain is still transitional, so forcing saveNow() would
+                // immediately be rejected by the same stability guard. Keep
+                // the dirty flag pending until a later stable tick instead of
+                // silently discarding the user's changes.
+                juce::Logger::writeToLog("[PRESET] Autosave still deferred after "
+                    + juce::String(kMaxDeferCount) + " attempts; keeping changes pending");
                 deferCount_ = 0;
-                dirty_ = false;
-                saveNow();
+                cooldown_ = 10;
             } else {
                 cooldown_ = 10;  // retry in ~300ms
             }
@@ -86,7 +96,7 @@ void SettingsAutosaver::saveNow()
     // Skip saving during async chain load or before chain is prepared:
     // chain is in transitional state (empty or partially loaded).
     // Saving now would corrupt the active slot file.
-    if (loadingSlot_.load() || !engine_.getVSTChain().isStable())
+    if (loadingSlot_.load() || partialLoad_.load() || !engine_.getVSTChain().isStable())
         return;
 
     // Save current slot's chain state (captures plugin internal state)
@@ -105,11 +115,17 @@ void SettingsAutosaver::loadFromFile()
         engine_.setOutputMuted(true); // Startup guard: prevent transient default-driver output.
 
     auto file = PresetManager::getAutoSaveFile();
-    if (file.existsAsFile()) {
+    // Resolve the whole atomic-write family before deciding that settings are
+    // absent. A crash can legitimately leave only settings.dppreset.bak, and
+    // a locked/corrupt primary must not hide explicit safety fields in backup.
+    const auto recoveredPresetJSON =
+        PresetManager::loadPresetJSONWithBackupFallback(file);
+    if (recoveredPresetJSON.isNotEmpty()) {
         loadingSlot_ = true;
         const bool loaded = presetMgr_.loadPreset(file);
         partialLoad_ = !loaded;
-        const bool hasOutputMutedField = loaded && presetDeclaresOutputMuted(file);
+        const bool hasOutputMutedField =
+            presetJSONDeclaresOutputMuted(recoveredPresetJSON);
 
         // Self-healing: if settings.dppreset had an empty/corrupt chain but the
         // active slot file is valid, reload chain from the slot file.
@@ -125,7 +141,9 @@ void SettingsAutosaver::loadFromFile()
         loadingSlot_ = false;
 
         // Legacy preset may omit outputMuted; use startup default (unmuted).
-        if ((!loaded || !hasOutputMutedField) && !engine_.isOutputNone())
+        // An explicit mute remains authoritative even when a plugin only
+        // partially loads, because unmuting on recovery is unsafe.
+        if (!hasOutputMutedField && !engine_.isOutputNone())
             engine_.setOutputMuted(false);
 
         // Restore panic mute lockout (monitor/IPC disabled while muted)

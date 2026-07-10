@@ -24,8 +24,11 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <atomic>
+#include <mutex>
 #include <thread>
 #include <functional>
+#include <utility>
 
 namespace directpipe {
 
@@ -47,6 +50,27 @@ public:
     bool isUpdateAvailable() const { return updateAvailable_; }
     juce::String getLatestVersion() const { return latestVersion_; }
 
+#if JUCE_WINDOWS && defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    bool startDownloadWorkerForTest(std::function<void()> work)
+    {
+        return startDownloadWorker(std::move(work));
+    }
+    void reapFinishedDownloadThreadForTest() { reapFinishedDownloadThread(); }
+    bool isDownloadInProgressForTest() const
+    {
+        return downloadInProgress_.load(std::memory_order_acquire);
+    }
+    bool isDownloadThreadFinishedForTest() const
+    {
+        return downloadThreadFinished_.load(std::memory_order_acquire);
+    }
+    bool hasJoinableDownloadThreadForTest()
+    {
+        std::lock_guard<std::mutex> lock(downloadThreadMutex_);
+        return downloadThread_.joinable();
+    }
+#endif
+
     /** Called on message thread when a newer release is found.
      *  Parameters: (version string, download URL). */
     std::function<void(const juce::String& version,
@@ -59,8 +83,13 @@ public:
 private:
 #if JUCE_WINDOWS
     void performUpdate();
+    bool startDownloadWorker(std::function<void()> work);
+    void reapFinishedDownloadThread();
     double downloadProgress_ = -1.0;
+    std::mutex downloadThreadMutex_;                      // [Protects downloadThread_ lifecycle/start/reap]
     std::thread downloadThread_;
+    std::atomic<bool> downloadInProgress_{false};
+    std::atomic<bool> downloadThreadFinished_{false};
 #endif
 
     std::thread updateCheckThread_;

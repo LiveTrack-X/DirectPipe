@@ -24,7 +24,9 @@
 #include "WebSocketServer.h"
 #include "Log.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <sstream>
 
 namespace directpipe {
@@ -287,19 +289,25 @@ WebSocketServer::~WebSocketServer()
 bool WebSocketServer::start(int port)
 {
     if (running_.load()) return true;
+    if (port < 1 || port > 65535) {
+        Log::error("WS", "Invalid listen port: " + juce::String(port));
+        return false;
+    }
 
     port_ = port;
     serverSocket_ = std::make_unique<juce::StreamingSocket>();
 
     if (!serverSocket_->createListener(port, "127.0.0.1")) {
-        for (int fallback = port + 1; fallback <= port + 5; ++fallback) {
+        const int lastFallback = (std::min)(port + 5, 65535);
+        for (int fallback = port + 1; fallback <= lastFallback; ++fallback) {
             if (serverSocket_->createListener(fallback, "127.0.0.1")) {
                 port_ = fallback;
                 break;
             }
         }
         if (!serverSocket_->isConnected()) {
-            Log::error("WS", "Failed to start on any port (tried " + juce::String(port) + "-" + juce::String(port + 5) + ")");
+            Log::error("WS", "Failed to start on any port (tried " + juce::String(port) + "-"
+                + juce::String((std::min)(port + 5, 65535)) + ")");
             return false;
         }
     }
@@ -321,28 +329,33 @@ void WebSocketServer::stop()
     running_.store(false, std::memory_order_release);
     broadcaster_.removeListener(this);
 
-    // Wake up broadcast thread so it can exit
+    // Wake all workers, then close the listener before joining the accept loop.
+    // This also prevents a late accepted client from appearing after the close pass.
+    broadcastCV_.notify_one();
+    if (serverSocket_)
+        serverSocket_->close();
+
+    if (serverThread_.joinable())
+        serverThread_.join();
+
+    // A broadcast write can block indefinitely when a peer stops reading. Close
+    // every client before joining the broadcast sender so the OS write is
+    // interrupted. Never take sendMutex here: the blocked sender owns it.
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        for (auto& client : clients_)
+            client->requestSocketClose();
+    }
+
     broadcastCV_.notify_one();
     if (broadcastThread_.joinable())
         broadcastThread_.join();
 
-    if (serverSocket_) {
-        serverSocket_->close();
-    }
-
-    if (serverThread_.joinable()) {
-        serverThread_.join();
-    }
-
-    // Close all client sockets under lock, then join threads outside lock
-    // to prevent deadlock (thread.join blocks while holding mutex)
-    std::vector<std::unique_ptr<ClientConnection>> toJoin;
+    // Move registry ownership only after the broadcast worker exits. Shared
+    // snapshots keep any in-flight connection alive until its send completes.
+    std::vector<std::shared_ptr<ClientConnection>> toJoin;
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
-        for (auto& client : clients_) {
-            if (client->socket)
-                client->socket->close();
-        }
         toJoin = std::move(clients_);
         clients_.clear();
     }
@@ -357,7 +370,13 @@ void WebSocketServer::stop()
 
 void WebSocketServer::serverThread()
 {
+    auto lastDiscoveryBroadcastMs = juce::Time::getMillisecondCounter();
     while (running_.load(std::memory_order_acquire)) {
+        // Reclaim completed client threads even when no state change occurs.
+        // Without this periodic sweep, failed handshakes accumulate until the
+        // next broadcast (which may never arrive while the app is idle).
+        sweepFinishedClients();
+
         if (serverSocket_->waitUntilReady(true, 500) > 0) {
             if (serverSocket_->isConnected()) {
                 auto accepted = serverSocket_->waitForNextConnection();
@@ -375,7 +394,7 @@ void WebSocketServer::serverThread()
                     }
                     clientCount_.fetch_add(1, std::memory_order_relaxed);
 
-                    auto conn = std::make_unique<ClientConnection>();
+                    auto conn = std::make_shared<ClientConnection>();
                     conn->socket = std::unique_ptr<juce::StreamingSocket>(accepted);
                     auto* connPtr = conn.get();
                     conn->thread = std::thread([this, connPtr] {
@@ -389,18 +408,36 @@ void WebSocketServer::serverThread()
                 }
             }
         }
+
+        // The Stream Deck plugin may start after the host (or miss the first
+        // datagram while binding). Repeat the localhost announcement so a
+        // fallback WebSocket port remains discoverable without scanning ports.
+        const auto nowMs = juce::Time::getMillisecondCounter();
+        if (static_cast<uint32_t>(nowMs - lastDiscoveryBroadcastMs) >= 2000u) {
+            sendDiscoveryBroadcast(false);
+            lastDiscoveryBroadcastMs = nowMs;
+        }
     }
 }
 
 void WebSocketServer::clientThread(ClientConnection* conn)
 {
     if (!conn || !conn->socket) return;
+    struct CompletionFlag {
+        ClientConnection* connection = nullptr;
+        ~CompletionFlag()
+        {
+            if (connection)
+                connection->threadFinished.store(true, std::memory_order_release);
+        }
+    } completion{conn};
+
     auto* client = conn->socket.get();
 
     // Perform RFC 6455 WebSocket handshake
     if (!performHandshake(client)) {
         Log::warn("WS", "Handshake failed");
-        client->close();
+        conn->requestSocketClose();
         clientCount_.fetch_sub(1, std::memory_order_relaxed);
         return;
     }
@@ -411,7 +448,25 @@ void WebSocketServer::clientThread(ClientConnection* conn)
         std::lock_guard<std::mutex> sl(conn->sendMutex);
         if (!sendFrame(client, stateJson)) {
             Log::warn("WS", "Failed to send initial state to client");
-            client->close();
+            conn->requestSocketClose();
+            clientCount_.fetch_sub(1, std::memory_order_relaxed);
+            return;
+        }
+
+        // Coordinate activation with the pending-broadcast queue. Once ready
+        // becomes visible, any already-dequeued worker waits on sendMutex and
+        // re-snapshots current state before sending; later changes queue only
+        // after this activation section releases broadcastMutex_.
+        std::string catchUpState;
+        {
+            std::lock_guard<std::mutex> broadcastLock(broadcastMutex_);
+            catchUpState = broadcaster_.toJSON();
+            conn->readyForBroadcast.store(true, std::memory_order_release);
+        }
+        if (catchUpState != stateJson && !sendFrame(client, catchUpState)) {
+            conn->readyForBroadcast.store(false, std::memory_order_release);
+            Log::warn("WS", "Failed to send catch-up state to client");
+            conn->requestSocketClose();
             clientCount_.fetch_sub(1, std::memory_order_relaxed);
             return;
         }
@@ -448,9 +503,102 @@ void WebSocketServer::clientThread(ClientConnection* conn)
         }
     }
 
+    // A peer may send a WebSocket Close frame but keep the TCP connection open.
+    // Always close our side so the sweeper can reclaim this finished thread and
+    // the client limit cannot be bypassed with dead-but-connected sockets.
+    conn->readyForBroadcast.store(false, std::memory_order_release);
+    conn->requestSocketClose();
     int remaining = clientCount_.fetch_sub(1, std::memory_order_relaxed) - 1;
     Log::info("WS", "Client disconnected (remaining=" + juce::String(remaining) + ")");
 }
+
+namespace {
+
+bool readIntParameter(juce::DynamicObject* params,
+                      const juce::Identifier& name,
+                      int defaultValue,
+                      int minimum,
+                      int maximum,
+                      int& result)
+{
+    if (!params || !params->hasProperty(name)) {
+        result = defaultValue;
+        return true;
+    }
+
+    const auto value = params->getProperty(name);
+    if (!value.isInt() && !value.isInt64())
+        return false;
+
+    const auto integer = static_cast<juce::int64>(value);
+    if (integer < minimum || integer > maximum)
+        return false;
+
+    result = static_cast<int>(integer);
+    return true;
+}
+
+bool readFloatParameter(juce::DynamicObject* params,
+                        const juce::Identifier& name,
+                        float defaultValue,
+                        double minimum,
+                        double maximum,
+                        float& result)
+{
+    if (!params || !params->hasProperty(name)) {
+        result = defaultValue;
+        return true;
+    }
+
+    const auto value = params->getProperty(name);
+    if (!value.isDouble() && !value.isInt() && !value.isInt64())
+        return false;
+
+    const auto number = static_cast<double>(value);
+    if (!std::isfinite(number) || number < minimum || number > maximum)
+        return false;
+
+    result = static_cast<float>(number);
+    return true;
+}
+
+bool readBoolParameter(juce::DynamicObject* params,
+                       const juce::Identifier& name,
+                       bool defaultValue,
+                       bool& result)
+{
+    if (!params || !params->hasProperty(name)) {
+        result = defaultValue;
+        return true;
+    }
+
+    const auto value = params->getProperty(name);
+    if (!value.isBool())
+        return false;
+
+    result = static_cast<bool>(value);
+    return true;
+}
+
+bool readStringParameter(juce::DynamicObject* params,
+                         const juce::Identifier& name,
+                         const juce::String& defaultValue,
+                         juce::String& result)
+{
+    if (!params || !params->hasProperty(name)) {
+        result = defaultValue;
+        return true;
+    }
+
+    const auto value = params->getProperty(name);
+    if (!value.isString())
+        return false;
+
+    result = value.toString();
+    return result.length() <= 64;
+}
+
+} // namespace
 
 void WebSocketServer::processMessage(const std::string& message)
 {
@@ -458,46 +606,100 @@ void WebSocketServer::processMessage(const std::string& message)
     if (!parsed.isObject()) return;
 
     auto* obj = parsed.getDynamicObject();
-    if (!obj) return;
+    if (!obj
+        || !obj->getProperty("type").isString()
+        || obj->getProperty("type").toString() != "action"
+        || !obj->getProperty("action").isString()) {
+        return;
+    }
 
-    auto type = obj->getProperty("type").toString();
-    if (type != "action") return;
-
-    auto actionStr = obj->getProperty("action").toString();
+    const auto actionStr = obj->getProperty("action").toString();
     Log::info("WS", "Command: " + actionStr);
     Log::audit("WS", "Message payload: " + juce::String(message));
-    auto* params = obj->getProperty("params").getDynamicObject();
+
+    const auto paramsValue = obj->getProperty("params");
+    if (obj->hasProperty("params") && !paramsValue.isVoid() && !paramsValue.isObject()) {
+        Log::warn("WS", "Rejected non-object params for action: " + actionStr);
+        return;
+    }
+    auto* params = paramsValue.getDynamicObject();
+
+    const auto rejectParameters = [&actionStr] {
+        Log::warn("WS", "Rejected invalid parameters for action: " + actionStr);
+    };
 
     ActionEvent event;
 
     if (actionStr == "plugin_bypass") {
         event.action = Action::PluginBypass;
-        event.intParam = params ? static_cast<int>(params->getProperty("index")) : 0;
+        if (!readIntParameter(params, "index", 0, 0,
+                              (std::numeric_limits<int>::max)(), event.intParam)) {
+            rejectParameters();
+            return;
+        }
     } else if (actionStr == "master_bypass") {
         event.action = Action::MasterBypass;
     } else if (actionStr == "set_volume") {
         event.action = Action::SetVolume;
-        event.stringParam = params ? params->getProperty("target").toString().toStdString() : "monitor";
-        event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : 1.0f;
+        juce::String target;
+        if (!params || !params->hasProperty("value")
+            || !readStringParameter(params, "target", "monitor", target)
+            || (target != "monitor" && target != "input" && target != "output")) {
+            rejectParameters();
+            return;
+        }
+        const double maximum = target == "input" ? 2.0 : 1.0;
+        if (!readFloatParameter(params, "value", 1.0f, 0.0, maximum, event.floatParam)) {
+            rejectParameters();
+            return;
+        }
+        event.stringParam = target.toStdString();
     } else if (actionStr == "toggle_mute") {
-        event.action = Action::ToggleMute;
-        event.stringParam = params ? params->getProperty("target").toString().toStdString() : "";
+        juce::String target;
+        if (!readStringParameter(params, "target", {}, target)
+            || (target.isNotEmpty() && target != "all" && target != "monitor"
+                && target != "output" && target != "input")) {
+            rejectParameters();
+            return;
+        }
+        if (target == "input") {
+            event.action = Action::InputMuteToggle;
+        } else {
+            event.action = Action::ToggleMute;
+            event.stringParam = target.toStdString();
+        }
     } else if (actionStr == "load_preset") {
         event.action = Action::LoadPreset;
-        event.intParam = params ? static_cast<int>(params->getProperty("index")) : 0;
+        if (!params || !params->hasProperty("index")
+            || !readIntParameter(params, "index", 0, 0, 4, event.intParam)) {
+            rejectParameters();
+            return;
+        }
     } else if (actionStr == "panic_mute") {
         event.action = Action::PanicMute;
         // Optional explicit-set mode for idempotent clients.
         if (params && params->hasProperty("muted")) {
+            bool muted = false;
+            if (!readBoolParameter(params, "muted", false, muted)) {
+                rejectParameters();
+                return;
+            }
             event.stringParam = "set";
-            event.intParam = static_cast<bool>(params->getProperty("muted")) ? 1 : 0;
+            event.intParam = muted ? 1 : 0;
         }
     } else if (actionStr == "input_gain") {
         event.action = Action::InputGainAdjust;
-        event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("delta"))) : 1.0f;
+        if (!readFloatParameter(params, "delta", 1.0f, -20.0, 20.0, event.floatParam)) {
+            rejectParameters();
+            return;
+        }
     } else if (actionStr == "switch_preset_slot") {
         event.action = Action::SwitchPresetSlot;
-        event.intParam = params ? static_cast<int>(params->getProperty("slot")) : 0;
+        if (!params || !params->hasProperty("slot")
+            || !readIntParameter(params, "slot", 0, 0, 4, event.intParam)) {
+            rejectParameters();
+            return;
+        }
     } else if (actionStr == "input_mute_toggle") {
         event.action = Action::InputMuteToggle;
     } else if (actionStr == "next_preset") {
@@ -512,16 +714,29 @@ void WebSocketServer::processMessage(const std::string& message)
         event.action = Action::IpcToggle;
     } else if (actionStr == "set_plugin_parameter") {
         event.action = Action::SetPluginParameter;
-        event.intParam = params ? static_cast<int>(params->getProperty("pluginIndex")) : 0;
-        event.intParam2 = params ? static_cast<int>(params->getProperty("paramIndex")) : 0;
-        event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : 0.0f;
+        if (!params
+            || !params->hasProperty("pluginIndex")
+            || !params->hasProperty("paramIndex")
+            || !params->hasProperty("value")
+            || !readIntParameter(params, "pluginIndex", 0, 0,
+                              (std::numeric_limits<int>::max)(), event.intParam)
+            || !readIntParameter(params, "paramIndex", 0, 0,
+                                 (std::numeric_limits<int>::max)(), event.intParam2)
+            || !readFloatParameter(params, "value", 0.0f, 0.0, 1.0, event.floatParam)) {
+            rejectParameters();
+            return;
+        }
     } else if (actionStr == "xrun_reset") {
         event.action = Action::XRunReset;
     } else if (actionStr == "safety_limiter_toggle") {
         event.action = Action::SafetyLimiterToggle;
     } else if (actionStr == "set_safety_limiter_ceiling") {
         event.action = Action::SetSafetyLimiterCeiling;
-        event.floatParam = params ? static_cast<float>(static_cast<double>(params->getProperty("value"))) : -0.3f;
+        if (!params || !params->hasProperty("value")
+            || !readFloatParameter(params, "value", -0.3f, -6.0, 0.0, event.floatParam)) {
+            rejectParameters();
+            return;
+        }
     } else if (actionStr == "auto_processors_add") {
         event.action = Action::AutoProcessorsAdd;
     } else {
@@ -531,52 +746,73 @@ void WebSocketServer::processMessage(const std::string& message)
     dispatcher_.dispatch(event);
 }
 
-void WebSocketServer::broadcastToClients(const std::string& message)
+void WebSocketServer::broadcastToClients(const std::string& /*message*/)
 {
     // WARNING: 죽은 클라이언트의 thread.join()은 반드시 clientsMutex_ 바깥에서 실행
     // (교착 방지: clientThread가 clientsMutex_ 잡으려 할 수 있음)
 
-    std::vector<ClientConnection*> liveSnapshot;
-    std::vector<std::unique_ptr<ClientConnection>> deadConns;
+    sweepFinishedClients();
+
+    std::vector<std::shared_ptr<ClientConnection>> liveSnapshot;
 
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
-
-        // Sweep dead connections before broadcasting
-        for (auto it = clients_.begin(); it != clients_.end(); ) {
-            if (!(*it)->socket || !(*it)->socket->isConnected()) {
-                deadConns.push_back(std::move(*it));
-                it = clients_.erase(it);
-            } else {
-                liveSnapshot.push_back(it->get());
-                ++it;
+        for (const auto& client : clients_) {
+            if (client
+                && client->readyForBroadcast.load(std::memory_order_acquire)
+                && !client->threadFinished.load(std::memory_order_acquire)
+                && client->socket
+                && client->socket->isConnected()) {
+                liveSnapshot.push_back(client);
             }
         }
     }
     // clientsMutex_ released — socket writes cannot block other operations
 
-    for (auto* conn : liveSnapshot) {
+    for (const auto& conn : liveSnapshot) {
         std::lock_guard<std::mutex> sl(conn->sendMutex);
-        if (!sendFrame(conn->socket.get(), message)) {
+        // The queued payload can predate a just-completed client activation.
+        // Snapshot after acquiring sendMutex so a delayed worker can never
+        // overwrite the catch-up frame with older state.
+        const auto latestState = broadcaster_.toJSON();
+        if (!sendFrame(conn->socket.get(), latestState)) {
             // Write failed — close socket so next sweep removes it
-            conn->socket->close();
+            conn->requestSocketClose();
         }
-    }
-
-    // Join dead threads outside the lock (clientThread already decremented clientCount_)
-    for (auto& dead : deadConns) {
-        if (dead && dead->thread.joinable())
-            dead->thread.join();
     }
 }
 
-void WebSocketServer::sendDiscoveryBroadcast()
+void WebSocketServer::sweepFinishedClients()
+{
+    std::vector<std::shared_ptr<ClientConnection>> finished;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        for (auto it = clients_.begin(); it != clients_.end();) {
+            if (*it && (*it)->threadFinished.load(std::memory_order_acquire)) {
+                finished.push_back(std::move(*it));
+                it = clients_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    // A finished flag is published at function exit. join() still provides the
+    // definitive lifetime boundary before the connection object is reclaimed.
+    for (auto& connection : finished) {
+        if (connection && connection->thread.joinable())
+            connection->thread.join();
+    }
+}
+
+void WebSocketServer::sendDiscoveryBroadcast(bool logEvent)
 {
     juce::DatagramSocket udp;
     if (udp.bindToPort(0)) {
         std::string msg = "DIRECTPIPE_READY:" + std::to_string(port_);
         udp.write("127.0.0.1", 8767, msg.c_str(), static_cast<int>(msg.size()));
-        Log::info("WS", "UDP discovery broadcast (port " + juce::String(port_) + ")");
+        if (logEvent)
+            Log::info("WS", "UDP discovery broadcast (port " + juce::String(port_) + ")");
     }
 }
 

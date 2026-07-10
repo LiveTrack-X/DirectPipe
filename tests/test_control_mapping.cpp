@@ -165,6 +165,69 @@ TEST_F(ControlMappingTest, ServerConfigRoundtrip) {
     EXPECT_TRUE(loaded.server.httpEnabled);
 }
 
+TEST_F(ControlMappingTest, InvalidOrMissingServerPortsKeepSafeDefaults) {
+    ASSERT_TRUE(testFile_.replaceWithText(R"({
+        "version": 1,
+        "server": {
+            "websocketPort": -1,
+            "httpPort": 70000,
+            "websocketEnabled": false
+        }
+    })"));
+
+    const auto loaded = store_.load(testFile_);
+    EXPECT_EQ(loaded.server.websocketPort, 8765);
+    EXPECT_EQ(loaded.server.httpPort, 8766);
+    EXPECT_FALSE(loaded.server.websocketEnabled);
+    EXPECT_TRUE(loaded.server.httpEnabled);
+}
+
+TEST_F(ControlMappingTest, HugeOrWrongTypeServerValuesKeepSafeDefaults) {
+    ASSERT_TRUE(testFile_.replaceWithText(R"({
+        "server": {
+            "websocketPort": 1.0e300,
+            "httpPort": "8766",
+            "websocketEnabled": "false",
+            "httpEnabled": 1
+        }
+    })"));
+
+    const auto loaded = store_.load(testFile_);
+    EXPECT_EQ(loaded.server.websocketPort, 8765);
+    EXPECT_EQ(loaded.server.httpPort, 8766);
+    EXPECT_TRUE(loaded.server.websocketEnabled);
+    EXPECT_TRUE(loaded.server.httpEnabled);
+}
+
+TEST_F(ControlMappingTest, InvalidActionsAndMidiEnumsAreSkipped) {
+    ASSERT_TRUE(testFile_.replaceWithText(R"({
+        "hotkeys": [{
+            "modifiers": 3,
+            "virtualKey": 77,
+            "action": {"action": 999}
+        }, {
+            "modifiers": 0,
+            "virtualKey": 78,
+            "action": {"action": 2, "floatParam": 1.0e300}
+        }, {
+            "modifiers": 0,
+            "virtualKey": 79,
+            "action": {"action": 2, "stringParam": 1234}
+        }],
+        "midi": [{
+            "cc": 7,
+            "note": -1,
+            "channel": 1,
+            "type": 999,
+            "action": {"action": 0}
+        }]
+    })"));
+
+    const auto loaded = store_.load(testFile_);
+    EXPECT_TRUE(loaded.hotkeys.empty());
+    EXPECT_TRUE(loaded.midiMappings.empty());
+}
+
 TEST_F(ControlMappingTest, IntParam2Roundtrip) {
     ControlConfig config;
     HotkeyMapping hk;

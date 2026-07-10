@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include "Control/ActionDispatcher.h"
+#include "Control/HttpApiServer.h"
 
 #include <vector>
 #include <string>
@@ -24,7 +25,7 @@ using namespace directpipe;
 /**
  * Mock listener that records all received actions for verification.
  */
-class MockActionListener : public ActionListener {
+class MockActionListener : public directpipe::ActionListener {
 public:
     void onAction(const ActionEvent& event) override {
         events.push_back(event);
@@ -542,4 +543,81 @@ TEST_F(ActionDispatcherTest, SequentialDispatchPreservesOrder) {
         EXPECT_EQ(listener.events[i].intParam, i % 5);
     }
     dispatcher->removeListener(&listener);
+}
+
+namespace {
+
+std::string sendHttpGet(HttpApiServer& server, const std::string& path)
+{
+    juce::StreamingSocket client;
+    if (!client.connect("127.0.0.1", server.getPort(), 2000))
+        return {};
+
+    const auto request = "GET " + path + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    if (client.write(request.data(), static_cast<int>(request.size()))
+        != static_cast<int>(request.size()))
+        return {};
+
+    if (client.waitUntilReady(true, 2000) <= 0)
+        return {};
+
+    char buffer[4096] = {};
+    const auto bytesRead = client.read(buffer, static_cast<int>(sizeof(buffer) - 1), false);
+    return bytesRead > 0 ? std::string(buffer, static_cast<size_t>(bytesRead)) : std::string{};
+}
+
+} // namespace
+
+TEST(HttpApiServerTest, HandlesRequestsAfterStopAndRestart)
+{
+    ActionDispatcher dispatcher;
+    StateBroadcaster broadcaster;
+    AudioEngine engine;
+    MidiHandler midi(dispatcher);
+    HttpApiServer server(dispatcher, broadcaster, engine, &midi);
+
+    ASSERT_TRUE(server.start(48766));
+    EXPECT_NE(sendHttpGet(server, "/api").find("200 OK"), std::string::npos);
+    server.stop();
+
+    ASSERT_TRUE(server.start(48766));
+    EXPECT_NE(sendHttpGet(server, "/api").find("200 OK"), std::string::npos);
+    server.stop();
+}
+
+TEST(HttpApiServerTest, RejectsNonNumericMidiValue)
+{
+    ActionDispatcher dispatcher;
+    StateBroadcaster broadcaster;
+    AudioEngine engine;
+    MidiHandler midi(dispatcher);
+    HttpApiServer server(dispatcher, broadcaster, engine, &midi);
+
+    const auto [status, body] = server.processRequestForTest(
+        "GET", "/api/midi/cc/1/2/abc");
+    EXPECT_EQ(status, 400);
+}
+
+TEST(HttpApiServerTest, RejectsMissingPluginBypassTarget)
+{
+    ActionDispatcher dispatcher;
+    StateBroadcaster broadcaster;
+    AudioEngine engine;
+    HttpApiServer server(dispatcher, broadcaster, engine);
+
+    const auto [status, body] = server.processRequestForTest(
+        "GET", "/api/bypass/0/toggle");
+    EXPECT_EQ(status, 404);
+}
+
+TEST(HttpApiServerTest, RejectsInvalidListenPorts)
+{
+    ActionDispatcher dispatcher;
+    StateBroadcaster broadcaster;
+    AudioEngine engine;
+    HttpApiServer server(dispatcher, broadcaster, engine);
+
+    EXPECT_FALSE(server.start(0));
+    EXPECT_FALSE(server.start(70000));
+    EXPECT_FALSE(server.isRunning());
 }

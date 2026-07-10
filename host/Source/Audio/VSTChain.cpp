@@ -672,6 +672,27 @@ std::vector<PluginLatencyInfo> VSTChain::getPluginLatencies() const
     return result;
 }
 
+std::vector<PluginStatusSnapshot> VSTChain::getPluginStatusSnapshot() const
+{
+    const juce::ScopedLock sl(chainLock_);
+    std::vector<PluginStatusSnapshot> result;
+    result.reserve(chain_.size());
+
+    for (const auto& slot : chain_) {
+        PluginStatusSnapshot snapshot;
+        snapshot.name = slot.name;
+        snapshot.bypassed = slot.bypassed;
+        if (auto* processor = slot.getProcessor()) {
+            snapshot.loaded = true;
+            snapshot.parameterCount = processor->getParameters().size();
+            snapshot.latencySamples = processor->getLatencySamples();
+        }
+        result.push_back(std::move(snapshot));
+    }
+
+    return result;
+}
+
 int VSTChain::getTotalChainPDC() const
 {
     const juce::ScopedLock sl(chainLock_);

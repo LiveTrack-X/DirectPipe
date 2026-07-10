@@ -36,7 +36,7 @@ Portable mode (all platforms): `./config/directpipe.log`
 ### Example / 예시
 
 ```
-[11:23:45.123] INF [APP] DirectPipe v4.1.2 started
+[11:23:45.123] INF [APP] DirectPipe v4.2.0 started
 [11:23:45.124] INF [APP] OS: Windows 11 Pro 10.0.26200          (Windows)
                                  macOS 15.2 (Sequoia)            (macOS)
                                  Ubuntu 24.04 LTS (6.8.0-45)     (Linux)
@@ -168,6 +168,20 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 | 디바이스 중지 / Device stop | "Device stopped" | IPC 상태 (ipcWasEnabled) / IPC state (ipcWasEnabled) |
 | 에러 / Error | 에러 메시지 / Error message | — |
 
+#### Windows input endpoint property changes / Windows 입력 endpoint 속성 변경
+
+Windows에서 **오디오 향상 기능**, **Voice Clarity**, **음성 포커스** 같은 마이크 속성을 바꾸면 장치 이름은 그대로여도 capture endpoint 속성/상태 변경 알림이 발생할 수 있다. Audit Mode에서는 다음 흐름으로 남는다.
+
+On Windows, changing microphone properties such as **Audio enhancements**, **Voice Clarity**, or **Voice focus** can raise capture endpoint property/state notifications without changing the device name. Audit Mode records this flow:
+
+- `AUD [AUDIO] Windows endpoint notification: target='...' reason='capture endpoint property changed'`
+- `WRN [AUDIO] Input endpoint changed; forcing same-device re-open: in='...' reason='...'`
+- `AUD [AUDIO] Endpoint restart pending: in='...' out='...' reason='...'`
+
+이 흐름은 입력 RMS/무음 감지가 아니라 Windows endpoint 이벤트 기반이다. 물리 마이크 뮤트나 정상적인 무음은 복구 트리거로 사용하지 않는다.
+
+This flow is based on Windows endpoint events, not input RMS/silence detection. Physical microphone mute and normal silence are not used as recovery triggers.
+
 ### [VST] VSTChain
 
 | 이벤트 / Event | INF/WRN/ERR | AUD (audit mode) |
@@ -250,7 +264,7 @@ Log::audit("AUDIO", "Available SR: 44100, 48000, 96000");  // audit OFF → no-o
 Log the following information at startup, in available order:
 
 ```
-INF [APP] DirectPipe v4.1.2 started
+INF [APP] DirectPipe v4.2.0 started
 INF [APP] OS: Windows 11 Pro 10.0.26200       (or macOS 15.2 Sequoia / Ubuntu 24.04 LTS)
 INF [APP] Process priority: HIGH_PRIORITY_CLASS  (Windows; macOS/Linux use equivalent scheduling)
 INF [APP] Timer resolution: 1ms                  (Windows; macOS/Linux use platform timers)
@@ -361,7 +375,7 @@ Log::setAuditMode(false);  // disable (default)
 }  // → "INF [VST] Cached chain swap: 3 plugins (15ms)"
 
 // Session header (call once at startup)
-Log::sessionStart("4.1.2");
+Log::sessionStart("4.2.0");
 Log::audioConfig(driverType, inputDevice, outputDevice, sr, bs);
 ```
 

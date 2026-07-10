@@ -34,6 +34,10 @@
 
 namespace directpipe {
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+class SharedMemWriterTestAccess;
+#endif
+
 /**
  * @brief Writes audio to shared memory for the OBS plugin to read.
  *
@@ -74,7 +78,7 @@ public:
     /**
      * @brief Check if the shared memory is active and connected.
      */
-    bool isConnected() const { return connected_.load(std::memory_order_relaxed); }
+    bool isConnected() const { return connected_.load(std::memory_order_acquire); }
 
     /**
      * @brief Get the number of frames dropped due to buffer overrun.
@@ -82,6 +86,13 @@ public:
     uint64_t getDroppedFrames() const { return droppedFrames_.load(std::memory_order_relaxed); }
 
 private:
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    friend class SharedMemWriterTestAccess;
+    using TestWriteBarrier = void (*)(void* context);
+    TestWriteBarrier testWriteBarrier_ = nullptr;
+    void* testWriteBarrierContext_ = nullptr;
+#endif
+
     SharedMemory sharedMemory_;
     NamedEvent dataEvent_;
     RingBuffer ringBuffer_;
@@ -91,9 +102,21 @@ private:
     std::vector<float> interleaveBuffer_;
 
     std::atomic<bool> connected_{false};
+    std::atomic<uint32_t> inFlightWriters_{0};
     std::atomic<uint64_t> droppedFrames_{0};
 
     uint32_t channels_ = DEFAULT_CHANNELS;
 };
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+class SharedMemWriterTestAccess {
+public:
+    using WriteBarrier = void (*)(void* context);
+
+    static void setWriteBarrier(SharedMemWriter& writer,
+                                WriteBarrier barrier,
+                                void* context);
+};
+#endif
 
 } // namespace directpipe

@@ -80,9 +80,17 @@ public:
      */
     int getPort() const { return port_; }
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    std::pair<int, std::string> processRequestForTest(const std::string& method,
+                                                      std::string path)
+    {
+        return processRequest(method, std::move(path));
+    }
+#endif
+
 private:
     void serverThread();
-    void handleClient(std::unique_ptr<juce::StreamingSocket> client);
+    void handleClient(const std::shared_ptr<juce::StreamingSocket>& client);
     std::pair<int, std::string> processRequest(const std::string& method, std::string path);
     std::string makePreflightResponse();
     std::string makeResponse(int statusCode, const std::string& body);
@@ -104,7 +112,7 @@ private:
     struct HandlerThread {
         std::thread thread;
         std::shared_ptr<std::atomic<bool>> done;
-        juce::StreamingSocket* socket = nullptr;  // non-owning: handler lambda owns via unique_ptr
+        std::shared_ptr<juce::StreamingSocket> socket;
     };
     std::mutex handlersMutex_;
     std::vector<HandlerThread> handlerThreads_;

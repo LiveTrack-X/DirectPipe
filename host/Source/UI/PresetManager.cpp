@@ -92,19 +92,18 @@ bool fileFamilyExists(const juce::File& file)
 
 bool deleteFileIfPresent(const juce::File& file)
 {
-    if (!file.existsAsFile()) return false;
-    file.deleteFile();
-    return true;
+    if (!file.existsAsFile()) return true;
+    return file.deleteFile();
 }
 
 bool deleteFileFamily(const juce::File& file)
 {
-    bool deleted = false;
-    deleted |= deleteFileIfPresent(file);
-    deleted |= deleteFileIfPresent(backupFileFor(file));
-    deleted |= deleteFileIfPresent(legacyBackupFileFor(file));
-    deleted |= deleteFileIfPresent(tempFileFor(file));
-    return deleted;
+    bool ok = true;
+    ok = deleteFileIfPresent(file) && ok;
+    ok = deleteFileIfPresent(backupFileFor(file)) && ok;
+    ok = deleteFileIfPresent(legacyBackupFileFor(file)) && ok;
+    ok = deleteFileIfPresent(tempFileFor(file)) && ok;
+    return ok;
 }
 
 juce::File getLegacyNumericSlotFile(int slotIndex)
@@ -139,13 +138,13 @@ void deleteSlotBackupFiles(int slotIndex)
 
 bool deleteSlotFileFamily(int slotIndex)
 {
-    bool deleted = deleteFileFamily(PresetManager::getSlotFile(slotIndex));
+    bool ok = deleteFileFamily(PresetManager::getSlotFile(slotIndex));
 
     auto legacyFile = getLegacyNumericSlotFile(slotIndex);
     if (legacyFile != juce::File())
-        deleted |= deleteFileFamily(legacyFile);
+        ok = deleteFileFamily(legacyFile) && ok;
 
-    return deleted;
+    return ok;
 }
 } // namespace
 
@@ -203,7 +202,7 @@ bool PresetManager::savePreset(const juce::File& file)
 
 bool PresetManager::loadPreset(const juce::File& file)
 {
-    auto json = loadFileWithBackupFallback(file);
+    auto json = loadPresetJSONWithBackupFallback(file);
     if (json.isEmpty()) return false;
 
     bool ok = importFromJSON(json);
@@ -321,7 +320,7 @@ juce::String PresetManager::exportToJSON()
     root->setProperty("ipcEnabled", engine_.isIpcEnabled());
 
     // Output mute state (don't persist auto-mute from device loss)
-    root->setProperty("outputMuted", engine_.isOutputAutoMuted() ? false : engine_.isOutputMuted());
+    root->setProperty("outputMuted", engine_.isOutputManuallyMuted());
 
     // Audit mode
     root->setProperty("auditMode", Log::isAuditMode());
@@ -341,33 +340,105 @@ juce::String PresetManager::exportToJSON()
     return juce::JSON::toString(juce::var(root.release()), true);
 }
 
+bool PresetManager::isStructurallyValidPresetRoot(juce::DynamicObject* root)
+{
+    if (!root)
+        return false;
+
+    const int version = static_cast<int>(root->getProperty("version"));
+    if (version < 1)
+        return false;
+
+    if (!root->hasProperty("plugins"))
+        return true;
+
+    auto* pluginsArray = root->getProperty("plugins").getArray();
+    if (!pluginsArray) {
+        juce::Logger::writeToLog("[PRESET] Plugin chain import failed: plugins is not an array");
+        return false;
+    }
+
+    const auto targets = parseTargetPlugins(pluginsArray);
+    if (targets.size() != static_cast<size_t>(pluginsArray->size())) {
+        juce::Logger::writeToLog("[PRESET] Plugin chain import failed: malformed plugin entry");
+        return false;
+    }
+
+    return true;
+}
+
+bool PresetManager::isPresetJSONStructurallyValid(const juce::String& json)
+{
+    const auto parsed = juce::JSON::parse(json);
+    return parsed.isObject()
+        && isStructurallyValidPresetRoot(parsed.getDynamicObject());
+}
+
+bool PresetManager::isChainJSONStructurallyValid(const juce::String& json)
+{
+    const auto parsed = juce::JSON::parse(json);
+    auto* root = parsed.getDynamicObject();
+    return root != nullptr
+        && root->hasProperty("plugins")
+        && isStructurallyValidPresetRoot(root);
+}
+
+juce::String PresetManager::loadPresetJSONWithBackupFallback(
+    const juce::File& file, bool requirePluginChain)
+{
+    const auto isValid = [requirePluginChain](const juce::String& content) {
+        return requirePluginChain
+            ? isChainJSONStructurallyValid(content)
+            : isPresetJSONStructurallyValid(content);
+    };
+
+    const auto tryLoad = [&isValid](const juce::File& candidate) {
+        if (!candidate.existsAsFile())
+            return juce::String{};
+        const auto content = candidate.loadFileAsString();
+        return isValid(content) ? content : juce::String{};
+    };
+
+    if (auto content = tryLoad(file); content.isNotEmpty())
+        return content;
+
+    if (file.existsAsFile())
+        juce::Logger::writeToLog("[PRESET] Structurally invalid preset: " + file.getFileName());
+
+    const auto restore = [&file, &tryLoad](const juce::File& backup,
+                                           const juce::String& label) {
+        auto content = tryLoad(backup);
+        if (content.isEmpty())
+            return content;
+
+        if (!backup.copyFileTo(file)) {
+            juce::Logger::writeToLog("[PRESET] Could not restore " + label
+                + " to primary: " + backup.getFileName());
+        } else {
+            juce::Logger::writeToLog("[PRESET] Restored structurally valid " + label
+                + ": " + backup.getFileName());
+        }
+
+        // The backup content is still usable even when repairing the primary
+        // path fails (for example, when a corrupt primary is read-only/locked).
+        return content;
+    };
+
+    auto backup = file.getSiblingFile(file.getFileName() + ".bak");
+    if (auto content = restore(backup, "backup"); content.isNotEmpty())
+        return content;
+
+    auto legacyBackup = file.withFileExtension(file.getFileExtension() + ".backup");
+    return restore(legacyBackup, "legacy backup");
+}
+
 bool PresetManager::importFromJSON(const juce::String& json)
 {
     auto parsed = juce::JSON::parse(json);
     if (!parsed.isObject()) return false;
 
     auto* root = parsed.getDynamicObject();
-    if (!root) return false;
-
-    // Check version
-    int version = root->getProperty("version");
-    if (version < 1) return false;
-
-    // Validate plugin-chain shape before applying audio/slot state. A malformed
-    // settings export must fail atomically instead of half-restoring devices.
-    if (root->hasProperty("plugins")) {
-        auto* pluginsArray = root->getProperty("plugins").getArray();
-        if (!pluginsArray) {
-            juce::Logger::writeToLog("[PRESET] Plugin chain import failed: plugins is not an array");
-            return false;
-        }
-
-        auto targets = parseTargetPlugins(pluginsArray);
-        if (targets.size() != static_cast<size_t>(pluginsArray->size())) {
-            juce::Logger::writeToLog("[PRESET] Plugin chain import failed: malformed plugin entry");
-            return false;
-        }
-    }
+    if (!isStructurallyValidPresetRoot(root)) return false;
 
     bool ok = true;
 
@@ -687,6 +758,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
     return ok;
 }
 
+bool PresetManager::isPresetFileStructurallyValid(const juce::File& file)
+{
+    return loadPresetJSONWithBackupFallback(file).isNotEmpty();
+}
+
 // Shared chain helpers
 
 juce::String PresetManager::selectAsioRestoreDevice(const juce::String& inputDevice,
@@ -752,10 +828,29 @@ std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
                 if (auto xml = juce::XmlDocument::parse(xmlStr))
                     t.hasDesc = t.desc.loadFromXml(*xml);
             }
+
+            // A VST entry needs a stable load target. Treat empty objects and
+            // entries with neither a valid description nor a path as malformed
+            // so callers can reject the preset before applying audio/slot state.
+            if (t.type == PluginSlot::Type::VST
+                && !t.hasDesc
+                && t.path.trim().isEmpty()) {
+                continue;
+            }
+
             if (plugin->hasProperty("state")) {
                 auto stateStr = plugin->getProperty("state").toString();
-                if (stateStr.isNotEmpty())
+                if (stateStr.isNotEmpty()) {
                     t.hasState = t.stateData.fromBase64Encoding(stateStr);
+                    // MemoryBlock's legacy decoder is intentionally lenient.
+                    // Require the canonical roundtrip so a parseable-but-
+                    // corrupted state cannot suppress a valid preset backup.
+                    if (!t.hasState || t.stateData.toBase64Encoding() != stateStr) {
+                        juce::Logger::writeToLog(
+                            "[PRESET] Plugin chain import failed: invalid plugin state encoding");
+                        continue;
+                    }
+                }
             }
             targets.push_back(std::move(t));
         }
@@ -766,7 +861,7 @@ std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
 std::vector<PresetManager::TargetPlugin> PresetManager::parseSlotFile(int slotIndex)
 {
     auto file = getSlotFile(slotIndex);
-    auto json = loadFileWithBackupFallback(file);
+    auto json = loadPresetJSONWithBackupFallback(file, true);
     if (json.isEmpty()) return {};
     auto parsed = juce::JSON::parse(json);
     if (!parsed.isObject()) return {};
@@ -1090,11 +1185,25 @@ juce::File PresetManager::getSlotFile(int slotIndex)
 
     auto newFile = dir.getChildFile("slot_" + juce::String::charToString(slotLabel(slotIndex)) + ".dppreset");
 
-    // Migrate from old numeric filenames (slot_65.dppreset -> slot_A.dppreset)
-    if (!newFile.existsAsFile()) {
+    // Migrate the complete legacy numeric family
+    // (slot_65.dppreset[.bak|.backup] -> slot_A.dppreset). A previous atomic
+    // write can legitimately leave only a backup after a crash, so checking
+    // just the legacy primary would make an occupied slot impossible to load
+    // or include in a full backup.
+    if (!fileFamilyExists(newFile)) {
         auto oldFile = dir.getChildFile("slot_" + juce::String(static_cast<int>(slotLabel(slotIndex))) + ".dppreset");
-        if (oldFile.existsAsFile())
-            oldFile.moveFileTo(newFile);
+        auto legacyJson = loadPresetJSONWithBackupFallback(oldFile, true);
+        if (legacyJson.isNotEmpty()) {
+            if (atomicWriteFile(newFile, legacyJson)) {
+                if (!deleteFileFamily(oldFile)) {
+                    juce::Logger::writeToLog("[PRESET] Migrated legacy slot but could not remove every old file: "
+                        + oldFile.getFileName());
+                }
+            } else {
+                juce::Logger::writeToLog("[PRESET] Failed to migrate legacy slot family: "
+                    + oldFile.getFileName());
+            }
+        }
     }
 
     return newFile;
@@ -1108,7 +1217,11 @@ bool PresetManager::saveSlot(int slotIndex)
     if (engine_.getVSTChain().getPluginCount() == 0) {
         const bool hadSlot = slotFileFamilyExists(slotIndex);
         if (hadSlot) {
-            deleteSlotFileFamily(slotIndex);
+            if (!deleteSlotFileFamily(slotIndex)) {
+                juce::Logger::writeToLog("[PRESET] Failed to clear empty slot "
+                    + juce::String::charToString(slotLabel(slotIndex)));
+                return false;
+            }
             preloadCache_.invalidateSlot(slotIndex);
             slotOccupiedCache_[static_cast<size_t>(slotIndex)] = false;
             slotNames_[static_cast<size_t>(slotIndex)] = {};
@@ -1178,7 +1291,7 @@ bool PresetManager::loadSlot(int slotIndex)
     juce::Logger::writeToLog("[PRESET] Loading slot " + juce::String::charToString(slotLabel(slotIndex)));
 
     auto file = getSlotFile(slotIndex);
-    auto json = loadFileWithBackupFallback(file);
+    auto json = loadPresetJSONWithBackupFallback(file, true);
     if (json.isEmpty()) return false;
 
     bool ok = importChainFromJSON(json);
@@ -1217,7 +1330,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         + " activeSlot=" + juce::String(activeSlot_));
 
     auto file = getSlotFile(slotIndex);
-    auto json = loadFileWithBackupFallback(file);
+    auto json = loadPresetJSONWithBackupFallback(file, true);
     if (json.isEmpty()) {
         if (onComplete) onComplete(false);
         return;
@@ -1235,12 +1348,6 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         return;
     }
 
-    // Update slot name from file (sync loadSlot does this too)
-    if (root->hasProperty("name"))
-        slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
-    else
-        slotNames_[static_cast<size_t>(slotIndex)] = juce::String();
-
     auto* pluginsArray = root->getProperty("plugins").getArray();
     if (!pluginsArray) {
         if (onComplete) onComplete(false);
@@ -1249,6 +1356,18 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
 
     auto& chain = engine_.getVSTChain();
     auto targets = parseTargetPlugins(pluginsArray);
+    if (targets.size() != static_cast<size_t>(pluginsArray->size())) {
+        juce::Logger::writeToLog("[PRESET] Async slot load rejected malformed plugin entry");
+        if (onComplete) onComplete(false);
+        return;
+    }
+
+    // Update slot name only after the entire file has passed structural
+    // validation, keeping failed imports atomic from the UI's perspective.
+    if (root->hasProperty("name"))
+        slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
+    else
+        slotNames_[static_cast<size_t>(slotIndex)] = juce::String();
 
     // Fast path: same plugins in same order -> sync (instant)
     if (isSameChain(targets, chain)) {
@@ -1407,11 +1526,24 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
 
     auto srcFile = getSlotFile(fromSlot);
     auto dstFile = getSlotFile(toSlot);
-    auto srcJson = loadFileWithBackupFallback(srcFile);
+    const bool sourceFamilyExists = slotFileFamilyExists(fromSlot);
+    auto srcJson = loadPresetJSONWithBackupFallback(srcFile, true);
 
     // Empty source clear destination
     if (srcJson.isEmpty()) {
-        deleteSlotFileFamily(toSlot);
+        // Existing-but-unreadable is corruption, not an intentionally empty
+        // slot. Never destroy a valid destination in that case.
+        if (sourceFamilyExists) {
+            juce::Logger::writeToLog("[PRESET] Refusing to copy unreadable slot "
+                + juce::String::charToString(slotLabel(fromSlot)));
+            return false;
+        }
+
+        if (!deleteSlotFileFamily(toSlot)) {
+            juce::Logger::writeToLog("[PRESET] Failed to clear destination slot "
+                + juce::String::charToString(slotLabel(toSlot)));
+            return false;
+        }
         preloadCache_.invalidateSlot(toSlot);
         slotOccupiedCache_[static_cast<size_t>(toSlot)] = false;
         slotNames_[static_cast<size_t>(toSlot)] = {};
@@ -1436,6 +1568,7 @@ bool PresetManager::copySlot(int fromSlot, int toSlot)
 bool PresetManager::deleteSlot(int slotIndex)
 {
     if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
+    if (!slotFileFamilyExists(slotIndex)) return false;
 
     bool ok = deleteSlotFileFamily(slotIndex);
     if (ok) {
@@ -1569,7 +1702,7 @@ void PresetManager::loadSlotNames()
         auto file = getSlotFile(i);
         if (!fileFamilyExists(file))
             continue;
-        auto json = loadFileWithBackupFallback(file);
+        auto json = loadPresetJSONWithBackupFallback(file, true);
         if (json.isEmpty()) continue;
         auto parsed = juce::JSON::parse(json);
         if (auto* root = parsed.getDynamicObject()) {
@@ -1590,7 +1723,7 @@ void PresetManager::exportSlot(int slotIndex)
         saveSlot(slotIndex);
 
     auto srcFile = getSlotFile(slotIndex);
-    auto srcJson = loadFileWithBackupFallback(srcFile);
+    auto srcJson = loadPresetJSONWithBackupFallback(srcFile, true);
     if (srcJson.isEmpty()) return;
 
     auto defaultName = "slot_" + juce::String::charToString(slotLabel(slotIndex));
@@ -1654,6 +1787,13 @@ void PresetManager::importSlot(int slotIndex, std::function<void(bool)> onComple
         }
         auto* root = parsed.getDynamicObject();
         if (!root || !root->hasProperty("plugins")) {
+            if (onComplete) onComplete(false);
+            return;
+        }
+        auto* pluginsArray = root->getProperty("plugins").getArray();
+        if (!pluginsArray
+            || parseTargetPlugins(pluginsArray).size()
+                != static_cast<size_t>(pluginsArray->size())) {
             if (onComplete) onComplete(false);
             return;
         }

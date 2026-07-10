@@ -60,9 +60,9 @@ Connects via WebSocket on `ws://localhost:8765`. / WebSocket으로 연결.
 
 ### Auto-Reconnect / 자동 재연결
 
-Fully event-driven — no periodic polling: / 완전 이벤트 기반 — 주기적 폴링 없음:
+Discovery and user actions trigger immediate retries; ordinary disconnects use exponential backoff rather than fixed-interval availability polling. / discovery와 사용자 조작은 즉시 재시도를 트리거하고, 일반 연결 해제는 고정 주기 availability polling 대신 exponential backoff를 사용합니다.
 
-- **UDP Discovery**: DirectPipe broadcasts `DIRECTPIPE_READY` on UDP port 8767 when its WebSocket server starts. The plugin listens and connects instantly. / DirectPipe가 WebSocket 서버 시작 시 UDP 8767로 알림 전송. 플러그인이 즉시 연결.
+- **UDP Discovery**: The plugin binds UDP 8767 before its first WebSocket attempt. DirectPipe announces `DIRECTPIPE_READY:<actualPort>` immediately and every 2 seconds while running, so plugin restarts still discover fallback ports 8766-8770. / 플러그인은 첫 WebSocket 연결 전에 UDP 8767을 bind합니다. DirectPipe는 시작 즉시, 그리고 실행 중 2초마다 실제 포트를 알려 플러그인을 나중에 재시작해도 fallback 포트 8766-8770을 찾습니다.
 - **User action trigger**: Pressing any button or rotating a dial while disconnected triggers an immediate reconnection attempt. / 연결 해제 상태에서 버튼/다이얼 조작 시 즉시 재연결 시도.
 - **Startup**: Initial `connect()` on plugin load — connects immediately if DirectPipe is already running. / 플러그인 시작 시 1회 연결 시도 — DirectPipe가 이미 실행 중이면 즉시 연결.
 - Pending message queue (cap 50) while disconnected / 연결 해제 중 대기 큐 (최대 50)
@@ -290,14 +290,14 @@ Dual-app setup with VB-Cable (Discord) + DirectPipe Receiver (OBS) + Monitor (he
 
 ### SDK Version / SDK 버전
 
-Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.1.2.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.1.2.0. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.2.0.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.2.0.0. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket 클라이언트 / WebSocket Client (`websocket-client.js`)
 
 - EventEmitter-based: `connected`, `disconnected`, `state`, `error`, `message` events / 이벤트 기반
 - Ping keepalive every 15s / 15초마다 핑 유지
 - Pending message queue (cap 50) during disconnection / 연결 해제 중 대기 큐 (최대 50)
-- Event-driven reconnection via `reconnectNow()` — triggered by UDP discovery or user action (no polling) / UDP 디스커버리 또는 사용자 조작으로 즉시 재연결 (폴링 없음)
+- Immediate `reconnectNow()` on UDP discovery or user action, plus 2-10s exponential-backoff retries after ordinary disconnects / UDP discovery 또는 사용자 조작 시 즉시 `reconnectNow()`, 일반 연결 해제 후에는 2-10초 exponential-backoff 재시도
 
 ### Settings Cache / 설정 캐시
 
@@ -316,7 +316,7 @@ com.directpipe.directpipe.sdPlugin/
   .sdignore                   Files excluded from packaging / 패키징 제외 파일
   src/
     plugin.js                 Main entry, streamDeck.connect() + DirectPipeClient / 메인 진입점
-    websocket-client.js       WebSocket client with event-driven reconnect / 이벤트 기반 재연결 WS 클라이언트
+    websocket-client.js       WebSocket client with signaled + backoff reconnect / 신호 기반 + backoff 재연결 WS 클라이언트
     actions/
       bypass-toggle.js        Bypass toggle SingletonAction / Bypass 토글 액션
       panic-mute.js           Panic mute SingletonAction / 패닉 뮤트 액션

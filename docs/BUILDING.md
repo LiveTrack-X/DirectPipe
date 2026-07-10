@@ -1,13 +1,13 @@
 # Building DirectPipe / 빌드 가이드
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적입니다. v4.1.2 로컬 Windows Release 검증은 완료했으며, macOS/Linux는 CI 빌드와 소스 경로를 유지하지만 실기기 오디오 테스트가 제한적입니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. macOS 10.15+ universal is beta. Linux x86_64 is experimental. v4.1.2 local Windows Release verification was completed; macOS/Linux keep CI and source support but have limited real-hardware audio testing.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적입니다. v4.2.0 로컬 Windows Release 검증은 완료했으며, macOS/Linux는 CI 빌드와 소스 경로를 유지하지만 실기기 오디오 테스트가 제한적입니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. macOS 10.15+ universal is beta. Linux x86_64 is experimental. v4.2.0 local Windows Release verification was completed; macOS/Linux keep CI and source support but have limited real-hardware audio testing.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Locally verified for v4.1.2 Release. |
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Locally verified for v4.2.0 Release. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -198,9 +198,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Two test executables are built: `directpipe-tests` (core, no JUCE dependency) and `directpipe-host-tests` (requires JUCE). Current v4.1.2 test inventory: **381 registered tests** across 32 test suites (52 core in 6 suites + 329 host in 26 suites). In the current Windows verification run, 2 host tests are environment-dependent skips.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). Current v4.2.0 inventory: **445 CTest registrations** (52 core + 391 host + 2 focused endpoint tests). The host binary contains 36 suites; in the current Windows verification run, 2 host tests are environment-dependent skips.
 
-두 개의 테스트 실행 파일: `directpipe-tests` (코어, JUCE 의존성 없음)와 `directpipe-host-tests` (JUCE 필요). 현재 v4.1.2 기준 총 **381개 등록 테스트**, 32개 테스트 스위트(코어 52개/6스위트 + 호스트 329개/26스위트)입니다. 현재 Windows 검증 기준으로 호스트 테스트 2개는 환경 의존 skip입니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). 현재 v4.2.0 기준 **CTest 등록 445개**(코어 52 + 호스트 391 + endpoint 집중 테스트 2), host binary 36개 suite이며 Windows 검증에서 호스트 테스트 2개는 환경 의존 skip입니다.
 
 ### directpipe-tests (Core)
 
@@ -217,20 +217,21 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 
 | Test Group | Tests | Description |
 |------------|-------|-------------|
-| WebSocketProtocolTest | 31 | JSON protocol parsing, action parsing, error handling, edge cases / JSON 프로토콜 파싱, 액션 파싱, 오류 처리, 엣지 케이스 |
+| WebSocket server/protocol | 39 | Shutdown/shared lifetime, handshake-ready ordering, idle sweep, listen and strict action-parameter validation / 종료·shared lifetime, handshake-ready 순서, idle sweep, listen 및 action parameter 엄격 검증 |
 | StateSerializationTest | 13 | State JSON fields, reproducibility, device-loss/recording/IPC fields / 상태 JSON 필드, 재현성, 장치 손실/녹음/IPC 필드 |
 | ActionDispatcherTest | 31 | Action dispatch, listener management, thread safety, ActionResult / 액션 디스패치, 리스너 관리, 스레드 안전, ActionResult |
+| HttpApiServerTest | 4 | Restart/socket lifetime, input and listen-port validation / 재시작·socket lifetime, 입력 및 listen-port 검증 |
 | ActionResultTest | 12 | ActionResult data type: ok/fail factory methods, bool conversion, message propagation / ActionResult 데이터 타입 테스트 |
-| ControlMappingTest | 16 | Hotkey/MIDI/server config serialization roundtrip, defaults, error handling / 핫키/MIDI/서버 설정 직렬화, 기본값, 오류 처리 |
+| ControlMappingTest | 19 | Hotkey/MIDI/server roundtrip plus strict enum/range/type validation / 핫키·MIDI·서버 왕복 및 enum/range/type 검증 |
 | NotificationQueueTest | 10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐 |
-| PresetManagerTest + constants | 39 | Preset slot save/load, import/export, cache-hit duplicate-plugin guards, ASIO duplex restore target guards, malformed/incomplete chain import detection, Auto slot, factory reset, constants / 프리셋 슬롯 저장/로드, 가져오기/내보내기, 캐시 hit 중복 플러그인 보호, ASIO duplex 복원 target 보호, 잘못되었거나 불완전한 체인 import 감지, Auto 슬롯, 상수 |
-| SettingsExporterTest | 20 | Settings export/import roundtrip, `.dpbackup` active-slot preservation, full-backup exact restore, backup fallback, restore prevalidation, and slot rollback on restore failure / 설정 내보내기/가져오기, `.dpbackup` active-slot 보존, full-backup 정확 복원, backup fallback, 복원 사전 검증, 복원 실패 시 slot rollback |
-| SettingsAutosaverTest | 12 | Dirty-flag + debounce auto-save, startup guard restore paths, partial-load guard / 더티 플래그 + 디바운스 자동 저장, 시작 보호 복원 경로, 부분 로드 보호 |
+| PresetManager + portable/constants | 47 | Slot save/load/copy, canonical Base64 validation, structural backup fallback even when repair-copy fails, cache/ASIO/import guards / slot 저장·로드·복사, canonical Base64 검증, repair-copy 실패 시에도 backup fallback, cache·ASIO·import 보호 |
+| SettingsExporterTest | 24 | Settings/full-backup exact restore, strict optional-action schema, transactional rollback, structural slot rejection / 설정·전체 백업 정확 복원, optional action schema 엄격 검증, transaction rollback, 잘못된 slot 거부 |
+| SettingsAutosaverTest | 15 | Dirty/debounce auto-save, startup mute restore, partial-load guard / dirty·debounce auto-save, 시작 mute 복원, partial-load 보호 |
 | OutputRouterTest | 10 | Monitor output routing, mute state, inactive meter reset / 모니터 출력 라우팅, 뮤트 상태, 비활성 meter reset |
-| AudioEngineTest | 28 | Driver snapshot, device reconnection, device-loss recovery, same-device endpoint restart recovery, ASIO duplex startup target normalization, zero-active-channel recovery, XRun, buffer fallback, sample-rate propagation / 드라이버 스냅샷, 장치 재연결, 장치 손실 복구, same-device endpoint 재시작 복구, ASIO duplex 시작 target 정규화, zero-active-channel 복구, XRun, 버퍼 폴백, 샘플레이트 전파 |
+| AudioEngineTest | 39 | Driver/device recovery, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun/SR-BS behavior / driver·장치 복구, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun·SR-BS 동작 |
 | AudioRingBufferTest | 8 | Lock-free audio ring buffer reset/discard and fractional interpolation behavior / 오디오 링 버퍼 reset/discard 및 fractional interpolation 동작 |
 | MonitorDriftPolicyTest | 10 | Adaptive monitor target, PLL ratio, and emergency trim policy / adaptive 모니터 target, PLL ratio, emergency trim 정책 |
-| MonitorOutputTest | 6 | Monitor callback priming, zero-active-output guard, runtime block-size re-prime, underrun re-prime, and normal drift no-trim regression / MonitorOutput 콜백 상태 회귀 |
+| MonitorOutputTest | 10 | RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
 | DeviceStateTest | 10 | Device state FSM and invalid-state guards / 장치 상태 FSM 및 invalid-state 방어 |
 | MidiHandlerTest | 8 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
@@ -238,12 +239,15 @@ Two test executables are built: `directpipe-tests` (core, no JUCE dependency) an
 | BuiltinFilterTest | 8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
 | BuiltinNoiseRemovalTest + FIFO | 8 | RNNoise VAD thresholds, non-48k passthrough, latency, FIFO overflow guard / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시, FIFO overflow 보호 |
 | BuiltinAutoGainTest | 8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
-| VSTChainTest | 10 | VST chain operations, plugin ordering, cached-swap partial-failure guard / VST 체인 연산, 플러그인 순서, cached swap 부분 실패 보호 |
+| VSTChainTest | 11 | VST chain operations, stable status snapshot, cached-swap partial-failure guard / VST chain 연산, 안정된 status snapshot, cached swap 부분 실패 보호 |
 | PlatformTest | 8 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
+| SharedMemWriterTest | 2 | Initialization failure cleanup and in-flight write drain before unmap / 초기화 실패 정리 및 unmap 전 진행 write drain |
+| EndpointChangeWatcherTest | 2 | Exact selected-endpoint filtering and signal coalescing / 선택 endpoint 정확 일치 및 signal coalescing |
+| UpdateChecker/UpdateScript tests | 12 | Finished-worker reap/retry, strict semver/PID wait, staging, rollback, ZIP and percent-path handling / 완료 worker reap·재시도, 엄격 semver·PID wait, staging·rollback·ZIP·percent path 처리 |
 
-Host test source files: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_monitor_output.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.
+Host test source files additionally include HTTP/WebSocket shutdown, shared-memory writer, endpoint watcher, and updater-script coverage. `test_endpoint_change_watcher.cpp` is also built as the dedicated focused executable so the two endpoint cases can run independently of the full host binary.
 
-호스트 테스트 소스: `test_websocket_protocol.cpp`, `test_action_dispatcher.cpp`, `test_action_result.cpp`, `test_control_mapping.cpp`, `test_notification_queue.cpp`, `test_preset_manager.cpp`, `test_settings_exporter.cpp`, `test_settings_autosaver.cpp`, `test_output_router.cpp`, `test_audio_engine.cpp`, `test_monitor_output.cpp`, `test_midi_handler.cpp`, `test_action_handler.cpp`, `test_safety_limiter.cpp`, `test_builtin_processors.cpp`, `test_builtin_noise_removal.cpp`, `test_builtin_auto_gain.cpp`, `test_vst_chain.cpp`, `test_platform.cpp`.
+호스트 테스트에는 HTTP/WebSocket 종료, shared-memory writer, endpoint watcher, updater script 범위도 포함됩니다. `test_endpoint_change_watcher.cpp`는 host 전체와 독립적으로 실행할 수 있도록 endpoint 전용 실행 파일에도 빌드됩니다.
 
 ### GTest JSON Output / GTest JSON 출력
 
@@ -260,12 +264,12 @@ cd build && ctest --config Release --output-on-failure
 ./tests/directpipe-host-tests_artefacts/Release/directpipe-host-tests.exe --gtest_filter="ActionDispatcherTest.*"
 
 # Generate JSON output for dashboard / 대시보드용 JSON 출력 생성
-bash tools/pre-release-test.sh
+bash tools/pre-release-test.sh --skip-api
 ```
 
-> `tools/pre-release-test.sh`는 Windows Git Bash 기준으로 작성되어 있습니다 (`taskkill`, 고정 CMake 경로 등). macOS/Linux에서는 동일 흐름을 수동 명령으로 실행하는 것을 권장합니다.
+> `tools/pre-release-test.sh`는 Windows Git Bash와 고정 Visual Studio CMake 경로 기준입니다. 실행 중인 DirectPipe를 강제 종료하지 않으므로 API는 의도적으로 실행한 instance에 `--api-only`로 먼저 검증하고, build/unit 단계는 `--skip-api`로 실행할 수 있습니다. macOS/Linux에서는 동일 흐름을 수동 명령으로 실행하는 것을 권장합니다.
 >
-> `tools/pre-release-test.sh` is written for Windows Git Bash (`taskkill`, fixed CMake path, etc.). On macOS/Linux, run equivalent steps manually.
+> `tools/pre-release-test.sh` targets Windows Git Bash and a fixed Visual Studio CMake path. It never force-terminates DirectPipe: run `--api-only` against a deliberate test instance, then use `--skip-api` for build/unit steps. On macOS/Linux, run equivalent steps manually.
 
 ---
 
@@ -288,7 +292,7 @@ bash tools/pre-release-test.sh
 | Windows | `windows-latest` | `DirectPipe-{tag}-Windows.zip` | DirectPipe.exe + Receiver VST2(.dll) + VST3(.vst3) |
 | macOS | `macos-14` (ARM) | `DirectPipe-{tag}-macOS.dmg` | DirectPipe.app + Receiver VST2(.vst) + VST3(.vst3) + AU(.component) |
 | Linux | `ubuntu-24.04` | `DirectPipe-{tag}-Linux.tar.gz` | DirectPipe + Receiver VST2(.so) + VST3(.vst3) |
-| Stream Deck | `ubuntu-latest` | `com.directpipe.directpipe.streamDeckPlugin` | Node.js 20, npm ci + rollup + streamdeck pack |
+| Stream Deck | `ubuntu-latest` | `com.directpipe.directpipe.streamDeckPlugin` | Node.js 20, npm ci + test + rollup + validate + streamdeck pack |
 
 ### GitHub Secrets (필수 / Required)
 

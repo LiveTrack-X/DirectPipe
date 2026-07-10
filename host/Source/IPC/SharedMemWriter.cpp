@@ -28,12 +28,46 @@
 
 namespace directpipe {
 
+namespace {
+
+class InFlightWriteGuard {
+public:
+    explicit InFlightWriteGuard(std::atomic<uint32_t>& count) noexcept
+        : count_(count)
+    {
+        count_.fetch_add(1, std::memory_order_seq_cst);
+    }
+
+    ~InFlightWriteGuard()
+    {
+        count_.fetch_sub(1, std::memory_order_seq_cst);
+    }
+
+private:
+    std::atomic<uint32_t>& count_;
+};
+
+static_assert(std::atomic<uint32_t>::is_always_lock_free,
+              "SharedMemWriter RT guard must be lock-free");
+
+} // namespace
+
 SharedMemWriter::SharedMemWriter() = default;
 
 SharedMemWriter::~SharedMemWriter()
 {
     shutdown();
 }
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+void SharedMemWriterTestAccess::setWriteBarrier(SharedMemWriter& writer,
+                                                WriteBarrier barrier,
+                                                void* context)
+{
+    writer.testWriteBarrier_ = barrier;
+    writer.testWriteBarrierContext_ = context;
+}
+#endif
 
 bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_t bufferFrames)
 {
@@ -63,14 +97,14 @@ bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_
     // Create named event for signaling
     if (!dataEvent_.create(EVENT_NAME)) {
         juce::Logger::writeToLog("[IPC] SharedMemWriter: Failed to create named event");
-        sharedMemory_.close();
+        shutdown();
         return false;
     }
 
     // Pre-allocate interleave buffer (max expected buffer size × channels)
     interleaveBuffer_.resize(static_cast<size_t>(bufferFrames) * channels, 0.0f);
 
-    connected_.store(true, std::memory_order_release);
+    connected_.store(true, std::memory_order_seq_cst);
     droppedFrames_.store(0, std::memory_order_relaxed);
 
     juce::Logger::writeToLog("[IPC] SharedMemWriter: Initialized - " +
@@ -83,7 +117,12 @@ bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_
 
 void SharedMemWriter::shutdown()
 {
-    connected_.store(false, std::memory_order_release);
+    // Close admission first, then wait for callbacks that already entered.
+    // Sequential consistency across connected_ and inFlightWriters_ prevents
+    // a writer from slipping between the final zero check and unmapping.
+    connected_.store(false, std::memory_order_seq_cst);
+    while (inFlightWriters_.load(std::memory_order_seq_cst) != 0)
+        std::this_thread::yield();
 
     // Signal receiver that producer is gone BEFORE unmapping shared memory.
     // The receiver checks producer_active to detect clean disconnects.
@@ -95,15 +134,12 @@ void SharedMemWriter::shutdown()
         }
     }
 
-    // Invalidate ring buffer pointers before unmapping shared memory.
-    // Prevents dangling pointer dereference if audio thread is still in writeAudio()
-    // (race window in setIpcEnabled(false) — audio thread may see stale ipcEnabled_=true).
+    // Invalidate ring buffer pointers before unmapping shared memory. All writers
+    // that passed admission have already drained above.
     ringBuffer_.detach();
     dataEvent_.close();
     sharedMemory_.close();
-    // NOTE: Do NOT clear interleaveBuffer_ here. The audio thread might still be
-    // reading it during the setIpcEnabled(false) race window. The buffer is harmless
-    // to leave allocated and gets repopulated on next initialize().
+    // Keep the allocation for reuse on the next initialize().
 }
 
 void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples)
@@ -112,8 +148,16 @@ void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int num
     jassert(!juce::MessageManager::getInstanceWithoutCreating()
             || !juce::MessageManager::getInstance()->isThisTheMessageThread());
 
-    if (!connected_.load(std::memory_order_relaxed)) return;
     if (numSamples <= 0) return;
+
+    if (!connected_.load(std::memory_order_seq_cst)) return;
+    InFlightWriteGuard inFlight(inFlightWriters_);
+    if (!connected_.load(std::memory_order_seq_cst)) return;
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    if (testWriteBarrier_)
+        testWriteBarrier_(testWriteBarrierContext_);
+#endif
 
     const int numChannels = juce::jmin(buffer.getNumChannels(), static_cast<int>(channels_));
     // Clamp to both source and interleaveBuffer_ capacity to prevent overrun.

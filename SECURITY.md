@@ -6,7 +6,7 @@ DirectPipe에서 보안 취약점을 발견하셨다면, **공개 이슈로 보�
 
 If you discover a security vulnerability in DirectPipe, **please do NOT report it as a public issue**. Use private channels to prevent potential exploitation.
 
-- **GitHub Security Advisory**: [Report a vulnerability](../../security/advisories/new)
+- **GitHub Security Advisory**: [Report a vulnerability](https://github.com/LiveTrack-X/DirectPipe/security/advisories/new)
 
 
 
@@ -23,7 +23,8 @@ If you discover a security vulnerability in DirectPipe, **please do NOT report i
 
 | Version | Supported |
 |---|---|
-| v4.1.x (latest) | ✅ |
+| v4.2.x (latest) | ✅ |
+| v4.1.x | ⚠️ Critical fixes only / 치명적 버그만 |
 | v3.10.x (legacy) | ⚠️ Critical fixes only / 치명적 버그만 |
 | < v3.10 | ❌ |
 
@@ -54,6 +55,8 @@ All network services bind to **localhost (127.0.0.1) only**. No remote access is
 **연결 제한 / Connection Limits**:
 - WebSocket: 최대 32개 동시 연결 (초과 시 거부) / Max 32 concurrent connections (excess rejected)
 - HTTP: 최대 64개 동시 핸들러 (초과 시 거부) / Max 64 concurrent handlers (excess rejected). HTTP는 Connection: close 방식이므로 각 요청이 수 ms 내에 완료됨 / HTTP uses Connection: close, each request completes in milliseconds
+
+**입력 검증 / Input Validation**: HTTP와 WebSocket 명령은 정수·유한 실수·불리언·문자열 타입과 액션별 범위를 변환 전에 검사합니다. 잘못된 WebSocket 메시지는 무시하고 HTTP 요청은 오류 응답을 반환합니다. / HTTP and WebSocket commands validate integer, finite-number, boolean, string, and action-specific ranges before conversion. Invalid WebSocket messages are ignored; invalid HTTP requests return an error response.
 
 ### CORS 정책 / CORS Policy
 

@@ -6,10 +6,15 @@
 #include "Platform/AutoStart.h"
 #include "Platform/ProcessPriority.h"
 #include "Platform/MultiInstanceLock.h"
+#include "IPC/SharedMemWriter.h"
+#include "directpipe/Protocol.h"
 
 #if JUCE_WINDOWS
 #include <Windows.h>
+#include <atomic>
+#include <chrono>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 #endif
@@ -179,3 +184,135 @@ TEST_F(PlatformTest, MultiInstanceAlreadyHeld) {
     (void)second;
     SUCCEED();
 }
+
+#if JUCE_WINDOWS
+TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
+    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
+        CloseHandle(existingEvent);
+        GTEST_SKIP() << "DirectPipe named event is already in use";
+    }
+
+    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
+        CloseHandle(existingMapping);
+        GTEST_SKIP() << "DirectPipe shared memory is already in use";
+    }
+
+    // Windows kernel objects share a namespace. A mutex with the event name
+    // makes CreateEventA fail deterministically with ERROR_INVALID_HANDLE.
+    auto* conflictingMutex = CreateMutexA(nullptr, FALSE, EVENT_NAME);
+    ASSERT_NE(conflictingMutex, nullptr) << "CreateMutexA failed: " << GetLastError();
+
+    const auto mappingSize = calculateSharedMemorySize(1024, 2);
+    auto* retainedMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
+                                               0, static_cast<DWORD>(mappingSize), SHM_NAME);
+    ASSERT_NE(retainedMapping, nullptr) << "CreateFileMappingA failed: " << GetLastError();
+    auto* retainedView = static_cast<DirectPipeHeader*>(
+        MapViewOfFile(retainedMapping, FILE_MAP_ALL_ACCESS, 0, 0, mappingSize));
+    ASSERT_NE(retainedView, nullptr) << "MapViewOfFile failed: " << GetLastError();
+
+    {
+        SharedMemWriter writer;
+        EXPECT_FALSE(writer.initialize(48000, 2, 1024));
+        EXPECT_FALSE(writer.isConnected());
+
+        // Holding a second mapping handle proves initialize() reached and
+        // initialized the ring before the named-event failure.
+        EXPECT_EQ(retainedView->sample_rate, 48000u);
+        EXPECT_EQ(retainedView->channels, 2u);
+        EXPECT_EQ(retainedView->buffer_frames, 1024u);
+        EXPECT_FALSE(retainedView->producer_active.load(std::memory_order_acquire));
+
+        // This used to dereference RingBuffer pointers after initialize()
+        // had already unmapped their backing shared memory.
+        writer.shutdown();
+        EXPECT_FALSE(writer.isConnected());
+    }
+
+    UnmapViewOfFile(retainedView);
+    CloseHandle(retainedMapping);
+    CloseHandle(conflictingMutex);
+}
+#endif
+
+#if JUCE_WINDOWS && defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+namespace {
+
+struct SharedMemWriteBarrier {
+    std::atomic<bool> entered{false};
+    std::atomic<bool> release{false};
+
+    static void wait(void* context) {
+        auto& barrier = *static_cast<SharedMemWriteBarrier*>(context);
+        barrier.entered.store(true, std::memory_order_release);
+        while (!barrier.release.load(std::memory_order_acquire))
+            std::this_thread::yield();
+    }
+};
+
+template <typename Predicate>
+bool spinWaitUntil(Predicate&& predicate, std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::yield();
+    }
+    return true;
+}
+
+} // namespace
+
+TEST(SharedMemWriterTest, ShutdownWaitsForActiveWrite) {
+    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
+        CloseHandle(existingEvent);
+        GTEST_SKIP() << "DirectPipe named event is already in use";
+    }
+
+    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
+        CloseHandle(existingMapping);
+        GTEST_SKIP() << "DirectPipe shared memory is already in use";
+    }
+
+    SharedMemWriter writer;
+    ASSERT_TRUE(writer.initialize(48000, 2, 1024));
+
+    SharedMemWriteBarrier barrier;
+    SharedMemWriterTestAccess::setWriteBarrier(writer, &SharedMemWriteBarrier::wait, &barrier);
+
+    juce::AudioBuffer<float> audio(2, 64);
+    audio.clear();
+    std::thread writeThread([&] { writer.writeAudio(audio, audio.getNumSamples()); });
+
+    if (!spinWaitUntil([&] { return barrier.entered.load(std::memory_order_acquire); },
+                       std::chrono::seconds(2))) {
+        barrier.release.store(true, std::memory_order_release);
+        writeThread.join();
+        FAIL() << "writeAudio did not reach the test barrier";
+        return;
+    }
+
+    std::atomic<bool> shutdownReturned{false};
+    std::thread shutdownThread([&] {
+        writer.shutdown();
+        shutdownReturned.store(true, std::memory_order_release);
+    });
+
+    if (!spinWaitUntil([&] { return !writer.isConnected(); }, std::chrono::seconds(2))) {
+        barrier.release.store(true, std::memory_order_release);
+        writeThread.join();
+        shutdownThread.join();
+        FAIL() << "shutdown did not start";
+        return;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_FALSE(shutdownReturned.load(std::memory_order_acquire));
+
+    barrier.release.store(true, std::memory_order_release);
+    writeThread.join();
+    shutdownThread.join();
+
+    EXPECT_TRUE(shutdownReturned.load(std::memory_order_acquire));
+    EXPECT_FALSE(writer.isConnected());
+}
+#endif

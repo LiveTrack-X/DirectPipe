@@ -62,6 +62,22 @@ public:
      */
     bool loadPreset(const juce::File& file);
 
+    /** Validate preset structure without changing runtime state. */
+    bool isPresetFileStructurallyValid(const juce::File& file);
+
+    /** Validate serialized preset JSON without changing runtime state. */
+    static bool isPresetJSONStructurallyValid(const juce::String& json);
+
+    /** Validate a quick-slot/chain JSON object (the plugins array is required). */
+    static bool isChainJSONStructurallyValid(const juce::String& json);
+
+    /**
+     * Load the first structurally valid primary/backup preset file.
+     * A recovered backup is copied back to the primary path.
+     */
+    static juce::String loadPresetJSONWithBackupFallback(
+        const juce::File& file, bool requirePluginChain = false);
+
     /**
      * @brief Get the default presets directory.
      */
@@ -243,6 +259,7 @@ private:
     };
 
     static std::vector<TargetPlugin> parseTargetPlugins(const juce::Array<juce::var>* pluginsArray);
+    static bool isStructurallyValidPresetRoot(juce::DynamicObject* root);
     static std::vector<TargetPlugin> parseSlotFile(int slotIndex);
     static bool isSameChain(const std::vector<TargetPlugin>& targets, VSTChain& chain);
     static bool loadedChainMatchesTargets(const std::vector<TargetPlugin>& targets,

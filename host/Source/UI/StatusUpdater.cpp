@@ -281,15 +281,15 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         }
 
         // Panic state affects OUT/MON/VST buttons
-        bool outUserMuted = engine_.isOutputMuted();
+        bool outMuted = engine_.isOutputMuted();
         bool monUserMuted = !engine_.getOutputRouter().isEnabled(OutputRouter::Output::Monitor);
         bool vstActive = engine_.isIpcEnabled();
 
-        if (muted != cachedPanicActive_ || outUserMuted != cachedOutputMuted_ ||
+        if (muted != cachedPanicActive_ || outMuted != cachedOutputMuted_ ||
             monUserMuted != cachedMonitorMuted_ || vstActive != cachedVstEnabled_)
         {
             cachedPanicActive_ = muted;
-            cachedOutputMuted_ = outUserMuted;
+            cachedOutputMuted_ = outMuted;
             cachedMonitorMuted_ = monUserMuted;
             cachedVstEnabled_ = vstActive;
 
@@ -297,7 +297,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
             if (muted) {
                 outputMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFD46161));
                 outputMuteBtn_->setEnabled(true); // locked by action guard during panic
-            } else if (outUserMuted) {
+            } else if (outMuted) {
                 outputMuteBtn_->setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE05050));
                 outputMuteBtn_->setEnabled(true);
             } else {

@@ -26,6 +26,7 @@
 #include "../Platform/PlatformAudio.h"
 #include "MonitorDriftPolicy.h"
 #include <algorithm>
+#include <thread>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -55,6 +56,28 @@ void useDefaultOutputChannels(juce::AudioDeviceManager::AudioDeviceSetup& setup)
     setup.useDefaultOutputChannels = true;
     setup.outputChannels.clear();
 }
+
+class InFlightMonitorWriteGuard {
+public:
+    explicit InFlightMonitorWriteGuard(std::atomic<uint32_t>& count) noexcept
+        : count_(count)
+    {
+        count_.fetch_add(1, std::memory_order_seq_cst);
+    }
+
+    ~InFlightMonitorWriteGuard()
+    {
+        count_.fetch_sub(1, std::memory_order_seq_cst);
+    }
+
+private:
+    std::atomic<uint32_t>& count_;
+};
+
+static_assert(std::atomic<bool>::is_always_lock_free,
+              "MonitorOutput RT admission flag must be lock-free");
+static_assert(std::atomic<uint32_t>::is_always_lock_free,
+              "MonitorOutput RT in-flight counter must be lock-free");
 }
 
 MonitorOutput::MonitorOutput() = default;
@@ -157,8 +180,17 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
 
 void MonitorOutput::shutdown()
 {
-    // Set status BEFORE teardown so producer (writeAudio) stops writing to ring buffer
+    // Invalidate fallback/recovery callbacks queued by the previous manager
+    // before tearing it down or creating a replacement.
+    lifecycleGeneration_.fetch_add(1, std::memory_order_acq_rel);
+    activeOutputRecoveryPending_.store(false, std::memory_order_release);
+    reconnectCooldown_ = 0;
+
+    // Close producer admission before teardown. removeAudioCallback() acquires
+    // JUCE's audioCallbackLock, so it also drains the in-flight consumer before
+    // the ring reset below.
     status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
+    closeProducerAdmissionAndWait();
     actualSampleRate_.store(0.0, std::memory_order_relaxed);
     actualBufferSize_.store(0, std::memory_order_relaxed);
     callbacksSinceStart_.store(0, std::memory_order_relaxed);
@@ -214,8 +246,19 @@ bool MonitorOutput::setBufferSize(int bufferSize)
 int MonitorOutput::writeAudio(const float* const* channelData,
                                   int numChannels, int numFrames)
 {
-    if (status_.load(std::memory_order_acquire) != VirtualCableStatus::Active)
+    if (!producerWriteAdmission_.load(std::memory_order_seq_cst))
         return 0;
+
+    InFlightMonitorWriteGuard inFlight(inFlightProducerWrites_);
+    if (!producerWriteAdmission_.load(std::memory_order_seq_cst)
+        || status_.load(std::memory_order_acquire) != VirtualCableStatus::Active) {
+        return 0;
+    }
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    if (testWriteBarrier_)
+        testWriteBarrier_(testWriteBarrierContext_);
+#endif
 
     producerBlockSize_.store(numFrames, std::memory_order_relaxed);
     int written = ringBuffer_.write(channelData, numChannels, numFrames);
@@ -223,6 +266,20 @@ int MonitorOutput::writeAudio(const float* const* channelData,
         droppedFrames_.fetch_add(numFrames - written, std::memory_order_relaxed);
 
     return written;
+}
+
+void MonitorOutput::closeProducerAdmissionAndWait() noexcept
+{
+    // Sequential consistency prevents a writer from slipping between the
+    // final zero observation and a following ring reset/resize.
+    producerWriteAdmission_.store(false, std::memory_order_seq_cst);
+    while (inFlightProducerWrites_.load(std::memory_order_seq_cst) != 0)
+        std::this_thread::yield();
+}
+
+void MonitorOutput::openProducerAdmission() noexcept
+{
+    producerWriteAdmission_.store(true, std::memory_order_seq_cst);
 }
 
 // Monitor device shared-mode callback (consumer).
@@ -487,8 +544,11 @@ void MonitorOutput::scheduleActiveOutputChannelRecovery(const juce::String& reas
     monitorLost_.store(true, std::memory_order_relaxed);
 
     auto aliveFlag = alive_;
-    juce::MessageManager::callAsync([this, aliveFlag, reason] {
+    const auto lifecycleGeneration = lifecycleGeneration_.load(std::memory_order_acquire);
+    juce::MessageManager::callAsync([this, aliveFlag, reason, lifecycleGeneration] {
         if (!aliveFlag->load())
+            return;
+        if (lifecycleGeneration != lifecycleGeneration_.load(std::memory_order_acquire))
             return;
 
         recoverActiveOutputChannelsWithDriverDefaults(reason);
@@ -535,28 +595,20 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
     actualSampleRate_.store(deviceSR, std::memory_order_relaxed);
     actualBufferSize_.store(deviceBS, std::memory_order_relaxed);
 
-    // Check sample rate match
-    if (std::abs(deviceSR - sampleRate_) > 1.0) {
-        Log::warn("MONITOR", "Sample rate mismatch! Expected " + juce::String(sampleRate_) + " got " + juce::String(deviceSR));
-        // Set status BEFORE reset so the consumer callback sees non-Active
-        // and skips ring buffer access (prevents data race on reset)
-        status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_release);
-        // This is a stable configuration mismatch, not a retryable hotplug loss.
-        // Leave the monitor disabled until the main SR or selected monitor changes.
-        monitorLost_.store(false, std::memory_order_relaxed);
-        ringBuffer_.reset();
-        return;
-    }
-
     if (isFallback) {
-        // Do not use the fallback device; shut down and wait for reconnection.
+        // A different device is always a retryable loss, even when that
+        // fallback also reports a different sample rate. Classifying the
+        // sample-rate mismatch first would clear monitorLost_ permanently.
         status_.store(VirtualCableStatus::Error, std::memory_order_release);
+        closeProducerAdmissionAndWait();
         monitorLost_.store(true, std::memory_order_relaxed);
         Log::warn("MONITOR", "Fallback to " + device->getName()
                    + " rejected (desired: " + deviceName_ + ") - shutting down, waiting for reconnection");
         auto aliveFlag = alive_;
-        juce::MessageManager::callAsync([this, aliveFlag] {
+        const auto lifecycleGeneration = lifecycleGeneration_.load(std::memory_order_acquire);
+        juce::MessageManager::callAsync([this, aliveFlag, lifecycleGeneration] {
             if (!aliveFlag->load()) return;
+            if (lifecycleGeneration != lifecycleGeneration_.load(std::memory_order_acquire)) return;
             if (!deviceManager_) return;
             deviceManager_->removeAudioCallback(this);
             deviceManager_->closeAudioDevice();
@@ -564,8 +616,23 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         return;
     }
 
+    // Check sample rate match
+    if (std::abs(deviceSR - sampleRate_) > 1.0) {
+        Log::warn("MONITOR", "Sample rate mismatch! Expected " + juce::String(sampleRate_) + " got " + juce::String(deviceSR));
+        // JUCE serializes aboutToStart against the monitor IO callback. Drain
+        // the independent main-RT producer before mutating ring storage.
+        status_.store(VirtualCableStatus::SampleRateMismatch, std::memory_order_release);
+        closeProducerAdmissionAndWait();
+        // This is a stable configuration mismatch, not a retryable hotplug loss.
+        // Leave the monitor disabled until the main SR or selected monitor changes.
+        monitorLost_.store(false, std::memory_order_relaxed);
+        ringBuffer_.reset();
+        return;
+    }
+
     if (!hasUsableOutputChannels(device)) {
         status_.store(VirtualCableStatus::Error, std::memory_order_release);
+        closeProducerAdmissionAndWait();
         monitorLost_.store(true, std::memory_order_relaxed);
         Log::warn("MONITOR", "Monitor opened without usable active output channels");
         Log::info("MONITOR", "Inactive setup: activeOut=["
@@ -575,8 +642,10 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
         return;
     }
 
-    // Set non-Active before reset to prevent consumer from reading during reset
+    // JUCE serializes aboutToStart against the monitor IO callback. Separately
+    // drain the main-RT producer before resetting the shared ring.
     status_.store(VirtualCableStatus::NotConfigured, std::memory_order_release);
+    closeProducerAdmissionAndWait();
     ringBuffer_.reset();
     callbacksSinceStart_.store(0, std::memory_order_relaxed);
     producerBlockSize_.store(0, std::memory_order_relaxed);
@@ -594,6 +663,7 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
     adaptiveTargetState_ = {};
     monitor_drift::resetPll(pllState_);
     status_.store(VirtualCableStatus::Active, std::memory_order_release);
+    openProducerAdmission();
 
     Log::info("MONITOR", "Active on " + device->getName() + " @ " + juce::String(deviceSR) + "Hz / " + juce::String(deviceBS) + " samples");
     Log::info("MONITOR", "Active setup: activeOut=["
@@ -627,6 +697,7 @@ void MonitorOutput::audioDeviceStopped()
     // fires on external events (device unplug, driver error), not our own teardown.
     monitorLost_.store(true, std::memory_order_relaxed);
     status_.store(VirtualCableStatus::Error, std::memory_order_release);
+    producerWriteAdmission_.store(false, std::memory_order_seq_cst);
     Log::warn("MONITOR", "Device stopped (lost): " + deviceName_);
 }
 
@@ -635,6 +706,7 @@ void MonitorOutput::audioDeviceError(const juce::String& errorMessage)
     Log::error("MONITOR", "Device error on '" + deviceName_ + "': " + errorMessage);
     monitorLost_.store(true, std::memory_order_relaxed);
     status_.store(VirtualCableStatus::Error, std::memory_order_release);
+    producerWriteAdmission_.store(false, std::memory_order_seq_cst);
 }
 
 // Device enumeration.

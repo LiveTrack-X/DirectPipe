@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.1.2 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.2.0 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.1.2)
+> Reverse spec — written based on currently implemented features (as of v4.2.0)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.1.2
+4.2.0
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- v4.1.2 local Windows Release verification was completed. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
-- v4.1.2 로컬 Windows Release 검증은 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
+- v4.2.0 local Windows Release verification was completed. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
+- v4.2.0 로컬 Windows Release 검증은 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -164,7 +164,7 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 재연결 로직 / Reconnection Logic | `attemptReconnection()`: 장치 재스캔 → 가용성 확인 → desired 설정(SR/BS/채널) 복원. 같은 장치 외부 재시작(예: Windows 마이크 향상 기능 토글)은 짧게 안정화 후 같은 설정을 강제 재오픈. 명시 채널 마스크가 현재 장치에서 거부되면 driver default 채널로 재시도하여 스테레오 장치를 모노로 강제하지 않고, 모노 장치도 기본 레이아웃으로 열 수 있게 한다 / device rescan → availability check → restore desired settings (SR/BS/channels). Same-device external restarts (for example Windows microphone enhancement toggles) force a same-setup re-open after a short settle delay. If an explicit channel mask is rejected, reconnect retries driver default channels so stereo devices are not forced mono and mono devices can still open with their native layout. `attemptingReconnection_` 재진입 가드 / re-entrancy guard |
 | 쿨다운 / Cooldown | `reconnectCooldown_` (30Hz 타이머 틱 / 30Hz timer ticks) |
 | 알림 / Notification | 연결 끊김 시 경고(주황), 재연결 시 정보(보라) NotificationBar 표시 / Warning (orange) on disconnect, Info (purple) on reconnect in NotificationBar |
-| 방향별 감지 / Per-Direction Detection | `inputDeviceLost_`: 입력 장치 분실 시 오디오 콜백에서 입력 무음 처리 (폴백 마이크 방지) / silences input in audio callback on input device loss (prevents fallback mic). `outputAutoMuted_`: 출력 장치 분실 시 자동 뮤트, 복원 시 자동 해제 / auto-mutes on output device loss, auto-unmutes on restore |
+| 방향별 감지 / Per-Direction Detection | `inputDeviceLost_`: 입력 장치 분실 시 오디오 콜백에서 입력 무음 처리 (폴백 마이크 방지) / silences input in audio callback on input device loss (prevents fallback mic). `outputAutoMuted_`: 출력 장치 분실 시 자동 뮤트, 복원 시 자동 해제 / auto-mutes on output device loss, auto-unmutes on restore. 수동 선택/Output None은 해당 방향만 해제하고 aggregate `deviceLost_`를 다시 계산하며, 반대 방향 복구가 남으면 timer 재예약 / Manual selection/Output None clears only the matching direction, recomputes aggregate `deviceLost_`, and re-arms the timer if opposite-direction recovery remains |
 | 재연결 실패 / Reconnection Failure | `reconnectMissCount_`: 5회 연속 실패(~15초) 후에도 크로스 드라이버 stale name 상황에서만 현재 드라이버 장치를 수락하고, 시작 복원/입력 손실/출력 자동 뮤트가 명시 대상 대기 중이면 폴백을 수락하지 않음 / after 5 consecutive failures (~15s), accepts current driver device only for stale cross-driver names. Startup restore, input loss, and output auto-mute keep waiting for the explicit target instead of accepting fallback |
 | 드라이버 전환 복원 / Driver Switch Restore | `DriverTypeSnapshot`: 드라이버 타입별 설정(입출력 장치, SR, BS, outputNone) 저장/복원 / saves/restores per-driver-type settings (input/output device, SR, BS, outputNone). 프리셋 JSON의 `inputChannelMask`/`outputChannelMask`(인덱스 배열)도 저장/복원하여 비연속 ASIO 라우팅 유지, 명시 마스크가 거부되면 driver default 채널로 재시도 / preset JSON `inputChannelMask`/`outputChannelMask` (index arrays) also persist/restore non-contiguous ASIO routing, retrying driver default channels when explicit masks are rejected |
 | 모니터 독립 / Monitor Independence | 모니터 장치는 retry 가능한 장치 lost만 별도 패턴으로 독립 재연결 / Monitor device reconnects independently only for retryable device loss (`monitorLost_` + own cooldown); sample-rate mismatch stays paused |
@@ -500,8 +500,8 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | 항목 / Item | 상세 / Details |
 |------|------|
 | WebSocket | `ws://localhost:8765` |
-| UDP 디스커버리 / UDP Discovery | 포트 / Port 8767, `127.0.0.1`. 메시지 / Message: `"DIRECTPIPE_READY:8765"` |
-| 재연결 / Reconnection | 이벤트 드리븐 (UDP 감지 + 사용자 액션). 폴링 없음 / Event-driven (UDP detection + user action). No polling |
+| UDP 디스커버리 / UDP Discovery | 포트 / Port 8767, `127.0.0.1`. 메시지 / Message: `"DIRECTPIPE_READY:<actualPort>"`. 서버 시작 즉시 + 실행 중 2초 주기, 플러그인은 첫 WS 연결 전에 bind / Immediate at server start + every 2 seconds while running; plugin binds before first WS attempt |
+| 재연결 / Reconnection | UDP 감지/사용자 액션 시 즉시 재시도 + 일반 연결 해제 후 exponential backoff. 고정 주기 availability polling 없음 / Immediate retry on UDP discovery/user action + exponential backoff after ordinary disconnects. No fixed-interval availability poll |
 | 백오프 / Backoff | 초기 / Initial 2초 / 2s, 최대 / Max 10초 / 10s, 배율 / Multiplier 1.5x |
 | 대기열 / Queue | 연결 끊김 중 최대 50개 메시지 큐잉 / Up to 50 messages queued while disconnected |
 | 킵얼라이브 / Keepalive | 15초 간격 ping/pong / 15-second interval ping/pong |
@@ -558,10 +558,12 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | 포트 / Port | 8765 (폴백 / fallback: 8766~8770) |
 | 프로토콜 / Protocol | RFC 6455 (커스텀 SHA-1 핸드셰이크 / custom SHA-1 handshake) |
 | 헤더 / Headers | 대소문자 무시 / Case-insensitive (RFC 7230) |
+| 연결 준비 / Connection Readiness | HTTP 101 + 초기 상태 전송 완료 후에만 브로드캐스트 대상 / Broadcast-visible only after HTTP 101 and initial state delivery |
 | 프레임 제한 / Frame Limit | 1MB |
 | 최대 클라이언트 / Max Clients | 32개 / 32 |
-| 데드 클라이언트 / Dead Clients | `sendFrame` 실패 시 즉시 소켓 종료 / Immediate socket close on `sendFrame` failure |
-| 브로드캐스트 / Broadcast | 전용 스레드 (논블로킹) / Dedicated thread (non-blocking). `clientsMutex_` 밖에서 thread join (데드락 방지) / thread join outside `clientsMutex_` (deadlock prevention) |
+| 파라미터 검증 / Parameter Validation | 엄격한 JSON 타입, 유한 숫자, 액션별 범위; 잘못된 메시지는 무시 / Strict JSON types, finite numbers, action-specific ranges; invalid messages ignored |
+| 데드 클라이언트 / Dead Clients | `sendFrame` 실패 시 즉시 소켓 종료, accept/broadcast 경로에서 주기적 회수 / Immediate socket close on `sendFrame` failure; periodic reap from accept/broadcast paths |
+| 브로드캐스트 / Broadcast | 전용 스레드, 클라이언트별 잠금 후 최신 상태 재조회, `shared_ptr` snapshot, `clientsMutex_` 밖에서 thread join / Dedicated thread, latest-state refresh after per-client lock, `shared_ptr` snapshots, thread join outside `clientsMutex_` |
 
 **수신 명령 (19개) / Incoming Commands (19):**
 ```json
@@ -943,7 +945,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.1.2" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.2.0" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1009,6 +1011,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 - `loadingSlot_` 또는 `isLoading()` true면 저장 스킵 (부분 상태 손상 방지) / Saves skipped when `loadingSlot_` or `isLoading()` is true (prevents partial state corruption)
 - 불완전한 settings preset load 후 `partialLoad_`를 설정하여 quick-slot autosave가 깨진 체인을 덮어쓰지 않게 함 / Incomplete settings preset loads set `partialLoad_` so quick-slot autosave cannot overwrite a slot with a broken chain
 - `plugins` 배열이 아니거나 entry 구조가 잘못된 settings JSON은 active slot, audio state, output state 적용 전에 실패 / Settings JSON with a non-array `plugins` field or malformed plugin entries fails before active slot, audio state, or output state is applied
+- Atomic-write family를 먼저 복구하여 primary가 없거나 잠겨도 유효 `.bak`의 명시적 `outputMuted` 값을 보존하며, partial plugin load도 이 안전 상태를 해제하지 않음 / Resolves the atomic-write family first, preserving an explicit `outputMuted` value from a valid `.bak` when the primary is missing or locked; a partial plugin load does not clear that safety state
 - Full-backup slot restore는 파일 clear/write 단계 전에 기존 quick-slot file family를 snapshot하고 실패 시 롤백 / Full-backup slot restore snapshots existing quick-slot file families before the clear/write phase and rolls them back on failure
 - 저장 위치 / Storage location: Windows `%AppData%/DirectPipe/settings.dppreset`, macOS `~/Library/Application Support/DirectPipe/`, Linux `~/.config/DirectPipe/` (JSON, 버전 / version 4)
 
@@ -1061,7 +1064,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 | 포함 / Included | 제외 / Excluded |
 |------|------|
 | 오디오 설정 (드라이버, 장치, SR, BS, 채널) / Audio settings (driver, device, SR, BS, channels) | VST 플러그인 체인 / VST plugin chain (`plugins` 키 제거 / key removed) |
-| 출력 설정 (모니터 장치, 볼륨, 버퍼) / Output settings (monitor device, volume, buffer) | 프리셋 슬롯 A-E / Preset slots A-E |
+| 출력 설정 (모니터 장치, 볼륨, 버퍼) / Output settings (monitor device, volume, buffer) | 프리셋 슬롯 A-E + Auto / Preset slots A-E + Auto |
 | 컨트롤 매핑 (핫키, MIDI, 서버 설정) / Control mappings (hotkeys, MIDI, server settings) | |
 
 ```json
@@ -1069,7 +1072,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.1.2",
+  "appVersion": "4.2.0",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1084,7 +1087,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 |------|
 | Tier 1 전체 내용 / All Tier 1 content |
 | VST 플러그인 체인 (전체 상태) / VST plugin chain (full state) |
-| 프리셋 슬롯 A-E (각 슬롯 JSON) / Preset slots A-E (each slot JSON) |
+| 프리셋 슬롯 A-E + Auto (점유된 각 슬롯 JSON) / Preset slots A-E + Auto (JSON for each occupied slot) |
 
 ```json
 {
@@ -1092,15 +1095,13 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.1.2",
+  "appVersion": "4.2.0",
   "audioSettings": { /* plugins 포함 */ },
   "controlConfig": { /* ... */ },
   "presetSlots": {
     "A": { /* slot A JSON */ },
-    "B": { /* slot B JSON */ },
-    "C": null,
-    "D": null,
-    "E": null
+    "E": { /* slot E JSON */ },
+    "*": { /* Auto slot JSON */ }
   }
 }
 ```
@@ -1153,12 +1154,12 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 체크 / Check | 시작 시 백그라운드 스레드에서 GitHub API (최신 릴리즈) / Background thread checks GitHub API (latest release) on startup |
-| 비교 / Comparison | Semver 비교 / Semver comparison |
+| 비교 / Comparison | 엄격한 `MAJOR.MINOR.PATCH` Semver 비교 / Strict `MAJOR.MINOR.PATCH` semver comparison |
 | 표시 / Display | Credit 라벨에 "NEW vX.Y.Z" (주황색) / "NEW vX.Y.Z" (orange) in credit label |
 | 다이얼로그 / Dialog | [Update Now] (Windows only) / [View on GitHub] / [Later] |
-| 업데이트 / Update | Windows: GitHub 릴리즈에서 ZIP 다운로드 → batch 스크립트로 바이너리 교체 → 자동 재시작 / Downloads ZIP from GitHub release → batch script replaces binary → auto-restart. macOS/Linux: "View on GitHub" 버튼으로 릴리즈 페이지 안내 (수동 다운로드) / "View on GitHub" button opens release page (manual download) |
+| 업데이트 / Update | Windows: ZIP staging/검증 → 정확한 실행 PID 종료 대기 → known-good exe 회전/교체 → 실패 시 rollback → 자동 재시작 / Stage and verify ZIP → wait for the exact launching PID → rotate/replace the known-good executable → roll back on failure → restart. macOS/Linux: "View on GitHub" 버튼으로 릴리즈 페이지 안내 (수동 다운로드) / "View on GitHub" opens the release page (manual download) |
 | 완료 확인 / Completion Verification | `_updated.flag` 파일 → 다음 시작 시 "Updated successfully" 알림 / `_updated.flag` file → "Updated successfully" notification on next startup |
-| 스레드 안전 / Thread Safety | `alive_` 플래그 (`shared_ptr<atomic<bool>>`) 사용 / Uses `alive_` flag (`shared_ptr<atomic<bool>>`) (`checkForUpdate` callAsync) |
+| 스레드 안전 / Thread Safety | running/finished atomic과 lifecycle mutex로 download worker 회수/재시도/종료를 직렬화하고, `checkForUpdate` `callAsync`는 `alive_` 플래그로 보호 / Running/finished atomics plus a lifecycle mutex serialize download-worker reap/retry/destruction; `alive_` guards `checkForUpdate` `callAsync` |
 
 ---
 
@@ -1191,7 +1192,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 | WebSocket | JUCE StreamingSocket + RFC 6455 | 커스텀 SHA-1 / Custom SHA-1 |
 | HTTP | JUCE StreamingSocket 수동 파싱 / manual parsing | — |
 | Stream Deck | @elgato/streamdeck SDK | v2.0.1 (SDKVersion 3) |
-| Stream Deck WebSocket | ws (npm) | v8.16.0 |
+| Stream Deck WebSocket | ws (npm) | v8.21.0 |
 | 번들러 / Bundler | Rollup | v4.59.0 |
 | 테스트 / Testing | Google Test | — |
 | IPC | SharedMemory + lock-free RingBuffer | Windows: CreateFileMapping, macOS: `shm_open`, Linux: POSIX shm |
@@ -1274,14 +1275,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.1.2.0
-│   ├── package.json                → ws v8.16, @elgato/streamdeck v2.0.1
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.0.0
+│   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host, 381 registered tests)
+├── tests/                          → Google Test (core + host + endpoint, 445 CTest registrations)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin

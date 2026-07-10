@@ -46,14 +46,21 @@ public:
                           PresetManager& presetManager,
                           ControlMappingStore& controlStore);
 
-    /** Export everything: settings + VST chain + all preset slots. */
+    /** Export everything: settings + VST chain + all preset slots.
+     *  runtimeStateIsStable must be false while a slot is loading, a partial
+     *  chain is active, or the VST chain is otherwise being replaced. */
     static juce::String exportFullBackup(PresetManager& presetManager,
-                                          ControlMappingStore& controlStore);
+                                           ControlMappingStore& controlStore,
+                                           bool runtimeStateIsStable);
 
-    /** Import everything: settings + VST chain + all preset slots. */
+    /** Import everything: settings + VST chain + all preset slots.
+     *  runtimeStateIsStableBeforeRestore must only be true after the caller has
+     *  exclusively claimed the load operation and verified that no partial or
+     *  unstable VST-chain transition is active. */
     static bool importFullBackup(const juce::String& json,
                                   PresetManager& presetManager,
-                                  ControlMappingStore& controlStore);
+                                  ControlMappingStore& controlStore,
+                                  bool runtimeStateIsStableBeforeRestore);
 
     /** Returns the platform string for the current OS ("windows", "macos", "linux"). */
     static juce::String getCurrentPlatform();

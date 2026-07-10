@@ -128,13 +128,23 @@ private:
     bool hasUsableOutputChannels(juce::AudioIODevice* device) const;
     bool recoverActiveOutputChannelsWithDriverDefaults(const juce::String& reason);
     void scheduleActiveOutputChannelRecovery(const juce::String& reason);
+    void closeProducerAdmissionAndWait() noexcept;
+    void openProducerAdmission() noexcept;
 
     // ═══════════════════════════════════════════════════════════════════
     // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
     // ═══════════════════════════════════════════════════════════════════
 
     AudioRingBuffer ringBuffer_;                          // [Main RT write, Monitor RT read — lock-free]
+    std::atomic<bool> producerWriteAdmission_{false};     // [Lifecycle write, Main RT read] Closes before reset/resize
+    std::atomic<uint32_t> inFlightProducerWrites_{0};     // [Main RT inc/dec, Lifecycle wait] Protects ring storage lifetime
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    using TestWriteBarrier = void (*)(void* context);
+    TestWriteBarrier testWriteBarrier_ = nullptr;
+    void* testWriteBarrierContext_ = nullptr;
+#endif
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);  // [callAsync lifetime guard]
+    std::atomic<uint64_t> lifecycleGeneration_{0};       // [Lifecycle/Device write, Message read] Invalidates stale callAsync work
     std::unique_ptr<juce::AudioDeviceManager> deviceManager_;  // [Message thread only]
 
     juce::String deviceName_;                             // [Message thread only]
