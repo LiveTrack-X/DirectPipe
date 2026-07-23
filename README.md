@@ -1171,16 +1171,32 @@ Monitor output uses a **separate audio device** from the main output, which can 
 - Monitor delay only affects self-monitoring; it doesn't affect broadcast/recording quality
 </details>
 
-## Star History
+## AI-assisted development / AI 보조 개발
 
-<a href="https://www.star-history.com/?repos=LiveTrack-X%2FDirectPipe&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=LiveTrack-X/DirectPipe&type=date&legend=top-left" />
- </picture>
-</a>
+DirectPipe is developed with substantial assistance from AI coding tools,
+primarily Claude and Codex. The initial ideas, product direction, and basic
+structure of selected documents are owner-led; scope, priorities, and final
+acceptance decisions remain owner-led as well.
 
+DirectPipe uses the [SDAD Protocol](https://github.com/LiveTrack-X/spec-driven-ai-development)
+(SPEC-Directed AI Development), developed alongside this work, as a
+repository-local development control layer. It keeps the active scope,
+validation evidence, unresolved findings, and owner gates for actions such as
+releases or public compatibility changes explicit. SDAD controls the development
+workflow only and is not part of the DirectPipe runtime. AI-assisted output is
+reviewed and validated where possible, but AI use does not itself guarantee
+correctness or replace owner responsibility.
+
+DirectPipe는 주로 Claude와 Codex 같은 AI 코딩 도구의 상당한 보조를 받아
+개발합니다. 초기 아이디어, 제품 방향, 일부 문서의 기본 구조는 소유자가 정하며,
+범위·우선순위·최종 승인 결정도 소유자가 맡습니다.
+
+이 작업과 함께 개발한 [SDAD Protocol](https://github.com/LiveTrack-X/spec-driven-ai-development)
+(SPEC-Directed AI Development)을 저장소 내부의 개발 제어 계층으로 사용합니다.
+SDAD는 현재 범위, 검증 증거, 미해결 항목, 릴리즈나 공개 호환성 변경 같은 행동의
+소유자 게이트를 명시적으로 관리합니다. SDAD는 개발 워크플로만 제어하며 DirectPipe
+런타임의 일부가 아닙니다. AI 보조 산출물은 가능한 범위에서 검토·검증하지만, AI 사용
+자체가 정확성을 보장하거나 소유자의 책임을 대체하지는 않습니다.
 
 ## 후원 / Support
 
