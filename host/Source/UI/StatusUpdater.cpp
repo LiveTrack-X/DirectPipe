@@ -456,6 +456,17 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
             int slot = pm ? pm->getActiveSlot() : -1;
             s.activeSlot = slot;  // 0-5 or -1, no clamping
             s.autoSlotActive = (slot == 5);  // backward compat (deprecated)
+            s.currentPreset.clear();
+            if (pm && slot >= 0 && slot < PresetManager::kNumSlots) {
+                if (slot == 5) {
+                    s.currentPreset = "Auto";
+                } else {
+                    auto name = pm->getSlotName(slot).trim();
+                    if (name.isEmpty())
+                        name = juce::String::charToString(PresetManager::slotLabel(slot));
+                    s.currentPreset = name.toStdString();
+                }
+            }
         }
         s.recording = engine_.getRecorder().isRecording();
         s.recordingSeconds = engine_.getRecorder().getRecordedSeconds();

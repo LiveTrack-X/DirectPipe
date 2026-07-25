@@ -185,16 +185,21 @@ void PresetSlotBar::mouseDown(const juce::MouseEvent& event)
                 aw->enterModalState(true, juce::ModalCallbackFunction::create(
                     [safeThis2, sourceSlot, aw](int btnResult) {
                         if (!safeThis2) { delete aw; return; }
+                        bool renamed = false;
                         if (btnResult == 1) {
                             auto newName = aw->getTextEditorContents("name");
-                            safeThis2->presetManager_.setSlotName(sourceSlot, newName);
+                            renamed = safeThis2->presetManager_.setSlotName(sourceSlot, newName);
                         } else if (btnResult == 2) {
-                            safeThis2->presetManager_.setSlotName(sourceSlot, "");
+                            renamed = safeThis2->presetManager_.setSlotName(sourceSlot, "");
                         }
                         delete aw;
-                        if (btnResult > 0) {
+                        if (renamed) {
                             safeThis2->updateSlotButtonStates();
                             if (safeThis2->onSettingsDirty) safeThis2->onSettingsDirty();
+                        } else if (btnResult > 0 && safeThis2->onNotification) {
+                            safeThis2->onNotification(
+                                "Slot name could not be saved",
+                                NotificationLevel::Error);
                         }
                     }), false);
                 return;
@@ -202,18 +207,38 @@ void PresetSlotBar::mouseDown(const juce::MouseEvent& event)
 
             if (result == 300) {
                 // Export
-                safeThis->presetManager_.exportSlot(sourceSlot);
+                if (!safeThis->presetManager_.exportSlot(sourceSlot)
+                    && safeThis->onNotification) {
+                    safeThis->onNotification(
+                        "Slot export aborted because the slot could not be saved",
+                        NotificationLevel::Error);
+                }
                 return;
             }
 
             if (result == 301) {
                 // Import
                 auto safeThis2 = safeThis;
-                safeThis->presetManager_.importSlot(sourceSlot, [safeThis2](bool ok) {
+                const bool importingActive =
+                    safeThis->presetManager_.getActiveSlot() == sourceSlot;
+                safeThis->loadingSlot_ = true;
+                safeThis->setSlotButtonsEnabled(false);
+                safeThis->chainEditor_.showLoadingState();
+                safeThis->presetManager_.importSlot(sourceSlot,
+                    [safeThis2, importingActive](bool ok) {
                     if (!safeThis2) return;
+                    safeThis2->loadingSlot_ = false;
+                    safeThis2->setSlotButtonsEnabled(true);
+                    safeThis2->chainEditor_.hideLoadingState();
+                    if (ok && importingActive)
+                        safeThis2->partialLoad_ = false;
                     safeThis2->updateSlotButtonStates();
                     if (safeThis2->onRefreshUI) safeThis2->onRefreshUI();
                     if (ok && safeThis2->onSettingsDirty) safeThis2->onSettingsDirty();
+                    if (!ok && safeThis2->onNotification)
+                        safeThis2->onNotification(
+                            "Slot import failed; the previous slot was preserved",
+                            NotificationLevel::Error);
                 });
                 return;
             }
@@ -244,8 +269,39 @@ void PresetSlotBar::mouseDown(const juce::MouseEvent& event)
             // Copy (result 1-4 = target slot index)
             int targetSlot = result - 1;
             int active = safeThis->presetManager_.getActiveSlot();
-            if (active == sourceSlot && !safeThis->partialLoad_.load())
-                safeThis->presetManager_.saveSlot(sourceSlot);
+            if (active == sourceSlot && !safeThis->partialLoad_.load()
+                && !safeThis->presetManager_.saveSlot(sourceSlot)) {
+                if (safeThis->onNotification)
+                    safeThis->onNotification(
+                        "Copy aborted because the source slot could not be saved",
+                        NotificationLevel::Error);
+                return;
+            }
+
+            if (active == targetSlot) {
+                safeThis->loadingSlot_ = true;
+                safeThis->setSlotButtonsEnabled(false);
+                safeThis->chainEditor_.showLoadingState();
+                safeThis->presetManager_.copySlotToActiveAsync(
+                    sourceSlot, targetSlot,
+                    [safeThis](bool ok) {
+                        if (!safeThis) return;
+                        safeThis->loadingSlot_ = false;
+                        safeThis->setSlotButtonsEnabled(true);
+                        safeThis->chainEditor_.hideLoadingState();
+                        if (ok)
+                            safeThis->partialLoad_ = false;
+                        safeThis->updateSlotButtonStates();
+                        if (safeThis->onRefreshUI) safeThis->onRefreshUI();
+                        if (ok && safeThis->onSettingsDirty)
+                            safeThis->onSettingsDirty();
+                        if (!ok && safeThis->onNotification)
+                            safeThis->onNotification(
+                                "Slot copy failed; the active slot was preserved",
+                                NotificationLevel::Error);
+                    });
+                return;
+            }
 
             if (safeThis->presetManager_.copySlot(sourceSlot, targetSlot)) {
                 safeThis->updateSlotButtonStates();
@@ -255,21 +311,8 @@ void PresetSlotBar::mouseDown(const juce::MouseEvent& event)
                         + " to " + juce::String::charToString(PresetManager::slotLabel(targetSlot)),
                         NotificationLevel::Info);
 
-                // If copied TO the active slot, reload chain to reflect new content
-                if (safeThis->presetManager_.getActiveSlot() == targetSlot) {
-                    safeThis->loadingSlot_ = true;
-                    safeThis->chainEditor_.showLoadingState();
-                    safeThis->presetManager_.loadSlotAsync(targetSlot,
-                        [safeThis](bool ok) {
-                            if (!safeThis) return;
-                            safeThis->loadingSlot_ = false;
-                            safeThis->partialLoad_ = !ok;
-                            safeThis->chainEditor_.hideLoadingState();
-                            if (safeThis->onRefreshUI) safeThis->onRefreshUI();
-                            safeThis->updateSlotButtonStates();
-                            if (ok && safeThis->onSettingsDirty) safeThis->onSettingsDirty();
-                        });
-                }
+            } else if (safeThis->onNotification) {
+                safeThis->onNotification("Slot copy failed", NotificationLevel::Error);
             }
         });
 }
@@ -317,28 +360,36 @@ void PresetSlotBar::onSlotClicked(int slotIndex)
 
     // Same slot click = just save current state
     if (presetManager_.getActiveSlot() == slotIndex) {
-        if (!partialLoad_.load())
-            presetManager_.saveSlot(slotIndex);
+        if (!partialLoad_.load() && !presetManager_.saveSlot(slotIndex)
+            && onNotification) {
+            onNotification("Slot could not be saved", NotificationLevel::Error);
+        }
         updateSlotButtonStates();
         return;
     }
 
     // Save current slot first (captures plugin internal state)
     // Skip save if previous load was partial (preserve original slot file)
+    const bool previousPartial = partialLoad_.load(std::memory_order_acquire);
     int currentSlot = presetManager_.getActiveSlot();
-    if (currentSlot >= 0 && !partialLoad_.load())
-        presetManager_.saveSlot(currentSlot);
-    partialLoad_ = false;
-
+    if (currentSlot >= 0 && !previousPartial
+        && !presetManager_.saveSlot(currentSlot)) {
+        if (onNotification)
+            onNotification("Slot switch aborted because the current slot could not be saved",
+                           NotificationLevel::Error);
+        return;
+    }
     // Slot has data -> async load
     if (presetManager_.isSlotOccupied(slotIndex)) {
         loadingSlot_ = true;
         setSlotButtonsEnabled(false);
         chainEditor_.showLoadingState();
-        presetManager_.loadSlotAsync(slotIndex, [safeThis = juce::Component::SafePointer<PresetSlotBar>(this)](bool ok) {
+        presetManager_.loadSlotAsync(slotIndex,
+            [safeThis = juce::Component::SafePointer<PresetSlotBar>(this),
+             previousPartial](bool ok) {
             if (!safeThis) return;
             safeThis->loadingSlot_ = false;
-            safeThis->partialLoad_ = !ok;
+            safeThis->partialLoad_ = ok ? false : previousPartial;
             safeThis->setSlotButtonsEnabled(true);
             safeThis->chainEditor_.hideLoadingState();
             if (safeThis->onRefreshUI) safeThis->onRefreshUI();
@@ -359,6 +410,7 @@ void PresetSlotBar::onSlotClicked(int slotIndex)
         while (chain.getPluginCount() > 0)
             chain.removePlugin(chain.getPluginCount() - 1);
         presetManager_.setActiveSlot(slotIndex);
+        partialLoad_ = false;
         loadingSlot_ = false;
         if (onSettingsDirty) onSettingsDirty();
     }

@@ -1,13 +1,15 @@
 # Building DirectPipe / 빌드 가이드
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적입니다. v4.2.0 로컬 Windows Release 검증은 완료했으며, macOS/Linux는 CI 빌드와 소스 경로를 유지하지만 실기기 오디오 테스트가 제한적입니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. macOS 10.15+ universal is beta. Linux x86_64 is experimental. v4.2.0 local Windows Release verification was completed; macOS/Linux keep CI and source support but have limited real-hardware audio testing.
+> **Current source version / 현재 소스 버전: 4.2.1**
+
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했지만 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 소스·CI 지원만 유지하고 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. The v4.2.1 local Windows Release build and registered software tests were verified, but real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental; both retain source/CI support without hardware verification for this update.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Locally verified for v4.2.0 Release. |
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.1 Release build and registered software tests verified locally; no real-device check. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -198,15 +200,15 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). Current v4.2.0 inventory: **445 CTest registrations** (52 core + 391 host + 2 focused endpoint tests). The host binary contains 36 suites; in the current Windows verification run, 2 host tests are environment-dependent skips.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). Current v4.2.1 inventory: **484 CTest registrations** (59 core + 423 host + 2 focused endpoint tests). The binaries contain 45 suites in total (6 core + 38 host + 1 endpoint); in the current Windows verification run, 2 host tests are environment-dependent skips.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). 현재 v4.2.0 기준 **CTest 등록 445개**(코어 52 + 호스트 391 + endpoint 집중 테스트 2), host binary 36개 suite이며 Windows 검증에서 호스트 테스트 2개는 환경 의존 skip입니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). 현재 v4.2.1 기준 **CTest 등록 484개**(코어 59 + 호스트 423 + endpoint 집중 테스트 2), 전체 45개 suite(코어 6 + 호스트 38 + endpoint 1)이며 Windows 검증에서 호스트 테스트 2개는 환경 의존 skip입니다.
 
 ### directpipe-tests (Core)
 
 | Test Group | Tests | Description |
 |------------|-------|-------------|
-| RingBufferTest | 17 | SPSC ring buffer correctness, concurrency / 링 버퍼 정확성, 동시성 |
+| RingBufferTest | 23 | SPSC ring buffer correctness, atomic consumer claim, restart generation, bounds checks, and concurrency / 링 버퍼 정확성, atomic consumer 획득, 재시작 generation, 경계 검사, 동시성 |
 | SharedMemoryTest | 8 | Shared memory create/map, named events, full IPC pipeline / 공유 메모리 생성/매핑, named event, 전체 IPC 파이프라인 |
 | LatencyTest | 3 | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
 | IPCIntegrationTest | 12 | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
@@ -282,8 +284,7 @@ bash tools/pre-release-test.sh --skip-api
 | 이벤트 / Event | 조건 / Condition | 동작 / Action |
 |---|---|---|
 | Pull Request | `v4` 또는 `main` 브랜치 대상 / targeting `v4` or `main` | Windows/macOS/Linux + Stream Deck 빌드/테스트 (릴리스 업로드 없음) / Build + test (no upload) |
-| Release created | GitHub Release 생성 시 / On release creation | 빌드 + 릴리스 asset 업로드 / Build + upload to release |
-| workflow_dispatch | 수동 실행 + release_tag 입력 / Manual with tag | 빌드 + 지정 릴리스에 업로드 / Build + upload to specified tag |
+| workflow_dispatch | 이미 push된 정확한 `vX.Y.Z` tag 입력 / Manual with an existing exact tag | tag/version 검증 → 전체 빌드/테스트 → draft asset/checksum 업로드 → public latest 공개 / Validate, build/test, upload a complete draft, then publish latest |
 
 ### 빌드 매트릭스 / Build Matrix
 
@@ -298,18 +299,19 @@ bash tools/pre-release-test.sh --skip-api
 
 | Secret | 용도 / Purpose | 없을 때 / Without |
 |---|---|---|
-| `VST2_SDK_B64` | Base64-encoded VST2 SDK archive | VST2 포맷 빌드 생략 / VST2 format skipped |
-| `ASIO_SDK_B64` | Base64-encoded Steinberg ASIO SDK (Windows only) | ASIO 드라이버 비활성 / ASIO driver disabled |
+| `VST2_SDK_B64` | Base64-encoded VST2 SDK archive | PR에서는 VST2 생략, release-tag 실행은 실패 / VST2 skipped on PR; release-tag run fails |
+| `ASIO_SDK_B64` | Base64-encoded Steinberg ASIO SDK (Windows only) | PR에서는 ASIO 비활성, release-tag 실행은 실패 / ASIO disabled on PR; release-tag run fails |
 
 > VST2/ASIO SDK는 라이선스 제약으로 리포지토리에 포함되지 않습니다. CI에서는 Secrets에서 디코딩하여 `thirdparty/` 하위에 복원합니다.
 > VST2/ASIO SDKs are excluded from the repository due to licensing. CI decodes them from Secrets into `thirdparty/`.
 
 ### 릴리스 프로세스 / Release Process
 
-1. GitHub에서 Release 생성 (`--latest` 플래그로 정식 릴리즈) / Create Release on GitHub (use `--latest` for official release)
-2. CI가 자동으로 Windows/macOS/Linux + Stream Deck 빌드 실행 / CI automatically runs Windows/macOS/Linux + Stream Deck builds
-3. `upload-release` job이 모든 빌드 완료 후 asset 업로드 / `upload-release` job uploads after all builds pass
-4. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention
+1. 검증된 commit을 `main`에 push하고 같은 commit에 immutable `vX.Y.Z` tag를 만들어 push / Push the validated commit and its immutable exact tag.
+2. `gh workflow run build.yml --repo LiveTrack-X/DirectPipe -f release_tag=vX.Y.Z`로 `Build & Release` 실행 / Dispatch the workflow with the exact pushed tag.
+3. CI가 tag/version을 확인하고 Windows/macOS/Linux + Stream Deck을 모두 빌드·테스트 / CI validates the tag/version and builds/tests every platform artifact.
+4. 모든 산출물과 `checksums.sha256` 준비 후에만 draft를 public latest로 전환 / Only after every asset and checksum is ready, publish the draft as latest.
+5. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention.
 
-> v4.0.0부터 `--latest`로 정식 릴리즈를 운용합니다. v3 사용자의 자동 업데이터는 플랫폼 태그(`-Windows.zip` 등)로 올바른 바이너리를 다운로드하므로 안전합니다. 릴리즈 전 점검은 `TESTING.md`와 본 문서의 CI 섹션을 기준으로 진행하세요.
-> Since v4.0.0, releases use `--latest`. v3 users' auto-updater safely downloads the correct binary via platform tags (`-Windows.zip`, etc.). For pre-release checks, follow `TESTING.md` and the CI section in this document.
+> Release CI가 마지막 publish 단계에서 `--latest`를 명시합니다. 공개 GitHub Release를 먼저 수동 생성하지 마세요. asset 없는 public latest를 막기 위해 CI가 완성된 draft를 직접 생성·공개합니다.
+> Release CI explicitly sets `--latest` only in its final publish step. Do not create the public GitHub Release first; CI creates and publishes the complete draft so an assetless public latest cannot appear.

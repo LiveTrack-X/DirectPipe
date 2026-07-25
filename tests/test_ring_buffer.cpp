@@ -11,6 +11,8 @@
 #include <vector>
 #include <thread>
 #include <atomic>
+#include <array>
+#include <memory>
 #include <numeric>
 #include <cmath>
 #include <chrono>
@@ -61,9 +63,88 @@ TEST_F(RingBufferTest, AttachAsConsumer) {
     EXPECT_EQ(consumer.getSampleRate(), kSampleRate);
 }
 
+TEST_F(RingBufferTest, ProducerGenerationChangesAndOldDetachDoesNotClearNewConsumer) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    RingBuffer oldConsumer;
+    ASSERT_TRUE(oldConsumer.attachAsConsumer(alignedMem_));
+    const auto oldGeneration = oldConsumer.getAttachedProducerGeneration();
+    ASSERT_NE(oldGeneration, 0u);
+
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+    RingBuffer newConsumer;
+    ASSERT_TRUE(newConsumer.attachAsConsumer(alignedMem_));
+    EXPECT_NE(oldGeneration, newConsumer.getAttachedProducerGeneration());
+
+    auto* header = static_cast<DirectPipeHeader*>(alignedMem_);
+    ASSERT_TRUE(header->consumer_active.load(std::memory_order_acquire));
+    oldConsumer.detach();
+    EXPECT_TRUE(header->consumer_active.load(std::memory_order_acquire));
+    newConsumer.detach();
+    EXPECT_FALSE(header->consumer_active.load(std::memory_order_acquire));
+}
+
+TEST_F(RingBufferTest, ConcurrentAttachClaimsConsumerFlagAtomically) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    constexpr size_t kConsumerCount = 16;
+    std::array<std::unique_ptr<RingBuffer>, kConsumerCount> consumers;
+    std::array<bool, kConsumerCount> attached{};
+    std::array<bool, kConsumerCount> warned{};
+    std::vector<std::thread> threads;
+    threads.reserve(kConsumerCount);
+
+    std::atomic<size_t> ready{0};
+    std::atomic<bool> start{false};
+    for (size_t index = 0; index < kConsumerCount; ++index) {
+        consumers[index] = std::make_unique<RingBuffer>();
+        threads.emplace_back([&, index] {
+            ready.fetch_add(1, std::memory_order_release);
+            while (!start.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            attached[index] = consumers[index]->attachAsConsumer(alignedMem_);
+            warned[index] = consumers[index]->anotherConsumerWasActive();
+        });
+    }
+
+    while (ready.load(std::memory_order_acquire) != kConsumerCount)
+        std::this_thread::yield();
+    start.store(true, std::memory_order_release);
+    for (auto& thread : threads)
+        thread.join();
+
+    EXPECT_EQ(std::count(attached.begin(), attached.end(), true),
+              static_cast<ptrdiff_t>(kConsumerCount));
+    EXPECT_EQ(std::count(warned.begin(), warned.end(), false), 1);
+}
+
+TEST_F(RingBufferTest, StaleConsumerHeuristicStillSuppressesWarning) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    auto* header = static_cast<DirectPipeHeader*>(alignedMem_);
+    header->consumer_active.store(true, std::memory_order_release);
+    header->write_pos.store(kCapacity, std::memory_order_relaxed);
+    header->read_pos.store(0, std::memory_order_relaxed);
+
+    RingBuffer replacementConsumer;
+    ASSERT_TRUE(replacementConsumer.attachAsConsumer(alignedMem_));
+    EXPECT_FALSE(replacementConsumer.anotherConsumerWasActive());
+}
+
 TEST_F(RingBufferTest, AttachFailsOnNullMemory) {
     RingBuffer rb;
     EXPECT_FALSE(rb.attachAsConsumer(nullptr));
+    EXPECT_FALSE(rb.isValid());
+}
+
+TEST_F(RingBufferTest, AttachRejectsTruncatedMappingBeforeDereference) {
+    RingBuffer rb;
+    auto* inaccessibleAddress = reinterpret_cast<void*>(static_cast<uintptr_t>(1));
+    EXPECT_FALSE(rb.attachAsConsumer(inaccessibleAddress,
+                                     sizeof(DirectPipeHeader) - 1));
     EXPECT_FALSE(rb.isValid());
 }
 
@@ -95,6 +176,20 @@ TEST_F(RingBufferTest, SingleWriteAndRead) {
     for (size_t i = 0; i < writeData.size(); ++i) {
         EXPECT_FLOAT_EQ(writeData[i], readData[i]) << "Mismatch at index " << i;
     }
+}
+
+TEST_F(RingBufferTest, DiscardAdvancesConsumerWithoutCopying) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+    RingBuffer consumer;
+    ASSERT_TRUE(consumer.attachAsConsumer(alignedMem_));
+
+    std::vector<float> data(128 * kChannels, 0.25f);
+    ASSERT_EQ(producer.write(data.data(), 128), 128u);
+    EXPECT_EQ(consumer.discard(96), 96u);
+    EXPECT_EQ(consumer.availableRead(), 32u);
+    EXPECT_EQ(consumer.discard(100), 32u);
+    EXPECT_EQ(consumer.availableRead(), 0u);
 }
 
 TEST_F(RingBufferTest, MultipleWriteAndRead) {
@@ -166,6 +261,21 @@ TEST_F(RingBufferTest, OverflowDropsFrames) {
     std::vector<float> bigData((kCapacity + 100) * kChannels, 1.0f);
     uint32_t written = producer.write(bigData.data(), kCapacity + 100);
     EXPECT_EQ(written, kCapacity);  // Only capacity frames should be written
+}
+
+TEST_F(RingBufferTest, CorruptUsedDistanceFailsWriteClosed) {
+    RingBuffer producer;
+    producer.initAsProducer(alignedMem_, kCapacity, kChannels, kSampleRate);
+
+    auto* header = static_cast<DirectPipeHeader*>(alignedMem_);
+    header->write_pos.store(static_cast<uint64_t>(kCapacity) + 1,
+                            std::memory_order_relaxed);
+    header->read_pos.store(0, std::memory_order_relaxed);
+
+    std::vector<float> oneFrame(kChannels, 1.0f);
+    EXPECT_EQ(producer.write(oneFrame.data(), 1), 0u);
+    EXPECT_EQ(header->write_pos.load(std::memory_order_relaxed),
+              static_cast<uint64_t>(kCapacity) + 1);
 }
 
 TEST_F(RingBufferTest, UnderrunReturnsZero) {

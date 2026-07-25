@@ -86,6 +86,7 @@ public:
 private:
     void timerCallback() override;
     void markSettingsDirty();
+    void clearPresetRuntimeForMaintenance();
     void syncStartMinimizedToTrayToggle();
     void updateAutoButtonVisual();
 

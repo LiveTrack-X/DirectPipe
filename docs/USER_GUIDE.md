@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 4.2.0** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Version 4.2.1** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.0 로컬 Windows Release 검증은 완료했으며, macOS/Linux는 CI 빌드와 소스 경로를 유지하지만 실기기 오디오 검증 범위가 제한적입니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했지만 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았습니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). v4.2.0 local Windows Release verification was completed; macOS/Linux keep CI/source support but have limited real-hardware audio validation.
+> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The v4.2.1 local Windows Release build and registered software tests were verified, but real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)
@@ -633,12 +633,13 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 |---|---|
 | **REC / STOP** | 녹음 시작/중지 / Start/stop recording |
 | **경과 시간 / Elapsed** | mm:ss 형식으로 표시 / Displayed in mm:ss format |
-| **Play** | 마지막 녹음 파일을 기본 플레이어로 재생 / Play last recording in default player |
+| **Play** | 현재 선택 폴더의 최신 완료 녹음을 기본 플레이어로 재생 / Play the newest completed recording in the currently selected folder with the default player |
 | **Open Folder** | 녹음 폴더를 파일 관리자에서 열기 / Open recording folder in file manager |
 | **... (폴더 변경 / Change folder)** | 녹음 폴더 변경 (자동 저장) / Change recording folder (auto-saved) |
 
 - **기본 폴더 / Default folder**: `Documents/DirectPipe Recordings`
-- **파일명 / Filename**: `DirectPipe_YYYYMMDD_HHMMSS.wav`
+- **파일명 / Filename**: `DirectPipe_YYYYMMDD_HHMMSS.wav` (같은 초에 다시 시작하면 충돌 방지 suffix 추가 / a collision-avoiding suffix is added for restarts in the same second)
+- 앱 시작이나 폴더 변경 시 선택한 폴더의 최신 완료 파일만 복원합니다. 이전 폴더에서 늦게 도착한 완료 알림은 Play 대상을 바꾸지 않습니다. 녹음 폴더 설정 저장이 실패하면 UI와 실제 녹음 폴더를 이전 값으로 롤백하고 경고합니다. / On startup or folder change, only the newest completed file in the selected folder is restored. A late completion from a previous folder does not change Play. If recording-folder persistence fails, both the UI and live recording folder roll back and a warning is shown.
 - **외부 제어 / External control**: Stream Deck (경과 시간 표시 / elapsed time display), HTTP API (`/api/recording/toggle`), WebSocket (`recording_toggle`)
 - 녹음은 RT-safe try-lock/drop 방식 — teardown 경합 시 오디오 스레드 spin 대신 해당 녹음 블록을 drop / Recording uses RT-safe try-lock/drop — during teardown contention it drops that recording block instead of spinning the audio thread
 
@@ -1139,7 +1140,7 @@ View all app events (audio engine, plugins, WebSocket, HTTP, etc.) in real-time.
 
 | 기능 / Function | 설명 / Description |
 |---|---|
-| **Full Backup** | 전체 백업 (설정 + VST 체인 + 슬롯 A-E + Auto + 컨트롤) → `.dpfullbackup` 파일. 백업에 플랫폼 정보 포함 / Full backup (settings + VST chain + slots A-E + Auto + controls) → `.dpfullbackup` file. Includes platform info |
+| **Full Backup** | 전체 백업 (설정 + 녹음 폴더 + VST 체인 + 슬롯 A-E + Auto + 컨트롤) → `.dpfullbackup` 파일. 백업에 플랫폼 정보 포함 / Full backup (settings + recording folder + VST chain + slots A-E + Auto + controls) → `.dpfullbackup` file. Includes platform info |
 | **Full Restore** | `.dpfullbackup` 파일에서 전체 복원. **같은 OS끼리만 가능** (Windows 백업은 Windows에서만, macOS 백업은 macOS에서만 복원). slot 파일 clear/write가 실패하면 건드린 quick-slot 파일은 이전 상태로 롤백됨 / Restore from `.dpfullbackup`. **Same OS only** (Windows backup → Windows, macOS → macOS). If slot clear/write fails, touched quick-slot files roll back to their previous state |
 | **Clear Plugin Cache** | 스캔된 플러그인 목록 삭제 (다음 Scan 시 재스캔) / Delete scanned plugin list (re-scan on next Scan) |
 | **Clear All Presets** | 퀵 슬롯 A~E + Auto 슬롯 + 사용자 프리셋 전체 삭제, 현재 체인/슬롯 이름/프리로드 캐시도 클리어 / Delete all quick slots (A-E + Auto) + user presets, clears active chain, slot names, and preload cache |
@@ -1153,9 +1154,11 @@ DirectPipe는 실행 시 자동으로 GitHub에서 최신 버전을 확인합니
 
 1. **새 버전 발견** → 하단 credit 라벨에 **"NEW vX.Y.Z"** 주황색 표시 / **New version found** → orange **"NEW vX.Y.Z"** on credit label
 2. **라벨 클릭** → 업데이트 다이얼로그 / **Click label** → update dialog:
-   - **Update Now** — GitHub에서 자동 다운로드 → exe 교체 → 앱 재시작 / Auto-download from GitHub → replace exe → restart app
+   - **Update Now** — Windows 인앱 업데이트. v4.2.0 이후 릴리즈는 정확히 일치하는 `checksums.sha256` 항목과 SHA-256을 필수 확인한 뒤 다운로드·교체·재시작하며, checksum을 읽을 수 없거나 불일치하면 중단 / Windows in-app update. Releases v4.2.0+ require an exact readable `checksums.sha256` entry and matching SHA-256 before download, replacement, and restart; unreadable or mismatched metadata fails closed
    - **View on GitHub** — 브라우저에서 릴리즈 페이지 열기 / Open release page in browser
    - **Later** — 닫기 (다음 실행 시 다시 알림) / Dismiss (reminds again on next launch)
+
+브라우저 수동 다운로드는 인앱 checksum 검사 밖이며, macOS/Linux는 릴리즈 페이지를 엽니다. / Manual browser downloads are outside the in-app checksum check; macOS/Linux open the release page.
 3. **업데이트 완료** → 재시작 후 **"Updated to vX.Y.Z successfully!"** 알림 (보라색) / **Update complete** → purple **"Updated to vX.Y.Z successfully!"** notification after restart
 
 > **인터넷 미연결 시**: 오류 없이 기존 버전이 정상 동작합니다.
@@ -1311,13 +1314,13 @@ Playing monitor output through speakers creates an **echo/feedback loop** as the
 2. DirectPipe 하단의 **VST** 버튼이 **초록색**(IPC ON)인지 확인
 3. OBS의 VST 필터에서 **"DirectPipe Receiver"**가 선택되어 있는지 확인
 4. DirectPipe를 **먼저 실행**한 뒤 OBS를 시작하면 자동 연결됨
-5. OBS가 먼저 실행된 경우: Receiver가 100 오디오 블록마다 자동 재연결을 시도합니다 (버퍼 512 @ 48kHz 기준 ~1초). DirectPipe 실행 후 잠시 대기
+5. OBS가 먼저 실행된 경우: Receiver의 background connection worker가 약 100ms마다 연결 가능 여부를 확인합니다. DirectPipe 실행 후 잠시 대기
 
 1. Check **DirectPipe is running** (system tray / menu bar icon)
 2. Check the **VST** button at bottom of DirectPipe is **green** (IPC ON)
 3. Verify **"DirectPipe Receiver"** is selected in OBS VST filter
 4. Start **DirectPipe first**, then OBS — auto-connects
-5. If OBS started first: Receiver auto-retries every ~1 second, just wait after launching DirectPipe
+5. If OBS started first: the Receiver background connection worker checks about every 100ms; just wait after launching DirectPipe
 
 ### DirectPipe 종료/크래시 시 각 출력의 동작 / What happens when DirectPipe closes or crashes
 
@@ -1328,9 +1331,9 @@ Playing monitor output through speakers creates an **echo/feedback loop** as the
 | **MON** (모니터 → 헤드폰 / Monitor → Headphones) | 즉시 무음 (오디오 콜백 중단) / Immediate silence (audio callback stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
 | **REC** (WAV 녹음 / WAV Recording) | 녹음 파일 자동 마무리 (FIFO 플러시 후 파일 닫기). 녹음 중이었다면 중단 시점까지 저장됨 / Recording file auto-finalized (FIFO flushed, file closed). Saved up to the point of closure | 재시작 후 수동 녹음 시작 / Manually start recording after restart |
 
-> **OBS Receiver 자동 재연결**: DirectPipe를 다시 시작하면 DirectPipe Receiver가 100 오디오 블록마다 공유 메모리 연결을 시도합니다 (버퍼 크기에 따라 ~0.5-2초). DirectPipe에서 IPC를 켜면(VST 버튼 초록) 자동으로 재연결됩니다 — OBS를 재시작할 필요 없음.
+> **OBS Receiver 자동 재연결**: DirectPipe를 다시 시작하면 DirectPipe Receiver의 background worker가 약 100ms마다 공유 메모리 연결을 확인합니다. DirectPipe에서 IPC를 켜면(VST 버튼 초록) 자동으로 재연결됩니다 — OBS를 재시작할 필요 없음.
 >
-> **OBS Receiver auto-reconnect**: After restarting DirectPipe, DirectPipe Receiver attempts shared memory connection every ~1 second. Once IPC is enabled (VST button green), it reconnects automatically — no need to restart OBS.
+> **OBS Receiver auto-reconnect**: After restarting DirectPipe, the Receiver background worker checks shared memory about every 100ms. Once IPC is enabled (VST button green), it reconnects automatically — no need to restart OBS.
 
 > **Discord 자동 복구**: DirectPipe가 재시작되면 가상 케이블로의 오디오 출력이 자동으로 재개됩니다. Discord에서 별도 조작 없이 마이크가 다시 작동합니다.
 >

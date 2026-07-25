@@ -2,7 +2,9 @@
 // Copyright (C) 2025 LiveTrack
 #include <gtest/gtest.h>
 #include "../host/Source/Audio/BuiltinNoiseRemoval.h"
+#include <array>
 #include <cmath>
+#include <vector>
 
 using namespace directpipe;
 
@@ -107,10 +109,7 @@ TEST_F(BuiltinNoiseRemovalTest, LatencyReport) {
     // Non-48kHz — passthrough mode
     BuiltinNoiseRemoval nr44;
     nr44.prepareToPlay(44100.0, 512);
-    // Note: setLatencySamples(480) is called unconditionally in prepareToPlay,
-    // so latency is reported as 480 even in passthrough mode.
-    // This is the current implementation behavior.
-    EXPECT_EQ(nr44.getLatencySamples(), 480);
+    EXPECT_EQ(nr44.getLatencySamples(), 0);
 }
 
 // 6. MonoBuffer: processBlock with 1-channel buffer should not crash
@@ -168,4 +167,69 @@ TEST(BuiltinNoiseRemovalFifoTest, FifoCounterOverflowDoesNotSilence)
     uint32_t oldRead  = UINT32_MAX - 5;
     uint32_t oldWrite = writePos;
     EXPECT_FALSE(oldRead < oldWrite);  // BUG: false even though data exists
+}
+
+namespace {
+
+std::vector<float> processNoiseRemovalSequence(const std::vector<float>& input,
+                                               int blockSize)
+{
+    EXPECT_EQ(input.size() % static_cast<size_t>(blockSize), 0u);
+
+    BuiltinNoiseRemoval processor;
+    processor.prepareToPlay(48000.0, blockSize);
+
+    std::vector<float> output(input.size(), 0.0f);
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> block(1, blockSize);
+
+    for (size_t offset = 0; offset < input.size(); offset += static_cast<size_t>(blockSize)) {
+        for (int i = 0; i < blockSize; ++i)
+            block.setSample(0, i, input[offset + static_cast<size_t>(i)]);
+
+        processor.processBlock(block, midi);
+
+        for (int i = 0; i < blockSize; ++i)
+            output[offset + static_cast<size_t>(i)] = block.getSample(0, i);
+    }
+
+    return output;
+}
+
+} // namespace
+
+TEST(BuiltinNoiseRemovalFifoTest, FixedLatencyAndOrderingAreBlockSizeInvariantThrough4096)
+{
+    // 61,440 is divisible by every callback size below and by RNNoise's
+    // 480-sample frame, so all processors receive the exact same sample stream.
+    constexpr size_t totalSamples = 61440;
+    constexpr std::array<int, 7> blockSizes{128, 256, 480, 512, 1024, 2048, 4096};
+
+    std::vector<float> input(totalSamples);
+    for (size_t i = 0; i < input.size(); ++i) {
+        const auto phase = static_cast<float>(i);
+        input[i] = 0.22f * std::sin(phase * 0.031f)
+                 + 0.07f * std::sin(phase * 0.113f);
+    }
+
+    const auto reference = processNoiseRemovalSequence(input, 480);
+    ASSERT_EQ(reference.size(), input.size());
+
+    // The processor declares exactly one RNNoise frame of latency.
+    for (int i = 0; i < 480; ++i)
+        ASSERT_FLOAT_EQ(reference[static_cast<size_t>(i)], 0.0f);
+
+    bool observedProcessedAudio = false;
+    for (size_t i = 480; i < reference.size(); ++i)
+        observedProcessedAudio = observedProcessedAudio || std::abs(reference[i]) > 1.0e-7f;
+    ASSERT_TRUE(observedProcessedAudio);
+
+    for (const int blockSize : blockSizes) {
+        const auto actual = processNoiseRemovalSequence(input, blockSize);
+        ASSERT_EQ(actual.size(), reference.size());
+        for (size_t i = 0; i < reference.size(); ++i) {
+            ASSERT_NEAR(actual[i], reference[i], 1.0e-7f)
+                << "blockSize=" << blockSize << " sample=" << i;
+        }
+    }
 }

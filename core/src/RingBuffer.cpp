@@ -25,9 +25,36 @@
 #include "directpipe/Constants.h"
 #include <cassert>
 #include <algorithm>
+#include <chrono>
 #include <limits>
 
 namespace directpipe {
+
+namespace {
+uint64_t nextProducerGeneration()
+{
+    // Seed once per process, then increment.  The previous ticks XOR counter
+    // scheme could repeat within one process (for example when the clock and
+    // counter deltas happened to cancel each other), defeating restart
+    // detection.  Combining wall and monotonic clocks makes process-restart
+    // collisions vanishingly unlikely, while fetch_add guarantees uniqueness
+    // for every producer lifetime in this process.
+    const auto seed = [] {
+        const auto wall = static_cast<uint64_t>(
+            std::chrono::system_clock::now().time_since_epoch().count());
+        const auto monotonic = static_cast<uint64_t>(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+        const auto mixed = wall ^ (monotonic + 0x9e3779b97f4a7c15ULL
+                                   + (wall << 6) + (wall >> 2));
+        return mixed != 0 ? mixed : 1ULL;
+    }();
+    static std::atomic<uint64_t> next{seed};
+    auto generation = next.fetch_add(1, std::memory_order_relaxed);
+    if (generation == 0)
+        generation = next.fetch_add(1, std::memory_order_relaxed);
+    return generation;
+}
+} // namespace
 
 void RingBuffer::initAsProducer(void* memory, uint32_t capacity_frames,
                                  uint32_t channels, uint32_t sample_rate)
@@ -47,6 +74,7 @@ void RingBuffer::initAsProducer(void* memory, uint32_t capacity_frames,
     header_->channels = channels;
     header_->buffer_frames = capacity_frames;
     header_->version = PROTOCOL_VERSION;
+    header_->producer_generation.store(nextProducerGeneration(), std::memory_order_relaxed);
     header_->producer_active.store(true, std::memory_order_release);
 
     // PCM data starts right after the header
@@ -60,6 +88,8 @@ void RingBuffer::initAsProducer(void* memory, uint32_t capacity_frames,
 bool RingBuffer::attachAsConsumer(void* memory, size_t mappedSizeBytes)
 {
     if (!memory) return false;
+    if (mappedSizeBytes != 0 && mappedSizeBytes < sizeof(DirectPipeHeader))
+        return false;
 
     detached_.store(false, std::memory_order_relaxed);
 
@@ -103,17 +133,24 @@ bool RingBuffer::attachAsConsumer(void* memory, size_t mappedSizeBytes)
 
     data_ = reinterpret_cast<float*>(static_cast<uint8_t*>(memory) + sizeof(DirectPipeHeader));
     mask_ = header_->buffer_frames - 1;
+    attachedGeneration_ = header_->producer_generation.load(std::memory_order_acquire);
 
     // Check if another consumer is already reading this buffer (SPSC violation).
     // We still connect (audio will likely be corrupted), but flag it for UI warning.
-    if (header_->consumer_active.load(std::memory_order_acquire)) {
+    // Claim the single-consumer slot atomically. A load followed by a store lets
+    // two simultaneous Receiver instances both observe false and suppress the
+    // warning, even though both will advance the same read position.
+    const bool consumerWasActive =
+        header_->consumer_active.exchange(true, std::memory_order_acq_rel);
+    if (consumerWasActive) {
         // Check if previous consumer is actually reading — if read_pos is far behind
         // write_pos, assume the previous consumer crashed (stale flag)
         const uint64_t wp = header_->write_pos.load(std::memory_order_relaxed);
         const uint64_t rp = header_->read_pos.load(std::memory_order_relaxed);
         const uint64_t behind = wp - rp;  // unsigned diff, handles 64-bit wrap
         if (behind > (header_->buffer_frames * 80ULL) / 100ULL) {
-            // Previous consumer is stale (not reading) — clear flag, proceed normally
+            // Previous consumer is stale (not reading) — suppress the warning
+            // while retaining this connection's atomic claim.
             anotherConsumerWasActive_ = false;
         } else {
             anotherConsumerWasActive_ = true;
@@ -121,8 +158,6 @@ bool RingBuffer::attachAsConsumer(void* memory, size_t mappedSizeBytes)
     } else {
         anotherConsumerWasActive_ = false;
     }
-    header_->consumer_active.store(true, std::memory_order_release);
-
     return true;
 }
 
@@ -144,7 +179,11 @@ uint32_t RingBuffer::write(const float* data, uint32_t frames)
 
     // Calculate available space
     const uint64_t used = write_pos - read_pos;
-    const uint32_t available = capacity - static_cast<uint32_t>(used);
+    // Corrupt or restart-crossed positions must fail closed as a full buffer.
+    // Without the clamp, narrowing an underflowed 64-bit distance could make
+    // available exceed capacity and drive the wrap copy past the mapped ring.
+    const uint64_t clampedUsed = std::min(used, static_cast<uint64_t>(capacity));
+    const uint32_t available = capacity - static_cast<uint32_t>(clampedUsed);
     const uint32_t to_write = std::min(frames, available);
 
     if (to_write == 0) return 0;
@@ -211,6 +250,22 @@ uint32_t RingBuffer::read(float* data, uint32_t frames)
     header_->read_pos.store(read_pos + to_read, std::memory_order_release);
 
     return to_read;
+}
+
+uint32_t RingBuffer::discard(uint32_t frames)
+{
+    if (detached_.load(std::memory_order_acquire)) return 0;
+    if (!isValid() || frames == 0) return 0;
+
+    const uint64_t writePos = header_->write_pos.load(std::memory_order_acquire);
+    const uint64_t readPos = header_->read_pos.load(std::memory_order_relaxed);
+    const uint64_t available64 = writePos - readPos;
+    const uint32_t available = static_cast<uint32_t>(
+        std::min(available64, static_cast<uint64_t>(header_->buffer_frames)));
+    const uint32_t toDiscard = std::min(frames, available);
+    if (toDiscard != 0)
+        header_->read_pos.store(readPos + toDiscard, std::memory_order_release);
+    return toDiscard;
 }
 
 uint32_t RingBuffer::availableRead() const

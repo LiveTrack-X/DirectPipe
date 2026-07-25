@@ -1,0 +1,41 @@
+version: 2
+updated: 2026-07-15
+scale: full
+execution_scope: packet
+
+active_spec: SPEC/SPEC-COMPLETE.md
+active_packet:
+  id: DP-421-0001
+  objective: Resolve the verified v4.2.1 reliability findings without breaking v4.2.x compatibility.
+  status: software_verified
+
+validation_for: DP-421-0001
+owner_gates:
+  - release_publication_requires_explicit_owner_instruction
+  - incompatible_ipc_api_or_streamdeck_change_requires_owner_decision
+
+validation:
+  - command: cmake.exe --build build --config Release --parallel
+    proves: The integrated Windows Release app, Receiver VST2/VST3, and test targets compile.
+  - command: ctest.exe --test-dir build -C Release --output-on-failure --timeout 30
+    proves: 484 registered tests complete with 0 failures and 2 declared environment-dependent skips.
+  - command: directpipe-tests.exe --gtest_filter=IPCIntegrationTest.EventSignaledPipeline --gtest_repeat=100 --gtest_break_on_failure
+    proves: Coalesced Windows NamedEvent wake-ups no longer make the IPC integration test hang.
+  - command: 'npm test && npm run build && npm run validate'
+    proves: Stream Deck tests pass 5 of 5 and its production bundle and package metadata validate.
+  - command: C:/Program Files/Git/bin/bash.exe tools/pre-release-test.sh --version-only
+    proves: Version and release metadata are internally aligned for 4.2.1, including byte-identical release bodies.
+  - command: python tools/check_text_integrity.py --repo-root .
+    proves: Repository text and documentation remain decodable and safe to process.
+  - command: python C:/Users/livet/.codex/tmp/sdad-doctor-v3.2.2/scripts/sdad.py doctor . --require-version 3.2.2 --strict
+    proves: The Full SDAD packet, ledgers, owner gates, and validation contract are structurally coherent.
+  - command: git diff --check
+    proves: The combined owner and v4.2.1 patch has no whitespace errors.
+
+routed_docs:
+  - SPEC/SPEC-COMPLETE.md
+  - SPEC/DP-421-0001.md
+  - docs/TODO-Open-Items.md
+  - review-findings.md
+  - docs/implementation-notes.md
+  - docs/Repository-Operating-Rules.md

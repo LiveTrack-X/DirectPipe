@@ -53,7 +53,8 @@ public:
                                            ControlMappingStore& controlStore,
                                            bool runtimeStateIsStable);
 
-    /** Import everything: settings + VST chain + all preset slots.
+    /** Legacy synchronous restore for backups without a plugins property.
+     *  Full backups containing a VST chain must use importFullBackupAsync().
      *  runtimeStateIsStableBeforeRestore must only be true after the caller has
      *  exclusively claimed the load operation and verified that no partial or
      *  unstable VST-chain transition is active. */
@@ -61,6 +62,15 @@ public:
                                   PresetManager& presetManager,
                                   ControlMappingStore& controlStore,
                                   bool runtimeStateIsStableBeforeRestore);
+
+    /** Transactional full restore. The VST chain remains live until all target
+     *  processors are ready and disk/control changes can be committed. */
+    static void importFullBackupAsync(
+        const juce::String& json,
+        PresetManager& presetManager,
+        ControlMappingStore& controlStore,
+        bool runtimeStateIsStableBeforeRestore,
+        std::function<void(bool)> onComplete);
 
     /** Returns the platform string for the current OS ("windows", "macos", "linux"). */
     static juce::String getCurrentPlatform();
@@ -87,6 +97,12 @@ public:
     /** Show async load FileChooser with platform check. importer(json) returns success. */
     static void showLoadDialog(const juce::String& filter,
                                 std::function<bool(const juce::String& json)> importer);
+
+    /** Show a load dialog for an importer that completes asynchronously. */
+    static void showLoadDialogAsync(
+        const juce::String& filter,
+        std::function<void(const juce::String& json,
+                           std::function<void(bool)> onComplete)> importer);
 };
 
 } // namespace directpipe

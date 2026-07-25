@@ -36,10 +36,14 @@ namespace directpipe {
 SharedMemory::~SharedMemory() { close(); }
 
 SharedMemory::SharedMemory(SharedMemory&& other) noexcept
-    : data_(other.data_), size_(other.size_), isCreator_(other.isCreator_), mapping_(other.mapping_)
+    : data_(other.data_), size_(other.size_), objectIdentity_(other.objectIdentity_),
+      createOpenedExistingObject_(other.createOpenedExistingObject_),
+      isCreator_(other.isCreator_), mapping_(other.mapping_)
 {
     other.data_ = nullptr;
     other.size_ = 0;
+    other.objectIdentity_ = 0;
+    other.createOpenedExistingObject_ = false;
     other.isCreator_ = false;
     other.mapping_ = nullptr;
 }
@@ -50,10 +54,14 @@ SharedMemory& SharedMemory::operator=(SharedMemory&& other) noexcept
         close();
         data_ = other.data_;
         size_ = other.size_;
+        objectIdentity_ = other.objectIdentity_;
+        createOpenedExistingObject_ = other.createOpenedExistingObject_;
         isCreator_ = other.isCreator_;
         mapping_ = other.mapping_;
         other.data_ = nullptr;
         other.size_ = 0;
+        other.objectIdentity_ = 0;
+        other.createOpenedExistingObject_ = false;
         other.isCreator_ = false;
         other.mapping_ = nullptr;
     }
@@ -67,6 +75,7 @@ bool SharedMemory::create(const std::string& name, size_t size)
     DWORD sizeHigh = static_cast<DWORD>((size >> 32) & 0xFFFFFFFF);
     DWORD sizeLow = static_cast<DWORD>(size & 0xFFFFFFFF);
 
+    SetLastError(ERROR_SUCCESS);
     mapping_ = CreateFileMappingA(
         INVALID_HANDLE_VALUE,  // Use paging file
         nullptr,               // Default security
@@ -76,15 +85,35 @@ bool SharedMemory::create(const std::string& name, size_t size)
     );
 
     if (!mapping_) return false;
+    const bool openedExisting = GetLastError() == ERROR_ALREADY_EXISTS;
 
-    data_ = MapViewOfFile(mapping_, FILE_MAP_ALL_ACCESS, 0, 0, size);
+    // CreateFileMapping ignores the requested size when the named object already
+    // exists. Map the complete retained object in that case: the previous
+    // producer may have used a different ring-buffer configuration, and mapping
+    // the new (larger) requested size would fail before we can quiesce it.
+    const SIZE_T bytesToMap = openedExisting ? 0 : size;
+    data_ = MapViewOfFile(mapping_, FILE_MAP_ALL_ACCESS, 0, 0, bytesToMap);
     if (!data_) {
         CloseHandle(mapping_);
         mapping_ = nullptr;
         return false;
     }
 
-    size_ = size;
+    if (openedExisting) {
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(data_, &mbi, sizeof(mbi)) != sizeof(mbi)
+            || mbi.RegionSize == 0) {
+            UnmapViewOfFile(data_);
+            data_ = nullptr;
+            CloseHandle(mapping_);
+            mapping_ = nullptr;
+            return false;
+        }
+        size_ = mbi.RegionSize;
+    } else {
+        size_ = size;
+    }
+    createOpenedExistingObject_ = openedExisting;
     isCreator_ = true;  // Mark as creator so close() can clean up properly
     return true;
 }
@@ -138,6 +167,8 @@ void SharedMemory::close()
         mapping_ = nullptr;
     }
     size_ = 0;
+    objectIdentity_ = 0;
+    createOpenedExistingObject_ = false;
     isCreator_ = false;
 }
 
@@ -216,11 +247,15 @@ namespace directpipe {
 SharedMemory::~SharedMemory() { close(); }
 
 SharedMemory::SharedMemory(SharedMemory&& other) noexcept
-    : data_(other.data_), size_(other.size_), isCreator_(other.isCreator_),
+    : data_(other.data_), size_(other.size_), objectIdentity_(other.objectIdentity_),
+      createOpenedExistingObject_(other.createOpenedExistingObject_),
+      isCreator_(other.isCreator_),
       fd_(other.fd_), name_(::std::move(other.name_))
 {
     other.data_ = nullptr;
     other.size_ = 0;
+    other.objectIdentity_ = 0;
+    other.createOpenedExistingObject_ = false;
     other.isCreator_ = false;
     other.fd_ = -1;
 }
@@ -231,11 +266,15 @@ SharedMemory& SharedMemory::operator=(SharedMemory&& other) noexcept
         close();
         data_ = other.data_;
         size_ = other.size_;
+        objectIdentity_ = other.objectIdentity_;
+        createOpenedExistingObject_ = other.createOpenedExistingObject_;
         isCreator_ = other.isCreator_;
         fd_ = other.fd_;
         name_ = ::std::move(other.name_);
         other.data_ = nullptr;
         other.size_ = 0;
+        other.objectIdentity_ = 0;
+        other.createOpenedExistingObject_ = false;
         other.isCreator_ = false;
         other.fd_ = -1;
     }
@@ -258,6 +297,13 @@ static ::std::string toPosixName(const ::std::string& name)
     return "/" + result;
 }
 
+static uint64_t identityFromStat(const struct ::stat& st)
+{
+    auto identity = static_cast<uint64_t>(st.st_ino)
+                  ^ (static_cast<uint64_t>(st.st_dev) * 0x9e3779b97f4a7c15ULL);
+    return identity != 0 ? identity : 1;
+}
+
 bool SharedMemory::create(const ::std::string& name, size_t size)
 {
     close();
@@ -275,6 +321,15 @@ bool SharedMemory::create(const ::std::string& name, size_t size)
         fd_ = -1;
         return false;
     }
+
+    struct ::stat st{};
+    if (fstat(fd_, &st) < 0) {
+        ::close(fd_);
+        shm_unlink(name_.c_str());
+        fd_ = -1;
+        return false;
+    }
+    objectIdentity_ = identityFromStat(st);
 
     data_ = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (data_ == MAP_FAILED) {
@@ -298,14 +353,16 @@ bool SharedMemory::open(const ::std::string& name, size_t size)
     fd_ = shm_open(name_.c_str(), O_RDWR, 0600);
     if (fd_ < 0) return false;
 
+    struct ::stat st{};
+    if (fstat(fd_, &st) < 0) {
+        ::close(fd_);
+        fd_ = -1;
+        return false;
+    }
+    objectIdentity_ = identityFromStat(st);
+
     size_t mapSize = size;
     if (mapSize == 0) {
-        struct ::stat st;
-        if (fstat(fd_, &st) < 0) {
-            ::close(fd_);
-            fd_ = -1;
-            return false;
-        }
         mapSize = static_cast<size_t>(st.st_size);
         if (mapSize == 0) {
             ::close(fd_);
@@ -345,6 +402,8 @@ void SharedMemory::close()
     }
     name_.clear();
     size_ = 0;
+    objectIdentity_ = 0;
+    createOpenedExistingObject_ = false;
     isCreator_ = false;
 }
 

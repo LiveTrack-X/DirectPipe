@@ -44,12 +44,40 @@ juce::File tempFileFor(const juce::File& file)
     return file.getSiblingFile(file.getFileName() + ".tmp");
 }
 
-void deleteAtomicFileFamily(const juce::File& file)
+bool deleteFileIfPresent(const juce::File& file, juce::StringArray& failures)
 {
-    file.deleteFile();
-    backupFileFor(file).deleteFile();
-    legacyBackupFileFor(file).deleteFile();
-    tempFileFor(file).deleteFile();
+    if (!file.exists())
+        return true;
+    if (file.deleteFile())
+        return true;
+    failures.add(file.getFullPathName());
+    return false;
+}
+
+bool deleteAtomicFileFamily(const juce::File& file, juce::StringArray& failures)
+{
+    bool ok = true;
+    ok = deleteFileIfPresent(file, failures) && ok;
+    ok = deleteFileIfPresent(backupFileFor(file), failures) && ok;
+    ok = deleteFileIfPresent(legacyBackupFileFor(file), failures) && ok;
+    ok = deleteFileIfPresent(tempFileFor(file), failures) && ok;
+    return ok;
+}
+
+void showDeletionFailures(const juce::String& operation,
+                          const juce::StringArray& failures)
+{
+    if (failures.isEmpty())
+        return;
+
+    juce::Logger::writeToLog("[APP] " + operation + " incomplete; failed paths: "
+                             + failures.joinIntoString(", "));
+    juce::AlertWindow::showMessageBoxAsync(
+        juce::MessageBoxIconType::WarningIcon,
+        operation + " Incomplete",
+        "Some files could not be removed. Close programs that may be using "
+        "DirectPipe files, then try again.\n\n"
+        + failures.joinIntoString("\n"));
 }
 } // namespace
 
@@ -474,12 +502,15 @@ void LogPanel::onClearPluginCache()
         if (result != 1 || !safeThis) return;
 
         auto dir = getConfigDir();
-        dir.getChildFile("plugin-cache.xml").deleteFile();
-        dir.getChildFile("scan-result.xml").deleteFile();
-        dir.getChildFile("scan-deadmanspedal.txt").deleteFile();
-        dir.getChildFile("scan-blacklist.txt").deleteFile();
+        juce::StringArray failures;
+        deleteFileIfPresent(dir.getChildFile("plugin-cache.xml"), failures);
+        deleteFileIfPresent(dir.getChildFile("scan-result.xml"), failures);
+        deleteFileIfPresent(dir.getChildFile("scan-deadmanspedal.txt"), failures);
+        deleteFileIfPresent(dir.getChildFile("scan-blacklist.txt"), failures);
 
-        juce::Logger::writeToLog("[APP] Plugin cache cleared");
+        if (failures.isEmpty())
+            juce::Logger::writeToLog("[APP] Plugin cache cleared");
+        showDeletionFailures("Clear Plugin Cache", failures);
     });
 }
 
@@ -497,26 +528,29 @@ void LogPanel::onClearAllPresets()
         if (result != 1 || !safeThis) return;
 
         auto dir = getConfigDir();
+        juce::StringArray failures;
 
         // Quick slots A-E (main + backup + temp files)
         auto slotsDir = dir.getChildFile("Slots");
         for (int i = 0; i < 5; ++i) {
             char label = static_cast<char>('A' + i);
             auto base = juce::String("slot_") + juce::String::charToString(label);
-            deleteAtomicFileFamily(slotsDir.getChildFile(base + ".dppreset"));
+            deleteAtomicFileFamily(slotsDir.getChildFile(base + ".dppreset"), failures);
         }
         // NOTE: The wildcard deletion below also catches slot_Auto.dppreset
         // (the Auto preset slot) and any .tmp files from interrupted saves.
         // This is intentional -- "Clear All Presets" means ALL slots including Auto.
         for (auto& f : slotsDir.findChildFiles(juce::File::findFiles, false, "*"))
-            f.deleteFile();
+            deleteFileIfPresent(f, failures);
 
         // User presets
         auto presetsDir = dir.getChildFile("Presets");
         for (auto& f : presetsDir.findChildFiles(juce::File::findFiles, false, "*"))
-            f.deleteFile();
+            deleteFileIfPresent(f, failures);
 
-        juce::Logger::writeToLog("[APP] All presets cleared");
+        if (failures.isEmpty())
+            juce::Logger::writeToLog("[APP] All presets cleared");
+        showDeletionFailures("Clear All Presets", failures);
 
         if (safeThis->onPresetsCleared)
             safeThis->onPresetsCleared();
@@ -544,36 +578,39 @@ void LogPanel::onResetSettingsClicked()
         if (result != 1 || !safeThis) return;
 
         auto dir = getConfigDir();
+        juce::StringArray failures;
 
         // Settings
-        deleteAtomicFileFamily(dir.getChildFile("settings.dppreset"));
-        deleteAtomicFileFamily(dir.getChildFile("directpipe-controls.json"));
-        deleteAtomicFileFamily(dir.getChildFile("recording-config.json"));
+        deleteAtomicFileFamily(dir.getChildFile("settings.dppreset"), failures);
+        deleteAtomicFileFamily(dir.getChildFile("directpipe-controls.json"), failures);
+        deleteAtomicFileFamily(dir.getChildFile("recording-config.json"), failures);
 
         // Plugin cache
-        dir.getChildFile("plugin-cache.xml").deleteFile();
-        dir.getChildFile("scan-result.xml").deleteFile();
-        dir.getChildFile("scan-deadmanspedal.txt").deleteFile();
-        dir.getChildFile("scan-blacklist.txt").deleteFile();
+        deleteFileIfPresent(dir.getChildFile("plugin-cache.xml"), failures);
+        deleteFileIfPresent(dir.getChildFile("scan-result.xml"), failures);
+        deleteFileIfPresent(dir.getChildFile("scan-deadmanspedal.txt"), failures);
+        deleteFileIfPresent(dir.getChildFile("scan-blacklist.txt"), failures);
 
         // Quick slots A-E (main + backup + temp)
         auto slotsDir = dir.getChildFile("Slots");
         for (int i = 0; i < 5; ++i) {
             char label = static_cast<char>('A' + i);
             auto base = juce::String("slot_") + juce::String::charToString(label);
-            deleteAtomicFileFamily(slotsDir.getChildFile(base + ".dppreset"));
+            deleteAtomicFileFamily(slotsDir.getChildFile(base + ".dppreset"), failures);
         }
         // NOTE: Wildcard deletion also removes slot_Auto.dppreset (Auto slot)
         // and any temporary files from interrupted save operations.
         for (auto& f : slotsDir.findChildFiles(juce::File::findFiles, false, "*"))
-            f.deleteFile();
+            deleteFileIfPresent(f, failures);
 
         // User presets (saved via "Save Preset" button, stored in Presets/ folder)
         auto presetsDir = dir.getChildFile("Presets");
         for (auto& f : presetsDir.findChildFiles(juce::File::findFiles, false, "*"))
-            f.deleteFile();
+            deleteFileIfPresent(f, failures);
 
-        juce::Logger::writeToLog("[APP] Factory reset complete");
+        if (failures.isEmpty())
+            juce::Logger::writeToLog("[APP] Factory reset complete");
+        showDeletionFailures("Factory Reset", failures);
 
         if (safeThis->onResetSettings)
             safeThis->onResetSettings();

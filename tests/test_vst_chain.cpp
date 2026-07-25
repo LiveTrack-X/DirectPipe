@@ -4,6 +4,15 @@
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
 #include "Audio/VSTChain.h"
+#include <atomic>
+#include <condition_variable>
+#include <chrono>
+#include <mutex>
+#include <thread>
+
+#if JUCE_WINDOWS
+ #include <windows.h>
+#endif
 
 using namespace directpipe;
 
@@ -213,4 +222,187 @@ TEST_F(VSTChainTest, PreloadedSwapRejectsMissingInstanceAndKeepsOldChain) {
     auto* slot = chain_->getPluginSlot(0);
     ASSERT_NE(slot, nullptr);
     EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinFilter);
+}
+
+TEST_F(VSTChainTest, PreloadedSwapStagesBuiltinsBeforeReplacingOldChain) {
+    addBuiltin(PluginSlot::Type::BuiltinFilter);
+
+    VSTChain::PreloadedPlugin preparedBuiltin;
+    preparedBuiltin.request.name = "Auto Gain";
+    preparedBuiltin.request.builtinType = PluginSlot::Type::BuiltinAutoGain;
+    std::vector<VSTChain::PreloadedPlugin> prepared;
+    prepared.push_back(std::move(preparedBuiltin));
+
+    bool completed = false;
+    const bool swapped = chain_->replaceChainWithPreloaded(
+        std::move(prepared),
+        [&completed] { completed = true; });
+
+    EXPECT_TRUE(swapped);
+    EXPECT_TRUE(completed);
+    ASSERT_EQ(chain_->getPluginCount(), 1);
+    auto* slot = chain_->getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinAutoGain);
+}
+
+TEST_F(VSTChainTest, DeviceLifecycleSerializesWithStructuralMutations) {
+    constexpr int iterations = 40;
+    std::atomic<bool> start{false};
+
+    std::thread deviceLifecycle([&] {
+        while (!start.load(std::memory_order_acquire))
+            std::this_thread::yield();
+
+        for (int i = 0; i < iterations; ++i) {
+            chain_->prepareToPlay((i % 2) == 0 ? 48000.0 : 44100.0,
+                                  (i % 2) == 0 ? 512 : 256);
+            chain_->releaseResources();
+        }
+    });
+
+    start.store(true, std::memory_order_release);
+    for (int i = 0; i < iterations; ++i) {
+        const auto added = chain_->addBuiltinProcessor(PluginSlot::Type::BuiltinFilter);
+        if (!added.success) {
+            ADD_FAILURE() << added.message.toStdString();
+            break;
+        }
+        if (!chain_->removePlugin(chain_->getPluginCount() - 1)) {
+            ADD_FAILURE() << "removePlugin failed at iteration " << i;
+            break;
+        }
+    }
+
+    deviceLifecycle.join();
+
+    chain_->prepareToPlay(48000.0, 512);
+    EXPECT_EQ(chain_->getPluginCount(), 0);
+    const auto finalAdd = chain_->addBuiltinProcessor(PluginSlot::Type::BuiltinFilter);
+    EXPECT_TRUE(finalAdd.success);
+    EXPECT_EQ(chain_->getPluginCount(), 1);
+}
+
+TEST_F(VSTChainTest, CancelInvalidatesPendingGenerationBeforeStaleCallbackCanApply) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    addBuiltin(PluginSlot::Type::BuiltinFilter);
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool workerEntered = false;
+    bool releaseWorker = false;
+    std::atomic<bool> completed{false};
+
+    chain_->replaceChainAsync(
+        {},
+        [&](bool) { completed.store(true, std::memory_order_release); },
+        [&] {
+            std::unique_lock lock(mutex);
+            workerEntered = true;
+            cv.notify_all();
+            cv.wait(lock, [&] { return releaseWorker; });
+        });
+
+    {
+        std::unique_lock lock(mutex);
+        cv.wait(lock, [&] { return workerEntered; });
+    }
+
+    const auto canceledGeneration = chain_->getAsyncGenerationForTest();
+    ASSERT_TRUE(chain_->isLoading());
+    ASSERT_TRUE(chain_->isLoadWorkerActiveForTest());
+    ASSERT_TRUE(chain_->isAsyncGenerationCurrentForTest(canceledGeneration));
+
+    chain_->cancelPendingAsyncLoad();
+
+    EXPECT_FALSE(chain_->isLoading());
+    EXPECT_FALSE(chain_->isAsyncGenerationCurrentForTest(canceledGeneration));
+
+    {
+        const std::lock_guard lock(mutex);
+        releaseWorker = true;
+    }
+    cv.notify_all();
+    chain_->waitForAsyncWorkerForTest();
+
+    // The stale replacement callback was queued before the sentinel because
+    // joining above waits until callAsync() has returned. Dispatch both so the
+    // assertion below proves cancellation guards the actual callback path.
+    auto sentinelDispatched = std::make_shared<std::atomic<bool>>(false);
+    ASSERT_TRUE(juce::MessageManager::callAsync([sentinelDispatched] {
+        sentinelDispatched->store(true, std::memory_order_release);
+    }));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!sentinelDispatched->load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatchedMessage = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatchedMessage = true;
+        }
+        if (!dispatchedMessage)
+            std::this_thread::yield();
+    }
+
+    ASSERT_TRUE(sentinelDispatched->load(std::memory_order_acquire));
+    EXPECT_FALSE(chain_->isLoadWorkerActiveForTest());
+    EXPECT_FALSE(completed.load(std::memory_order_acquire));
+    EXPECT_EQ(chain_->getPluginCount(), 1);
+    auto* slot = chain_->getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinFilter);
+#endif
+}
+
+TEST_F(VSTChainTest, AsyncReplacementFailureKeepsExistingChain) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    addBuiltin(PluginSlot::Type::BuiltinFilter);
+
+    VSTChain::PluginLoadRequest missing;
+    missing.name = "Definitely Missing VST";
+    missing.path = "C:\\DirectPipe-Test-Missing\\missing.vst3";
+    missing.desc.name = missing.name;
+    missing.desc.fileOrIdentifier = missing.path;
+    missing.desc.pluginFormatName = "VST3";
+
+    std::atomic<bool> completed{false};
+    std::atomic<bool> succeeded{true};
+    std::vector<VSTChain::PluginLoadRequest> requests;
+    requests.push_back(std::move(missing));
+    chain_->replaceChainAsync(
+        std::move(requests),
+        [&](bool ok) {
+            succeeded.store(ok, std::memory_order_release);
+            completed.store(true, std::memory_order_release);
+        });
+
+    chain_->waitForAsyncWorkerForTest();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!completed.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatchedMessage = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatchedMessage = true;
+        }
+        if (!dispatchedMessage)
+            std::this_thread::yield();
+    }
+
+    ASSERT_TRUE(completed.load(std::memory_order_acquire));
+    EXPECT_FALSE(succeeded.load(std::memory_order_acquire));
+    ASSERT_EQ(chain_->getPluginCount(), 1);
+    auto* slot = chain_->getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinFilter);
+#endif
 }

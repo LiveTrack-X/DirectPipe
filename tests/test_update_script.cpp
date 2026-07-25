@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <memory>
 #include <thread>
 
 #include "UI/UpdateChecker.h"
@@ -37,6 +38,108 @@ TEST(UpdateScriptValidationTest, StrictReleaseVersionRejectsShellAndPartialInput
     EXPECT_FALSE(directpipe::update_detail::parseStrictReleaseVersion(
         "4.2.0.1", components, canonical));
 }
+
+TEST(UpdateChecksumValidationTest, RequiresChecksumForCurrentReleaseLine)
+{
+    EXPECT_FALSE(directpipe::update_detail::releaseRequiresChecksum("4.1.2"));
+    EXPECT_TRUE(directpipe::update_detail::releaseRequiresChecksum("v4.2.0"));
+    EXPECT_TRUE(directpipe::update_detail::releaseRequiresChecksum("4.2.1"));
+    EXPECT_FALSE(directpipe::update_detail::releaseRequiresChecksum("not-a-version"));
+}
+
+TEST(UpdateChecksumValidationTest, MatchesExactAssetAndRejectsMalformedHash)
+{
+    const juce::String validHash(juce::String::repeatedString("ab", 32));
+    juce::String expected;
+    const auto content = validHash + "  DirectPipe-v4.2.1-Windows.zip\n"
+                       + juce::String::repeatedString("cd", 32)
+                       + "  DirectPipe-v4.2.1-Linux.tar.gz\n";
+
+    EXPECT_TRUE(directpipe::update_detail::parseExpectedSha256(
+        content, "DirectPipe-v4.2.1-Windows.zip", expected));
+    EXPECT_EQ(validHash, expected);
+    EXPECT_FALSE(directpipe::update_detail::parseExpectedSha256(
+        content, "DirectPipe-v4.2.1-Windows", expected));
+    EXPECT_FALSE(directpipe::update_detail::parseExpectedSha256(
+        "xyz  DirectPipe-v4.2.1-Windows.zip", "DirectPipe-v4.2.1-Windows.zip", expected));
+}
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+TEST(UpdateCheckerLifecycleTest, RepeatedChecksDoNotReplaceJoinableThread)
+{
+    directpipe::UpdateChecker checker;
+    std::promise<void> releaseFirst;
+    auto releaseSignal = releaseFirst.get_future().share();
+
+    ASSERT_TRUE(checker.startUpdateCheckWorkerForTest([releaseSignal] {
+        releaseSignal.wait();
+    }));
+    EXPECT_TRUE(checker.isUpdateCheckInProgressForTest());
+    EXPECT_FALSE(checker.startUpdateCheckWorkerForTest([] {}));
+
+    releaseFirst.set_value();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (checker.isUpdateCheckInProgressForTest()
+           && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    EXPECT_FALSE(checker.isUpdateCheckInProgressForTest());
+    checker.reapFinishedUpdateCheckThreadForTest();
+    EXPECT_TRUE(checker.startUpdateCheckWorkerForTest([] {}));
+}
+#endif
+
+#if JUCE_WINDOWS && defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+TEST(UpdateCheckerLifecycleTest, RepeatedCheckDropsQueuedResultFromPriorGeneration)
+{
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    directpipe::UpdateChecker checker;
+    int callbackCount = 0;
+    juce::String callbackVersion;
+    checker.onUpdateAvailable = [&](const juce::String& version,
+                                    const juce::String&) {
+        ++callbackCount;
+        callbackVersion = version;
+    };
+
+    const auto priorGeneration = checker.beginUpdateCheckRequestForTest();
+    ASSERT_TRUE(checker.postUpdateAvailableForTest(
+        priorGeneration, "4.2.1", "https://example.invalid/old.zip"));
+
+    // Start the next request before the first request's queued UI result runs.
+    const auto currentGeneration = checker.beginUpdateCheckRequestForTest();
+    ASSERT_NE(priorGeneration, currentGeneration);
+    ASSERT_TRUE(checker.postUpdateAvailableForTest(
+        currentGeneration, "4.2.2", "https://example.invalid/new.zip"));
+
+    auto sentinelDispatched = std::make_shared<std::atomic<bool>>(false);
+    ASSERT_TRUE(juce::MessageManager::callAsync([sentinelDispatched] {
+        sentinelDispatched->store(true, std::memory_order_release);
+    }));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!sentinelDispatched->load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatchedMessage = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatchedMessage = true;
+        }
+        if (!dispatchedMessage)
+            std::this_thread::yield();
+    }
+
+    ASSERT_TRUE(sentinelDispatched->load(std::memory_order_acquire));
+    EXPECT_EQ(callbackCount, 1);
+    EXPECT_EQ(callbackVersion, "4.2.2");
+    EXPECT_TRUE(checker.isUpdateAvailable());
+    EXPECT_EQ(checker.getLatestVersion(), "4.2.2");
+    EXPECT_EQ(checker.getCheckStatus(), directpipe::UpdateCheckStatus::UpdateAvailable);
+}
+#endif
 
 #if JUCE_WINDOWS
 

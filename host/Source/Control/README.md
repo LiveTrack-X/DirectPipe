@@ -60,11 +60,11 @@ StateBroadcaster.updateState()
 
 | 파일 | 설명 |
 |------|------|
-| `ControlManager.h/cpp` | 전체 제어 서브시스템의 최상위 관리자. Hotkey/MIDI/WS/HTTP 핸들러 소유 및 수명 관리 |
+| `ControlManager.h/cpp` | 전체 제어 서브시스템의 최상위 관리자. Hotkey/MIDI/WS/HTTP 핸들러 소유 및 수명 관리. 설정 적용/저장 실패를 bool과 사용자 알림으로 전파 |
 | `ActionDispatcher.h/cpp` | 통합 액션 인터페이스. 모든 제어 소스 -> 메시지 스레드 리스너 전달. `Action` enum 및 `ActionEvent` 정의 |
 | `ActionHandler.h/cpp` | ActionEvent 라우팅. Panic mute 로직 통합 (`doPanicMute`) + 레거시 토글/명시 set 모드 지원. AudioEngine/PresetManager/UI 콜백 연결 |
 | `ControlMapping.h/cpp` | 단축키/MIDI/서버 매핑의 JSON 직렬화/역직렬화. `ControlConfig` 구조체. Portable 모드 지원 |
-| `SettingsAutosaver.h/cpp` | Dirty-flag 패턴 + 1초 디바운스 자동 저장. `markDirty()` / `tick()` / `saveNow()` |
+| `SettingsAutosaver.h/cpp` | Dirty-flag 패턴 + 1초 디바운스 자동 저장. `saveNow()`은 성공 여부를 반환하며 실패 시 dirty를 유지해 재시도 |
 | `HotkeyHandler.h/cpp` | 글로벌 키보드 단축키. Windows: `RegisterHotKey` + 메시지 창. macOS: `CGEventTap`. Linux: stub |
 | `MidiHandler.h/cpp` | MIDI CC/Note 매핑 및 Learn 모드. 핫플러그 감지. LED 피드백. `bindingsMutex_`로 바인딩 보호 |
 | `WebSocketServer.h/cpp` | RFC 6455 WebSocket 서버 (port 8765). 초기 상태 완료 후 broadcast-ready, 최신 상태 재조회, strict JSON 파라미터 검증, 유휴 중 client thread 회수. 실제 포트를 시작 즉시/2초 주기로 알리는 Stream Deck UDP 디스커버리 (port 8767) |
@@ -78,7 +78,7 @@ StateBroadcaster.updateState()
 
 | 클래스 | 메서드/영역 | 스레드 | 비고 |
 |--------|-------------|--------|------|
-| ControlManager | `initialize`, `shutdown`, `applyConfig` | `[Message thread]` | 모든 핸들러의 수명 관리 |
+| ControlManager | `initialize`, `shutdown`, `applyConfig` | `[Message thread]` | 모든 핸들러의 수명 관리. 적용 중 영속화 실패는 false/알림으로 노출 |
 | ActionDispatcher | `dispatch` | Any thread | 메시지 스레드면 동기, 아니면 callAsync |
 | ActionDispatcher | listener notification | `[Message thread]` | callAsync 사용 시 `alive_` 플래그 체크 |
 | ActionHandler | `handle` | `[Message thread]` | ActionDispatcher가 메시지 스레드 전달 보장 |
@@ -87,7 +87,7 @@ StateBroadcaster.updateState()
 | HotkeyHandler | `registerHotkey`, `unregisterAll` | `[Message thread]` | OS API 호출 |
 | HotkeyHandler | `macHandleKeyDown` | `[Message thread]` | macOS CGEventTap 콜백 (메인 런루프) |
 | MidiHandler | `handleIncomingMidiMessage` | `[MIDI callback thread]` | JUCE MidiInput 콜백. `bindingsMutex_` 보호 |
-| MidiHandler | Learn callback (learnCallback_) | `[MIDI callback thread]` → **반드시 Message thread로 디스패치** | Learn 콜백 내에서 addBinding/removeBinding 호출 시 Message thread에서만 실행. MIDI callback에서 직접 호출 시 UI의 removeBinding과 bindings_ 동시 변경 → 크래시 |
+| MidiHandler | Learn callback (`learnCallback_`) | `[Message thread]` | MIDI callback은 캡처 값만 넘기며 `dispatchLearnCompletion()`이 수명·generation 확인, timer 정리, client callback을 Message thread에서 수행. timeout은 아직 callback을 소유한 generation만 만료 |
 | MidiHandler | `processCC`, `processNote` | `[MIDI callback thread]` | dispatch는 lock 밖에서 (데드락 방지) |
 | MidiHandler | `addBinding`, `removeBinding`, `loadFromMappings` | `[Message thread]` | `bindingsMutex_` 보호. **MIDI callback thread에서 직접 호출 금지** |
 | MidiHandler | `getBindings` | Any thread | `bindingsMutex_` 잠금 후 복사본 반환 |
@@ -100,7 +100,7 @@ StateBroadcaster.updateState()
 | HttpApiServer | `handleClient` | `[Server thread]` (per-client) | 요청 파싱 -> ActionDispatcher.dispatch |
 | StateBroadcaster | `updateState` | Any thread | `stateMutex_` 보호. 메시지 스레드면 동기 통지, 아니면 callAsync |
 | StateBroadcaster | `notifyListeners` | `[Message thread]` | copy-before-iterate (재진입 안전) |
-| SettingsAutosaver | `markDirty`, `tick`, `saveNow`, `loadFromFile` | `[Message thread]` | MainComponent 타이머에서 호출 |
+| SettingsAutosaver | `markDirty`, `tick`, `saveNow`, `loadFromFile` | `[Message thread]` | MainComponent 타이머에서 호출. 저장 성공 뒤에만 dirty 해제 |
 | Log (all methods) | `info`, `warn`, `error`, `audit` | Any thread | JUCE Logger 내부 `writeMutex_` |
 
 ---
@@ -113,7 +113,7 @@ StateBroadcaster.updateState()
 | `ActionDispatcher` | MainComponent 생성자 | MainComponent (stack) | MainComponent 소멸자 | alive_ 패턴으로 callAsync 보호 |
 | `StateBroadcaster` | MainComponent 생성자 | MainComponent (stack) | MainComponent 소멸자 | alive_ 패턴 |
 | `HotkeyHandler` | ControlManager::initialize | ControlManager (stack) | ControlManager::shutdown | Windows: message-only HWND. macOS: CGEventTap |
-| `MidiHandler` | ControlManager::initialize | ControlManager (stack) | ControlManager::shutdown | MIDI 디바이스 핸들, learnTimer_ |
+| `MidiHandler` | ControlManager::initialize | ControlManager (stack) | ControlManager::shutdown | MIDI 디바이스 핸들, learnTimer_. 재초기화마다 새 async lifetime token을 발급해 shutdown 전 queued Learn callback을 되살리지 않음 |
 | `learnTimer_` (MidiHandler) | MidiHandler::startLearn | MidiHandler (unique_ptr) | stopLearn() / 소멸자 | JUCE Timer — Message thread에서만 파괴 가능 |
 | `WebSocketServer` | ControlManager::initialize | ControlManager (unique_ptr) | ControlManager::shutdown | serverThread_, broadcastThread_, clientThreads |
 | `ClientConnection` (WS) | serverThread accept | clients_ 벡터 (`shared_ptr`) + 전송 snapshot | accept/broadcast sweep 또는 stop() | socket + thread + sendMutex + ready/finished atomics. clientThread 종료 시 socket->close() 필수 |
@@ -243,6 +243,11 @@ ActionHandler::handle(event)
 12. **JUCE `StreamingSocket::isConnected` 한계**: TCP 연결의 OS 레벨 상태만 반영한다. 상대방 `close()` 직후에도 로컬에서 잠시 true로 보일 수 있으므로, write 실패 시 명시적 `socket->close()`로 정리 트리거를 주고 sweep에서 제거해야 한다.
 
 13. **JUCE `InterProcessLock` POSIX 동작**: POSIX에서는 `fcntl`/`flock` 기반 파일 락 사용. 같은 프로세스 내에서 재진입(re-entrant) 동작은 OS/파일시스템에 따라 다름. `acquireExternalControlPriority()` 재호출 시 이전 락과 충돌 가능.
+
+14. **저장 실패 뒤 dirty 유지**: `SettingsAutosaver::saveNow()` 또는
+    `ControlManager::applyConfig()`의 반환값을 무시하지 않는다. 실패를 성공으로
+    처리하거나 dirty를 지우면 새 사용자 변경이 생길 때까지 재시도되지 않고
+    화면 상태와 디스크 설정이 달라진다.
 
 ---
 

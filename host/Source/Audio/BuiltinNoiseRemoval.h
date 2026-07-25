@@ -140,10 +140,12 @@ private:
     // -- FIFO buffering --
     //
     // RNNoise frame size is always 480 samples (10ms at 48kHz, fixed by the neural network architecture).
-    // FIFO capacity is 2x frame size to allow accumulation while draining.
+    // The output FIFO is sized in prepareToPlay() from the largest supported
+    // callback so Pass 1 can enqueue a whole callback before Pass 2 drains it.
     // Per-channel separate positions so L/R stay independent.
     //
-    // NOTE: The output FIFO uses modular (ring buffer) indexing with % kFifoCapacity
+    // NOTE: The output FIFO uses modular (ring buffer) indexing with its runtime
+    // capacity
     // wrapping. Read and write positions grow monotonically and wrap via modulo.
     // This avoids the complexity of linear reset (which would need atomic
     // coordination between the read/write positions).
@@ -151,7 +153,8 @@ private:
     // uint32_t wraparound after ~25 hours at 48kHz is handled correctly by
     // unsigned modular subtraction.
     static constexpr int kRNNFrameSize = 480;
-    static constexpr int kFifoCapacity = kRNNFrameSize * 2;
+    static constexpr int kMaxSupportedBlockSize = 4096;
+    static constexpr int kMinimumOutputFifoCapacity = kRNNFrameSize * 2;
 
     // Input FIFOs -- accumulate host samples until a full frame is ready
     std::vector<float> inputFifoL_;
@@ -160,7 +163,7 @@ private:
     int inputFifoWriteR_ = 0;
 
     // Output FIFOs -- store processed frames for the host to consume.
-    // Read/write positions grow monotonically, wrapped via % kFifoCapacity.
+    // Read/write positions grow monotonically, wrapped by outputFifo.size().
     // uint32_t: unsigned overflow is well-defined (modulo 2^32), preventing
     // undefined behavior that would occur with signed int after ~12 hours
     // of continuous use at 48kHz (INT_MAX / 48000 ≈ 12.4 hours).

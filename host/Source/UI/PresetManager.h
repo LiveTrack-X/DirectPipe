@@ -103,6 +103,23 @@ public:
      */
     bool importFromJSON(const juce::String& json);
 
+    /** Load an interactive preset without replacing the live chain until every
+     *  target processor is ready. */
+    void loadPresetAsync(const juce::File& file,
+                         std::function<void(bool)> onComplete);
+
+    /**
+     * Apply non-chain settings, prepare the complete target chain, then run an
+     * optional external commit immediately before the staged graph swap.
+     * Failure rolls back non-chain settings and any external state while the
+     * previous live chain remains installed.
+     */
+    void importFromJSONTransactionalAsync(
+        const juce::String& json,
+        std::function<bool()> beforeChainCommit,
+        std::function<bool()> rollbackExternalState,
+        std::function<void(bool)> onComplete);
+
     // Quick Preset Slots (A..E)
 
     static constexpr int kNumSlots = 6;  // A-E (0-4) + Auto (5)
@@ -182,7 +199,7 @@ public:
     /**
      * @brief Set user-defined slot name for a slot.
      */
-    void setSlotName(int slotIndex, const juce::String& name);
+    bool setSlotName(int slotIndex, const juce::String& name);
 
     /**
      * @brief Get display label for slot button (e.g. "A" or "A|Game").
@@ -200,12 +217,26 @@ public:
     /**
      * @brief Export a single slot to a user-chosen file.
      */
-    void exportSlot(int slotIndex);
+    bool exportSlot(int slotIndex);
 
     /**
      * @brief Import a slot from a user-chosen file.
      */
     void importSlot(int slotIndex, std::function<void(bool)> onComplete = nullptr);
+
+    /** Import from an already selected file. Exposed separately so the
+     *  destructive active-slot path can be regression-tested. */
+    bool importSlotFromFile(int slotIndex, const juce::File& sourceFile);
+
+    /** Import into the active slot without changing either disk or runtime
+     *  until every replacement processor has been prepared. */
+    void importSlotFromFileAsync(int slotIndex, const juce::File& sourceFile,
+                                 std::function<void(bool)> onComplete);
+
+    /** Copy onto the active slot using the same prepare/commit/swap transaction
+     *  as active-slot import. */
+    void copySlotToActiveAsync(int fromSlot, int toSlot,
+                               std::function<void(bool)> onComplete);
 
     /**
      * @brief Start background pre-loading of other slots' plugins.
@@ -232,7 +263,11 @@ public:
     std::function<void(juce::DynamicObject& root)> onExportAppSettings;
 
     /** Optional hook for importing app-level settings not owned by PresetManager. */
-    std::function<void(const juce::DynamicObject& root)> onImportAppSettings;
+    std::function<bool(const juce::DynamicObject& root)> onImportAppSettings;
+
+    /** Reports best-effort device/output restore failures that do not make the
+     *  serialized preset structurally invalid. */
+    std::function<void(const juce::String& message)> onImportWarning;
 
 #if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
     static juce::String selectAsioRestoreDeviceForTest(const juce::String& inputDevice,
@@ -275,6 +310,11 @@ private:
     static std::vector<VSTChain::PreloadedPlugin> buildPreloadedPluginsFromCache(
         PluginPreloadCache::CachedSlot& cached,
         std::vector<TargetPlugin>& freshTargets);
+    std::vector<VSTChain::PluginLoadRequest> buildLoadRequests(
+        std::vector<TargetPlugin> targets);
+    void applyActiveSlotTransactionAsync(int slotIndex, juce::String json,
+                                         bool deleteDestination,
+                                         std::function<void(bool)> onComplete);
     static void applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
     static void applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain);
 

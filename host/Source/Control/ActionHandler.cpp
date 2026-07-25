@@ -264,6 +264,9 @@ void ActionHandler::handle(const ActionEvent& event)
                 double sr = monitor.getSampleRate();
                 if (sr <= 0.0) {
                     juce::Logger::writeToLog("Recording: no audio device active");
+                    if (onNotification)
+                        onNotification("Recording failed - no audio device is active",
+                                       NotificationLevel::Error);
                     break;
                 }
                 auto timestamp = juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S");
@@ -279,7 +282,10 @@ void ActionHandler::handle(const ActionEvent& event)
                         NotificationLevel::Error);
                     break;
                 }
-                auto file = dir.getChildFile("DirectPipe_" + timestamp + ".wav");
+                // A rapid stop/restart can happen within the same wall-clock
+                // second. Never reuse an existing take in that case.
+                auto file = dir.getNonexistentChildFile(
+                    "DirectPipe_" + timestamp, ".wav", false);
                 if (!recorder.startRecording(file, sr, 2))
                     if (onNotification) onNotification("Recording failed - check folder permissions",
                                                         NotificationLevel::Error);

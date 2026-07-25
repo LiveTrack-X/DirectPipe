@@ -292,15 +292,15 @@ public:
     /**
      * @brief Replace the entire chain asynchronously (non-blocking).
      *
-     * Clears current chain immediately (audio goes silent), then loads
-     * new plugins on a background thread. Wires them into the graph
-     * on the message thread via callAsync when done.
+     * Prepares every requested plug-in on a background thread while the
+     * current chain remains live, then performs one staged graph swap on the
+     * message thread. Any preparation or staging failure keeps the old chain.
      * @param requests Plugins to load.
-     * @param onComplete Called on message thread when loading finishes.
+     * @param onComplete Called on the message thread with the transaction result.
      */
     // [Message → BG → callAsync → Message, alive_ guard + asyncGeneration_ counter]
     void replaceChainAsync(std::vector<PluginLoadRequest> requests,
-                           std::function<void()> onComplete,
+                           std::function<void(bool)> onComplete,
                            std::function<void()> preWork = nullptr);
 
     /**
@@ -312,16 +312,58 @@ public:
     };
 
     /**
+     * @brief Prepare a complete replacement chain without changing the live graph.
+     *
+     * External plug-ins are constructed on the background loader thread. Built-in
+     * requests are carried through and constructed only during the later graph
+     * swap. The callback receives success only when every requested external
+     * plug-in was created; on failure the live chain is untouched.
+     */
+    void prepareChainAsync(
+        std::vector<PluginLoadRequest> requests,
+        std::function<void(std::vector<PreloadedPlugin>, bool)> onPrepared,
+        std::function<void()> preWork = nullptr);
+
+    /**
      * @brief Replace the entire chain with pre-loaded instances (synchronous).
      *
      * Must be called on the message thread. Used with PluginPreloadCache
      * to skip DLL loading entirely. Old chain continues processing until
      * swap completes (~10-50ms suspend).
-     * @param preloaded Pre-created plugin instances with metadata.
+     * @param preloaded Pre-created VST instances and/or built-in requests.
      * @param onComplete Called after swap is complete.
      */
     bool replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
                                    std::function<void()> onComplete);
+
+    /**
+     * @brief Invalidate a pending async replacement without waiting for its
+     *        plug-in construction thread.
+     *
+     * The completed background result is discarded by generation. External
+     * VST additions remain blocked until that worker has stopped using the
+     * format manager.
+     */
+    void cancelPendingAsyncLoad();
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    uint32_t getAsyncGenerationForTest() const
+    {
+        return asyncGeneration_.load(std::memory_order_acquire);
+    }
+
+    bool isAsyncGenerationCurrentForTest(uint32_t generation) const
+    {
+        return isAsyncGenerationCurrent(generation);
+    }
+
+    bool isLoadWorkerActiveForTest() const
+    {
+        return loadWorkerActive_.load(std::memory_order_acquire) > 0;
+    }
+
+    void waitForAsyncWorkerForTest();
+#endif
 
     /** @brief True while async chain loading is in progress. */
     bool isLoading() const { return asyncLoading_.load(); }
@@ -331,7 +373,7 @@ public:
     bool isStable() const { return prepared_.load(std::memory_order_relaxed) && !asyncLoading_.load(std::memory_order_relaxed); }
 
     /** @brief Suspend/resume graph processing (for safe state changes). */
-    void suspendProcessing(bool suspend) { graph_->suspendProcessing(suspend); }
+    void suspendProcessing(bool suspend);
 
     // Callback when the chain changes (for UI update)
     std::function<void()> onChainChanged;
@@ -373,13 +415,17 @@ private:
     std::vector<PluginSlot> chain_;                      // [Protected by chainLock_]
     std::vector<std::unique_ptr<juce::DocumentWindow>> editorWindows_;  // [Protected by chainLock_]
 
-    double currentSampleRate_ = 48000.0;                 // [Message thread only]
-    int currentBlockSize_ = 128;                         // [Message thread only]
+    double currentSampleRate_ = 48000.0;                 // [Protected by graphControlLock_]
+    int currentBlockSize_ = 128;                         // [Protected by graphControlLock_]
     std::atomic<bool> prepared_{false};                   // [Message write, RT read]
 
     juce::MidiBuffer emptyMidi_;                         // [RT thread only] Pre-allocated (avoids per-callback allocation)
 
     std::atomic<bool> chainDirty_{false};                // [Message write, RT read] Lock-free chain swap flag
+
+    // Serializes every non-RT AudioProcessorGraph lifecycle/structural mutation.
+    // Lock order is graphControlLock_ -> chainLock_. processBlock() takes neither.
+    mutable juce::CriticalSection graphControlLock_;
 
     // [Protected: chain_, editorWindows_, graph nodes. NEVER in processBlock. NEVER writeToLog inside.]
     // Design note: CriticalSection (recursive mutex) used instead of shared_mutex because:
@@ -391,8 +437,11 @@ private:
 
     // ─── Async loading state ───
     std::atomic<bool> asyncLoading_{false};               // [BG write, Message/UI read]
+    std::atomic<int> loadWorkerActive_{0};                // [BG/Message] active format-manager workers
     std::unique_ptr<std::thread> loadThread_;             // [Message thread only]
     std::atomic<uint32_t> asyncGeneration_{0};            // [Message write, BG read] Incremented per replaceChainAsync call
+
+    bool isAsyncGenerationCurrent(uint32_t generation) const noexcept;
 
     // [callAsync lifetime guard — shared_ptr captured by value in lambda, checked before accessing this]
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);

@@ -63,6 +63,16 @@ public:
     /** Set the recording folder (e.g., from loaded config). */
     void setRecordingFolder(const juce::File& folder);
 
+    /** Set and durably persist the recording folder. Restores the previous
+     *  live selection when persistence fails. */
+    bool setRecordingFolderAndSave(const juce::File& folder);
+
+    /** Restore the live recording destination to the factory default. */
+    void resetRecordingFolder();
+
+    /** Factory-default recording destination. */
+    static juce::File getDefaultRecordingFolder();
+
 private:
     void timerCallback() override;
     // Refresh device list when combo is clicked (before popup opens)
@@ -75,7 +85,7 @@ private:
     void refreshBufferSizeCombo();
 
     /** Save recording folder to config file. */
-    void saveRecordingConfig();
+    bool saveRecordingConfig();
     /** Load recording folder from config file. */
     void loadRecordingConfig();
 

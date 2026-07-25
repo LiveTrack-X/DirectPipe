@@ -317,8 +317,9 @@ bool WebSocketServer::start(int port)
     broadcastThread_ = std::thread([this] { broadcastThreadFunc(); });
     serverThread_ = std::thread([this] { serverThread(); });
 
-    // Send UDP discovery broadcast so Stream Deck plugin can connect immediately
-    sendDiscoveryBroadcast();
+    // Send UDP discovery broadcast so Stream Deck plugin can connect immediately.
+    if (discoveryEnabled_)
+        sendDiscoveryBroadcast();
 
     Log::info("WS", "Server started on port " + juce::String(port_));
     return true;
@@ -413,7 +414,8 @@ void WebSocketServer::serverThread()
         // datagram while binding). Repeat the localhost announcement so a
         // fallback WebSocket port remains discoverable without scanning ports.
         const auto nowMs = juce::Time::getMillisecondCounter();
-        if (static_cast<uint32_t>(nowMs - lastDiscoveryBroadcastMs) >= 2000u) {
+        if (discoveryEnabled_
+            && static_cast<uint32_t>(nowMs - lastDiscoveryBroadcastMs) >= 2000u) {
             sendDiscoveryBroadcast(false);
             lastDiscoveryBroadcastMs = nowMs;
         }

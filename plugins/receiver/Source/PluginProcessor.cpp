@@ -4,6 +4,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstring>
 
 DirectPipeReceiverProcessor::DirectPipeReceiverProcessor()
@@ -11,11 +13,16 @@ DirectPipeReceiverProcessor::DirectPipeReceiverProcessor()
           .withOutput("Output", juce::AudioChannelSet::stereo(), true))
     , apvts_(*this, nullptr, "Parameters", createParameterLayout())
 {
+    requestedLatencySamples_.store(static_cast<int>(getTargetFillFrames()),
+                                   std::memory_order_relaxed);
+    apvts_.addParameterListener("buffer", this);
 }
 
 DirectPipeReceiverProcessor::~DirectPipeReceiverProcessor()
 {
-    disconnect();
+    apvts_.removeParameterListener("buffer", this);
+    cancelPendingUpdate();
+    stopConnectionWorker();
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -33,6 +40,8 @@ DirectPipeReceiverProcessor::createParameterLayout()
 
 void DirectPipeReceiverProcessor::prepareToPlay(double /*sampleRate*/, int samplesPerBlock)
 {
+    stopConnectionWorker();
+
     const size_t maxCh = directpipe::DEFAULT_CHANNELS;
 
     // Pre-allocate interleaved buffer (max block size * max channels)
@@ -48,17 +57,19 @@ void DirectPipeReceiverProcessor::prepareToPlay(double /*sampleRate*/, int sampl
     hadAudioLastBlock_ = false;
     fadeGain_ = 0.0f;
     blocksSinceConnect_ = 0;
-
-    reconnectCounter_ = 0;
-    tryConnect();
+    rtConnectionSerial_ = connectionSerial_.load(std::memory_order_relaxed);
 
     // Report buffering latency to the host DAW
-    setLatencySamples(static_cast<int>(getTargetFillFrames()));
+    const auto latency = static_cast<int>(getTargetFillFrames());
+    requestedLatencySamples_.store(latency, std::memory_order_relaxed);
+    setLatencySamples(latency);
+
+    startConnectionWorker();
 }
 
 void DirectPipeReceiverProcessor::releaseResources()
 {
-    disconnect();
+    stopConnectionWorker();
     lastOutputSamples_ = 0;
 }
 
@@ -82,13 +93,9 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    // Try reconnect periodically if not connected
-    if (!connected_.load(std::memory_order_acquire)) {
-        ++reconnectCounter_;
-        if (reconnectCounter_ >= kReconnectInterval) {
-            reconnectCounter_ = 0;
-            tryConnect();
-        }
+    ConnectionLease connectionLease(*this);
+    auto* connection = connectionLease.get();
+    if (connection == nullptr) {
         if (hadAudioLastBlock_) {
             applyFadeOut(buffer, numSamples, numChannels);
         } else {
@@ -97,44 +104,38 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    // Check if producer is still active
-    auto* shmData = sharedMemory_.getData();
-    if (shmData) {
-        auto* header = static_cast<directpipe::DirectPipeHeader*>(shmData);
-        if (!header->producer_active.load(std::memory_order_acquire)) {
-            disconnect();
-            if (hadAudioLastBlock_) {
-                applyFadeOut(buffer, numSamples, numChannels);
-            } else {
-                buffer.clear();
-            }
-            return;
+    auto& ringBuffer = connection->ringBuffer;
+    if (!ringBuffer.isProducerActive()
+        || ringBuffer.getCurrentProducerGeneration()
+               != ringBuffer.getAttachedProducerGeneration()) {
+        reconnectRequested_.store(true, std::memory_order_release);
+        if (hadAudioLastBlock_) {
+            applyFadeOut(buffer, numSamples, numChannels);
+        } else {
+            buffer.clear();
         }
+        return;
     }
 
+    const auto connectionSerial = connectionSerial_.load(std::memory_order_relaxed);
+    if (connectionSerial != rtConnectionSerial_) {
+        rtConnectionSerial_ = connectionSerial;
+        blocksSinceConnect_ = 0;
+    }
     ++blocksSinceConnect_;
 
-    uint32_t available = ringBuffer_.availableRead();
-    uint32_t channels = ringBuffer_.getChannels();
+    uint32_t available = ringBuffer.availableRead();
+    uint32_t channels = ringBuffer.getChannels();
 
     // ── Clock drift compensation: skip excess when buffer is too full ──
     uint32_t targetFill = getTargetFillFrames();
 
-    // Update latency reporting when buffer preset changes (setLatencySamples is lock-free)
-    if (static_cast<int>(targetFill) != getLatencySamples())
-        setLatencySamples(static_cast<int>(targetFill));
     uint32_t highThreshold = getHighFillThreshold();
 
     if (blocksSinceConnect_ > kDriftCheckWarmup && available > highThreshold) {
         uint32_t excess = available - targetFill;
-        uint32_t chunkFrames = static_cast<uint32_t>(interleavedBuffer_.size()) / (std::max)(channels, 1u);
-        while (excess > 0) {
-            uint32_t chunk = (std::min)(excess, chunkFrames);
-            uint32_t actualRead = ringBuffer_.read(interleavedBuffer_.data(), chunk);
-            if (actualRead == 0) break;  // Defensive: avoid infinite loop
-            excess -= (std::min)(actualRead, excess);
-        }
-        available = ringBuffer_.availableRead();
+        ringBuffer.discard(excess);
+        available = ringBuffer.availableRead();
     }
 
     // ── Clock drift compensation: throttle reads when buffer is running low ──
@@ -168,7 +169,7 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     if (toRead > maxFrames)
         toRead = maxFrames;
 
-    uint32_t readCount = ringBuffer_.read(interleavedBuffer_.data(), toRead);
+    uint32_t readCount = ringBuffer.read(interleavedBuffer_.data(), toRead);
     if (readCount == 0) {
         buffer.clear();
         return;
@@ -198,55 +199,151 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     fadeGain_ = 1.0f;
 }
 
-void DirectPipeReceiverProcessor::tryConnect()
+DirectPipeReceiverProcessor::ConnectionLease::ConnectionLease(
+    DirectPipeReceiverProcessor& owner) noexcept
+    : owner_(owner), connection_(owner_.acquireConnection())
 {
-    if (!sharedMemory_.open(directpipe::SHM_NAME, 0))
-        return;
-
-    if (!ringBuffer_.attachAsConsumer(sharedMemory_.getData(), sharedMemory_.getSize())) {
-        sharedMemory_.close();
-        return;
-    }
-
-    // Verify producer is active
-    auto* header = static_cast<directpipe::DirectPipeHeader*>(sharedMemory_.getData());
-    if (!header->producer_active.load(std::memory_order_acquire)) {
-        ringBuffer_.detach();   // Clear consumer_active flag before closing
-        sharedMemory_.close();
-        return;
-    }
-
-    // SPSC warning: if another consumer was already reading, audio will be corrupted
-    multiConsumerWarning_.store(ringBuffer_.anotherConsumerWasActive(), std::memory_order_relaxed);
-
-    // Skip to fresh position — minimal latency on connect
-    skipToFreshPosition();
-
-    // Cache values for GUI-thread-safe access (avoids ringBuffer_ dangling pointer race)
-    cachedSampleRate_.store(ringBuffer_.getSampleRate(), std::memory_order_relaxed);
-    cachedChannels_.store(ringBuffer_.getChannels(), std::memory_order_relaxed);
-
-    blocksSinceConnect_ = 0;
-    connected_.store(true, std::memory_order_release);
 }
 
-void DirectPipeReceiverProcessor::skipToFreshPosition()
+DirectPipeReceiverProcessor::ConnectionLease::~ConnectionLease()
 {
-    // On initial connection, advance read pointer close to write pointer
-    // so we start reading the freshest audio with minimal latency.
-    uint32_t targetFill = getTargetFillFrames();
-    uint32_t available = ringBuffer_.availableRead();
-    if (available > targetFill && !interleavedBuffer_.empty()) {
-        uint32_t skip = available - targetFill;
-        uint32_t channels = ringBuffer_.getChannels();
-        uint32_t chunkFrames = static_cast<uint32_t>(interleavedBuffer_.size()) / (std::max)(channels, 1u);
-        while (skip > 0) {
-            uint32_t chunk = (std::min)(skip, chunkFrames);
-            uint32_t actualRead = ringBuffer_.read(interleavedBuffer_.data(), chunk);
-            if (actualRead == 0) break;  // Defensive: prevent infinite loop on read failure
-            skip -= (std::min)(actualRead, skip);
-        }
+    if (connection_ != nullptr)
+        owner_.releaseConnection();
+}
+
+DirectPipeReceiverProcessor::Connection*
+DirectPipeReceiverProcessor::acquireConnection() noexcept
+{
+    if (!connectionAccessEnabled_.load(std::memory_order_seq_cst))
+        return nullptr;
+
+    connectionUsers_.fetch_add(1, std::memory_order_seq_cst);
+    if (!connectionAccessEnabled_.load(std::memory_order_seq_cst)) {
+        connectionUsers_.fetch_sub(1, std::memory_order_seq_cst);
+        return nullptr;
     }
+
+    auto* connection = activeConnection_.load(std::memory_order_acquire);
+    if (connection == nullptr)
+        connectionUsers_.fetch_sub(1, std::memory_order_seq_cst);
+    return connection;
+}
+
+void DirectPipeReceiverProcessor::releaseConnection() noexcept
+{
+    connectionUsers_.fetch_sub(1, std::memory_order_seq_cst);
+}
+
+void DirectPipeReceiverProcessor::startConnectionWorker()
+{
+    if (connectionThread_.joinable())
+        return;
+
+    connectionWorkerStopRequested_.store(false, std::memory_order_release);
+    reconnectRequested_.store(true, std::memory_order_release);
+    connectionThread_ = std::thread([this] { connectionWorkerLoop(); });
+}
+
+void DirectPipeReceiverProcessor::stopConnectionWorker()
+{
+    connectionWorkerStopRequested_.store(true, std::memory_order_release);
+    if (connectionThread_.joinable())
+        connectionThread_.join();
+    retireConnection();
+}
+
+void DirectPipeReceiverProcessor::connectionWorkerLoop()
+{
+    using namespace std::chrono_literals;
+
+    while (!connectionWorkerStopRequested_.load(std::memory_order_acquire)) {
+        bool shouldReconnect = reconnectRequested_.exchange(false, std::memory_order_acq_rel);
+
+        if (workerConnection_ != nullptr) {
+            auto& ringBuffer = workerConnection_->ringBuffer;
+            shouldReconnect = shouldReconnect
+                || !ringBuffer.isProducerActive()
+                || ringBuffer.getCurrentProducerGeneration()
+                       != ringBuffer.getAttachedProducerGeneration();
+
+#ifndef _WIN32
+            // POSIX unlink/recreate leaves an existing mapping valid but stale.
+            // Probe the name without attaching and compare the underlying object.
+            directpipe::SharedMemory probe;
+            if (probe.open(directpipe::SHM_NAME, 0)
+                && probe.getObjectIdentity() != workerConnection_->sharedMemory.getObjectIdentity()) {
+                shouldReconnect = true;
+            }
+#endif
+        } else {
+            shouldReconnect = true;
+        }
+
+        if (shouldReconnect) {
+            retireConnection();
+            if (auto connection = openConnection())
+                publishConnection(std::move(connection));
+        }
+
+        for (int i = 0; i < 10
+             && !connectionWorkerStopRequested_.load(std::memory_order_acquire); ++i)
+            std::this_thread::sleep_for(10ms);
+    }
+}
+
+std::unique_ptr<DirectPipeReceiverProcessor::Connection>
+DirectPipeReceiverProcessor::openConnection()
+{
+    auto connection = std::make_unique<Connection>();
+    if (!connection->sharedMemory.open(directpipe::SHM_NAME, 0))
+        return {};
+    if (!connection->ringBuffer.attachAsConsumer(connection->sharedMemory.getData(),
+                                                  connection->sharedMemory.getSize()))
+        return {};
+    if (!connection->ringBuffer.isProducerActive())
+        return {};
+
+    skipToFreshPosition(*connection);
+    return connection;
+}
+
+void DirectPipeReceiverProcessor::publishConnection(std::unique_ptr<Connection> connection)
+{
+    jassert(workerConnection_ == nullptr);
+    workerConnection_ = std::move(connection);
+
+    multiConsumerWarning_.store(workerConnection_->ringBuffer.anotherConsumerWasActive(),
+                                std::memory_order_relaxed);
+    cachedSampleRate_.store(workerConnection_->ringBuffer.getSampleRate(),
+                            std::memory_order_relaxed);
+    cachedChannels_.store(workerConnection_->ringBuffer.getChannels(),
+                          std::memory_order_relaxed);
+    connectionSerial_.fetch_add(1, std::memory_order_relaxed);
+    activeConnection_.store(workerConnection_.get(), std::memory_order_release);
+    connected_.store(true, std::memory_order_release);
+    connectionAccessEnabled_.store(true, std::memory_order_seq_cst);
+}
+
+void DirectPipeReceiverProcessor::retireConnection()
+{
+    connectionAccessEnabled_.store(false, std::memory_order_seq_cst);
+    while (connectionUsers_.load(std::memory_order_seq_cst) != 0)
+        std::this_thread::yield();
+
+    activeConnection_.store(nullptr, std::memory_order_release);
+    connected_.store(false, std::memory_order_release);
+    multiConsumerWarning_.store(false, std::memory_order_relaxed);
+    cachedSampleRate_.store(0, std::memory_order_relaxed);
+    cachedChannels_.store(0, std::memory_order_relaxed);
+    workerConnection_.reset();
+}
+
+void DirectPipeReceiverProcessor::skipToFreshPosition(Connection& connection)
+{
+    const uint32_t targetFill = getTargetFillFrames();
+    const uint32_t available = connection.ringBuffer.availableRead();
+    if (available > targetFill)
+        connection.ringBuffer.discard(available - targetFill);
 }
 
 void DirectPipeReceiverProcessor::saveLastOutput(const juce::AudioBuffer<float>& buffer,
@@ -335,14 +432,25 @@ uint32_t DirectPipeReceiverProcessor::getLowFillThreshold() const
     return kBufferPresets[idx][2];
 }
 
-void DirectPipeReceiverProcessor::disconnect()
+void DirectPipeReceiverProcessor::parameterChanged(const juce::String& parameterID,
+                                                    float newValue)
 {
-    connected_.store(false, std::memory_order_release);
-    multiConsumerWarning_.store(false, std::memory_order_relaxed);
-    cachedSampleRate_.store(0, std::memory_order_relaxed);
-    cachedChannels_.store(0, std::memory_order_relaxed);
-    ringBuffer_.detach();  // Clears consumer_active flag, then invalidates pointers
-    sharedMemory_.close();
+    if (parameterID != "buffer")
+        return;
+
+    int index = static_cast<int>(std::lround(newValue));
+    if (index < 0 || index >= kNumBufferPresets)
+        index = 1;
+    requestedLatencySamples_.store(static_cast<int>(kBufferPresets[index][0]),
+                                   std::memory_order_release);
+    triggerAsyncUpdate();
+}
+
+void DirectPipeReceiverProcessor::handleAsyncUpdate()
+{
+    const int latency = requestedLatencySamples_.load(std::memory_order_acquire);
+    if (latency != getLatencySamples())
+        setLatencySamples(latency);
 }
 
 uint32_t DirectPipeReceiverProcessor::getSourceSampleRate() const

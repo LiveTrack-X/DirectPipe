@@ -148,6 +148,23 @@ TEST_F(SettingsAutosaverTest, SaveNowPreservesSettingsFileDuringPartialLoad) {
     EXPECT_EQ(file.loadFileAsString(), original);
 }
 
+TEST_F(SettingsAutosaverTest, FailedAutosaveRemainsDirtyAndRetriesWithoutAnotherEdit) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+
+    auto blockedTemp = file.getSiblingFile(file.getFileName() + ".tmp");
+    ASSERT_TRUE(blockedTemp.createDirectory());
+    ASSERT_TRUE(blockedTemp.getChildFile("write-blocker").replaceWithText("blocked"));
+
+    autosaver_->markDirty();
+    for (int i = 0; i < 30; ++i) autosaver_->tick();
+    EXPECT_FALSE(file.existsAsFile());
+
+    ASSERT_TRUE(blockedTemp.deleteRecursively());
+    for (int i = 0; i < 10; ++i) autosaver_->tick();
+    EXPECT_TRUE(file.existsAsFile());
+}
+
 TEST_F(SettingsAutosaverTest, DebounceTiming) {
     auto file = getAutoSaveFile();
     file.deleteFile();
@@ -195,6 +212,7 @@ TEST_F(SettingsAutosaverTest, PresetManagerRoundtripSupportsCustomAppSettings) {
         importHookCalled = true;
         if (root.hasProperty("startMinimizedToTray"))
             restoredStartMinimizedToTray = static_cast<bool>(root.getProperty("startMinimizedToTray"));
+        return true;
     };
 
     autosaver_->saveNow();
@@ -237,6 +255,18 @@ TEST_F(SettingsAutosaverTest, StartupGuardRestoresMuteWhenNoSettingsFile) {
     autosaver_->loadFromFile();
 
     EXPECT_FALSE(engine_->isOutputMuted());
+}
+
+TEST_F(SettingsAutosaverTest, NoSettingsFileAlwaysReleasesFactoryResetLoadingState) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+
+    loadingSlot_ = true;
+    partialLoad_ = true;
+    autosaver_->loadFromFile();
+
+    EXPECT_FALSE(loadingSlot_.load());
+    EXPECT_FALSE(partialLoad_.load());
 }
 
 TEST_F(SettingsAutosaverTest, StartupGuardRestoresMuteForLegacyPresetWithoutOutputMuted) {

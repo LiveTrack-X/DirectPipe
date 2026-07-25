@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.2.0 기준)
+> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.2.1 기준)
 >
-> Reverse spec — written based on currently implemented features (as of v4.2.0)
+> Reverse spec — written based on currently implemented features (as of v4.2.1)
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.2.0
+4.2.1
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- v4.2.0 local Windows Release verification was completed. macOS/Linux keep source and CI support, but are not treated as fully hardware-validated stable releases.
-- v4.2.0 로컬 Windows Release 검증은 완료했다. macOS/Linux는 소스와 CI 지원을 유지하지만, 완전한 실기기 검증 완료 안정 릴리즈로 보지 않는다.
+- The v4.2.1 local Windows Release build and registered software tests were verified; real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했지만 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -275,15 +275,15 @@ AudioProcessorGraph:
 | 자동 저장 / Auto-Save | 플러그인 에디터 닫을 때 (`onEditorClosed`) 활성 슬롯에 자동 저장 / Auto-saves to active slot when plugin editor closes (`onEditorClosed`) |
 | 슬롯 이름 / Slot Naming | 커스텀 이름 지원 / Custom names supported. 표시 / Display: `A\|게임` (파이프 구분자, 최대 8자 + ".." 자동 잘림 / pipe delimiter, max 8 chars + ".." auto-truncation). `.dppreset` JSON `"name"` 필드에 저장 / stored in `"name"` field. StateBroadcaster `slot_names` 배열로 외부 전달 / externally delivered via `slot_names` array |
 | 관리 / Management | 우클릭 메뉴 / Right-click menu: Rename, Copy A→B/C/D/E, Delete, Export (.dppreset), Import (.dppreset). 활성 슬롯 Copy 시 라이브 상태 캡처 / Active slot Copy captures live state |
-| 보호 / Protection | 빈 체인 저장 방지 / Prevents saving empty chains. `partialLoad_` 부분 로드 감지 / partial load detection. 잘못된 plugin-chain JSON은 active slot/audio 상태 적용 전에 거부 / Malformed plugin-chain JSON is rejected before active slot/audio state is applied. `loadingSlot_` 동시 전환 방지 / concurrent switch prevention |
+| 보호 / Protection | 빈 체인 저장 방지 / Prevents saving empty chains. `partialLoad_` 부분 로드 감지 / partial load detection. 일반 load·활성 copy/import는 전체 target 준비→slot 파일 commit→단일 staged graph swap 순서이며 실패 시 기존 chain/file/active slot/partial state 보존 / Ordinary loads and active copy/import use complete prepare → slot-file commit → one staged graph swap; failure preserves the old chain, files, active slot, and partial state. `loadingSlot_` 동시 전환 방지 / concurrent switch prevention |
 | 점유 캐시 / Occupancy Cache | `slotOccupiedCache_[5]` — 파일시스템 조회 없이 빠른 점유 확인 / Fast occupancy check without filesystem queries (NextPreset 사이클링용 / for NextPreset cycling) |
 
 #### 4.2.5 비동기 체인 로딩 / Async Chain Loading (replaceChainAsync)
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 생성 카운터 / Generation Counter | `asyncGeneration_` (uint32_t atomic) — 호출마다 증가. 이전 요청의 콜백 폐기 / Incremented per call. Discards callbacks from previous requests |
-| 백그라운드 스레드 / Background Thread | COM 초기화 (`CoInitializeEx`) 후 플러그인 로드 / Plugin loading after COM initialization (`CoInitializeEx`) |
-| 메시지 스레드 교체 / Message Thread Swap | `callAsync`로 그래프 교체. 생성 카운터 확인 후 진행 / Graph swap via `callAsync`. Proceeds after generation counter check |
+| 백그라운드 스레드 / Background Thread | COM 초기화 (`CoInitializeEx`) 후 전체 플러그인을 준비하고, 이전 loader가 남으면 message thread가 아닌 worker가 인계 / Prepares the complete target after COM initialization; any prior loader join is handed to a worker, never the message thread |
+| 메시지 스레드 교체 / Message Thread Swap | 모든 target entry 준비·구조 확인 후 `callAsync`에서 explicit bool staged swap. 실패 시 old graph 유지 / Explicit-bool staged swap via `callAsync` only after every target entry and structure are ready; failure keeps the old graph |
 | 수명 보호 / Lifetime Protection | `alive_` 플래그 (`shared_ptr<atomic<bool>>`) — callAsync 람다에서 this 접근 전 확인 / `alive_` flag checked before accessing `this` in callAsync lambda |
 | 프리로드 경로 / Preload Path | `replaceChainWithPreloaded`: 미리 로드된 인스턴스로 동기 교체 (DLL 로딩 없음) / Synchronous swap with pre-loaded instances (no DLL loading) |
 
@@ -716,12 +716,12 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 |---------|------|
 | REC 버튼 / REC Button | 녹음 토글 (녹음 중 눌린 상태) / Recording toggle (pressed state during recording) |
 | 타이머 라벨 / Timer Label | "0m 15s" 형식 / format |
-| Play 버튼 / Play Button | 마지막 녹음 파일 기본 플레이어로 재생 / Play last recorded file with default player |
+| Play 버튼 / Play Button | 현재 선택 폴더의 최신 완료 `DirectPipe_*.wav`를 기본 플레이어로 재생. 다른 폴더에서 늦게 도착한 완료 이벤트는 무시 / Play the newest completed `DirectPipe_*.wav` in the currently selected folder with the default player; ignore late completion from another folder |
 | Open Folder 버튼 / Open Folder Button | Windows: `explorer.exe /select,{lastFile}`, macOS: `open -R`, Linux: `xdg-open` |
 | 폴더 변경 버튼 / Change Folder Button (...) | 녹음 폴더 선택 / Select recording folder |
 | 폴더 경로 라벨 / Folder Path Label | 말줄임표로 축약 표시 / Truncated with ellipsis |
 
-녹음 설정은 앱 데이터 디렉토리(Windows: `%AppData%/DirectPipe/`, macOS: `~/Library/Application Support/DirectPipe/`, Linux: `~/.config/DirectPipe/`)의 `recording-config.json`에 영속 저장
+녹음 설정은 앱 데이터 디렉토리(Windows: `%AppData%/DirectPipe/`, macOS: `~/Library/Application Support/DirectPipe/`, Linux: `~/.config/DirectPipe/`)의 `recording-config.json`에 영속 저장한다. 시작/폴더 변경 시 선택 폴더의 최신 `DirectPipe_*.wav`를 복원하며, 같은 초에 빠르게 재시작하면 suffix를 붙여 파일명 충돌을 피한다. 설정 저장이 실패하면 live/UI 폴더도 이전 값으로 롤백하고 경고한다.
 
 Recording settings are persisted in `recording-config.json` in the app data directory (Windows: `%AppData%/DirectPipe/`, macOS: `~/Library/Application Support/DirectPipe/`, Linux: `~/.config/DirectPipe/`)
 
@@ -853,7 +853,7 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 | 포맷 / Format | VST2 / VST3 / AU (macOS) |
 | 입력 / Input | **없음 (입력 버스 없음)** / **None (no input bus)** — `BusesProperties().withOutput(...)` only, no `.withInput()` |
 | 출력 / Output | 스테레오 (2채널) 또는 모노 (1채널) / Stereo (2ch) or Mono (1ch). `isBusesLayoutSupported`가 mono와 stereo 모두 허용 / accepts both mono and stereo |
-| 레이턴시 보고 / Latency Reporting | `setLatencySamples(targetFillFrames)` — 버퍼 프리셋 크기를 호스트 DAW에 보고 / Reports buffer preset size to host DAW. 프리셋 변경 시 processBlock 내에서 동적 갱신 / Dynamically updated in processBlock on preset change |
+| 레이턴시 보고 / Latency Reporting | `setLatencySamples(targetFillFrames)` — 버퍼 프리셋 크기를 호스트 DAW에 보고 / Reports buffer preset size to host DAW. 프리셋 변경 callback은 요청값을 atomic에 저장하고 `AsyncUpdater`가 message thread에서 host latency를 갱신 / The parameter callback stores the request atomically and an `AsyncUpdater` updates host latency on the message thread |
 | MIDI | 없음 / None |
 | 프로그램 / Programs | 1개 (전환 없음) / 1 (no switching) |
 
@@ -892,19 +892,26 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 |------|------|
 | 공유 메모리 이름 / Shared Memory Name | `Local\\DirectPipeAudio` |
 | 프로토콜 / Protocol | SPSC 링 버퍼 / SPSC ring buffer, atomic read/write 포지션 / positions. RingBuffer에 atomic `detached_` 플래그 / flag (detach 시 읽기/쓰기 즉시 차단 / immediately blocks read/write on detach) |
-| 연결 확인 / Connection Check | `producer_active` 플래그 / flag (acquire) |
-| 재연결 간격 / Reconnection Interval | 100 블록마다 / Every 100 blocks |
+| 연결 확인 / Connection Check | RT callback은 `producer_active`와 `producer_generation`을 atomic 확인 / atomically checks both fields |
+| 재연결 간격 / Reconnection Interval | 전용 connection worker가 약 100ms마다 확인 / Dedicated connection worker checks about every 100ms |
 | 드리프트 워밍업 / Drift Warmup | 50 블록 후 클록 드리프트 체크 시작 / Clock drift checks start after 50 blocks |
 
 #### 오디오 처리 / Audio Processing
 0. 인터리브 버퍼 empty 가드 → prepareToPlay 전 호출 시 즉시 무음 반환 / Interleaved buffer empty guard → immediate silence return if called before prepareToPlay
 1. Mute 확인 → 뮤트면 버퍼 클리어 / Check mute → clear buffer if muted
 2. 미연결: 페이드아웃 또는 무음 / Not connected: fade-out or silence
-3. 연결 시: producer 활성 확인 / On connection: check producer active. **Stale consumer_active 감지 / detection**: detach() 후 close() 호출하여 OBS 크래시 등으로 남은 spurious multi-consumer 경고 방지 / call detach() then close() to prevent spurious multi-consumer warnings left by OBS crash, etc.
+3. 연결 시: audio callback은 counted lease로 게시된 connection을 빌리고 producer active/generation만 확인한다. mismatch 시 reconnect를 요청하고 fade/silence를 출력한다 / On connection, the audio callback borrows the published connection through a counted lease and only checks producer active/generation; a mismatch requests reconnect and emits fade/silence.
 4. 클록 드리프트 보상: 버퍼 > highThreshold이면 초과 프레임 스킵 / Clock drift compensation: skip excess frames when buffer > highThreshold
 5. 링 버퍼에서 프레임 읽기 / Read frames from ring buffer
 6. 인터리브 → JUCE planar 변환 / Interleaved → JUCE planar conversion
 7. 부분 읽기 시 패딩 (무음) / Padding with silence on partial read
+
+공유 메모리 open/retire/unmap과 latency host notification은 audio callback 밖의
+connection worker/message thread에서 수행한다. worker는 새 lease 진입을 닫고
+진행 중 lease가 0이 된 뒤 mapping을 해제한다. POSIX에서는 named object identity
+변경도 감지한다. / Shared-memory open/retire/unmap and host latency notification
+run outside the audio callback. The worker closes lease admission, drains active
+leases, and also detects POSIX named-object replacement.
 
 #### Clock Drift Compensation
 
@@ -945,7 +952,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.2.0" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.2.1" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -961,12 +968,17 @@ uint32_t channels                          — 채널 수 / channel count
 uint32_t buffer_frames                     — 버퍼 프레임 수 / buffer frame count
 uint32_t version                           — 프로토콜 버전 / protocol version (1)
 atomic<bool> producer_active               — 프로듀서 활성 플래그 / producer active flag
+atomic<bool> consumer_active               — 단일 consumer 연결 표시 / single-consumer attachment flag
+atomic<uint64_t> producer_generation       — producer 수명 식별자 / producer-lifetime identifier (v1 reserved space)
 ```
-64바이트 정렬 (false sharing 방지) / 64-byte alignment (prevents false sharing)
+헤더 크기는 192바이트로 고정되고 64바이트 정렬된다. 새 필드는 protocol v1의
+reserved 공간을 사용하므로 기존 field offset과 `PROTOCOL_VERSION=1`을 유지한다. /
+Header size remains fixed at 192 bytes and 64-byte aligned. New fields consume
+protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`.
 
 #### 공유 메모리 레이아웃 / Shared Memory Layout
 ```
-[Header (64+ bytes)] [Ring Buffer PCM (interleaved floats)]
+[Header (192 bytes)] [Ring Buffer PCM (interleaved floats)]
 ```
 크기 / Size = sizeof(Header) + (buffer_frames × channels × sizeof(float))
 
@@ -983,7 +995,8 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 #### SharedMemWriter (호스트 측 / Host Side)
 - `initialize(sampleRate, channels, bufferFrames)` — 공유 메모리 생성 / Creates shared memory
 - `writeAudio(buffer, numSamples)` — RT-safe. 사전 할당된 인터리브 버퍼로 변환 후 쓰기 / Converts to pre-allocated interleaved buffer then writes
-- `shutdown()` — `producer_active` false 설정 → 5ms 대기 → 메모리/이벤트 해제 / Sets `producer_active` false → 5ms wait → releases memory/event
+- `shutdown()` — RT write admission 차단 → in-flight writer drain → `producer_active=false` → ring detach → memory/event 해제 / Closes RT write admission, drains in-flight writers, clears `producer_active`, detaches the ring, then releases memory/event
+- 같은 writer 재초기화 또는 Windows의 기존 named mapping 교체는 consumer가 inactive를 관찰하고 분리할 시간을 준 뒤 fresh object에서만 header를 생성하며, 안전한 handoff가 불가능하면 fail-closed한다 / Reinitialization and Windows existing-mapping replacement quiesce the consumer and construct a header only in a fresh object; an unsafe handoff fails closed
 
 ---
 
@@ -993,11 +1006,11 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 |------|------|
 | 포맷 / Format | WAV, 24-bit |
 | FIFO | 32768 샘플 / samples (~0.68초 / seconds @48kHz) |
-| 락 / Lock | `juce::SpinLock` (RT-safe) — writer teardown 보호 / writer teardown protection |
+| 락 / Lock | `juce::SpinLock` — start/stop publication 직렬화; RT write는 try-lock만 사용 / serializes start/stop publication; RT write only try-locks |
 | 스레드 / Thread | `juce::TimeSliceThread "Audio Writer"` — FIFO → 디스크 / disk |
-| 시작 / Start | 부모 디렉토리 생성, samplesWritten 리셋, ThreadedWriter 생성 / Create parent directory, reset samplesWritten, create ThreadedWriter |
-| 정지 / Stop | recording_ false (seq_cst) → SpinLock 획득 / acquire → writer 파괴 (FIFO 플러시) / destroy writer (FIFO flush) |
-| 쓰기 / Write | recording_ 확인 / check (acquire) → SpinLock → ThreadedWriter 쓰기 / write → samplesWritten 증가 / increment |
+| 시작 / Start | writer 생성 후 lock 안에서 writer/generation/counters/current file 설치와 `recording=true`를 한 전이로 publish / Publishes writer, generation, counters, current file, and `recording=true` as one locked transition |
+| 정지 / Stop | lock 안에서 `recording=false`, generation 무효화, writer flush/reset, 통계 snapshot, last-completed file publish / Invalidates state, flushes writer, snapshots stats, and publishes the completed file under the same lock |
+| 쓰기 / Write | recording/generation 확인 → SpinLock try-lock → ThreadedWriter가 수락한 block만 samplesWritten 증가; contention/FIFO rejection은 drop 집계 / Checks recording/generation, try-locks, counts only accepted blocks, and records contention/FIFO drops |
 | 자동 정지 / Auto-Stop | 오디오 장치 변경 시 / On audio device change |
 | 시간 표시 / Time Display | Timer 기반 / Timer-based. `getRecordedSeconds() = samplesWritten / sampleRate` |
 
@@ -1008,6 +1021,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 #### 4.11.1 자동 저장 / Auto-Save
 - Dirty-flag 패턴 + 1초 디바운스 (30Hz 타이머에서 30틱 카운트다운) / Dirty-flag pattern + 1-second debounce (30-tick countdown at 30Hz timer)
 - `onSettingsChanged` 콜백 → `markSettingsDirty()` → 카운터 리셋 → 0 도달 시 `saveSettings()` / callback → `markSettingsDirty()` → counter reset → `saveSettings()` on reaching 0
+- 저장 실패 시 dirty를 유지하고 새 UI 변경 없이 재시도한다 / A failed save retains dirty state and retries without another UI edit
 - `loadingSlot_` 또는 `isLoading()` true면 저장 스킵 (부분 상태 손상 방지) / Saves skipped when `loadingSlot_` or `isLoading()` is true (prevents partial state corruption)
 - 불완전한 settings preset load 후 `partialLoad_`를 설정하여 quick-slot autosave가 깨진 체인을 덮어쓰지 않게 함 / Incomplete settings preset loads set `partialLoad_` so quick-slot autosave cannot overwrite a slot with a broken chain
 - `plugins` 배열이 아니거나 entry 구조가 잘못된 settings JSON은 active slot, audio state, output state 적용 전에 실패 / Settings JSON with a non-array `plugins` field or malformed plugin entries fails before active slot, audio state, or output state is applied
@@ -1072,7 +1086,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.2.0",
+  "appVersion": "4.2.1",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1095,8 +1109,11 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.2.0",
-  "audioSettings": { /* plugins 포함 */ },
+  "appVersion": "4.2.1",
+  "audioSettings": {
+    "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
+    /* plugins 포함 */
+  },
   "controlConfig": { /* ... */ },
   "presetSlots": {
     "A": { /* slot A JSON */ },
@@ -1110,7 +1127,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 | 기능 / Feature | 동작 / Action | 확인 / Confirmation |
 |------|------|------|
 | Full Backup | `.dpfullbackup`으로 전체 백업 / Full backup to `.dpfullbackup` | 파일 선택 / File chooser |
-| Full Restore | `.dpfullbackup`에서 전체 복원 (같은 OS만 — 크로스 OS 복원 차단, slot clear/write 실패 시 quick-slot 파일 롤백) / Full restore from `.dpfullbackup` (same OS only — cross-OS restore blocked, quick-slot files roll back if slot clear/write fails) | 확인 다이얼로그 / Confirmation dialog |
+| Full Restore | `.dpfullbackup`에서 전체 복원. target settings 적용→complete VST prepare→disk/control/slot commit→single graph swap; prepare 실패는 무변경, commit/swap 실패는 recording folder 포함 외부 snapshot과 old runtime chain 롤백 / Full restore with target settings → complete VST prepare → disk/control/slot commit → one graph swap; readiness failure changes nothing, commit/swap failure restores external state (including recording folder) and the old chain | 확인 다이얼로그 / Confirmation dialog |
 | Clear Plugin Cache | 스캔 캐시 XML 삭제 / Delete scan cache XML | 확인 다이얼로그 / Confirmation dialog |
 | Clear All Presets | 슬롯 A-E + Auto 파일 + 백업/임시 파일 삭제, 활성 체인과 런타임 슬롯 상태/프리로드 캐시 초기화 / Delete slots A-E + Auto files + backup/temp files, reset active chain and runtime slot/preload state | 확인 다이얼로그 / Confirmation dialog |
 | Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정), 슬롯 이름/점유 캐시/프리로드 캐시도 초기화 / Delete all data (settings, controls, presets (A-E + Auto), cache, recording config), also clear slot names, occupancy cache, and preload cache | 확인 다이얼로그 / Confirmation dialog |
@@ -1157,7 +1174,7 @@ atomic<bool> producer_active               — 프로듀서 활성 플래그 / p
 | 비교 / Comparison | 엄격한 `MAJOR.MINOR.PATCH` Semver 비교 / Strict `MAJOR.MINOR.PATCH` semver comparison |
 | 표시 / Display | Credit 라벨에 "NEW vX.Y.Z" (주황색) / "NEW vX.Y.Z" (orange) in credit label |
 | 다이얼로그 / Dialog | [Update Now] (Windows only) / [View on GitHub] / [Later] |
-| 업데이트 / Update | Windows: ZIP staging/검증 → 정확한 실행 PID 종료 대기 → known-good exe 회전/교체 → 실패 시 rollback → 자동 재시작 / Stage and verify ZIP → wait for the exact launching PID → rotate/replace the known-good executable → roll back on failure → restart. macOS/Linux: "View on GitHub" 버튼으로 릴리즈 페이지 안내 (수동 다운로드) / "View on GitHub" opens the release page (manual download) |
+| 업데이트 / Update | Windows in-app: v4.2.0+ asset은 exact-name `checksums.sha256` entry와 일치 SHA-256을 필수 확인한 뒤 ZIP staging → 정확한 PID 종료 대기 → known-good exe 교체/rollback → 재시작. 브라우저 수동 다운로드는 이 검사 밖이다 / Windows in-app: v4.2.0+ assets require an exact readable checksum entry and matching SHA-256 before staging, exact-PID wait, replacement/rollback, and restart; manual browser downloads are outside this enforcement. macOS/Linux는 release page를 연다 / macOS/Linux open the release page. |
 | 완료 확인 / Completion Verification | `_updated.flag` 파일 → 다음 시작 시 "Updated successfully" 알림 / `_updated.flag` file → "Updated successfully" notification on next startup |
 | 스레드 안전 / Thread Safety | running/finished atomic과 lifecycle mutex로 download worker 회수/재시도/종료를 직렬화하고, `checkForUpdate` `callAsync`는 `alive_` 플래그로 보호 / Running/finished atomics plus a lifecycle mutex serialize download-worker reap/retry/destruction; `alive_` guards `checkForUpdate` `callAsync` |
 
@@ -1275,14 +1292,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.0.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.1.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host + endpoint, 445 CTest registrations)
+├── tests/                          → Google Test (core + host + endpoint, 484 CTest registrations)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin

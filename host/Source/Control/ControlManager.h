@@ -74,7 +74,7 @@ public:
     /**
      * @brief Save current configuration to disk.
      */
-    void saveConfig();
+    bool saveConfig();
 
     // ─── Access to individual handlers ───
 
@@ -91,7 +91,7 @@ public:
     /**
      * @brief Apply a new control configuration.
      */
-    void applyConfig(const ControlConfig& config);
+    bool applyConfig(const ControlConfig& config);
 
     /**
      * @brief Get the config store (for settings export/import).

@@ -38,6 +38,12 @@ MidiHandler::~MidiHandler()
 
 void MidiHandler::initialize()
 {
+    beginLifetime();
+    openAvailableDevices();
+}
+
+void MidiHandler::openAvailableDevices()
+{
     // Open all available MIDI devices
     auto devices = juce::MidiInput::getAvailableDevices();
     for (const auto& device : devices) {
@@ -52,7 +58,9 @@ void MidiHandler::initialize()
 
 void MidiHandler::shutdown()
 {
-    alive_->store(false, std::memory_order_release);
+    if (auto lifetime = std::atomic_load_explicit(&alive_, std::memory_order_acquire))
+        lifetime->store(false, std::memory_order_release);
+    learnGeneration_.fetch_add(1, std::memory_order_acq_rel);
 
     // Stop learn timer safely — stopTimer() is thread-safe, but destroying
     // a Timer (reset) must happen on the message thread. Just stop it here;
@@ -68,8 +76,19 @@ void MidiHandler::shutdown()
     {
         std::lock_guard<std::mutex> lock(bindingsMutex_);
         learnCallback_ = nullptr;
+        learnCallbackGeneration_ = 0;
         midiOutput_.reset();
     }
+}
+
+void MidiHandler::beginLifetime()
+{
+    auto nextLifetime = std::make_shared<std::atomic<bool>>(true);
+    auto previousLifetime = std::atomic_load_explicit(&alive_, std::memory_order_acquire);
+    if (previousLifetime)
+        previousLifetime->store(false, std::memory_order_release);
+    std::atomic_store_explicit(&alive_, std::move(nextLifetime),
+                               std::memory_order_release);
 }
 
 juce::StringArray MidiHandler::getAvailableDevices() const
@@ -133,44 +152,68 @@ void MidiHandler::removeBinding(int index)
 void MidiHandler::startLearn(
     std::function<void(int, int, int, const juce::String&)> callback)
 {
+    const auto generation = learnGeneration_.fetch_add(1, std::memory_order_acq_rel) + 1;
     {
         std::lock_guard<std::mutex> lock(bindingsMutex_);
         learnCallback_ = std::move(callback);
+        learnCallbackGeneration_ = generation;
+        learning_.store(true, std::memory_order_release);
     }
-    learning_.store(true, std::memory_order_release);
 
     // 30-second timeout to prevent infinite waiting
     struct LearnTimeout : juce::Timer {
         MidiHandler& handler;
-        LearnTimeout(MidiHandler& h) : handler(h) {}
+        const std::uint64_t generation;
+        LearnTimeout(MidiHandler& h, std::uint64_t g) : handler(h), generation(g) {}
         void timerCallback() override {
             stopTimer();  // Stop BEFORE any cleanup — safe to call on self
+
+            // The MIDI callback may already have claimed this generation and
+            // queued a message-thread completion. Only the side that still
+            // owns the active callback is allowed to expire it.
+            if (!handler.expireLearn(generation))
+                return;
+
             Log::info("MIDI", "Learn timed out after 30s");
-            // Clear learn state directly — do NOT call stopLearn() which would
-            // call learnTimer_.reset() and destroy us while on the call stack.
-            handler.learning_.store(false, std::memory_order_release);
-            {
-                std::lock_guard<std::mutex> lock(handler.bindingsMutex_);
-                handler.learnCallback_ = nullptr;
-            }
             // Schedule our own cleanup after this callback returns safely
-            auto aliveFlag = handler.alive_;
-            juce::MessageManager::callAsync([aliveFlag, &h = handler]() {
+            auto aliveFlag = std::atomic_load_explicit(&handler.alive_,
+                                                       std::memory_order_acquire);
+            juce::MessageManager::callAsync([aliveFlag, &h = handler,
+                                             expiredGeneration = generation + 1]() {
                 if (!aliveFlag->load(std::memory_order_acquire)) return;
-                h.learnTimer_.reset();
+                if (h.learnGeneration_.load(std::memory_order_acquire) == expiredGeneration)
+                    h.learnTimer_.reset();
             });
         }
     };
-    learnTimer_ = std::make_unique<LearnTimeout>(*this);
+    learnTimer_ = std::make_unique<LearnTimeout>(*this, generation);
     static_cast<LearnTimeout*>(learnTimer_.get())->startTimer(30000);
 
     juce::Logger::writeToLog("[MIDI] Learn started");
+}
+
+bool MidiHandler::expireLearn(std::uint64_t generation)
+{
+    {
+        std::lock_guard<std::mutex> lock(bindingsMutex_);
+        if (learnCallbackGeneration_ != generation
+            || !learning_.exchange(false, std::memory_order_acq_rel))
+            return false;
+
+        learnCallback_ = nullptr;
+        learnCallbackGeneration_ = 0;
+    }
+
+    std::uint64_t expectedGeneration = generation;
+    return learnGeneration_.compare_exchange_strong(
+        expectedGeneration, generation + 1, std::memory_order_acq_rel);
 }
 
 void MidiHandler::stopLearn()
 {
     jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
 
+    learnGeneration_.fetch_add(1, std::memory_order_acq_rel);
     if (learnTimer_) {
         learnTimer_->stopTimer();
         learnTimer_.reset();
@@ -179,8 +222,48 @@ void MidiHandler::stopLearn()
     {
         std::lock_guard<std::mutex> lock(bindingsMutex_);
         learnCallback_ = nullptr;
+        learnCallbackGeneration_ = 0;
     }
     juce::Logger::writeToLog("[MIDI] Learn stopped");
+}
+
+void MidiHandler::dispatchLearnCompletion(
+    std::function<void(int, int, int, const juce::String&)> callback,
+    std::uint64_t generation, int cc, int note, int channel,
+    juce::String deviceName)
+{
+    if (!callback)
+        return;
+
+    auto aliveFlag = std::atomic_load_explicit(&alive_, std::memory_order_acquire);
+    auto complete = [this, aliveFlag, callback = std::move(callback), generation,
+                     cc, note, channel, deviceName = std::move(deviceName)]() mutable {
+        if (!aliveFlag->load(std::memory_order_acquire))
+            return;
+        if (learnGeneration_.load(std::memory_order_acquire) != generation)
+            return;
+
+        jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+        // Retire the completed Learn timer before invoking client code. The
+        // callback may immediately start another Learn session, whose timer
+        // must not be reset by cleanup for this one.
+        if (learnTimer_) {
+            learnTimer_->stopTimer();
+            learnTimer_.reset();
+        }
+
+        callback(cc, note, channel, deviceName);
+    };
+
+    auto* messageManager = juce::MessageManager::getInstanceWithoutCreating();
+    if (messageManager != nullptr && messageManager->isThisTheMessageThread()) {
+        complete();
+        return;
+    }
+
+    if (!juce::MessageManager::callAsync(std::move(complete)))
+        Log::error("MIDI", "Could not dispatch Learn completion to the message thread");
 }
 
 void MidiHandler::handleIncomingMidiMessage(
@@ -200,19 +283,22 @@ void MidiHandler::handleIncomingMidiMessage(
         int value = message.getControllerValue();
 
         {
-            // CAS (compare-and-swap) ensures only one MIDI message wins the learn slot.
-            // Multiple devices can fire simultaneously on different callback threads.
-            // DO NOT simplify to if(learning_.load()) { learning_.store(false); ... }
-            // — that has a TOCTOU race where two threads both read true and both proceed.
-            bool expected = true;
-            if (learning_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-                std::function<void(int, int, int, const juce::String&)> cb;
-                {
-                    std::lock_guard<std::mutex> lock(bindingsMutex_);
+            std::function<void(int, int, int, const juce::String&)> cb;
+            std::uint64_t generation = 0;
+            {
+                // The callback and the claim share one lock so a simultaneous
+                // startLearn() cannot be mistaken for the session being completed.
+                std::lock_guard<std::mutex> lock(bindingsMutex_);
+                if (learning_.exchange(false, std::memory_order_acq_rel)) {
                     cb = std::move(learnCallback_);
                     learnCallback_ = nullptr;
+                    generation = learnCallbackGeneration_;
+                    learnCallbackGeneration_ = 0;
                 }
-                if (cb) cb(cc, -1, channel, deviceName);
+            }
+            if (cb) {
+                dispatchLearnCompletion(std::move(cb), generation, cc, -1,
+                                        channel, deviceName);
                 juce::Logger::writeToLog("[MIDI] Learn: CC#" + juce::String(cc) + " ch" + juce::String(channel));
                 return;
             }
@@ -226,15 +312,20 @@ void MidiHandler::handleIncomingMidiMessage(
         bool noteOn = message.isNoteOn();
 
         if (noteOn) {
-            bool expected = true;
-            if (learning_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-                std::function<void(int, int, int, const juce::String&)> cb;
-                {
-                    std::lock_guard<std::mutex> lock(bindingsMutex_);
+            std::function<void(int, int, int, const juce::String&)> cb;
+            std::uint64_t generation = 0;
+            {
+                std::lock_guard<std::mutex> lock(bindingsMutex_);
+                if (learning_.exchange(false, std::memory_order_acq_rel)) {
                     cb = std::move(learnCallback_);
                     learnCallback_ = nullptr;
+                    generation = learnCallbackGeneration_;
+                    learnCallbackGeneration_ = 0;
                 }
-                if (cb) cb(-1, note, channel, deviceName);
+            }
+            if (cb) {
+                dispatchLearnCompletion(std::move(cb), generation, -1, note,
+                                        channel, deviceName);
                 juce::Logger::writeToLog("[MIDI] Learn: Note#" + juce::String(note) + " ch" + juce::String(channel));
                 return;
             }
@@ -375,7 +466,10 @@ void MidiHandler::sendFeedback(int cc, int channel, int value)
 void MidiHandler::rescanDevices()
 {
     closeAllDevices();
-    initialize();
+    // A device rescan is not a handler lifetime restart. Replacing alive_
+    // here would discard a valid Learn completion already queued by an input
+    // that was stopped during the rescan.
+    openAvailableDevices();
 }
 
 void MidiHandler::injectTestMessage(const juce::MidiMessage& message)

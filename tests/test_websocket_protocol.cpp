@@ -66,6 +66,11 @@ public:
         return server.clients_.size();
     }
 
+    static void disableDiscovery(WebSocketServer& server)
+    {
+        server.discoveryEnabled_ = false;
+    }
+
     static void startBroadcast(WebSocketServer& server, std::string message)
     {
         server.running_.store(true, std::memory_order_release);
@@ -306,6 +311,7 @@ TEST(WebSocketServerLifecycleTest, FailedHandshakeIsSweptWithoutBroadcast)
     ActionDispatcher dispatcher;
     StateBroadcaster broadcaster;
     WebSocketServer server(dispatcher, broadcaster);
+    WebSocketServerTestAccess::disableDiscovery(server);
     ASSERT_TRUE(server.start(43150));
 
     juce::StreamingSocket client;

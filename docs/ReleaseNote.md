@@ -2,6 +2,154 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## DirectPipe v4.2.1
+
+v4.2.1 is a reliability hotfix for recording, real-time audio lifecycle,
+settings and preset durability, Receiver reconnection, update integrity, and the
+release pipeline.
+
+v4.2.1은 녹음, 실시간 오디오 수명 주기, 설정·프리셋 내구성, Receiver
+재연결, 업데이트 무결성, 릴리즈 파이프라인을 보강하는 안정성 핫픽스입니다.
+
+This release preserves the v4.2.x shared-memory layout, control API payloads,
+preset schema, Stream Deck actions, and plug-in identities.
+
+이번 릴리즈는 v4.2.x 공유 메모리 레이아웃, control API payload, preset
+schema, Stream Deck action, 플러그인 식별자 호환성을 유지합니다.
+
+### Highlights / 주요 변경
+
+#### 1) Recording and playback / 녹음 및 재생
+
+- Completed recordings remain playable across direct stop and audio-device
+  stop/restart paths, and Play follows the currently selected folder.
+- 직접 정지와 오디오 장치 정지·재시작 경로 모두 완료 녹음을 유지하며 Play는
+  현재 선택한 폴더만 따릅니다.
+- Start/stop lifecycle state is serialized, dropped writer blocks do not inflate
+  duration, and rapid restarts use collision-free filenames.
+- start/stop 수명 상태를 직렬화하고 drop된 writer 블록은 시간에 더하지 않으며
+  빠른 재녹음은 충돌 없는 파일명을 사용합니다.
+
+#### 2) Audio and VST lifecycle / 오디오 및 VST 수명 주기
+
+- Noise removal now preserves its declared 480-sample latency through callback
+  sizes up to 4096 without FIFO overwrite and reports zero latency while
+  unsupported-rate passthrough is active.
+- 노이즈 제거가 4096까지의 callback 크기에서 FIFO overwrite 없이 선언한
+  480-sample 지연을 지키며 미지원 rate passthrough에서는 지연 0을 보고합니다.
+- VST graph lifecycle and structural mutations share a control-side lock while
+  the real-time process path remains lock-free.
+- VST graph 수명과 구조 변경은 control-side lock으로 보호하고 실시간 처리
+  경로는 lock-free로 유지합니다.
+
+#### 3) Settings, slots, reset, and backup / 설정·슬롯·초기화·백업
+
+- Autosave retains dirty state after failure; slot transitions and active-slot
+  imports abort or roll back instead of silently losing the previous state.
+- 자동 저장 실패 시 dirty 상태를 유지하며 슬롯 전환과 활성 슬롯 가져오기는
+  기존 상태를 조용히 잃지 않고 중단하거나 롤백합니다.
+- Reset/Clear invalidate stale asynchronous loads, report filesystem failures,
+  reset the live recording folder, and Full Backup carries recording config.
+- Reset/Clear가 오래된 비동기 load를 무효화하고 파일 오류를 보고하며 현재
+  녹음 폴더를 초기화하고 Full Backup에 녹음 설정을 포함합니다.
+- Preset and full-backup restore prepare every target plug-in chain before
+  changing live state, then commit external state and swap the graph once with
+  rollback protection.
+- 프리셋과 전체 백업 복원은 모든 대상 플러그인 체인을 먼저 준비한 뒤 외부
+  상태를 커밋하고 그래프를 한 번만 교체하며, 실패 시 롤백합니다.
+- Asynchronous menu callbacks and settings/import failure paths now preserve UI
+  lifetime and display actionable failures.
+- 비동기 메뉴 callback과 설정/import 실패 경로가 UI 수명을 보호하고 사용자가
+  조치할 수 있는 오류를 표시합니다.
+
+#### 4) Receiver, control state, and updater / Receiver·제어 상태·업데이터
+
+- Receiver detects a replaced POSIX shared-memory object or producer generation
+  and reconnects without changing the IPC ABI. Mapping and latency notifications
+  move off the audio callback with in-flight drain protection.
+- Receiver가 교체된 POSIX 공유 메모리 객체 또는 producer generation을 감지해
+  IPC ABI 변경 없이 재연결합니다. mapping·latency 알림은 in-flight 보호와
+  함께 audio callback 밖으로 이동합니다.
+- The control state includes the active preset. Windows in-app updater downloads
+  for v4.2.0 and later require an exact readable `checksums.sha256` entry and a
+  matching SHA-256; missing, unreadable, or mismatched metadata fails closed.
+  Manual browser downloads are outside this check, and macOS/Linux open the
+  release page.
+- control state에 활성 preset을 포함합니다. Windows 인앱 업데이터는 v4.2.0
+  이후 릴리즈에서 정확히 일치하는 `checksums.sha256` 항목과 SHA-256을
+  필수 확인하며, 없거나 읽지 못하거나 불일치하면 fail-closed로 중단합니다.
+  브라우저 수동 다운로드는 이 검사 밖이며 macOS/Linux는 릴리즈 페이지를
+  엽니다.
+- MIDI learn completion runs on the message thread; superseded, timed-out, or
+  shutdown learn sessions cannot apply stale bindings.
+- MIDI learn 완료는 message thread에서 처리하며 교체·timeout·shutdown된 세션은
+  오래된 binding을 적용할 수 없습니다.
+
+#### 5) Release CI / 릴리즈 CI
+
+- CI validates/builds artifacts before publication and publishes from a draft
+  only after assets and checksums are ready.
+- CI가 게시 전에 산출물을 검증·빌드하고 asset과 checksum 준비 후 draft를
+  공개합니다.
+- Advertised Windows VST2/ASIO release support now requires both SDK inputs.
+- Windows VST2/ASIO 릴리즈 지원을 표시하려면 두 SDK 입력이 모두 필요합니다.
+
+### Upgrade Notes / 업그레이드 안내
+
+- The IPC wire ABI remains protocol v1: existing field offsets and the 192-byte
+  header are unchanged, while `producer_generation` uses previously reserved
+  bytes. Existing v4.2.x presets, HTTP/WebSocket clients, and Stream Deck action
+  UUIDs/request payloads remain compatible; the existing `state.data.preset`
+  field now carries the active slot.
+- IPC wire ABI는 protocol v1을 유지합니다. 기존 필드 offset과 192-byte header는
+  그대로이며 `producer_generation`은 예약 영역을 사용합니다. 기존 v4.2.x
+  preset, HTTP/WebSocket client, Stream Deck action UUID/request payload는
+  호환되며 기존 `state.data.preset` 필드에 활성 슬롯 값이 채워집니다.
+- Updating the bundled Receiver is recommended for its reconnect/lifecycle fixes;
+  older Receivers remain ABI-compatible but do not gain those fixes. DirectPipe
+  and Receiver still need matching sample rates.
+- 재연결·수명 수정 적용을 위해 번들 Receiver 업데이트를 권장하며 DirectPipe와
+  이전 Receiver도 ABI 호환이지만 해당 수정은 적용되지 않습니다. DirectPipe와
+  Receiver sample rate는 계속 동일하게 맞춰야 합니다.
+
+### Validation / 검증
+
+- The local Windows Release build passed for the app, Receiver VST2/VST3, and
+  all three test executables.
+- 로컬 Windows Release에서 앱, Receiver VST2/VST3, 테스트 실행 파일 3개 빌드가
+  통과했습니다.
+- CTest registered 484 tests: core 59/59 passed; host 421 passed and 2
+  environment-dependent tests skipped out of 423; focused endpoint 2/2 passed;
+  0 failed.
+- CTest 등록 484개 중 core 59/59, host 423개 중 421개, endpoint 2/2가
+  통과했고 host 환경 의존 테스트 2개가 skip되었으며 실패는 0개입니다.
+- The event-signaled IPC regression passed 100/100 stress iterations. Stream
+  Deck tests passed 5/5; its bundle build and package validation succeeded.
+- event-signaled IPC 회귀 테스트는 100/100회 통과했습니다. Stream Deck은
+  테스트 5/5, bundle build, package validation이 통과했습니다.
+- Version-only metadata, UTF-8 text integrity, JSON/YAML parsing,
+  `git diff --check`, and SDAD v3.2.2 strict Doctor gates passed.
+- version-only metadata, UTF-8 text integrity, JSON/YAML parse,
+  `git diff --check`, SDAD v3.2.2 strict Doctor가 통과했습니다.
+- Real-device audio, third-party VST crash containment, macOS hardware, and
+  Linux hardware checks were not run and remain separate evidence gates.
+- 실기기 오디오, 제3자 VST crash containment, macOS/Linux 하드웨어 검증은
+  수행하지 않았으며 별도 증거 게이트로 남습니다.
+
+### Downloads / 다운로드
+
+- `DirectPipe-v4.2.1-Windows.zip` — Windows stable artifact, CI-built.
+- `DirectPipe-v4.2.1-macOS.dmg` — macOS beta artifact, CI-built.
+- `DirectPipe-v4.2.1-Linux.tar.gz` — Linux experimental artifact, CI-built.
+- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 4.2.1 package.
+- `checksums.sha256` — SHA-256 manifest generated by CI.
+
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.0...v4.2.1
+
+**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.0...v4.2.1
+
+---
+
 ## DirectPipe v4.2.0
 
 v4.2.0 is a substantial reliability release covering Windows endpoint recovery, real-time lifecycle safety, transactional settings and preset handling, control-server shutdown, the Windows updater, and Stream Deck reconnect/discovery behavior.

@@ -31,7 +31,7 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## 테스트 / Testing
 
-- Google Test 기반 **CTest 445개 등록**: core 52 + host 391 + focused endpoint 2 (현재 Windows 검증에서 host 2개는 환경 의존 skip) / **445 CTest registrations**: 52 core + 391 host + 2 focused endpoint tests (2 host tests are environment-dependent skips in the current Windows run)
+- Google Test 기반 **CTest 484개 등록**: core 59 + host 423 + focused endpoint 2 (현재 Windows 검증에서 host 2개는 환경 의존 skip) / **484 CTest registrations**: 59 core + 423 host + 2 focused endpoint tests (2 host tests are environment-dependent skips in the current Windows run)
 - `tools/pre-release-test.sh` — `--version-only` metadata gate, exact candidate `--api-only`, candidate 종료 후 `--skip-api` Release build/core/host/endpoint/Stream Deck 검증 / `--version-only` metadata gate, exact-candidate `--api-only`, then `--skip-api` Release build/core/host/endpoint/Stream Deck verification after closing the candidate (Windows Git Bash)
 - `tools/pre-release-dashboard.html` — 수동 테스트 대시보드 / Manual test dashboard
 

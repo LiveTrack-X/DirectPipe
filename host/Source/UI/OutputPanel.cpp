@@ -142,10 +142,8 @@ OutputPanel::OutputPanel(AudioEngine& engine)
                              [safeThis, chooser](const juce::FileChooser& fc) {
             if (!safeThis) return;
             auto result = fc.getResult();
-            if (result.isDirectory()) {
-                safeThis->setRecordingFolder(result);
-                safeThis->saveRecordingConfig();
-            }
+            if (result.isDirectory())
+                safeThis->setRecordingFolderAndSave(result);
         });
     };
     addAndMakeVisible(changeFolderBtn_);
@@ -338,6 +336,7 @@ void OutputPanel::timerCallback()
 
 void OutputPanel::updateRecordingState(bool isRecording, double seconds)
 {
+    openFolderBtn_.setEnabled(recordingFolder_.isDirectory());
     recordBtn_.setButtonText(isRecording ? "STOP" : "REC");
     recordBtn_.setColour(juce::TextButton::buttonColourId,
         juce::Colour(isRecording ? kRedColour : 0xFF3A3A5Au));
@@ -353,12 +352,20 @@ void OutputPanel::updateRecordingState(bool isRecording, double seconds)
         playLastBtn_.setEnabled(false);
     } else {
         recordTimeLabel_.setText("", juce::dontSendNotification);
+        auto completedFile = engine_.getRecorder().getLastCompletedFile();
+        // A completed take from the previously selected folder must not
+        // overwrite the Play target after the user switches destinations.
+        if (completedFile.existsAsFile()
+            && completedFile.getParentDirectory() == recordingFolder_)
+            lastRecordedFile_ = completedFile;
         playLastBtn_.setEnabled(lastRecordedFile_.existsAsFile());
     }
 }
 
 void OutputPanel::setLastRecordedFile(const juce::File& file)
 {
+    if (file.getParentDirectory() != recordingFolder_)
+        return;
     lastRecordedFile_ = file;
     playLastBtn_.setEnabled(file.existsAsFile());
 }
@@ -367,24 +374,58 @@ void OutputPanel::setRecordingFolder(const juce::File& folder)
 {
     recordingFolder_ = folder;
     folderPathLabel_.setText(folder.getFullPathName(), juce::dontSendNotification);
-    openFolderBtn_.setEnabled(folder.exists());
+    openFolderBtn_.setEnabled(folder.isDirectory());
+    lastRecordedFile_ = AudioRecorder::findLatestRecordingFile(folder);
+    playLastBtn_.setEnabled(lastRecordedFile_.existsAsFile());
 }
 
-void OutputPanel::saveRecordingConfig()
+bool OutputPanel::setRecordingFolderAndSave(const juce::File& folder)
+{
+    const auto previousFolder = recordingFolder_;
+    const auto previousRecording = lastRecordedFile_;
+
+    setRecordingFolder(folder);
+    if (saveRecordingConfig())
+        return true;
+
+    recordingFolder_ = previousFolder;
+    lastRecordedFile_ = previousRecording;
+    folderPathLabel_.setText(previousFolder.getFullPathName(), juce::dontSendNotification);
+    openFolderBtn_.setEnabled(previousFolder.isDirectory());
+    playLastBtn_.setEnabled(previousRecording.existsAsFile());
+    if (onError)
+        onError("Recording folder could not be saved. The previous folder is still active.");
+    return false;
+}
+
+void OutputPanel::resetRecordingFolder()
+{
+    setRecordingFolder(getDefaultRecordingFolder());
+}
+
+juce::File OutputPanel::getDefaultRecordingFolder()
+{
+    return juce::File::getSpecialLocation(
+        juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
+}
+
+bool OutputPanel::saveRecordingConfig()
 {
     auto configDir = ControlMappingStore::getConfigDirectory();
     auto configFile = configDir.getChildFile("recording-config.json");
     juce::DynamicObject::Ptr obj = new juce::DynamicObject();
     obj->setProperty("recordingFolder", recordingFolder_.getFullPathName());
     auto json = juce::JSON::toString(juce::var(obj.get()));
-    if (!atomicWriteFile(configFile, json))
+    if (!atomicWriteFile(configFile, json)) {
         Log::warn("APP", "Failed to save recording folder config");
+        return false;
+    }
+    return true;
 }
 
 void OutputPanel::loadRecordingConfig()
 {
-    auto defaultFolder = juce::File::getSpecialLocation(
-        juce::File::userDocumentsDirectory).getChildFile("DirectPipe Recordings");
+    auto defaultFolder = getDefaultRecordingFolder();
 
     auto configDir = ControlMappingStore::getConfigDirectory();
     auto configFile = configDir.getChildFile("recording-config.json");

@@ -313,10 +313,14 @@ void MidiTab::onLearnClicked(int mappingIndex)
     // Capture the action from the existing mapping
     ActionEvent targetAction = bindings[static_cast<size_t>(mappingIndex)].action;
 
+    juce::Component::SafePointer<MidiTab> safeThis(this);
     handler.startLearn(
-        [&manager = this->manager_, mappingIndex, targetAction](int cc, int note, int channel,
-                                            const juce::String& deviceName) {
-            auto& h = manager.getMidiHandler();
+        [safeThis, mappingIndex, targetAction](int cc, int note, int channel,
+                                               const juce::String& deviceName) {
+            if (!safeThis)
+                return;
+
+            auto& h = safeThis->manager_.getMidiHandler();
 
             // Remove old binding (verify index still matches expected action to avoid stale index)
             auto bindings = h.getBindings();
@@ -335,8 +339,11 @@ void MidiTab::onLearnClicked(int mappingIndex)
             newBinding.type = (cc >= 0) ? MidiMappingType::Toggle : MidiMappingType::NoteOnOff;
             h.addBinding(newBinding);
 
-            manager.saveConfig();
-            // UI refresh will happen in timerCallback when isLearning() returns false
+            safeThis->manager_.saveConfig();
+            safeThis->learningIndex_ = -1;
+            safeThis->statusLabel_.setText("", juce::dontSendNotification);
+            safeThis->cancelButton_.setVisible(false);
+            safeThis->refreshMappings();
         });
 }
 
@@ -413,9 +420,10 @@ void MidiTab::onAddMappingClicked()
     menu.addItem(500, "Next Preset");
     menu.addItem(501, "Previous Preset");
 
+    auto safeThis = juce::Component::SafePointer<MidiTab>(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addMappingButton_),
-        [this](int result) {
-            if (result == 0) return;
+        [safeThis](int result) {
+            if (!safeThis || result == 0) return;
 
             ActionEvent action;
             if (result >= 100 && result < 200) {
@@ -452,16 +460,16 @@ void MidiTab::onAddMappingClicked()
             }
 
             // Enter MIDI Learn mode
-            statusLabel_.setText("Move a MIDI control for: " + juce::String(action.stringParam),
-                                 juce::dontSendNotification);
-            cancelButton_.setVisible(true);
-            resized();
-            learningIndex_ = -2;
+            safeThis->statusLabel_.setText(
+                "Move a MIDI control for: " + juce::String(action.stringParam),
+                juce::dontSendNotification);
+            safeThis->cancelButton_.setVisible(true);
+            safeThis->resized();
+            safeThis->learningIndex_ = -2;
 
-            auto safeMidi = juce::Component::SafePointer<MidiTab>(this);
-            manager_.getMidiHandler().startLearn(
-                [safeMidi, action](int cc, int note, int channel, const juce::String& deviceName) {
-                    if (!safeMidi) return;
+            safeThis->manager_.getMidiHandler().startLearn(
+                [safeThis, action](int cc, int note, int channel, const juce::String& deviceName) {
+                    if (!safeThis) return;
                     MidiBinding newBinding;
                     newBinding.cc = cc;
                     newBinding.note = note;
@@ -469,8 +477,12 @@ void MidiTab::onAddMappingClicked()
                     newBinding.deviceName = deviceName.toStdString();
                     newBinding.action = action;
                     newBinding.type = (cc >= 0) ? MidiMappingType::Toggle : MidiMappingType::NoteOnOff;
-                    safeMidi->manager_.getMidiHandler().addBinding(newBinding);
-                    safeMidi->manager_.saveConfig();
+                    safeThis->manager_.getMidiHandler().addBinding(newBinding);
+                    safeThis->manager_.saveConfig();
+                    safeThis->learningIndex_ = -1;
+                    safeThis->statusLabel_.setText("", juce::dontSendNotification);
+                    safeThis->cancelButton_.setVisible(false);
+                    safeThis->refreshMappings();
                 });
         });
 }
@@ -493,46 +505,47 @@ void MidiTab::onAddParamClicked()
             pluginMenu.addItem(i + 1, slot->name);
     }
 
+    auto safeThis = juce::Component::SafePointer<MidiTab>(this);
     pluginMenu.showMenuAsync(
         juce::PopupMenu::Options().withTargetComponent(&addParamButton_),
-        [this](int pluginResult) {
-            if (pluginResult == 0 || !vstChain_) return;
+        [safeThis](int pluginResult) {
+            if (!safeThis || pluginResult == 0 || !safeThis->vstChain_) return;
             int pluginIndex = pluginResult - 1;
 
             // Re-validate plugin index after async gap
-            if (pluginIndex >= vstChain_->getPluginCount()) return;
+            if (pluginIndex >= safeThis->vstChain_->getPluginCount()) return;
 
             // Capture plugin name now (safe at this point)
-            auto* pluginSlot = vstChain_->getPluginSlot(pluginIndex);
+            auto* pluginSlot = safeThis->vstChain_->getPluginSlot(pluginIndex);
             juce::String pluginName = pluginSlot ? pluginSlot->name
                                                  : "Plugin " + juce::String(pluginIndex);
 
             // Step 2: Select parameter
-            int paramCount = vstChain_->getPluginParameterCount(pluginIndex);
+            int paramCount = safeThis->vstChain_->getPluginParameterCount(pluginIndex);
             if (paramCount == 0) {
-                statusLabel_.setText("Plugin has no parameters", juce::dontSendNotification);
+                safeThis->statusLabel_.setText("Plugin has no parameters", juce::dontSendNotification);
                 return;
             }
 
             juce::PopupMenu paramMenu;
             int maxItems = juce::jmin(paramCount, 200);
             for (int p = 0; p < maxItems; ++p) {
-                auto name = vstChain_->getPluginParameterName(pluginIndex, p);
+                auto name = safeThis->vstChain_->getPluginParameterName(pluginIndex, p);
                 if (name.isEmpty()) name = "Param " + juce::String(p);
                 paramMenu.addItem(p + 1, juce::String(p) + ": " + name);
             }
 
             paramMenu.showMenuAsync(
-                juce::PopupMenu::Options().withTargetComponent(&addParamButton_),
-                [this, pluginIndex, pluginName](int paramResult) {
-                    if (paramResult == 0 || !vstChain_) return;
+                juce::PopupMenu::Options().withTargetComponent(&safeThis->addParamButton_),
+                [safeThis, pluginIndex, pluginName](int paramResult) {
+                    if (!safeThis || paramResult == 0 || !safeThis->vstChain_) return;
                     int paramIndex = paramResult - 1;
 
                     // Re-validate after second async gap
-                    if (pluginIndex >= vstChain_->getPluginCount()) return;
-                    if (paramIndex >= vstChain_->getPluginParameterCount(pluginIndex)) return;
+                    if (pluginIndex >= safeThis->vstChain_->getPluginCount()) return;
+                    if (paramIndex >= safeThis->vstChain_->getPluginParameterCount(pluginIndex)) return;
 
-                    auto paramName = vstChain_->getPluginParameterName(pluginIndex, paramIndex);
+                    auto paramName = safeThis->vstChain_->getPluginParameterName(pluginIndex, paramIndex);
 
                     ActionEvent action;
                     action.action = Action::SetPluginParameter;
@@ -542,16 +555,16 @@ void MidiTab::onAddParamClicked()
                     action.stringParam = (pluginName + " > " + paramName).toStdString();
 
                     // Step 3: MIDI Learn
-                    statusLabel_.setText("Move a MIDI CC for: " + pluginName + " > " + paramName,
-                                         juce::dontSendNotification);
-                    cancelButton_.setVisible(true);
-                    resized();
-                    learningIndex_ = -2;
+                    safeThis->statusLabel_.setText(
+                        "Move a MIDI CC for: " + pluginName + " > " + paramName,
+                        juce::dontSendNotification);
+                    safeThis->cancelButton_.setVisible(true);
+                    safeThis->resized();
+                    safeThis->learningIndex_ = -2;
 
-                    auto safeParam = juce::Component::SafePointer<MidiTab>(this);
-                    manager_.getMidiHandler().startLearn(
-                        [safeParam, action](int cc, int note, int channel, const juce::String& deviceName) {
-                            if (!safeParam) return;
+                    safeThis->manager_.getMidiHandler().startLearn(
+                        [safeThis, action](int cc, int note, int channel, const juce::String& deviceName) {
+                            if (!safeThis) return;
                             MidiBinding newBinding;
                             newBinding.cc = cc;
                             newBinding.note = note;
@@ -560,8 +573,12 @@ void MidiTab::onAddParamClicked()
                             newBinding.action = action;
                             newBinding.type = (cc >= 0) ? MidiMappingType::Continuous
                                                         : MidiMappingType::NoteOnOff;
-                            safeParam->manager_.getMidiHandler().addBinding(newBinding);
-                            safeParam->manager_.saveConfig();
+                            safeThis->manager_.getMidiHandler().addBinding(newBinding);
+                            safeThis->manager_.saveConfig();
+                            safeThis->learningIndex_ = -1;
+                            safeThis->statusLabel_.setText("", juce::dontSendNotification);
+                            safeThis->cancelButton_.setVisible(false);
+                            safeThis->refreshMappings();
                         });
                 });
         });

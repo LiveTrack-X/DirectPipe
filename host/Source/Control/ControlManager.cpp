@@ -103,7 +103,7 @@ void ControlManager::reloadConfig()
     initialize(wasActive);
 }
 
-void ControlManager::saveConfig()
+bool ControlManager::saveConfig()
 {
     // Export current state from handlers
     currentConfig_.hotkeys = hotkeyHandler_.exportMappings();
@@ -115,17 +115,28 @@ void ControlManager::saveConfig()
     // would permanently disable servers on next launch
     currentConfig_.server.httpPort = httpApiServer_->getPort();
 
-    configStore_.save(currentConfig_);
+    const bool saved = configStore_.save(currentConfig_);
+    if (!saved) {
+        juce::Logger::writeToLog("[CONTROL] Failed to save hotkey/MIDI configuration");
+        if (onNotification)
+            onNotification("Hotkey/MIDI changes could not be saved",
+                           NotificationLevel::Error);
+    }
+    return saved;
 }
 
-void ControlManager::applyConfig(const ControlConfig& config)
+bool ControlManager::applyConfig(const ControlConfig& config)
 {
     bool wasActive = externalControlsActive_;
     shutdown();
     currentConfig_ = config;
-    configStore_.save(config);
+    const bool saved = configStore_.save(config);
+    if (!saved && onNotification)
+        onNotification("Control settings could not be saved",
+                       NotificationLevel::Error);
     initialized_ = false;
     initialize(wasActive);
+    return saved;
 }
 
 } // namespace directpipe

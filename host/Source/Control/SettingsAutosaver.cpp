@@ -85,28 +85,37 @@ void SettingsAutosaver::tick()
             }
         } else {
             deferCount_ = 0;
-            dirty_ = false;
-            saveNow();
+            if (saveNow()) {
+                dirty_ = false;
+            } else {
+                // A transient filesystem failure must not acknowledge the
+                // pending change. Retry without requiring another UI edit.
+                cooldown_ = 10;
+                juce::Logger::writeToLog(
+                    "[PRESET] Autosave failed; keeping changes pending");
+            }
         }
     }
 }
 
-void SettingsAutosaver::saveNow()
+bool SettingsAutosaver::saveNow()
 {
     // Skip saving during async chain load or before chain is prepared:
     // chain is in transitional state (empty or partially loaded).
     // Saving now would corrupt the active slot file.
     if (loadingSlot_.load() || partialLoad_.load() || !engine_.getVSTChain().isStable())
-        return;
+        return false;
 
     // Save current slot's chain state (captures plugin internal state)
     // Skip slot save if partial load (some plugins failed): preserve original slot file
     int currentSlot = presetMgr_.getActiveSlot();
+    bool slotSaved = true;
     if (currentSlot >= 0 && !partialLoad_.load())
-        presetMgr_.saveSlot(currentSlot);
+        slotSaved = presetMgr_.saveSlot(currentSlot);
 
     auto file = PresetManager::getAutoSaveFile();
-    presetMgr_.savePreset(file);
+    const bool settingsSaved = presetMgr_.savePreset(file);
+    return slotSaved && settingsSaved;
 }
 
 void SettingsAutosaver::loadFromFile()
@@ -168,13 +177,19 @@ void SettingsAutosaver::loadFromFile()
         return;  // window will be shown by preload callback
     }
 
+    // This path is also used after Factory Reset. The caller may already have
+    // claimed the loading flag, so every no-settings exit must release it.
+    partialLoad_ = false;
+    loadingSlot_ = false;
+
     if (!engine_.isOutputNone())
         engine_.setOutputMuted(false);
 
     // No settings file: show window immediately
     auto showWindowCb = onShowWindow;
-    juce::MessageManager::callAsync([showWindowCb]() {
-        if (showWindowCb) showWindowCb();
+    auto aliveFlag = alive_;
+    juce::MessageManager::callAsync([showWindowCb, aliveFlag]() {
+        if (aliveFlag->load() && showWindowCb) showWindowCb();
     });
 }
 

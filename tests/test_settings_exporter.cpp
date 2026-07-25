@@ -1,7 +1,10 @@
 // tests/test_settings_exporter.cpp
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
 #include <limits>
+#include <thread>
 #include "UI/SettingsExporter.h"
 #include "Control/ControlMapping.h"
 #include "Util/AtomicFileIO.h"
@@ -13,6 +16,27 @@
 using namespace directpipe;
 
 namespace {
+
+#if JUCE_WINDOWS
+bool pumpMessagesUntil(const std::atomic<bool>& completed,
+                       std::chrono::milliseconds timeout = std::chrono::seconds(3))
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!completed.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatched = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatched = true;
+        }
+        if (!dispatched)
+            std::this_thread::yield();
+    }
+    return completed.load(std::memory_order_acquire);
+}
+#endif
 
 juce::var makeAudioSettings(int activeSlot = -1, bool includePlugins = true)
 {
@@ -634,6 +658,112 @@ TEST_F(SettingsExporterTest, ImportFullBackupRollsBackSlotFilesWhenExactClearFai
 }
 #endif
 
+TEST_F(SettingsExporterTest, AsyncFullRestorePreparationFailurePreservesEverything) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    ASSERT_TRUE(engine.getVSTChain()
+                    .addBuiltinProcessor(PluginSlot::Type::BuiltinFilter).success);
+    engine.setInputGain(0.25f);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+
+    auto originalControls = ControlMappingStore::createDefaults();
+    originalControls.server.websocketPort = 9001;
+    ASSERT_TRUE(controlStore.save(originalControls));
+    auto slotA = PresetManager::getSlotFile(0);
+    ASSERT_TRUE(atomicWriteFile(slotA,
+        juce::JSON::toString(makeSlot("ExistingA"), true)));
+
+    auto targetAudio = makeAudioSettings(-1, true);
+    targetAudio.getDynamicObject()->setProperty("inputGain", 0.75);
+    auto targetSlots = new juce::DynamicObject();
+    targetSlots->setProperty("A", makeSlot("RestoredA"));
+    const auto json = makeFullRestoreJSON(
+        juce::var(targetSlots), targetAudio, makeControlConfig(12345));
+
+    std::atomic<bool> completed{false};
+    bool restored = true;
+    SettingsExporter::importFullBackupAsync(
+        json, presetManager, controlStore, true,
+        [&](bool ok) {
+            restored = ok;
+            completed.store(true, std::memory_order_release);
+        });
+
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_FALSE(restored);
+    EXPECT_FLOAT_EQ(engine.getInputGain(), 0.25f);
+    EXPECT_EQ(controlStore.load().server.websocketPort, 9001);
+    auto parsedA = juce::JSON::parse(slotA.loadFileAsString());
+    ASSERT_TRUE(parsedA.isObject());
+    EXPECT_EQ(parsedA.getDynamicObject()->getProperty("name").toString(),
+              juce::String("ExistingA"));
+    ASSERT_EQ(engine.getVSTChain().getPluginCount(), 1);
+    auto* current = engine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(current, nullptr);
+    EXPECT_EQ(current->type, PluginSlot::Type::BuiltinFilter);
+#endif
+}
+
+TEST_F(SettingsExporterTest, AsyncFullRestoreCommitsDiskControlAndCompleteChain) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    ASSERT_TRUE(engine.getVSTChain()
+                    .addBuiltinProcessor(PluginSlot::Type::BuiltinFilter).success);
+    engine.setInputGain(0.25f);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+
+    auto targetAudioObject = new juce::DynamicObject();
+    targetAudioObject->setProperty("version", 4);
+    targetAudioObject->setProperty("inputGain", 0.75);
+    juce::Array<juce::var> targetPlugins;
+    auto targetPlugin = new juce::DynamicObject();
+    targetPlugin->setProperty("name", "Auto Gain");
+    targetPlugin->setProperty("type", "builtin_auto_gain");
+    targetPlugin->setProperty("bypassed", false);
+    targetPlugins.add(juce::var(targetPlugin));
+    targetAudioObject->setProperty("plugins", targetPlugins);
+
+    auto targetSlots = new juce::DynamicObject();
+    targetSlots->setProperty("A", makeSlot("RestoredA"));
+    const auto json = makeFullRestoreJSON(
+        juce::var(targetSlots), juce::var(targetAudioObject),
+        makeControlConfig(12345));
+
+    std::atomic<bool> completed{false};
+    bool restored = false;
+    SettingsExporter::importFullBackupAsync(
+        json, presetManager, controlStore, true,
+        [&](bool ok) {
+            restored = ok;
+            completed.store(true, std::memory_order_release);
+        });
+
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_TRUE(restored);
+    EXPECT_FLOAT_EQ(engine.getInputGain(), 0.75f);
+    EXPECT_EQ(controlStore.load().server.websocketPort, 12345);
+    auto slotA = PresetManager::getSlotFile(0);
+    auto parsedA = juce::JSON::parse(slotA.loadFileAsString());
+    ASSERT_TRUE(parsedA.isObject());
+    EXPECT_EQ(parsedA.getDynamicObject()->getProperty("name").toString(),
+              juce::String("RestoredA"));
+    ASSERT_EQ(engine.getVSTChain().getPluginCount(), 1);
+    auto* current = engine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(current, nullptr);
+    EXPECT_EQ(current->type, PluginSlot::Type::BuiltinAutoGain);
+#endif
+}
+
 TEST_F(SettingsExporterTest, ExportFullBackupRejectsUnstableRuntimeAndUsesSlotBackupFallback) {
     AudioEngine engine;
     engine.getVSTChain().prepareToPlay(48000.0, 512);
@@ -666,6 +796,48 @@ TEST_F(SettingsExporterTest, ExportFullBackupRejectsUnstableRuntimeAndUsesSlotBa
     auto* slotA = slots->getProperty("A").getDynamicObject();
     ASSERT_NE(slotA, nullptr);
     EXPECT_EQ(slotA->getProperty("name").toString(), juce::String("RecoveredA"));
+}
+
+TEST_F(SettingsExporterTest, FullBackupCarriesRecordingFolderThroughAppSettingsHook) {
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+
+    const auto expectedFolder = tempDir_.getChildFile("Recordings").getFullPathName();
+    presetManager.onExportAppSettings = [&](juce::DynamicObject& root) {
+        root.setProperty("recordingFolder", expectedFolder);
+    };
+
+    const auto json = SettingsExporter::exportFullBackup(
+        presetManager, controlStore, true);
+    auto parsed = juce::JSON::parse(json);
+    ASSERT_TRUE(parsed.isObject());
+    auto* audio = parsed.getDynamicObject()
+                      ->getProperty("audioSettings").getDynamicObject();
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(audio->getProperty("recordingFolder").toString(), expectedFolder);
+
+    juce::String restoredFolder;
+    presetManager.onImportAppSettings = [&](const juce::DynamicObject& root) {
+        restoredFolder = root.getProperty("recordingFolder").toString();
+        return true;
+    };
+#if JUCE_WINDOWS
+    std::atomic<bool> completed{false};
+    bool restored = false;
+    SettingsExporter::importFullBackupAsync(
+        json, presetManager, controlStore, true,
+        [&](bool ok) {
+            restored = ok;
+            completed.store(true, std::memory_order_release);
+        });
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_TRUE(restored);
+#else
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#endif
+    EXPECT_EQ(restoredFolder, expectedFolder);
 }
 
 TEST_F(SettingsExporterTest, CorruptControlsJsonRecovery) {

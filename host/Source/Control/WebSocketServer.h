@@ -121,6 +121,9 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<int> clientCount_{0};
     int port_ = 8765;
+    // Test servers can suppress localhost discovery so an installed Stream Deck
+    // plugin cannot join an otherwise isolated lifecycle test.
+    bool discoveryEnabled_ = true;
     // [Protects clients_. NEVER join threads inside this lock.]
     std::mutex clientsMutex_;
     std::vector<std::shared_ptr<ClientConnection>> clients_;  // [Protected by clientsMutex_]

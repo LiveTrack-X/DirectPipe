@@ -48,8 +48,9 @@ public:
     /** Call every timer tick (~30Hz). Handles debounce countdown and triggers save. */
     void tick();
 
-    /** Immediate save (called from destructor or explicit flush). */
-    void saveNow();
+    /** Immediate save (called from destructor or explicit flush).
+     *  @return true only when every required settings file was persisted. */
+    bool saveNow();
 
     /** Load settings from auto-save file.
      *  Calls onPostLoad after loading (for UI refresh). */

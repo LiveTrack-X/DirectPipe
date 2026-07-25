@@ -24,6 +24,7 @@
 #include "SharedMemWriter.h"
 #include "directpipe/Protocol.h"
 #include <algorithm>
+#include <chrono>
 #include <thread>
 
 namespace directpipe {
@@ -49,6 +50,44 @@ private:
 
 static_assert(std::atomic<uint32_t>::is_always_lock_free,
               "SharedMemWriter RT guard must be lock-free");
+
+bool createFreshSharedMemory(SharedMemory& sharedMemory, size_t size)
+{
+    if (!sharedMemory.create(SHM_NAME, size))
+        return false;
+
+#if defined(_WIN32)
+    if (!sharedMemory.createOpenedExistingObject())
+        return true;
+
+    // A crashed producer can leave the Windows mapping alive while a Receiver
+    // still owns a handle. Never placement-initialize that retained object: the
+    // Receiver may be reading its header on another process's audio thread.
+    // Publish an inactive producer, release our view, and wait until all retained
+    // handles are gone. Only a genuinely fresh kernel object is safe to initialize.
+    constexpr auto retryInterval = std::chrono::milliseconds(5);
+    constexpr auto handoffTimeout = std::chrono::seconds(1);
+    const auto deadline = std::chrono::steady_clock::now() + handoffTimeout;
+
+    for (;;) {
+        auto* header = static_cast<DirectPipeHeader*>(sharedMemory.getData());
+        if (header != nullptr && sharedMemory.getSize() >= sizeof(DirectPipeHeader))
+            header->producer_active.store(false, std::memory_order_release);
+
+        sharedMemory.close();
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+
+        std::this_thread::sleep_for(retryInterval);
+        if (!sharedMemory.create(SHM_NAME, size))
+            return false;
+        if (!sharedMemory.createOpenedExistingObject())
+            return true;
+    }
+#else
+    return true;
+#endif
+}
 
 } // namespace
 
@@ -85,9 +124,12 @@ bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_
     // Calculate shared memory size
     size_t shmSize = calculateSharedMemorySize(bufferFrames, channels);
 
-    // Create shared memory region
-    if (!sharedMemory_.create(SHM_NAME, shmSize)) {
-        juce::Logger::writeToLog("[IPC] SharedMemWriter: Failed to create shared memory");
+    // Create a genuinely fresh region. On Windows, createFreshSharedMemory()
+    // first retires any crash-retained mapping and fails closed if a Receiver
+    // does not release it within the bounded handoff window.
+    if (!createFreshSharedMemory(sharedMemory_, shmSize)) {
+        juce::Logger::writeToLog(
+            "[IPC] SharedMemWriter: Failed to acquire a fresh shared memory object");
         return false;
     }
 

@@ -57,18 +57,18 @@ LatencyMonitor.markCallbackEnd()
 | 파일 | 설명 |
 |------|------|
 | `AudioEngine.h/cpp` | 핵심 오디오 엔진. 디바이스 관리, RT 콜백, 입출력 채널 라우팅, 디바이스 재연결, XRun 추적 |
-| `VSTChain.h/cpp` | VST2/VST3 플러그인 체인. AudioProcessorGraph 기반 직렬 체인, 비동기 로딩, 에디터 창 관리 |
+| `VSTChain.h/cpp` | VST2/VST3 플러그인 체인. AudioProcessorGraph 기반 직렬 체인, 비동기 로딩/취소, control-side graph lifecycle 직렬화, 에디터 창 관리 |
 | `OutputRouter.h/cpp` | 처리된 오디오를 모니터(헤드폰) 출력으로 라우팅. 볼륨/활성화 제어, RMS 레벨 측정 |
 | `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, low-watermark priming, adaptive PLL fractional playback, near-overflow emergency trim |
 | `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 장치 콜백(consumer), integer read/discard 및 fractional interpolated read 지원 |
-| `AudioRecorder.h/cpp` | WAV 파일 녹음. RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
+| `AudioRecorder.h/cpp` | WAV 파일 녹음. start/stop writer 상태를 SpinLock으로 선형화하고 RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
 | `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
 | `PluginPreloadCache.h/cpp` | 프리셋 슬롯 전환용 플러그인 인스턴스 백그라운드 프리로딩. 캐시 hit 시 DLL 로딩 건너뜀 |
 | `PluginLoadHelper.h` | 크로스플랫폼 플러그인 인스턴스 생성 헬퍼 (header-only). macOS에서 AppKit 메인 스레드 디스패치 |
 | `SafetyLimiter.h/cpp` | RT-safe global Safety Guard (legacy class name). Atomic params (enabled, ceiling). Zero-latency stereo-linked sample-peak guard, instant attack, 50ms release smoothing, hard ceiling clamp. GR feedback for UI. Final `Safety Volume` trim (enable + dB) is applied in `AudioEngine` after guard processing |
 | `DeviceState.h` | 디바이스 연결 상태 열거형 (header-only). DeviceState enum + transition() + deviceStateToString() |
 | `BuiltinFilter.h/cpp` | 내장 HPF + LPF 필터 (AudioProcessor 상속). IIR 2차 버터워스. RT-safe. PDC 0 |
-| `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise 노이즈 제거 (AudioProcessor 상속). FIFO 480프레임, VAD 게이팅, dual-mono. PDC 480 samples |
+| `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise 노이즈 제거 (AudioProcessor 상속). callback-size-aware FIFO, VAD 게이팅, dual-mono. 48kHz PDC 480 samples, unsupported-rate passthrough PDC 0 |
 | `BuiltinAutoGain.h/cpp` | 내장 LUFS AGC (AudioProcessor 상속). ITU-R BS.1770 K-weighting, 비대칭 보정 (Luveler Mode 2) + 고정 post limiter(ceiling 노출, 내부 lookahead/release 고정). 고정 지연 경로 사용 (PDC = lookahead samples) |
 
 ---
@@ -83,11 +83,12 @@ LatencyMonitor.markCallbackEnd()
 | AudioEngine | `audioDeviceError`, `audioDeviceStopped` | `[Device thread]` | JUCE 디바이스 스레드에서 호출 |
 | AudioEngine | `popNotification` (read) | `[Message thread]` | lock-free queue에서 소비 |
 | AudioEngine | `pushNotification` (write) | `[Device thread]` / `[Message thread]` | MPSC-safe queue에 생산 (RT 콜백에서는 호출하지 않음) |
-| VSTChain | `processBlock` | `[RT thread]` | chainLock_ 사용 안 함. 현재 render sequence를 lock-free로 처리 |
-| VSTChain | `addPlugin`, `removePlugin`, `movePlugin` | `[Message thread]` | `chainLock_` 보호. `rebuildGraph(true)` |
-| VSTChain | `setPluginBypassed` | `[Message thread]` | `chainLock_` + `rebuildGraph(false)` (suspend 없음) |
-| VSTChain | `replaceChainAsync` | `[Message thread]` -> `[BG thread]` -> `[Message thread]` | DLL 로딩은 BG, graph 삽입은 callAsync |
-| VSTChain | `replaceChainWithPreloaded` | `[Message thread]` | 프리로드 캐시 사용 시 동기 swap |
+| VSTChain | `processBlock` | `[RT thread]` | `graphControlLock_`/`chainLock_` 사용 안 함. 현재 render sequence를 lock-free로 처리 |
+| VSTChain | `prepareToPlay`, `releaseResources` | `[Device lifecycle thread]` | `graphControlLock_ -> chainLock_` 순서로 graph lifecycle/I/O node 변경 직렬화 |
+| VSTChain | `addPlugin`, `removePlugin`, `movePlugin` | `[Message thread]` | `graphControlLock_ -> chainLock_` 보호. `rebuildGraph(true)` |
+| VSTChain | `setPluginBypassed` | `[Message thread]` | `graphControlLock_ -> chainLock_` + `rebuildGraph(false)` |
+| VSTChain | `replaceChainAsync`, `cancelPendingAsyncLoad` | `[Message thread]` -> `[BG thread]` -> `[Message thread]` | DLL 로딩은 BG, graph 삽입은 callAsync; generation으로 취소 결과 폐기 |
+| VSTChain | `replaceChainWithPreloaded` | `[Message thread]` | `graphControlLock_ -> chainLock_`로 프리로드 인스턴스 동기 swap |
 | OutputRouter | `routeAudio` | `[RT thread]` | atomic 볼륨/활성화. scaledBuffer_ 용량 클램프 |
 | MonitorOutput | `writeAudio` | `[RT thread]` | AudioRingBuffer producer. SC admission + in-flight counter only; no mutex, wait, or allocation |
 | MonitorOutput | `audioDeviceIOCallbackWithContext` | `[Monitor RT thread]` | AudioRingBuffer consumer. JUCE `audioCallbackLock` serializes it against `audioDeviceAboutToStart` and `removeAudioCallback` |
@@ -95,8 +96,8 @@ LatencyMonitor.markCallbackEnd()
 | MonitorOutput | `initialize`, `shutdown`, `setDevice`, `checkReconnection` | `[Message thread]` | Close producer admission and drain the bounded in-flight write before ring reset/resize; lifecycle generations reject stale deferred device work; JUCE callback removal drains the consumer |
 | AudioRingBuffer | `write` (producer) | `[RT thread]` | SPSC. capacity는 power-of-2 필수 |
 | AudioRingBuffer | `read` / `readInterpolated` (consumer) | `[Monitor RT thread]` | SPSC 단일 소비자 |
-| AudioRecorder | `writeBlock` | `[RT thread]` | try-lock 후 ThreadedWriter FIFO에 push, teardown 경합 시 drop. jassert: NOT message thread |
-| AudioRecorder | `startRecording`, `stopRecording` | `[Message thread]` | `writerLock_` (SpinLock) |
+| AudioRecorder | `writeBlock` | `[RT thread]` | try-lock 후 ThreadedWriter FIFO에 push, lifecycle/FIFO 경합 시 drop counter 증가. 성공한 samples만 duration 반영 |
+| AudioRecorder | `startRecording`, `stopRecording` | `[Message / Device lifecycle thread]` | `writerLock_` (SpinLock) 하나로 writer·generation·recording publication/teardown 선형화 |
 | LatencyMonitor | `markCallbackStart/End` | `[RT thread]` | `sampleRate_`, `bufferSize_`, `callbackStartTicks_`, `avgProcessingTime_` 모두 atomic (reset()과의 cross-thread 안전) |
 | LatencyMonitor | `reset` | `[Message thread]` | audioDeviceAboutToStart에서 호출. atomic store(relaxed) |
 | LatencyMonitor | `get*Ms`, `getCpuUsagePercent` | `[Message thread]` | atomic read |
@@ -210,9 +211,9 @@ LatencyMonitor.markCallbackEnd()
 
 1. **RT 콜백에서 heap 할당/mutex 금지**: `audioDeviceIOCallbackWithContext`에서 `new`, `malloc`, `std::mutex::lock` 등 사용 시 glitch 발생. `workBuffer_`는 `audioDeviceAboutToStart`에서 사전 할당. `emptyMidi_`도 `prepareToPlay`에서 사전 할당.
 
-2. **VSTChain `chainLock_`를 `processBlock`에서 잡지 말 것**: RT 스레드에서 `chainLock_`를 잡으면 메시지 스레드의 플러그인 로딩과 데드락. `processBlock`은 lock-free 경로를 유지해야 함.
+2. **VSTChain control lock을 `processBlock`에서 잡지 말 것**: RT 스레드에서 `graphControlLock_` 또는 `chainLock_`를 잡으면 device/message thread의 lifecycle 및 플러그인 로딩과 교착·glitch가 발생한다. `processBlock`은 lock-free 경로를 유지해야 함.
 
-3. **VSTChain `chainLock_` 안에서 `writeToLog` 금지**: DirectPipeLogger의 `writeMutex_`와 lock ordering 충돌로 데드락. 로그 문자열은 lock 안에서 캡처하고, lock 해제 후 로깅.
+3. **VSTChain lock 순서와 logging**: non-RT graph 변경은 항상 `graphControlLock_ -> chainLock_` 순서다. 두 lock 안에서 `writeToLog`를 호출하지 말고 문자열만 캡처한 뒤 lock 해제 후 기록한다.
 
 4. **AudioRingBuffer capacity는 반드시 power-of-2**: `initialize()` 시 assertion으로 강제. 위반 시 mask 연산이 깨져서 데이터 손상.
 

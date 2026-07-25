@@ -24,6 +24,9 @@
 
 #include <JuceHeader.h>
 #include <atomic>
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+#include <functional>
+#endif
 #include <memory>
 
 namespace directpipe {
@@ -46,18 +49,38 @@ public:
     /** Write audio samples from the real-time callback. RT-safe. */
     void writeBlock(const juce::AudioBuffer<float>& buffer, int numSamples);  // [RT thread only — ThreadedWriter lock-free FIFO]
 
-    bool isRecording() const { return recording_.load(std::memory_order_relaxed); }
+    bool isRecording() const { return recording_.load(std::memory_order_acquire); }
     juce::File getRecordingFile() const;
+    juce::File getLastCompletedFile() const;
+    static juce::File findLatestRecordingFile(const juce::File& folder);
     double getRecordedSeconds() const;
+    uint64_t getDroppedBlockCount() const { return droppedBlocks_.load(std::memory_order_relaxed); }
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    void setBeforeRecordingPublishHookForTest(std::function<void()> hook);
+    void setBeforeCompletionPublishHookForTest(std::function<void()> hook);
+    void withWriterLockHeldForTest(const std::function<void()>& callback);
+    bool hasWriterForTest() const;
+    bool isWriterLockHeldForTest() const;
+#endif
 
 private:
     std::atomic<bool> recording_{false};
-    juce::SpinLock writerLock_;  ///< RT-safe lock protecting threadedWriter_ teardown
+    mutable juce::SpinLock writerLock_;  ///< Linearizes writer publication/teardown; RT only try-locks
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> threadedWriter_;
+    mutable juce::CriticalSection fileStateLock_;
     juce::File currentFile_;
+    juce::File lastCompletedFile_;
     juce::TimeSliceThread writerThread_{"Audio Writer"};
-    double sampleRate_ = 48000.0;
+    std::atomic<double> sampleRate_{48000.0};
     std::atomic<int64_t> samplesWritten_{0};
+    std::atomic<uint64_t> droppedBlocks_{0};
+    std::atomic<uint64_t> writerGeneration_{0};
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    std::function<void()> beforeRecordingPublishForTest_;
+    std::function<void()> beforeCompletionPublishForTest_;
+#endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioRecorder)
 };

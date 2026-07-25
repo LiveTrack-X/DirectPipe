@@ -1,7 +1,10 @@
 // tests/test_preset_manager.cpp
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 #include "UI/PresetManager.h"
 #include "UI/PresetSlotBar.h"
@@ -37,6 +40,27 @@ juce::PluginDescription makeDescription(const juce::String& name,
     desc.pluginFormatName = "VST3";
     return desc;
 }
+
+#if JUCE_WINDOWS
+bool pumpMessagesUntil(const std::atomic<bool>& completed,
+                       std::chrono::milliseconds timeout = std::chrono::seconds(3))
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!completed.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatched = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatched = true;
+        }
+        if (!dispatched)
+            std::this_thread::yield();
+    }
+    return completed.load(std::memory_order_acquire);
+}
+#endif
 
 } // namespace
 
@@ -606,6 +630,10 @@ TEST_F(PresetManagerTest, AsioRestoreDeviceMustMatchBeforeApplyingAsioDetails) {
 TEST_F(PresetManagerTest, ImportRemembersUnavailableStartupDevicesForRetry) {
     AudioEngine targetEngine;
     PresetManager targetManager(targetEngine);
+    juce::String surfacedWarning;
+    targetManager.onImportWarning = [&](const juce::String& warning) {
+        surfacedWarning = warning;
+    };
 
     juce::String json = R"({
         "version": 4,
@@ -620,6 +648,7 @@ TEST_F(PresetManagerTest, ImportRemembersUnavailableStartupDevicesForRetry) {
     EXPECT_TRUE(targetEngine.isDeviceLost());
     EXPECT_TRUE(targetEngine.isInputDeviceLost());
     EXPECT_TRUE(targetEngine.isOutputAutoMuted());
+    EXPECT_TRUE(surfacedWarning.containsIgnoreCase("could not be restored"));
 }
 
 TEST_F(PresetManagerTest, LegacySafetyLimiterJsonWithoutHeadroomStillLoads) {
@@ -763,6 +792,246 @@ TEST_F(PresetManagerPortableTest, CopySlotUsesStructurallyValidBackup) {
     const auto canonicalD = PresetManager::getSlotFile(3);
     EXPECT_EQ(canonicalD.loadFileAsString(), validBackup);
     EXPECT_FALSE(legacyDBackup.existsAsFile());
+}
+
+TEST_F(PresetManagerPortableTest, SlotNameCacheChangesOnlyAfterDurableWrite) {
+    const auto slot = PresetManager::getSlotFile(0);
+    ASSERT_TRUE(slot.replaceWithText(
+        R"({"version":4,"type":"chain","name":"Original","plugins":[]})"));
+
+    AudioEngine engine;
+    PresetManager manager(engine);
+    ASSERT_EQ(manager.getSlotName(0), juce::String("Original"));
+
+    const auto blockedTemp = slot.getSiblingFile(slot.getFileName() + ".tmp");
+    ASSERT_TRUE(blockedTemp.createDirectory());
+    ASSERT_TRUE(blockedTemp.getChildFile("write-blocker").replaceWithText("blocked"));
+
+    EXPECT_FALSE(manager.setSlotName(0, "Unsaved"));
+    EXPECT_EQ(manager.getSlotName(0), juce::String("Original"));
+    auto persisted = juce::JSON::parse(slot.loadFileAsString());
+    ASSERT_TRUE(persisted.isObject());
+    EXPECT_EQ(persisted.getDynamicObject()->getProperty("name").toString(),
+              juce::String("Original"));
+}
+
+TEST_F(PresetManagerPortableTest, ActiveSlotImportRollsBackFileAndRuntimeWhenPluginCannotLoad) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    ASSERT_TRUE(engine.getVSTChain()
+                    .addBuiltinProcessor(PluginSlot::Type::BuiltinFilter).success);
+
+    PresetManager manager(engine);
+    ASSERT_TRUE(manager.saveSlot(0));
+    const auto slot = PresetManager::getSlotFile(0);
+    const auto originalSlot = slot.loadFileAsString();
+    ASSERT_EQ(manager.getActiveSlot(), 0);
+    ASSERT_EQ(engine.getVSTChain().getPluginCount(), 1);
+
+    const auto imported = configDir_.getChildFile("missing-plugin.dpchain");
+    ASSERT_TRUE(imported.replaceWithText(R"({
+        "version": 4,
+        "type": "chain",
+        "name": "Broken",
+        "plugins": [{
+            "name": "Definitely Missing Plugin",
+            "path": "C:/DirectPipe/tests/definitely-missing.vst3",
+            "bypassed": false
+        }]
+    })"));
+
+    std::atomic<bool> completed{false};
+    bool importedOk = true;
+    manager.importSlotFromFileAsync(0, imported, [&](bool ok) {
+        importedOk = ok;
+        completed.store(true, std::memory_order_release);
+    });
+
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_FALSE(importedOk);
+    EXPECT_EQ(slot.loadFileAsString(), originalSlot);
+    EXPECT_EQ(manager.getActiveSlot(), 0);
+    EXPECT_EQ(engine.getVSTChain().getPluginCount(), 1);
+    auto* restored = engine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(restored, nullptr);
+    EXPECT_EQ(restored->type, PluginSlot::Type::BuiltinFilter);
+#endif
+}
+
+TEST_F(PresetManagerPortableTest, CopyToActiveKeepsFileAndRuntimeWhenSourcePluginCannotPrepare) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    ASSERT_TRUE(engine.getVSTChain()
+                    .addBuiltinProcessor(PluginSlot::Type::BuiltinFilter).success);
+
+    PresetManager manager(engine);
+    ASSERT_TRUE(manager.saveSlot(1));
+    const auto destination = PresetManager::getSlotFile(1);
+    const auto originalDestination = destination.loadFileAsString();
+
+    const auto source = PresetManager::getSlotFile(0);
+    ASSERT_TRUE(source.replaceWithText(R"({
+        "version":4,
+        "type":"chain",
+        "name":"Unavailable",
+        "plugins":[{
+            "name":"Definitely Missing Plugin",
+            "path":"C:/DirectPipe/tests/definitely-missing.vst3",
+            "bypassed":false
+        }]
+    })"));
+
+    std::atomic<bool> completed{false};
+    bool copyOk = true;
+    manager.copySlotToActiveAsync(0, 1, [&](bool ok) {
+        copyOk = ok;
+        completed.store(true, std::memory_order_release);
+    });
+
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_FALSE(copyOk);
+    EXPECT_EQ(destination.loadFileAsString(), originalDestination);
+    EXPECT_EQ(manager.getActiveSlot(), 1);
+    ASSERT_EQ(engine.getVSTChain().getPluginCount(), 1);
+    auto* current = engine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(current, nullptr);
+    EXPECT_EQ(current->type, PluginSlot::Type::BuiltinFilter);
+#endif
+}
+
+TEST_F(PresetManagerPortableTest, ActiveImportCommitsFileOnlyAfterPreparedChainCanSwap) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    ASSERT_TRUE(engine.getVSTChain()
+                    .addBuiltinProcessor(PluginSlot::Type::BuiltinFilter).success);
+
+    PresetManager manager(engine);
+    ASSERT_TRUE(manager.saveSlot(0));
+    const auto destination = PresetManager::getSlotFile(0);
+
+    const auto imported = configDir_.getChildFile("prepared-builtin.dpchain");
+    ASSERT_TRUE(imported.replaceWithText(R"({
+        "version":4,
+        "type":"chain",
+        "name":"Prepared",
+        "plugins":[{
+            "name":"Auto Gain",
+            "type":"builtin_auto_gain",
+            "bypassed":false
+        }]
+    })"));
+
+    std::atomic<bool> completed{false};
+    bool importedOk = false;
+    manager.importSlotFromFileAsync(0, imported, [&](bool ok) {
+        importedOk = ok;
+        completed.store(true, std::memory_order_release);
+    });
+
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_TRUE(importedOk);
+    EXPECT_EQ(manager.getActiveSlot(), 0);
+    EXPECT_EQ(manager.getSlotName(0), juce::String("Prepared"));
+    ASSERT_EQ(engine.getVSTChain().getPluginCount(), 1);
+    auto* current = engine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(current, nullptr);
+    EXPECT_EQ(current->type, PluginSlot::Type::BuiltinAutoGain);
+    EXPECT_EQ(destination.loadFileAsString(), imported.loadFileAsString());
+#endif
+}
+
+TEST_F(PresetManagerPortableTest, TransactionalPresetLoadFailureKeepsSettingsAndChain) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    ASSERT_TRUE(engine.getVSTChain()
+                    .addBuiltinProcessor(PluginSlot::Type::BuiltinFilter).success);
+    engine.setInputGain(0.25f);
+    PresetManager manager(engine);
+
+    const juce::String target = R"({
+        "version":4,
+        "inputGain":0.75,
+        "plugins":[{
+            "name":"Definitely Missing Plugin",
+            "path":"C:\\DirectPipe-Test-Missing\\missing.vst3",
+            "bypassed":false
+        }]
+    })";
+
+    std::atomic<bool> completed{false};
+    bool loaded = true;
+    manager.importFromJSONTransactionalAsync(
+        target, nullptr, nullptr,
+        [&](bool ok) {
+            loaded = ok;
+            completed.store(true, std::memory_order_release);
+        });
+
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_FALSE(loaded);
+    EXPECT_FLOAT_EQ(engine.getInputGain(), 0.25f);
+    ASSERT_EQ(engine.getVSTChain().getPluginCount(), 1);
+    auto* current = engine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(current, nullptr);
+    EXPECT_EQ(current->type, PluginSlot::Type::BuiltinFilter);
+#endif
+}
+
+TEST_F(PresetManagerPortableTest, TransactionalPresetLoadCommitsCompleteBuiltinChain) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    ASSERT_TRUE(engine.getVSTChain()
+                    .addBuiltinProcessor(PluginSlot::Type::BuiltinFilter).success);
+    engine.setInputGain(0.25f);
+    PresetManager manager(engine);
+
+    const juce::String target = R"({
+        "version":4,
+        "inputGain":0.75,
+        "plugins":[{
+            "name":"Auto Gain",
+            "type":"builtin_auto_gain",
+            "bypassed":false
+        }]
+    })";
+
+    std::atomic<bool> completed{false};
+    bool loaded = false;
+    manager.importFromJSONTransactionalAsync(
+        target, nullptr, nullptr,
+        [&](bool ok) {
+            loaded = ok;
+            completed.store(true, std::memory_order_release);
+        });
+
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_TRUE(loaded);
+    EXPECT_FLOAT_EQ(engine.getInputGain(), 0.75f);
+    ASSERT_EQ(engine.getVSTChain().getPluginCount(), 1);
+    auto* current = engine.getVSTChain().getPluginSlot(0);
+    ASSERT_NE(current, nullptr);
+    EXPECT_EQ(current->type, PluginSlot::Type::BuiltinAutoGain);
+#endif
 }
 
 TEST_F(PresetManagerPortableTest, AsyncSlotLoadRejectsMalformedEntriesAtomically) {

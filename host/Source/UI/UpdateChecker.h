@@ -25,12 +25,33 @@
 
 #include <JuceHeader.h>
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <thread>
 #include <functional>
 #include <utility>
 
 namespace directpipe {
+
+namespace update_detail {
+/** Current release line: checksum metadata is mandatory from v4.2.0 onward. */
+bool releaseRequiresChecksum(const juce::String& version);
+
+/** Find one exact asset entry and validate its 64-character SHA-256 value. */
+bool parseExpectedSha256(const juce::String& checksumContent,
+                         const juce::String& assetName,
+                         juce::String& expectedHash);
+} // namespace update_detail
+
+enum class UpdateCheckStatus {
+    Idle,
+    Checking,
+    UpToDate,
+    UpdateAvailable,
+    NetworkError,
+    ApiError,
+    InvalidResponse,
+};
 
 class UpdateChecker {
 public:
@@ -47,8 +68,33 @@ public:
     /** Show the update dialog (Update Now / View on GitHub / Later). */
     void showUpdateDialog();
 
-    bool isUpdateAvailable() const { return updateAvailable_; }
+    bool isUpdateAvailable() const { return updateAvailable_.load(std::memory_order_acquire); }
     juce::String getLatestVersion() const { return latestVersion_; }
+    UpdateCheckStatus getCheckStatus() const {
+        return checkStatus_.load(std::memory_order_acquire);
+    }
+    juce::String getLastCheckError() const {
+        std::lock_guard<std::mutex> lock(checkStateMutex_);
+        return lastCheckError_;
+    }
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    bool startUpdateCheckWorkerForTest(std::function<void()> work)
+    {
+        return startUpdateCheckWorker(std::move(work));
+    }
+    void reapFinishedUpdateCheckThreadForTest() { reapFinishedUpdateCheckThread(); }
+    bool isUpdateCheckInProgressForTest() const {
+        return updateCheckInProgress_.load(std::memory_order_acquire);
+    }
+    uint64_t beginUpdateCheckRequestForTest() { return beginUpdateCheckRequest(); }
+    bool postUpdateAvailableForTest(uint64_t requestGeneration,
+                                    const juce::String& version,
+                                    const juce::String& downloadUrl)
+    {
+        return postUpdateAvailable(requestGeneration, version, downloadUrl);
+    }
+#endif
 
 #if JUCE_WINDOWS && defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
     bool startDownloadWorkerForTest(std::function<void()> work)
@@ -81,6 +127,14 @@ public:
     std::function<void(const juce::String& version)> onPostUpdateNotification;
 
 private:
+    bool startUpdateCheckWorker(std::function<void()> work);
+    void reapFinishedUpdateCheckThread();
+    void setCheckFailure(UpdateCheckStatus status, const juce::String& message);
+    uint64_t beginUpdateCheckRequest();
+    bool postUpdateAvailable(uint64_t requestGeneration,
+                             const juce::String& version,
+                             const juce::String& downloadUrl);
+
 #if JUCE_WINDOWS
     void performUpdate();
     bool startDownloadWorker(std::function<void()> work);
@@ -92,10 +146,18 @@ private:
     std::atomic<bool> downloadThreadFinished_{false};
 #endif
 
+    std::mutex updateCheckInvocationMutex_;
+    std::mutex updateCheckThreadMutex_;
     std::thread updateCheckThread_;
+    std::atomic<bool> updateCheckInProgress_{false};
+    std::atomic<bool> updateCheckThreadFinished_{false};
+    std::atomic<uint64_t> updateCheckRequestGeneration_{0};
+    std::atomic<UpdateCheckStatus> checkStatus_{UpdateCheckStatus::Idle};
+    mutable std::mutex checkStateMutex_;
+    juce::String lastCheckError_;
     juce::String latestVersion_;
     juce::String latestDownloadUrl_;
-    bool updateAvailable_ = false;
+    std::atomic<bool> updateAvailable_{false};
 
     /// Shared lifetime flag — set to false in destructor to invalidate pending callAsync lambdas
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);

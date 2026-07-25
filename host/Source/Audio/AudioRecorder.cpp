@@ -45,10 +45,6 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
     if (!parentDir.exists())
         parentDir.createDirectory();
 
-    sampleRate_ = sampleRate;
-    currentFile_ = file;
-    samplesWritten_.store(0);
-
     juce::WavAudioFormat wavFormat;
     auto* outputStream = new juce::FileOutputStream(file);
     if (outputStream->failedToOpen()) {
@@ -71,10 +67,33 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
 
     // ThreadedWriter takes ownership of the writer
     // FIFO size: 32768 samples (~0.68s at 48kHz)
-    threadedWriter_ = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(
+    auto newThreadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(
         writer, writerThread_, 32768);
 
-    recording_.store(true, std::memory_order_release);
+    {
+        // Install the writer and publish recording=true as one linearized
+        // transition. stopRecording() uses the same lock, so it can never reset
+        // a newly installed writer before the corresponding state is visible.
+        const juce::SpinLock::ScopedLockType writerStateLock(writerLock_);
+        threadedWriter_ = std::move(newThreadedWriter);
+        sampleRate_.store(sampleRate, std::memory_order_relaxed);
+        samplesWritten_.store(0, std::memory_order_relaxed);
+        droppedBlocks_.store(0, std::memory_order_relaxed);
+        writerGeneration_.fetch_add(1, std::memory_order_acq_rel);
+
+        {
+            const juce::ScopedLock fileStateLock(fileStateLock_);
+            currentFile_ = file;
+        }
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+        if (beforeRecordingPublishForTest_)
+            beforeRecordingPublishForTest_();
+#endif
+
+        recording_.store(true, std::memory_order_release);
+    }
+
     Log::info("REC", "Started recording to " + file.getFullPathName());
     Log::audit("REC", "Recording config: SR=" + juce::String(sampleRate) + " ch=" + juce::String(numChannels) + " bits=24 FIFO=32768");
     return true;
@@ -82,19 +101,50 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
 
 void AudioRecorder::stopRecording()
 {
-    recording_.store(false, std::memory_order_seq_cst);
-
-    // Acquire SpinLock to ensure the RT thread has exited writeBlock
+    bool wasRecording = false;
+    juce::File completedFile;
+    double completedSampleRate = 0.0;
+    int64_t completedSamples = 0;
+    uint64_t completedDroppedBlocks = 0;
     {
+        // recording=false, generation invalidation, writer teardown, completion
+        // publication, and the statistics snapshot are one ordered transition.
+        // RT writeBlock() only try-locks and therefore never waits.
         const juce::SpinLock::ScopedLockType sl(writerLock_);
+        wasRecording = recording_.exchange(false, std::memory_order_acq_rel);
+        writerGeneration_.fetch_add(1, std::memory_order_acq_rel);
         threadedWriter_.reset();
+
+        completedSampleRate = sampleRate_.load(std::memory_order_relaxed);
+        completedSamples = samplesWritten_.load(std::memory_order_relaxed);
+        completedDroppedBlocks = droppedBlocks_.load(std::memory_order_relaxed);
+
+        {
+            const juce::ScopedLock stateLock(fileStateLock_);
+            completedFile = currentFile_;
+        }
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+        if (wasRecording && beforeCompletionPublishForTest_)
+            beforeCompletionPublishForTest_();
+#endif
+
+        if (wasRecording) {
+            const juce::ScopedLock stateLock(fileStateLock_);
+            lastCompletedFile_ = completedFile;
+        }
     }
 
-    if (currentFile_.existsAsFile()) {
-        auto seconds = getRecordedSeconds();
-        auto fileSize = currentFile_.getSize();
-        Log::info("REC", "Stopped. File: " + currentFile_.getFullPathName() + " (" + juce::String(seconds, 1) + "s)");
-        Log::audit("REC", "Recording stats: duration=" + juce::String(seconds, 2) + "s fileSize=" + juce::String(fileSize) + " bytes samples=" + juce::String(samplesWritten_.load()));
+    if (wasRecording && completedFile.existsAsFile()) {
+        const auto seconds = completedSampleRate > 0.0
+            ? static_cast<double>(completedSamples) / completedSampleRate
+            : 0.0;
+        auto fileSize = completedFile.getSize();
+        Log::info("REC", "Stopped. File: " + completedFile.getFullPathName() + " (" + juce::String(seconds, 1) + "s)");
+        Log::audit("REC", "Recording stats: duration=" + juce::String(seconds, 2)
+            + "s fileSize=" + juce::String(fileSize)
+            + " bytes samples=" + juce::String(completedSamples)
+            + " droppedBlocks=" + juce::String(completedDroppedBlocks));
     }
 }
 
@@ -105,26 +155,101 @@ void AudioRecorder::writeBlock(const juce::AudioBuffer<float>& buffer, int numSa
             || !juce::MessageManager::getInstance()->isThisTheMessageThread());
 
     if (!recording_.load(std::memory_order_acquire)) return;
+    const auto generation = writerGeneration_.load(std::memory_order_acquire);
     const int samplesToWrite = juce::jlimit(0, buffer.getNumSamples(), numSamples);
     if (samplesToWrite <= 0 || buffer.getNumChannels() <= 0) return;
 
     const juce::SpinLock::ScopedTryLockType sl(writerLock_);
-    if (!sl.isLocked()) return;  // Drop during teardown instead of spinning the RT thread.
-    if (!threadedWriter_) return;
+    if (!sl.isLocked()) {
+        // Count only a drop belonging to the still-current recording. A block
+        // that raced a stop/restart belongs to the retired generation.
+        if (recording_.load(std::memory_order_acquire)
+            && writerGeneration_.load(std::memory_order_acquire) == generation) {
+            droppedBlocks_.fetch_add(1, std::memory_order_relaxed);
+        }
+        return;
+    }
 
-    threadedWriter_->write(buffer.getArrayOfReadPointers(), samplesToWrite);
-    samplesWritten_.fetch_add(samplesToWrite, std::memory_order_relaxed);
+    if (!recording_.load(std::memory_order_acquire)
+        || writerGeneration_.load(std::memory_order_acquire) != generation
+        || !threadedWriter_) {
+        return;
+    }
+
+    if (threadedWriter_->write(buffer.getArrayOfReadPointers(), samplesToWrite))
+        samplesWritten_.fetch_add(samplesToWrite, std::memory_order_relaxed);
+    else
+        droppedBlocks_.fetch_add(1, std::memory_order_relaxed);
 }
 
 juce::File AudioRecorder::getRecordingFile() const
 {
+    const juce::ScopedLock stateLock(fileStateLock_);
     return currentFile_;
+}
+
+juce::File AudioRecorder::getLastCompletedFile() const
+{
+    const juce::ScopedLock stateLock(fileStateLock_);
+    return lastCompletedFile_;
+}
+
+juce::File AudioRecorder::findLatestRecordingFile(const juce::File& folder)
+{
+    if (!folder.isDirectory())
+        return {};
+
+    juce::Array<juce::File> recordings;
+    folder.findChildFiles(recordings, juce::File::findFiles, false, "DirectPipe_*.wav");
+
+    juce::File latest;
+    for (const auto& candidate : recordings) {
+        if (!latest.existsAsFile()
+            || candidate.getLastModificationTime().toMilliseconds()
+                   > latest.getLastModificationTime().toMilliseconds()
+            || (candidate.getLastModificationTime() == latest.getLastModificationTime()
+                && candidate.getFileName().compareNatural(latest.getFileName()) > 0)) {
+            latest = candidate;
+        }
+    }
+    return latest;
 }
 
 double AudioRecorder::getRecordedSeconds() const
 {
-    if (sampleRate_ <= 0.0) return 0.0;
-    return static_cast<double>(samplesWritten_.load(std::memory_order_relaxed)) / sampleRate_;
+    const double sampleRate = sampleRate_.load(std::memory_order_relaxed);
+    if (sampleRate <= 0.0) return 0.0;
+    return static_cast<double>(samplesWritten_.load(std::memory_order_relaxed)) / sampleRate;
 }
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+void AudioRecorder::setBeforeRecordingPublishHookForTest(std::function<void()> hook)
+{
+    beforeRecordingPublishForTest_ = std::move(hook);
+}
+
+void AudioRecorder::setBeforeCompletionPublishHookForTest(std::function<void()> hook)
+{
+    beforeCompletionPublishForTest_ = std::move(hook);
+}
+
+void AudioRecorder::withWriterLockHeldForTest(const std::function<void()>& callback)
+{
+    const juce::SpinLock::ScopedLockType sl(writerLock_);
+    callback();
+}
+
+bool AudioRecorder::hasWriterForTest() const
+{
+    const juce::SpinLock::ScopedLockType sl(writerLock_);
+    return threadedWriter_ != nullptr;
+}
+
+bool AudioRecorder::isWriterLockHeldForTest() const
+{
+    const juce::SpinLock::ScopedTryLockType sl(writerLock_);
+    return !sl.isLocked();
+}
+#endif
 
 } // namespace directpipe

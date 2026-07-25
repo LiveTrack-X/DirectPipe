@@ -62,9 +62,9 @@ public:
      * @brief Attach to an existing ring buffer in shared memory.
      *
      * Called by the consumer (OBS plugin) to connect to an already-initialized buffer.
-     * Sets consumer_active flag in the header. If another consumer is already active,
-     * attachment still succeeds but anotherConsumerWasActive() returns true (caller
-     * should warn the user — SPSC buffer cannot safely support two readers).
+     * Atomically claims the consumer_active flag in the header. If another consumer
+     * is already active, attachment still succeeds but anotherConsumerWasActive()
+     * returns true (caller should warn the user — SPSC cannot support two readers).
      *
      * @param memory Pointer to the shared memory region.
      * @param mappedSizeBytes Mapped size in bytes (0 to skip size checks).
@@ -101,6 +101,9 @@ public:
      */
     uint32_t read(float* data, uint32_t frames);
 
+    /** Advance the consumer position without copying audio samples. */
+    uint32_t discard(uint32_t frames);
+
     /**
      * @brief Number of frames available for reading.
      */
@@ -132,6 +135,18 @@ public:
      */
     uint32_t getCapacity() const;
 
+    /** Producer generation captured when this consumer attached. */
+    uint64_t getAttachedProducerGeneration() const { return attachedGeneration_; }
+
+    /** Current generation in the mapped header (may differ after a restart). */
+    uint64_t getCurrentProducerGeneration() const {
+        return header_ ? header_->producer_generation.load(std::memory_order_acquire) : 0;
+    }
+
+    bool isProducerActive() const {
+        return header_ && header_->producer_active.load(std::memory_order_acquire);
+    }
+
     /**
      * @brief Check if the buffer has been initialized.
      */
@@ -146,11 +161,18 @@ public:
      */
     void detach() {
         detached_.store(true, std::memory_order_release);
-        if (header_)
-            header_->consumer_active.store(false, std::memory_order_release);
+        if (header_) {
+            // A Windows producer restart can reinitialize the same named mapping.
+            // Do not let a retiring old connection clear the new generation's flag.
+            const auto currentGeneration =
+                header_->producer_generation.load(std::memory_order_acquire);
+            if (currentGeneration == attachedGeneration_)
+                header_->consumer_active.store(false, std::memory_order_release);
+        }
         header_ = nullptr;
         data_ = nullptr;
         mask_ = 0;
+        attachedGeneration_ = 0;
         anotherConsumerWasActive_ = false;
     }
 
@@ -159,6 +181,7 @@ private:
     float* data_ = nullptr;
     uint32_t mask_ = 0;  // capacity - 1 for power-of-2 modulo
     bool anotherConsumerWasActive_ = false;  // true if consumer_active was already set on attach
+    uint64_t attachedGeneration_ = 0;
     std::atomic<bool> detached_{false};  // [Any thread] Set before nulling pointers in detach()
 };
 

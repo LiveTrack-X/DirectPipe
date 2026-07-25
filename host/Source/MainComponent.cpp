@@ -165,16 +165,21 @@ MainComponent::MainComponent(bool enableExternalControls)
 
         // Already on Auto slot just save current state
         if (presetManager_ && presetManager_->getActiveSlot() == autoIdx) {
-            if (!partialLoad_.load())
-                presetManager_->saveSlot(autoIdx);
+            if (!partialLoad_.load() && !presetManager_->saveSlot(autoIdx))
+                showNotification("Auto preset could not be saved", NotificationLevel::Error);
             return;
         }
 
         // Save current A-E slot first
         if (presetManager_) {
             int currentSlot = presetManager_->getActiveSlot();
-            if (currentSlot >= 0 && !partialLoad_.load())
-                presetManager_->saveSlot(currentSlot);
+            if (currentSlot >= 0 && !partialLoad_.load()
+                && !presetManager_->saveSlot(currentSlot)) {
+                showNotification(
+                    "Auto switch aborted because the current slot could not be saved",
+                    NotificationLevel::Error);
+                return;
+            }
         }
         partialLoad_ = false;
 
@@ -199,7 +204,8 @@ MainComponent::MainComponent(bool enableExternalControls)
                 return;
             }
             presetManager_->setActiveSlot(autoIdx);
-            presetManager_->saveSlot(autoIdx);
+            if (!presetManager_->saveSlot(autoIdx))
+                showNotification("Auto preset could not be saved", NotificationLevel::Error);
             loadingSlot_ = false;
 
             // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
@@ -217,6 +223,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             markSettingsDirty();
         } else {
             // Load existing Auto preset (same flow as A-E slot switch)
+            const bool previousPartial = partialLoad_.load(std::memory_order_acquire);
             loadingSlot_ = true;
             if (presetSlotBar_) {
                 presetSlotBar_->setSlotButtonsEnabled(false);
@@ -227,10 +234,10 @@ MainComponent::MainComponent(bool enableExternalControls)
 
             auto safeThis = juce::Component::SafePointer<MainComponent>(this);
             presetManager_->loadSlotAsync(autoIdx,
-                [safeThis](bool ok) {
+                [safeThis, previousPartial](bool ok) {
                     if (!safeThis) return;
                     safeThis->loadingSlot_ = false;
-                    safeThis->partialLoad_ = !ok;
+                    safeThis->partialLoad_ = ok ? false : previousPartial;
                     if (safeThis->presetSlotBar_)
                         safeThis->presetSlotBar_->setSlotButtonsEnabled(true);
                     if (safeThis->pluginChainEditor_)
@@ -289,33 +296,21 @@ MainComponent::MainComponent(bool enableExternalControls)
             setStartMinimizedToTrayOnLaunch(enabled);
         };
         settingsPanel->onPresetsCleared = [this] {
-            if (presetSlotBar_) presetSlotBar_->resetPendingSlot();
-            loadingSlot_ = true;   // suppress auto-save from recreating deleted slots
-            // Clear the active chain
-            auto& chain = audioEngine_.getVSTChain();
-            for (int i = chain.getPluginCount() - 1; i >= 0; --i)
-                chain.removePlugin(i);
-            presetManager_->clearRuntimeSlotState();
-            loadingSlot_ = false;
+            clearPresetRuntimeForMaintenance();
             markSettingsDirty();
             if (presetSlotBar_)
                 presetSlotBar_->updateSlotButtonStates();
             pluginChainEditor_->refreshList();
         };
         settingsPanel->onResetSettings = [this] {
-            if (presetSlotBar_) presetSlotBar_->resetPendingSlot();
-            loadingSlot_ = true;
-            // Clear active chain
-            auto& chain = audioEngine_.getVSTChain();
-            for (int i = chain.getPluginCount() - 1; i >= 0; --i)
-                chain.removePlugin(i);
-            presetManager_->clearRuntimeSlotState();
+            clearPresetRuntimeForMaintenance();
             // Reload with factory defaults
             controlManager_->reloadConfig();
             setStartMinimizedToTrayOnLaunch(false, false);
+            if (outputPanelPtr_)
+                outputPanelPtr_->resetRecordingFolder();
             if (settingsAutosaver_)
                 settingsAutosaver_->loadFromFile();  // manages loadingSlot_ internally (sets true then false)
-            // DO NOT set loadingSlot_ = false here loadFromFile releases it at the right time
             refreshUI();
             if (presetSlotBar_)
                 presetSlotBar_->updateSlotButtonStates();
@@ -379,16 +374,21 @@ MainComponent::MainComponent(bool enableExternalControls)
                 });
         };
         settingsPanel->onFullRestore = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
-            SettingsExporter::showLoadDialog("*.dpfullbackup",
-                [safeThis](const juce::String& json) -> bool {
-                    if (!safeThis) return false;
+            SettingsExporter::showLoadDialogAsync("*.dpfullbackup",
+                [safeThis](const juce::String& json,
+                           std::function<void(bool)> dialogComplete) {
+                    if (!safeThis) {
+                        dialogComplete(false);
+                        return;
+                    }
                     bool expected = false;
                     if (!safeThis->loadingSlot_.compare_exchange_strong(
                             expected, true, std::memory_order_acq_rel,
                             std::memory_order_acquire)) {
                         juce::Logger::writeToLog(
                             "[APP] Full backup restore blocked while another load is active");
-                        return false;
+                        dialogComplete(false);
+                        return;
                     }
                     const bool runtimeStateWasStable =
                         !safeThis->partialLoad_.load(std::memory_order_acquire)
@@ -397,25 +397,48 @@ MainComponent::MainComponent(bool enableExternalControls)
                         safeThis->loadingSlot_.store(false, std::memory_order_release);
                         juce::Logger::writeToLog(
                             "[APP] Full backup restore blocked while runtime state is unstable");
-                        return false;
+                        dialogComplete(false);
+                        return;
                     }
-                    if (!SettingsExporter::importFullBackup(json, *safeThis->presetManager_,
-                                                            safeThis->controlManager_->getConfigStore(),
-                                                            runtimeStateWasStable)) {
-                        safeThis->loadingSlot_.store(false, std::memory_order_release);
-                        return false;
-                    }
-                    safeThis->controlManager_->reloadConfig();
-                    safeThis->presetManager_->refreshSlotOccupancy();
-                    safeThis->presetManager_->loadSlotNames();
-                    safeThis->presetManager_->clearPreloadCache();
-                    safeThis->loadingSlot_.store(false, std::memory_order_release);
-                    safeThis->markSettingsDirty();
-                    safeThis->refreshUI();
-                    safeThis->presetSlotBar_->updateSlotButtonStates();
-                    safeThis->pluginChainEditor_->refreshList();
-                    juce::Logger::writeToLog("[APP] Full backup restored");
-                    return true;
+
+                    safeThis->savePresetBtn_.setEnabled(false);
+                    safeThis->loadPresetBtn_.setEnabled(false);
+                    if (safeThis->presetSlotBar_)
+                        safeThis->presetSlotBar_->setSlotButtonsEnabled(false);
+                    if (safeThis->pluginChainEditor_)
+                        safeThis->pluginChainEditor_->showLoadingState();
+
+                    SettingsExporter::importFullBackupAsync(
+                        json, *safeThis->presetManager_,
+                        safeThis->controlManager_->getConfigStore(),
+                        runtimeStateWasStable,
+                        [safeThis, dialogComplete = std::move(dialogComplete)](
+                            bool ok) mutable {
+                            if (!safeThis) {
+                                dialogComplete(false);
+                                return;
+                            }
+                            safeThis->loadingSlot_.store(false, std::memory_order_release);
+                            safeThis->savePresetBtn_.setEnabled(true);
+                            safeThis->loadPresetBtn_.setEnabled(true);
+                            if (safeThis->presetSlotBar_)
+                                safeThis->presetSlotBar_->setSlotButtonsEnabled(true);
+                            if (safeThis->pluginChainEditor_)
+                                safeThis->pluginChainEditor_->hideLoadingState();
+
+                            if (ok) {
+                                safeThis->partialLoad_.store(false, std::memory_order_release);
+                                safeThis->controlManager_->reloadConfig();
+                                safeThis->markSettingsDirty();
+                                juce::Logger::writeToLog("[APP] Full backup restored");
+                            }
+                            safeThis->refreshUI();
+                            if (safeThis->presetSlotBar_)
+                                safeThis->presetSlotBar_->updateSlotButtonStates();
+                            if (safeThis->pluginChainEditor_)
+                                safeThis->pluginChainEditor_->refreshList();
+                            dialogComplete(ok);
+                        });
                 });
         };
         rightTabs_->addTab("Settings", tabBg, settingsPanel.release(), true);
@@ -433,12 +456,25 @@ MainComponent::MainComponent(bool enableExternalControls)
     presetManager_ = std::make_unique<PresetManager>(audioEngine_);
     presetManager_->onExportAppSettings = [this](juce::DynamicObject& root) {
         root.setProperty("startMinimizedToTray", startMinimizedToTrayOnLaunch_);
+        if (outputPanelPtr_)
+            root.setProperty("recordingFolder",
+                             outputPanelPtr_->getRecordingFolder().getFullPathName());
     };
-    presetManager_->onImportAppSettings = [this](const juce::DynamicObject& root) {
+    presetManager_->onImportAppSettings = [this](const juce::DynamicObject& root) -> bool {
         const bool enabled = root.hasProperty("startMinimizedToTray")
             ? static_cast<bool>(root.getProperty("startMinimizedToTray"))
             : false;
         setStartMinimizedToTrayOnLaunch(enabled, false);
+        if (root.hasProperty("recordingFolder") && outputPanelPtr_) {
+            const auto path = root.getProperty("recordingFolder").toString();
+            if (path.isNotEmpty()
+                && !outputPanelPtr_->setRecordingFolderAndSave(juce::File(path)))
+                return false;
+        }
+        return true;
+    };
+    presetManager_->onImportWarning = [this](const juce::String& warning) {
+        showNotification(warning, NotificationLevel::Warning);
     };
 
     // Auto-save chain to active slot when chain changes
@@ -499,7 +535,9 @@ MainComponent::MainComponent(bool enableExternalControls)
             auto file = fc.getResult();
             if (file != juce::File()) {
                 auto target = file.withFileExtension("dppreset");
-                safeThis->presetManager_->savePreset(target);
+                if (!safeThis->presetManager_->savePreset(target))
+                    safeThis->showNotification("Preset could not be saved",
+                                               NotificationLevel::Error);
             }
         });
     };
@@ -525,19 +563,57 @@ MainComponent::MainComponent(bool enableExternalControls)
                     return;
                 }
 
-                safeThis->loadingSlot_ = true;
-                const bool loaded = safeThis->presetManager_->loadPreset(file);
-                safeThis->partialLoad_ = !loaded;
-                safeThis->loadingSlot_ = false;
-                if (loaded) {
-                    safeThis->markSettingsDirty();
-                } else {
+                bool expected = false;
+                if (!safeThis->loadingSlot_.compare_exchange_strong(
+                        expected, true, std::memory_order_acq_rel,
+                        std::memory_order_acquire)) {
                     safeThis->showNotification(
-                        "Preset could not be loaded completely; saved settings were preserved.",
+                        "Another preset load is already in progress.",
                         NotificationLevel::Warning);
+                    return;
                 }
-                safeThis->refreshUI();
-                safeThis->presetSlotBar_->updateSlotButtonStates();
+                const bool previousPartial =
+                    safeThis->partialLoad_.load(std::memory_order_acquire);
+                if (previousPartial
+                    || !safeThis->audioEngine_.getVSTChain().isStable()) {
+                    safeThis->loadingSlot_.store(false, std::memory_order_release);
+                    safeThis->showNotification(
+                        "Preset load is blocked while the current chain is unstable.",
+                        NotificationLevel::Warning);
+                    return;
+                }
+
+                safeThis->savePresetBtn_.setEnabled(false);
+                safeThis->loadPresetBtn_.setEnabled(false);
+                if (safeThis->presetSlotBar_)
+                    safeThis->presetSlotBar_->setSlotButtonsEnabled(false);
+                if (safeThis->pluginChainEditor_)
+                    safeThis->pluginChainEditor_->showLoadingState();
+
+                safeThis->presetManager_->loadPresetAsync(
+                    file, [safeThis, previousPartial](bool loaded) {
+                        if (!safeThis) return;
+                        safeThis->loadingSlot_.store(false, std::memory_order_release);
+                        safeThis->partialLoad_.store(
+                            loaded ? false : previousPartial,
+                            std::memory_order_release);
+                        safeThis->savePresetBtn_.setEnabled(true);
+                        safeThis->loadPresetBtn_.setEnabled(true);
+                        if (safeThis->presetSlotBar_)
+                            safeThis->presetSlotBar_->setSlotButtonsEnabled(true);
+                        if (safeThis->pluginChainEditor_)
+                            safeThis->pluginChainEditor_->hideLoadingState();
+                        if (loaded) {
+                            safeThis->markSettingsDirty();
+                        } else {
+                            safeThis->showNotification(
+                                "Preset could not be loaded; previous settings and chain were preserved.",
+                                NotificationLevel::Warning);
+                        }
+                        safeThis->refreshUI();
+                        if (safeThis->presetSlotBar_)
+                            safeThis->presetSlotBar_->updateSlotButtonStates();
+                    });
             }
         });
     };
@@ -916,25 +992,27 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
         juce::PopupMenu menu;
         menu.addItem(1, "Reset Auto to Defaults");
 
+        auto safeThis = juce::Component::SafePointer<MainComponent>(this);
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&autoProcessorBtn_),
-            [this](int menuResult) {
+            [safeThis](int menuResult) {
+                if (!safeThis) return;
                 if (menuResult == 1) {
-                    if (loadingSlot_) return;
-                    loadingSlot_ = true;
-                    if (presetManager_) {
+                    if (safeThis->loadingSlot_) return;
+                    safeThis->loadingSlot_ = true;
+                    if (safeThis->presetManager_) {
                         juce::Logger::writeToLog("[PRESET] GUI auto reset: "
-                            + PresetManager::formatSlotForLog(presetManager_->getActiveSlot())
+                            + PresetManager::formatSlotForLog(safeThis->presetManager_->getActiveSlot())
                             + " -> " + PresetManager::formatSlotForLog(PresetSlotBar::kAutoSlotIndex));
                     }
 
                     // Reset: clear chain, add default processors, save
-                    auto& chain = audioEngine_.getVSTChain();
+                    auto& chain = safeThis->audioEngine_.getVSTChain();
 
                     // Remove all plugins from chain
                     while (chain.getPluginCount() > 0) {
                         if (!chain.removePlugin(0)) {
-                            showNotification("Auto reset: failed to remove plugin", NotificationLevel::Error);
-                            loadingSlot_ = false;
+                            safeThis->showNotification("Auto reset: failed to remove plugin", NotificationLevel::Error);
+                            safeThis->loadingSlot_ = false;
                             return;
                         }
                     }
@@ -942,32 +1020,34 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
                     // Add default built-in processors
                     auto result = chain.addAutoProcessors();
                     if (!result.success) {
-                        showNotification("Auto reset failed: " + result.message, NotificationLevel::Error);
-                        partialLoad_ = true;
-                        loadingSlot_ = false;
+                        safeThis->showNotification("Auto reset failed: " + result.message, NotificationLevel::Error);
+                        safeThis->partialLoad_ = true;
+                        safeThis->loadingSlot_ = false;
                         return;
                     }
 
                     // Save to Auto slot
                     int autoIdx = PresetSlotBar::kAutoSlotIndex;
-                    if (presetManager_) {
-                        presetManager_->setActiveSlot(autoIdx);
-                        presetManager_->saveSlot(autoIdx);
+                    if (safeThis->presetManager_) {
+                        safeThis->presetManager_->setActiveSlot(autoIdx);
+                        if (!safeThis->presetManager_->saveSlot(autoIdx))
+                            safeThis->showNotification("Auto preset could not be saved",
+                                                       NotificationLevel::Error);
                     }
 
-                    loadingSlot_ = false;
+                    safeThis->loadingSlot_ = false;
 
                     // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
-                    if (auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
+                    if (auto* device = safeThis->audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
                         if (std::abs(device->getCurrentSampleRate() - 48000.0) > 1.0)
-                            showNotification("Noise Removal requires 48kHz - currently inactive at this sample rate",
-                                             NotificationLevel::Warning);
+                            safeThis->showNotification("Noise Removal requires 48kHz - currently inactive at this sample rate",
+                                                       NotificationLevel::Warning);
                     }
 
-                    if (pluginChainEditor_)
-                        pluginChainEditor_->refreshList();
-                    updateAutoButtonVisual();
-                    markSettingsDirty();
+                    if (safeThis->pluginChainEditor_)
+                        safeThis->pluginChainEditor_->refreshList();
+                    safeThis->updateAutoButtonVisual();
+                    safeThis->markSettingsDirty();
                 }
             });
         return;
@@ -1035,6 +1115,30 @@ void MainComponent::timerCallback()
 void MainComponent::markSettingsDirty()
 {
     settingsAutosaver_->markDirty();
+}
+
+void MainComponent::clearPresetRuntimeForMaintenance()
+{
+    if (presetSlotBar_)
+        presetSlotBar_->resetPendingSlot();
+
+    loadingSlot_ = true;  // suppress autosave while the destructive transition is active
+    auto& chain = audioEngine_.getVSTChain();
+    chain.cancelPendingAsyncLoad();
+    for (int i = chain.getPluginCount() - 1; i >= 0; --i) {
+        if (!chain.removePlugin(i))
+            showNotification("A plug-in could not be removed during maintenance",
+                             NotificationLevel::Error);
+    }
+
+    presetManager_->clearRuntimeSlotState();
+    partialLoad_ = false;
+    loadingSlot_ = false;
+
+    if (presetSlotBar_)
+        presetSlotBar_->setSlotButtonsEnabled(true);
+    if (pluginChainEditor_)
+        pluginChainEditor_->hideLoadingState();
 }
 
 void MainComponent::setStartMinimizedToTrayOnLaunch(bool enabled, bool markDirty)

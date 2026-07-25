@@ -8,6 +8,38 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.2.1] - 2026-07-15
+
+### Fixed
+
+- **Recording lifecycle and playback state**: Recording completion is retained for direct stop and audio-device restart/loss paths. Writer publication/teardown is serialized, only accepted writer blocks count toward duration, dropped blocks are diagnosed, rapid restarts use unique filenames, and Play remains scoped to the selected/default recording folder.
+- **Noise-removal latency and large blocks**: The RNNoise output FIFO is callback-size aware, seeded with the declared 480-sample delay, safe through 4096-sample callbacks, and reports zero latency for unsupported-rate passthrough.
+- **VST graph lifecycle race**: Device prepare/release and message-thread graph mutations now share a `graphControlLock_ -> chainLock_` control boundary while `processBlock()` remains lock-free. Pending async replacements can be invalidated without resurrecting cleared state.
+- **Reset, autosave, and slot durability**: Factory Reset always exits loading state; Clear/Reset invalidates stale loads; failed writes retain dirty state; unsafe slot switch/copy/export/rename operations abort; active-slot import keeps rollback state until load success.
+- **Transactional preset and backup restore**: Every target plug-in chain is prepared before live state changes. External settings/control/audio/slot state is committed with rollback protection, and the live graph is swapped once only after the full restore is ready.
+- **Backup and settings errors**: Full Backup carries recording-folder configuration, live reset/import applies it, partial device restore and settings/control write failures are surfaced, and failed file deletion is no longer reported as complete success.
+- **UI callback lifetime**: Asynchronous popup-menu callbacks use component-safe lifetime guards instead of dereferencing destroyed tabs/windows.
+- **MIDI learn concurrency**: Learn completion is delivered on the JUCE message thread, superseded or shutdown sessions cannot run stale callbacks, rescans preserve lifetime state, and the timeout/input boundary has a single synchronized winner.
+- **Receiver restart and RT safety**: Receiver detects a replaced POSIX shared-memory object or producer generation and reconnects, mapping/unmapping and host latency notification move out of the audio callback, and unmap waits for in-flight callbacks without changing the IPC layout.
+- **Control/update state**: The control API publishes the active preset. Windows in-app updater downloads for v4.2.0 and later require an exact readable `checksums.sha256` entry and matching SHA-256; manual browser downloads are outside this check. Network/API failures and repeated update checks have explicit lifecycle/error handling.
+
+### Changed
+
+- **Release publication order**: CI validates and builds artifacts/checksums before promoting a draft GitHub Release, preventing an assetless public latest release on build failure.
+- **Windows compatibility gate**: Release packaging fails when required VST2 or ASIO SDK inputs are absent instead of publishing an artifact without advertised support.
+- **Version alignment**: App, bundled Receiver, Stream Deck package, changelog, release notes, and current documentation are aligned to 4.2.1.
+
+### Tests
+- Added deterministic recorder lifecycle/drop accounting, RNNoise 128-4096 partition invariance, concurrent VST lifecycle/structure, transactional preset/backup restore, autosave retry/reset, MIDI learn generation/timeout, Receiver generation, updater integrity, and release-workflow regression coverage.
+- Local Windows Release build passed for the app, Receiver VST2/VST3, and all three test executables.
+- CTest registered 484 tests: core 59/59 passed; host 421 passed and 2 environment-dependent tests skipped out of 423; focused endpoint 2/2 passed; 0 failed.
+- The event-signaled IPC regression passed 100/100 stress iterations after making coalesced Windows wake-ups bounded and drain-based.
+- Stream Deck tests passed 5/5; its production bundle build and package validation succeeded.
+- Version-only metadata, UTF-8 text integrity, JSON/YAML parsing, `git diff --check`, and SDAD v3.2.2 strict Doctor gates passed.
+- Real-device audio, third-party VST crash containment, and macOS/Linux hardware checks were not run and remain separate evidence gates.
+
+---
+
 ## [4.2.0] - 2026-07-10
 
 ### Added

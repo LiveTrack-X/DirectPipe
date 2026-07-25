@@ -26,6 +26,8 @@
 #include "../Control/Log.h"
 #include "../Util/AtomicFileIO.h"
 
+#include <vector>
+
 namespace directpipe {
 namespace {
 juce::Array<juce::var> bigIntToIndexArray(const juce::BigInteger& mask)
@@ -145,6 +147,79 @@ bool deleteSlotFileFamily(int slotIndex)
         ok = deleteFileFamily(legacyFile) && ok;
 
     return ok;
+}
+
+struct FileSnapshot {
+    juce::File file;
+    bool existed = false;
+    juce::MemoryBlock data;
+};
+
+std::vector<juce::File> getSlotFileFamily(int slotIndex)
+{
+    std::vector<juce::File> files;
+    const auto appendFamily = [&files](const juce::File& file) {
+        if (file == juce::File()) return;
+        files.push_back(file);
+        files.push_back(backupFileFor(file));
+        files.push_back(legacyBackupFileFor(file));
+        files.push_back(tempFileFor(file));
+    };
+
+    appendFamily(PresetManager::getSlotFile(slotIndex));
+    appendFamily(getLegacyNumericSlotFile(slotIndex));
+    return files;
+}
+
+bool captureSlotFileFamily(int slotIndex, std::vector<FileSnapshot>& snapshots)
+{
+    snapshots.clear();
+    for (const auto& file : getSlotFileFamily(slotIndex)) {
+        FileSnapshot snapshot;
+        snapshot.file = file;
+        snapshot.existed = file.existsAsFile();
+        if (file.exists() && !snapshot.existed)
+            return false;
+        if (snapshot.existed && !file.loadFileAsData(snapshot.data))
+            return false;
+        snapshots.push_back(std::move(snapshot));
+    }
+    return true;
+}
+
+bool restoreSlotFileFamily(const std::vector<FileSnapshot>& snapshots)
+{
+    bool ok = true;
+    for (const auto& snapshot : snapshots) {
+        if (!snapshot.existed) {
+            if (snapshot.file.exists() && !snapshot.file.deleteFile())
+                ok = false;
+            continue;
+        }
+
+        auto parent = snapshot.file.getParentDirectory();
+        if (!parent.exists() && !parent.createDirectory()) {
+            ok = false;
+            continue;
+        }
+        const bool restored = snapshot.data.getSize() == 0
+            ? snapshot.file.replaceWithText({})
+            : snapshot.file.replaceWithData(snapshot.data.getData(), snapshot.data.getSize());
+        if (!restored)
+            ok = false;
+    }
+    return ok;
+}
+
+juce::String withoutPluginChain(const juce::String& json)
+{
+    auto parsed = juce::JSON::parse(json);
+    auto* root = parsed.getDynamicObject();
+    if (!root)
+        return {};
+
+    root->removeProperty("plugins");
+    return juce::JSON::toString(parsed, false);
 }
 } // namespace
 
@@ -441,6 +516,11 @@ bool PresetManager::importFromJSON(const juce::String& json)
     if (!isStructurallyValidPresetRoot(root)) return false;
 
     bool ok = true;
+    juce::StringArray restoreWarnings;
+    auto reportRestoreFailure = [&restoreWarnings](const juce::String& message) {
+        juce::Logger::writeToLog("[PRESET] " + message);
+        restoreWarnings.add(message);
+    };
 
     juce::String restoredDeviceType;
     juce::String restoredInputDevice;
@@ -491,9 +571,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 }
                 auto result = engine_.setAudioDeviceType(deviceType, preferredDev);
                 if (!result)
-                    juce::Logger::writeToLog("[PRESET] Device type restore failed: " + result.message);
+                    reportRestoreFailure("Device type restore failed: " + result.message);
             } else {
-                juce::Logger::writeToLog("[PRESET] Skipping unavailable device type: " + deviceType);
+                reportRestoreFailure("Unavailable device type was not restored: " + deviceType);
             }
         }
     }
@@ -526,12 +606,12 @@ bool PresetManager::importFromJSON(const juce::String& json)
         if (root->hasProperty("sampleRate")) {
             auto result = engine_.setSampleRate(root->getProperty("sampleRate"));
             if (!result)
-                juce::Logger::writeToLog("[PRESET] Sample-rate restore failed: " + result.message);
+                reportRestoreFailure("Sample-rate restore failed: " + result.message);
         }
         if (root->hasProperty("bufferSize")) {
             auto result = engine_.setBufferSize(root->getProperty("bufferSize"));
             if (!result)
-                juce::Logger::writeToLog("[PRESET] Buffer-size restore failed: " + result.message);
+                reportRestoreFailure("Buffer-size restore failed: " + result.message);
         }
     } else {
         juce::Logger::writeToLog("[PRESET] Delaying ASIO SR/BS restore until saved ASIO device is active");
@@ -574,7 +654,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (setup.inputDeviceName != restoredAsioDevice || setup.outputDeviceName != restoredAsioDevice) {
                 auto result = engine_.setAsioDevice(restoredAsioDevice);
                 if (!result)
-                    juce::Logger::writeToLog("[PRESET] ASIO device restore failed: " + result.message);
+                    reportRestoreFailure("ASIO device restore failed: " + result.message);
             }
         }
     } else {
@@ -583,7 +663,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (restoredInputDevice.isNotEmpty()) {
                 auto result = engine_.setInputDevice(restoredInputDevice);
                 if (!result)
-                    juce::Logger::writeToLog("[PRESET] Input device restore failed: " + result.message);
+                    reportRestoreFailure("Input device restore failed: " + result.message);
             }
         }
 
@@ -592,7 +672,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (restoredOutputDevice.isNotEmpty() && restoredOutputDevice != "None") {
                 auto result = engine_.setOutputDevice(restoredOutputDevice);
                 if (!result)
-                    juce::Logger::writeToLog("[PRESET] Output device restore failed: " + result.message);
+                    reportRestoreFailure("Output device restore failed: " + result.message);
             }
         }
     }
@@ -627,7 +707,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
 
         auto maskResult = engine_.applyAudioDeviceSetup(setup, "Channel mask restore");
         if (!maskResult) {
-            juce::Logger::writeToLog("[PRESET] " + maskResult.message);
+            reportRestoreFailure(maskResult.message);
             // Retry with driver defaults so stereo devices stay stereo and mono
             // devices can still open through their native default layout.
             auto defaultSetup = setup;
@@ -646,7 +726,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
             if (hasExplicitMask) {
                 auto defaultResult = engine_.applyAudioDeviceSetup(defaultSetup, "Channel mask default fallback");
                 if (!defaultResult)
-                    juce::Logger::writeToLog("[PRESET] " + defaultResult.message);
+                    reportRestoreFailure(defaultResult.message);
             }
         }
     } else if (!canRestoreChannelMasks
@@ -695,7 +775,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 if (bs > 0) {
                     auto result = engine_.setMonitorBufferSize(bs);
                     if (!result)
-                        juce::Logger::writeToLog("[PRESET] Monitor buffer restore failed: " + result.message);
+                        reportRestoreFailure("Monitor buffer restore failed: " + result.message);
                 }
             }
 
@@ -704,7 +784,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 if (monDevice.isNotEmpty()) {
                     auto result = engine_.setMonitorDevice(monDevice);
                     if (!result)
-                        juce::Logger::writeToLog("[PRESET] Monitor device restore failed: " + result.message);
+                        reportRestoreFailure("Monitor device restore failed: " + result.message);
                 }
             }
         }
@@ -748,14 +828,178 @@ bool PresetManager::importFromJSON(const juce::String& json)
             engine_.setSafetyHeadroomdB(static_cast<float>(static_cast<double>(limiterObj->getProperty("headroom_dB"))));
     }
 
-    if (onImportAppSettings)
-        onImportAppSettings(*root);
+    if (onImportAppSettings && !onImportAppSettings(*root)) {
+        ok = false;
+        reportRestoreFailure("Application settings restore failed");
+    }
 
     auto readyResult = engine_.ensureAudioDeviceReady();
     if (!readyResult)
-        juce::Logger::writeToLog("[PRESET] Audio device restore refresh failed: " + readyResult.message);
+        reportRestoreFailure("Audio device restore refresh failed: " + readyResult.message);
+
+    if (!restoreWarnings.isEmpty() && onImportWarning)
+        onImportWarning("Some settings could not be restored: "
+                        + restoreWarnings.joinIntoString("; "));
 
     return ok;
+}
+
+void PresetManager::importFromJSONTransactionalAsync(
+    const juce::String& json,
+    std::function<bool()> beforeChainCommit,
+    std::function<bool()> rollbackExternalState,
+    std::function<void(bool)> onComplete)
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    const auto parsed = juce::JSON::parse(json);
+    auto* root = parsed.getDynamicObject();
+    if (!root || !isStructurallyValidPresetRoot(root)) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    const bool hasPluginChain = root->hasProperty("plugins");
+    std::vector<TargetPlugin> targets;
+    if (hasPluginChain) {
+        auto* plugins = root->getProperty("plugins").getArray();
+        targets = parseTargetPlugins(plugins);
+        if (!plugins || targets.size() != static_cast<size_t>(plugins->size())) {
+            if (onComplete)
+                onComplete(false);
+            return;
+        }
+    }
+
+    const auto previousJson = exportToJSON();
+    const auto previousSettings = withoutPluginChain(previousJson);
+    const auto targetSettings = withoutPluginChain(json);
+    if (previousSettings.isEmpty() || targetSettings.isEmpty()) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    const auto restorePreviousSettings =
+        [this, previousSettings, previousJson]() {
+            const bool settingsRestored = importFromJSON(previousSettings);
+            const bool chainStateRestored = importChainFromJSON(previousJson);
+            if (settingsRestored && chainStateRestored)
+                return true;
+            juce::Logger::writeToLog(
+                "[PRESET] Transaction rollback could not restore all settings/state");
+            return false;
+    };
+
+    suppressPreload_.store(true, std::memory_order_release);
+    preloadCache_.requestCancel();
+
+    if (!importFromJSON(targetSettings)) {
+        restorePreviousSettings();
+        suppressPreload_.store(false, std::memory_order_release);
+        triggerPreload();
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    if (!hasPluginChain) {
+        const bool externalCommitted = !beforeChainCommit
+            || beforeChainCommit();
+        if (!externalCommitted) {
+            if (rollbackExternalState && !rollbackExternalState())
+                juce::Logger::writeToLog(
+                    "[PRESET] External-state rollback incomplete after commit failure");
+            restorePreviousSettings();
+        }
+        suppressPreload_.store(false, std::memory_order_release);
+        triggerPreload();
+        if (onComplete)
+            onComplete(externalCommitted);
+        return;
+    }
+
+    auto validationTargets = targets;
+    auto requests = buildLoadRequests(std::move(targets));
+    auto aliveFlag = alive_;
+    engine_.getVSTChain().prepareChainAsync(
+        std::move(requests),
+        [this, validationTargets = std::move(validationTargets),
+         beforeChainCommit = std::move(beforeChainCommit),
+         rollbackExternalState = std::move(rollbackExternalState),
+         restorePreviousSettings,
+         onComplete = std::move(onComplete), aliveFlag](
+             std::vector<VSTChain::PreloadedPlugin> prepared, bool ready) mutable {
+            if (!aliveFlag->load(std::memory_order_acquire))
+                return;
+
+            const auto finish = [this, &onComplete](bool ok) {
+                suppressPreload_.store(false, std::memory_order_release);
+                triggerPreload();
+                if (onComplete)
+                    onComplete(ok);
+            };
+
+            if (!ready) {
+                restorePreviousSettings();
+                finish(false);
+                return;
+            }
+
+            const bool externalCommitted = !beforeChainCommit
+                || beforeChainCommit();
+            if (!externalCommitted) {
+                if (rollbackExternalState && !rollbackExternalState())
+                    juce::Logger::writeToLog(
+                        "[PRESET] External-state rollback incomplete after commit failure");
+                restorePreviousSettings();
+                finish(false);
+                return;
+            }
+
+            auto& chain = engine_.getVSTChain();
+            const bool swapped = chain.replaceChainWithPreloaded(
+                std::move(prepared), nullptr);
+            const bool exactMatch = swapped && loadedChainMatchesTargets(
+                validationTargets, chain, "transactional preset load");
+            if (!exactMatch) {
+                if (rollbackExternalState && !rollbackExternalState())
+                    juce::Logger::writeToLog(
+                        "[PRESET] External-state rollback incomplete after graph-swap failure");
+                restorePreviousSettings();
+                finish(false);
+                return;
+            }
+
+            finish(true);
+        },
+        [this]() {
+            preloadCache_.requestCancel();
+            preloadCache_.joinPreloadThread();
+        });
+}
+
+void PresetManager::loadPresetAsync(const juce::File& file,
+                                    std::function<void(bool)> onComplete)
+{
+    const auto json = loadPresetJSONWithBackupFallback(file);
+    if (json.isEmpty()) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    const auto fileName = file.getFileName();
+    importFromJSONTransactionalAsync(
+        json, nullptr, nullptr,
+        [fileName, onComplete = std::move(onComplete)](bool ok) mutable {
+            juce::Logger::writeToLog(ok
+                ? "[PRESET] Loaded: " + fileName
+                : "[PRESET] Transactional load failed: " + fileName);
+            if (onComplete)
+                onComplete(ok);
+        });
 }
 
 bool PresetManager::isPresetFileStructurallyValid(const juce::File& file)
@@ -856,6 +1100,46 @@ std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
         }
     }
     return targets;
+}
+
+std::vector<VSTChain::PluginLoadRequest> PresetManager::buildLoadRequests(
+    std::vector<TargetPlugin> targets)
+{
+    auto& chain = engine_.getVSTChain();
+    std::vector<VSTChain::PluginLoadRequest> requests;
+    requests.reserve(targets.size());
+
+    for (auto& target : targets) {
+        VSTChain::PluginLoadRequest request;
+        request.desc = target.desc;
+        request.name = target.name;
+        request.path = target.path;
+        request.bypassed = target.bypassed;
+        request.stateData = std::move(target.stateData);
+        request.hasState = target.hasState;
+        request.builtinType = target.type;
+
+        if (target.type == PluginSlot::Type::VST && !target.hasDesc) {
+            for (const auto& desc : chain.getKnownPlugins().getTypes()) {
+                if (desc.fileOrIdentifier == target.path && desc.name == target.name) {
+                    request.desc = desc;
+                    break;
+                }
+            }
+            if (request.desc.name.isEmpty()) {
+                for (const auto& desc : chain.getKnownPlugins().getTypes()) {
+                    if (desc.name == target.name) {
+                        request.desc = desc;
+                        break;
+                    }
+                }
+            }
+        }
+
+        requests.push_back(std::move(request));
+    }
+
+    return requests;
 }
 
 std::vector<PresetManager::TargetPlugin> PresetManager::parseSlotFile(int slotIndex)
@@ -1362,18 +1646,16 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         return;
     }
 
-    // Update slot name only after the entire file has passed structural
-    // validation, keeping failed imports atomic from the UI's perspective.
-    if (root->hasProperty("name"))
-        slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
-    else
-        slotNames_[static_cast<size_t>(slotIndex)] = juce::String();
+    const juce::String targetSlotName = root->hasProperty("name")
+        ? root->getProperty("name").toString()
+        : juce::String{};
 
     // Fast path: same plugins in same order -> sync (instant)
     if (isSameChain(targets, chain)) {
         applyFastPath(targets, chain);
         juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex)) + ": fast path (" + juce::String(targets.size()) + " plugins)");
         setActiveSlotInternal(slotIndex, "loadSlotAsync fast path");
+        slotNames_[static_cast<size_t>(slotIndex)] = targetSlotName;
         if (onComplete) onComplete(true);
         // Defer preload to avoid blocking message thread
         auto alivePreload = alive_;
@@ -1421,21 +1703,25 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
 
             auto preloaded = buildPreloadedPluginsFromCache(*cached, freshTargets);
 
-            int expectedCount = static_cast<int>(preloaded.size());
+            const int preparedCount = static_cast<int>(preloaded.size());
             juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex))
-                + ": cache hit (" + juce::String(expectedCount) + " plugins)");
+                + ": cache hit (" + juce::String(preparedCount) + " plugins)");
 
-            const bool swapped = chain.replaceChainWithPreloaded(std::move(preloaded),
-                [this, slotIndex, expectedCount, onComplete]() {
-                    setActiveSlotInternal(slotIndex, "loadSlotAsync cache");
-                    bool allLoaded = (engine_.getVSTChain().getPluginCount() == expectedCount);
-                    if (onComplete) onComplete(allLoaded);
-                });
+            const bool swapped = chain.replaceChainWithPreloaded(
+                std::move(preloaded), nullptr);
             if (!swapped) {
                 Log::audit("PRESET", "Cache swap failed for slot " + juce::String(slotIndex)
                     + " - using async load path");
                 cached.reset();
             } else {
+                const bool exactMatch = loadedChainMatchesTargets(
+                    freshTargets, chain, "loadSlotAsync cache");
+                if (exactMatch) {
+                    setActiveSlotInternal(slotIndex, "loadSlotAsync cache");
+                    slotNames_[static_cast<size_t>(slotIndex)] = targetSlotName;
+                }
+                if (onComplete)
+                    onComplete(exactMatch);
                 // Defer preload restart triggerPreload is non-blocking (old thread
                 // joined on new preload thread, not message thread).
                 auto alivePreload = alive_;
@@ -1459,56 +1745,28 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
     // before using formatManager, keeping the message thread responsive.
     preloadCache_.requestCancel();
 
-    // Build load requests from targets
-    std::vector<VSTChain::PluginLoadRequest> requests;
-    for (auto& t : targets) {
-        VSTChain::PluginLoadRequest req;
-        req.desc = t.desc;
-        req.name = t.name;
-        req.path = t.path;
-        req.bypassed = t.bypassed;
-        req.stateData = std::move(t.stateData);
-        req.hasState = t.hasState;
-        req.builtinType = t.type;
-
-        // VST plugins: resolve description from known plugins list
-        if (t.type == PluginSlot::Type::VST && !t.hasDesc) {
-            for (const auto& desc : chain.getKnownPlugins().getTypes()) {
-                if (desc.fileOrIdentifier == t.path && desc.name == t.name) {
-                    req.desc = desc;
-                    break;
-                }
-            }
-            if (req.desc.name.isEmpty()) {
-                for (const auto& desc : chain.getKnownPlugins().getTypes()) {
-                    if (desc.name == t.name) {
-                        req.desc = desc;
-                        break;
-                    }
-                }
-            }
-        }
-        requests.push_back(std::move(req));
-    }
+    auto validationTargets = targets;
+    auto requests = buildLoadRequests(std::move(targets));
 
     // Async load (non-blocking plugins loaded on background thread)
     juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex))
         + ": full reload (" + juce::String(requests.size()) + " plugins)");
 
-    int slot = slotIndex;
-    int expectedCount = static_cast<int>(requests.size());
+    const int slot = slotIndex;
     auto aliveFlag = alive_;
     chain.replaceChainAsync(std::move(requests),
-        [this, slot, expectedCount, onComplete, aliveFlag]() {
+        [this, slot, targetSlotName,
+         validationTargets = std::move(validationTargets),
+         onComplete, aliveFlag](bool swapped) mutable {
             if (!aliveFlag->load()) return;
-            setActiveSlotInternal(slot, "loadSlotAsync async");
-            // Report failure if some plugins failed to load (prevents auto-save of incomplete chain)
-            bool allLoaded = (engine_.getVSTChain().getPluginCount() == expectedCount);
-            if (!allLoaded)
-                juce::Logger::writeToLog("[PRESET] Partial load: " + juce::String(engine_.getVSTChain().getPluginCount())
-                    + "/" + juce::String(expectedCount) + " plugins loaded");
+            const bool exactMatch = swapped && loadedChainMatchesTargets(
+                validationTargets, engine_.getVSTChain(), "loadSlotAsync async");
+            if (exactMatch) {
+                setActiveSlotInternal(slot, "loadSlotAsync async");
+                slotNames_[static_cast<size_t>(slot)] = targetSlotName;
+            }
             suppressPreload_ = false;  // allow deferred triggerPreloads again
-            if (onComplete) onComplete(allLoaded);
+            if (onComplete) onComplete(exactMatch);
             triggerPreload();
         },
         // preWork: cancel + join preload thread on background thread (avoids blocking message thread)
@@ -1655,28 +1913,36 @@ juce::String PresetManager::getSlotName(int slotIndex) const
     return slotNames_[static_cast<size_t>(slotIndex)];
 }
 
-void PresetManager::setSlotName(int slotIndex, const juce::String& name)
+bool PresetManager::setSlotName(int slotIndex, const juce::String& name)
 {
-    if (slotIndex < 0 || slotIndex >= kNumSlots) return;
-    if (slotIndex == 5) return;  // Auto slot (index 5) name is fixed - not renameable
-    slotNames_[static_cast<size_t>(slotIndex)] = name.trim();
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
+    if (slotIndex == 5) return false;  // Auto slot (index 5) name is fixed - not renameable
+    const auto trimmedName = name.trim();
 
     // Persist name to slot file (re-save if file exists)
     auto file = getSlotFile(slotIndex);
-    if (file.existsAsFile()) {
-        auto json = file.loadFileAsString();
+    if (fileFamilyExists(file)) {
+        auto json = loadPresetJSONWithBackupFallback(file, true);
+        if (json.isEmpty())
+            return false;
         auto parsed = juce::JSON::parse(json);
         if (auto* obj = parsed.getDynamicObject()) {
-            if (name.trim().isEmpty())
+            if (trimmedName.isEmpty())
                 obj->removeProperty("name");
             else
-                obj->setProperty("name", name.trim());
-            if (!atomicWriteFile(file, juce::JSON::toString(juce::var(obj), true)))
+                obj->setProperty("name", trimmedName);
+            if (!atomicWriteFile(file, juce::JSON::toString(juce::var(obj), true))) {
                 Log::warn("PRESET", "Failed to save slot name");
+                return false;
+            }
+        } else {
+            return false;
         }
     }
+    slotNames_[static_cast<size_t>(slotIndex)] = trimmedName;
     juce::Logger::writeToLog("[PRESET] Renamed slot " + juce::String::charToString(slotLabel(slotIndex))
-        + " -> \"" + name.trim() + "\"");
+        + " -> \"" + trimmedName + "\"");
+    return true;
 }
 
 juce::String PresetManager::getSlotDisplayName(int slotIndex) const
@@ -1714,17 +1980,19 @@ void PresetManager::loadSlotNames()
 
 // Slot Export/Import
 
-void PresetManager::exportSlot(int slotIndex)
+bool PresetManager::exportSlot(int slotIndex)
 {
-    if (slotIndex < 0 || slotIndex >= kNumSlots) return;
+    if (slotIndex < 0 || slotIndex >= kNumSlots) return false;
 
     // If this is the active slot, save current state first
-    if (activeSlot_ == slotIndex)
-        saveSlot(slotIndex);
+    if (activeSlot_ == slotIndex && !saveSlot(slotIndex)) {
+        Log::warn("PRESET", "Slot export aborted because the active slot could not be saved");
+        return false;
+    }
 
     auto srcFile = getSlotFile(slotIndex);
     auto srcJson = loadPresetJSONWithBackupFallback(srcFile, true);
-    if (srcJson.isEmpty()) return;
+    if (srcJson.isEmpty()) return false;
 
     auto defaultName = "slot_" + juce::String::charToString(slotLabel(slotIndex));
     auto name = getSlotName(slotIndex);
@@ -1747,12 +2015,17 @@ void PresetManager::exportSlot(int slotIndex)
             juce::Logger::writeToLog("[PRESET] Failed to export slot "
                 + juce::String::charToString(PresetManager::slotLabel(slotIndex))
                 + " to " + dest.getFileName());
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Export Failed",
+                "DirectPipe could not write the slot export file.");
             return;
         }
         juce::Logger::writeToLog("[PRESET] Exported slot "
             + juce::String::charToString(PresetManager::slotLabel(slotIndex))
             + " to " + dest.getFileName());
     });
+    return true;
 }
 
 void PresetManager::importSlot(int slotIndex, std::function<void(bool)> onComplete)
@@ -1777,56 +2050,217 @@ void PresetManager::importSlot(int slotIndex, std::function<void(bool)> onComple
             if (onComplete) onComplete(false);
             return;
         }
-
-        // Validate: must be a valid chain preset
-        auto json = srcFile.loadFileAsString();
-        auto parsed = juce::JSON::parse(json);
-        if (!parsed.isObject()) {
-            if (onComplete) onComplete(false);
-            return;
-        }
-        auto* root = parsed.getDynamicObject();
-        if (!root || !root->hasProperty("plugins")) {
-            if (onComplete) onComplete(false);
-            return;
-        }
-        auto* pluginsArray = root->getProperty("plugins").getArray();
-        if (!pluginsArray
-            || parseTargetPlugins(pluginsArray).size()
-                != static_cast<size_t>(pluginsArray->size())) {
-            if (onComplete) onComplete(false);
-            return;
-        }
-
-        // Copy file to slot location
-        auto dstFile = getSlotFile(slotIndex);
-        if (!srcFile.copyFileTo(dstFile)) {
-            if (onComplete) onComplete(false);
-            return;
-        }
-        deleteSlotBackupFiles(slotIndex);
-        preloadCache_.invalidateSlot(slotIndex);
-        slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
-
-        // Read name from imported file
-        if (root->hasProperty("name"))
-            slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
-        else
-            slotNames_[static_cast<size_t>(slotIndex)] = {};
-
-        juce::Logger::writeToLog("[PRESET] Imported slot "
-            + juce::String::charToString(slotLabel(slotIndex))
-            + " from " + srcFile.getFileName());
-
-        // If this is the active slot, reload it synchronously
-        // (async path has UI refresh issues; sync is fine for user-initiated import)
         if (activeSlot_ == slotIndex) {
-            bool loaded = loadSlot(slotIndex);
-            if (onComplete) onComplete(loaded);
-        } else {
-            if (onComplete) onComplete(true);
+            importSlotFromFileAsync(slotIndex, srcFile, onComplete);
+            return;
         }
+
+        const bool imported = importSlotFromFile(slotIndex, srcFile);
+        if (onComplete)
+            onComplete(imported);
     });
+}
+
+bool PresetManager::importSlotFromFile(int slotIndex, const juce::File& srcFile)
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots || !srcFile.existsAsFile())
+        return false;
+
+    // Active destinations require the asynchronous prepare/commit/swap path.
+    // Refuse the synchronous API instead of falling back to destructive reload.
+    if (activeSlot_ == slotIndex) {
+        Log::warn("PRESET", "Synchronous active-slot import was rejected");
+        return false;
+    }
+
+    const auto json = srcFile.loadFileAsString();
+    auto parsed = juce::JSON::parse(json);
+    if (!parsed.isObject())
+        return false;
+
+    auto* root = parsed.getDynamicObject();
+    if (!root || !root->hasProperty("plugins"))
+        return false;
+    auto* pluginsArray = root->getProperty("plugins").getArray();
+    if (!pluginsArray
+        || parseTargetPlugins(pluginsArray).size()
+            != static_cast<size_t>(pluginsArray->size()))
+        return false;
+
+    auto dstFile = getSlotFile(slotIndex);
+    if (!atomicWriteFile(dstFile, json))
+        return false;
+
+    preloadCache_.invalidateSlot(slotIndex);
+
+    deleteSlotBackupFiles(slotIndex);
+    slotOccupiedCache_[static_cast<size_t>(slotIndex)] = true;
+    if (root->hasProperty("name"))
+        slotNames_[static_cast<size_t>(slotIndex)] = root->getProperty("name").toString();
+    else
+        slotNames_[static_cast<size_t>(slotIndex)] = {};
+
+    juce::Logger::writeToLog("[PRESET] Imported slot "
+        + juce::String::charToString(slotLabel(slotIndex))
+        + " from " + srcFile.getFileName());
+    return true;
+}
+
+void PresetManager::importSlotFromFileAsync(
+    int slotIndex, const juce::File& srcFile, std::function<void(bool)> onComplete)
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots
+        || activeSlot_ != slotIndex || !srcFile.existsAsFile()) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    const auto json = srcFile.loadFileAsString();
+    auto parsed = juce::JSON::parse(json);
+    auto* root = parsed.getDynamicObject();
+    auto* plugins = root ? root->getProperty("plugins").getArray() : nullptr;
+    if (!parsed.isObject() || !root || !plugins
+        || parseTargetPlugins(plugins).size() != static_cast<size_t>(plugins->size())) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    applyActiveSlotTransactionAsync(slotIndex, json, false, std::move(onComplete));
+}
+
+void PresetManager::copySlotToActiveAsync(
+    int fromSlot, int toSlot, std::function<void(bool)> onComplete)
+{
+    if (fromSlot < 0 || fromSlot >= kNumSlots
+        || toSlot < 0 || toSlot >= kNumSlots
+        || fromSlot == toSlot || activeSlot_ != toSlot) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    const bool sourceExists = slotFileFamilyExists(fromSlot);
+    const auto sourceJson = loadPresetJSONWithBackupFallback(getSlotFile(fromSlot), true);
+    if (sourceJson.isEmpty()) {
+        if (sourceExists) {
+            if (onComplete)
+                onComplete(false);
+            return;
+        }
+
+        applyActiveSlotTransactionAsync(
+            toSlot,
+            R"({"version":4,"type":"chain","plugins":[]})",
+            true,
+            std::move(onComplete));
+        return;
+    }
+
+    applyActiveSlotTransactionAsync(toSlot, sourceJson, false, std::move(onComplete));
+}
+
+void PresetManager::applyActiveSlotTransactionAsync(
+    int slotIndex, juce::String json, bool deleteDestination,
+    std::function<void(bool)> onComplete)
+{
+    if (slotIndex < 0 || slotIndex >= kNumSlots || activeSlot_ != slotIndex) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    auto parsed = juce::JSON::parse(json);
+    auto* root = parsed.getDynamicObject();
+    auto* plugins = root ? root->getProperty("plugins").getArray() : nullptr;
+    if (!parsed.isObject() || !root || !plugins) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    auto targets = parseTargetPlugins(plugins);
+    if (targets.size() != static_cast<size_t>(plugins->size())) {
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    std::vector<FileSnapshot> fileSnapshots;
+    if (!captureSlotFileFamily(slotIndex, fileSnapshots)) {
+        Log::warn("PRESET", "Could not snapshot active destination before transaction");
+        if (onComplete)
+            onComplete(false);
+        return;
+    }
+
+    const auto importedName = deleteDestination || !root->hasProperty("name")
+        ? juce::String{}
+        : root->getProperty("name").toString();
+    auto requests = buildLoadRequests(std::move(targets));
+    auto& chain = engine_.getVSTChain();
+    auto aliveFlag = alive_;
+
+    suppressPreload_.store(true, std::memory_order_release);
+    preloadCache_.requestCancel();
+
+    chain.prepareChainAsync(
+        std::move(requests),
+        [this, slotIndex, json = std::move(json), deleteDestination,
+         importedName, fileSnapshots = std::move(fileSnapshots),
+         onComplete = std::move(onComplete), aliveFlag]
+        (std::vector<VSTChain::PreloadedPlugin> prepared, bool ready) mutable
+        {
+            if (!aliveFlag->load(std::memory_order_acquire))
+                return;
+
+            auto finish = [this, &onComplete](bool ok) {
+                suppressPreload_.store(false, std::memory_order_release);
+                triggerPreload();
+                if (onComplete)
+                    onComplete(ok);
+            };
+
+            if (!ready) {
+                Log::warn("PRESET", "Active slot transaction preparation failed; keeping current slot");
+                finish(false);
+                return;
+            }
+
+            const bool diskCommitted = deleteDestination
+                ? deleteSlotFileFamily(slotIndex)
+                : atomicWriteFile(getSlotFile(slotIndex), json);
+            if (!diskCommitted) {
+                if (!restoreSlotFileFamily(fileSnapshots))
+                    Log::warn("PRESET", "Active slot disk rollback was incomplete after commit failure");
+                finish(false);
+                return;
+            }
+
+            auto& liveChain = engine_.getVSTChain();
+            if (!liveChain.replaceChainWithPreloaded(std::move(prepared), nullptr)) {
+                if (!restoreSlotFileFamily(fileSnapshots))
+                    Log::warn("PRESET", "Active slot disk rollback was incomplete after swap failure");
+                refreshSlotOccupancyCache();
+                loadSlotNames();
+                preloadCache_.invalidateSlot(slotIndex);
+                finish(false);
+                return;
+            }
+
+            setActiveSlotInternal(slotIndex, "active slot transaction");
+            slotOccupiedCache_[static_cast<size_t>(slotIndex)] = !deleteDestination;
+            slotNames_[static_cast<size_t>(slotIndex)] = importedName;
+            preloadCache_.invalidateSlot(slotIndex);
+            juce::Logger::writeToLog("[PRESET] Active slot transaction committed: "
+                + formatSlotForLog(slotIndex));
+            finish(true);
+        },
+        [this]() {
+            preloadCache_.requestCancel();
+            preloadCache_.joinPreloadThread();
+        });
 }
 
 } // namespace directpipe

@@ -8,9 +8,13 @@
 #include <directpipe/Constants.h>
 #include <directpipe/Protocol.h>
 #include <atomic>
+#include <memory>
+#include <thread>
 #include <vector>
 
-class DirectPipeReceiverProcessor : public juce::AudioProcessor {
+class DirectPipeReceiverProcessor : public juce::AudioProcessor,
+                                    private juce::AudioProcessorValueTreeState::Listener,
+                                    private juce::AsyncUpdater {
 public:
     DirectPipeReceiverProcessor();
     ~DirectPipeReceiverProcessor() override;
@@ -48,15 +52,46 @@ public:
     uint32_t getSourceChannels() const;
 
 private:
-    directpipe::SharedMemory sharedMemory_;
-    directpipe::RingBuffer ringBuffer_;
+    struct Connection {
+        ~Connection() {
+            ringBuffer.detach();
+            sharedMemory.close();
+        }
 
-    std::atomic<bool> connected_{false};                // [RT write, GUI read]
-    std::atomic<bool> multiConsumerWarning_{false};    // [RT write, GUI read] true if another Receiver was already reading
-    std::atomic<uint32_t> cachedSampleRate_{0};        // [RT write, GUI read] GUI-safe cache (avoids ringBuffer_ race)
-    std::atomic<uint32_t> cachedChannels_{0};          // [RT write, GUI read] GUI-safe cache (avoids ringBuffer_ race)
-    int reconnectCounter_ = 0;                         // [RT thread only]
-    static constexpr int kReconnectInterval = 100;
+        directpipe::SharedMemory sharedMemory;
+        directpipe::RingBuffer ringBuffer;
+    };
+
+    class ConnectionLease {
+    public:
+        explicit ConnectionLease(DirectPipeReceiverProcessor& owner) noexcept;
+        ~ConnectionLease();
+        Connection* get() const noexcept { return connection_; }
+
+        ConnectionLease(const ConnectionLease&) = delete;
+        ConnectionLease& operator=(const ConnectionLease&) = delete;
+
+    private:
+        DirectPipeReceiverProcessor& owner_;
+        Connection* connection_ = nullptr;
+    };
+
+    // The worker exclusively owns mappings. The audio thread only borrows the
+    // published raw pointer while counted in connectionUsers_.
+    std::unique_ptr<Connection> workerConnection_;
+    std::atomic<Connection*> activeConnection_{nullptr};
+    std::atomic<uint32_t> connectionUsers_{0};
+    std::atomic<bool> connectionAccessEnabled_{false};
+    std::atomic<bool> connectionWorkerStopRequested_{false};
+    std::atomic<bool> reconnectRequested_{false};
+    std::thread connectionThread_;
+    std::atomic<uint64_t> connectionSerial_{0};
+    uint64_t rtConnectionSerial_ = 0;                  // [RT thread only]
+
+    std::atomic<bool> connected_{false};               // [Worker write, GUI read]
+    std::atomic<bool> multiConsumerWarning_{false};    // [Worker write, GUI read]
+    std::atomic<uint32_t> cachedSampleRate_{0};        // [Worker write, GUI read]
+    std::atomic<uint32_t> cachedChannels_{0};          // [Worker write, GUI read]
 
     std::vector<float> interleavedBuffer_;
 
@@ -89,10 +124,20 @@ private:
     uint32_t getLowFillThreshold() const;
 
     juce::AudioProcessorValueTreeState apvts_;
+    std::atomic<int> requestedLatencySamples_{0};
 
-    void tryConnect();
-    void disconnect();
-    void skipToFreshPosition();
+    void startConnectionWorker();
+    void stopConnectionWorker();
+    void connectionWorkerLoop();
+    std::unique_ptr<Connection> openConnection();
+    void publishConnection(std::unique_ptr<Connection> connection);
+    void retireConnection();
+    Connection* acquireConnection() noexcept;
+    void releaseConnection() noexcept;
+    void skipToFreshPosition(Connection& connection);
+
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
+    void handleAsyncUpdate() override;
     void saveLastOutput(const juce::AudioBuffer<float>& buffer, int numSamples, int numChannels);
     void applyFadeOut(juce::AudioBuffer<float>& buffer, int numSamples, int numChannels);
 

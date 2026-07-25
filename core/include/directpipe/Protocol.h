@@ -78,8 +78,15 @@ struct DirectPipeHeader {
     /// the previously unused reserved area of cache line 1).
     std::atomic<bool> consumer_active{false};
 
+    /// Identifies one producer lifetime. A restarted producer publishes a new
+    /// non-zero value before producer_active becomes true. This field occupies
+    /// bytes that were reserved in protocol v1, so existing producers and
+    /// consumers remain binary-compatible (legacy producers expose zero).
+    std::atomic<uint64_t> producer_generation{0};
+
     /// Reserved padding for cache line 1 (keeps sizeof(DirectPipeHeader) == 192)
-    uint8_t reserved[64 - 2 * sizeof(std::atomic<bool>) - 4 * sizeof(uint32_t)]{};
+    uint8_t reserved[64 - 2 * sizeof(std::atomic<bool>)
+                     - sizeof(std::atomic<uint64_t>) - 4 * sizeof(uint32_t)]{};
 };
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -98,7 +105,7 @@ static_assert(alignof(DirectPipeHeader) >= 64,
 // Ensure header size is consistent across compilers (3 x 64-byte cache lines = 192 bytes).
 // Cache line 0: write_pos. Cache line 1: read_pos + config + producer_active + consumer_active.
 // Cache line 2: trailing padding/future use.
-// consumer_active was added in the reserved area of cache line 1 (no size change).
+// consumer_active and producer_generation were added in reserved space (no size change).
 // PROTOCOL_VERSION stays at 1 — old consumers ignore the new field.
 static_assert(sizeof(DirectPipeHeader) == 192,
               "DirectPipeHeader size changed — update PROTOCOL_VERSION if layout changed");

@@ -2,6 +2,7 @@
 // Copyright (C) 2025 LiveTrack
 #include "BuiltinNoiseRemoval.h"
 #include "../UI/NoiseRemovalEditPanel.h"
+#include <algorithm>
 #include <cmath>
 
 namespace directpipe {
@@ -54,19 +55,28 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
         + " rnnR=" + juce::String(rnnR_ != nullptr ? "OK" : "NULL")
         + " needsResampling=" + juce::String(needsResampling_.load() ? "YES" : "NO"));
 
-    // Allocate FIFO buffers (pre-allocated, zero-filled)
-    inputFifoL_.assign(kFifoCapacity, 0.0f);
-    inputFifoR_.assign(kFifoCapacity, 0.0f);
-    outputFifoL_.assign(kFifoCapacity, 0.0f);
-    outputFifoR_.assign(kFifoCapacity, 0.0f);
+    // Pass 1 can enqueue a complete host callback before Pass 2 drains any
+    // output. Keep enough room for the declared 480-sample delay plus frame
+    // rounding on callbacks up to the supported 4096-sample maximum. The
+    // allocation happens only here, never on the RT thread.
+    const int provisionedBlockSize = (std::max)(kMaxSupportedBlockSize,
+                                                 (std::max)(1, samplesPerBlock));
+    const size_t outputCapacity = static_cast<size_t>(
+        (std::max)(kMinimumOutputFifoCapacity,
+                   provisionedBlockSize + 2 * kRNNFrameSize));
+
+    inputFifoL_.assign(kRNNFrameSize, 0.0f);
+    inputFifoR_.assign(kRNNFrameSize, 0.0f);
+    outputFifoL_.assign(outputCapacity, 0.0f);
+    outputFifoR_.assign(outputCapacity, 0.0f);
 
     // Reset FIFO positions
     inputFifoWriteL_ = 0;
     inputFifoWriteR_ = 0;
     outputFifoReadL_  = 0;
-    outputFifoWriteL_ = 0;
+    outputFifoWriteL_ = kRNNFrameSize;
     outputFifoReadR_  = 0;
-    outputFifoWriteR_ = 0;
+    outputFifoWriteR_ = kRNNFrameSize;
 
     // Start with gate CLOSED -- prevents initial noise burst before RNNoise stabilizes
     gateGainL_ = 0.0f;
@@ -97,8 +107,12 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
         }
     }
 
-    // I2: Use base class setLatencySamples for proper AudioProcessor latency reporting
-    setLatencySamples(kRNNFrameSize);  // 480 samples FIFO delay
+    // The seeded zero frame above makes the active path's physical delay match
+    // the value reported to AudioProcessorGraph. Non-48kHz is a true passthrough
+    // and therefore must report zero latency.
+    setLatencySamples(needsResampling_.load(std::memory_order_relaxed)
+                          ? 0
+                          : kRNNFrameSize);
 }
 
 void BuiltinNoiseRemoval::releaseResources()
@@ -222,19 +236,31 @@ void BuiltinNoiseRemoval::processChannel(
             }
 
             // Apply per-sample gate smoothing and store in output ring buffer.
-            // NOTE: outputFifoWrite grows monotonically and wraps via % kFifoCapacity.
+            // NOTE: outputFifoWrite grows monotonically and wraps by the
+            // runtime-sized FIFO capacity.
             // This ring buffer approach avoids the need for a linear reset of read/write
             // positions (which would require coordination). The modulo wrap is safe because
-            // kFifoCapacity (960) is a power-of-nothing-special, but the math works for
-            // any capacity as long as (write - read) never exceeds kFifoCapacity.
+            // The capacity need not be a power of two; modulo works for
+            // any capacity as long as (write - read) never exceeds that capacity.
             // uint32_t wraparound is handled correctly: the drain comparison uses
             // (write - read) > 0u instead of read < write, so unsigned modular
             // subtraction gives the correct count even after UINT32_MAX wraparound
             // (~25 hours at 48kHz).
-            for (int j = 0; j < kRNNFrameSize; ++j) {
-                gateGain = gateSmooth_ * gateGain + (1.0f - gateSmooth_) * targetGate;
-                outputFifo[static_cast<size_t>(outputFifoWrite % kFifoCapacity)] = rnnOut[j] * kInvScale * gateGain;
-                ++outputFifoWrite;
+            const auto outputCapacity = static_cast<uint32_t>(outputFifo.size());
+            const auto queuedSamples = outputFifoWrite - outputFifoRead;
+            jassert(outputCapacity >= static_cast<uint32_t>(kRNNFrameSize));
+            jassert(queuedSamples <= outputCapacity - static_cast<uint32_t>(kRNNFrameSize));
+
+            // A callback beyond the provisioned maximum must never overwrite
+            // unread audio. Supported callbacks (<=4096, or the prepare hint
+            // when larger) cannot enter this fallback.
+            if (outputCapacity >= static_cast<uint32_t>(kRNNFrameSize)
+                && queuedSamples <= outputCapacity - static_cast<uint32_t>(kRNNFrameSize)) {
+                for (int j = 0; j < kRNNFrameSize; ++j) {
+                    gateGain = gateSmooth_ * gateGain + (1.0f - gateSmooth_) * targetGate;
+                    outputFifo[static_cast<size_t>(outputFifoWrite % outputCapacity)] = rnnOut[j] * kInvScale * gateGain;
+                    ++outputFifoWrite;
+                }
             }
 
             inputFifoWrite = 0;
@@ -245,7 +271,8 @@ void BuiltinNoiseRemoval::processChannel(
     // Now safe to write to `out` -- all input has been consumed in Pass 1.
     for (int i = 0; i < numSamples; ++i) {
         if ((outputFifoWrite - outputFifoRead) > 0u) {
-            out[i] = outputFifo[static_cast<size_t>(outputFifoRead % kFifoCapacity)];
+            const auto outputCapacity = static_cast<uint32_t>(outputFifo.size());
+            out[i] = outputFifo[static_cast<size_t>(outputFifoRead % outputCapacity)];
             ++outputFifoRead;
         } else {
             // No processed data available yet -- output silence.

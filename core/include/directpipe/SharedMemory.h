@@ -86,6 +86,26 @@ public:
     size_t getSize() const { return size_; }
 
     /**
+     * @brief Stable identity of the currently opened POSIX shared-memory object.
+     *
+     * A POSIX producer restart unlinks and recreates the named object while an
+     * existing consumer can still hold the old mapping. Consumers can compare
+     * this value with a freshly opened mapping to detect that replacement.
+     * Returns zero on platforms where producer_generation is sufficient.
+     */
+    uint64_t getObjectIdentity() const { return objectIdentity_; }
+
+    /**
+     * @brief Whether the most recent successful create() opened an object that
+     *        already existed instead of creating a fresh object.
+     *
+     * On Windows, CreateFileMapping reports this through ERROR_ALREADY_EXISTS.
+     * Producers must not placement-initialize such a mapping while a retained
+     * consumer can still be reading it. The flag is cleared by close()/open().
+     */
+    bool createOpenedExistingObject() const { return createOpenedExistingObject_; }
+
+    /**
      * @brief Check if the shared memory is currently open.
      */
     bool isOpen() const { return data_ != nullptr; }
@@ -93,6 +113,8 @@ public:
 private:
     void* data_ = nullptr;
     size_t size_ = 0;
+    uint64_t objectIdentity_ = 0;
+    bool createOpenedExistingObject_ = false;
     bool isCreator_ = false;  // Only creator (producer) unlinks on close
 
 #ifdef _WIN32

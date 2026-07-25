@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.2.0-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.2.1-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.2.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
+- **Latest (최신)**: [v4.2.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
 
-> **지원/검증 범위**: v4.2.0 로컬 Windows Release 검증은 Windows 10/11 x64 기준으로 완료했습니다. macOS/Linux는 CMake/CI 빌드 경로와 플랫폼 구현이 유지되지만, 베타/실험적 빌드로 취급하며 실기기 오디오 테스트 범위가 제한적입니다.
-> **Support/validation scope**: v4.2.0 local Windows Release verification was completed on Windows 10/11 x64. macOS/Linux keep source and CI build support, but remain beta/experimental with limited real-hardware audio validation.
+> **지원/검증 범위**: v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했습니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Support/validation scope**: The v4.2.1 local Windows Release build and registered software tests were verified. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
 
 
 
@@ -45,6 +45,30 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 > **Platform support**: Windows (WASAPI/ASIO) is the stable release target. macOS (CoreAudio) is beta. Linux (ALSA/JACK) is experimental. Stream Deck control is packaged separately and supports Windows 10+, macOS 10.15+, and Stream Deck 6.9+.
 > **플랫폼 지원**: Windows(WASAPI/ASIO)는 안정 릴리즈 대상입니다. macOS(CoreAudio)는 베타, Linux(ALSA/JACK)는 실험적 지원입니다. Stream Deck 제어 플러그인은 별도 패키지이며 Windows 10+, macOS 10.15+, Stream Deck 6.9+를 대상으로 합니다.
+
+### Windows 앱·데스크톱 오디오도 함께 믹스하기: DPWIM
+
+> 🎛️ **Companion project: [DirectPipe Windows Input Mixer (DPWIM)](https://github.com/LiveTrack-X/DPWIM)**
+>
+> DirectPipe의 마이크/VST 체인은 그대로 유지하면서, 선택한 Windows 앱이나
+> 데스크톱 소리를 함께 섞고 싶다면 DPWIM을 일반 64-bit VST2/VST3 이펙트로
+> 체인에 추가할 수 있습니다.
+>
+> Keep your DirectPipe microphone/VST chain and mix in selected Windows
+> applications or desktop audio by loading DPWIM as a regular 64-bit VST2/VST3
+> effect.
+
+- **최대 4개 캡처 소스** — 앱 또는 데스크톱을 선택하고 소스별 ON/OFF·Gain·동기화 Offset 조절 / Up to four app or desktop sources with per-source ON/OFF, gain, and sync offset
+- **마이크 경로 보존** — 기존 mono/stereo 입력과 캡처 소스를 공통 latency timeline에서 믹싱 / Preserves the upstream mono/stereo path and mixes captured sources on a common latency timeline
+- **독립 companion 플러그인** — DirectPipe 런타임에 종속되지 않아 다른 호환 호스트에서도 사용 가능 / Standalone companion plug-in with no DirectPipe runtime dependency
+
+**[DPWIM 프로젝트·소스·빌드 안내 보기 →](https://github.com/LiveTrack-X/DPWIM)**
+
+> **현재 상태 / Current status**: Windows x64용 **v0.2.2 public preview**입니다.
+> 로컬 소프트웨어 검증은 완료했지만 아직 unsigned이며, DirectPipe 및 다양한
+> 서드파티 DAW에서의 수동 호환성 검증이 더 필요합니다. / Locally
+> software-verified, but currently unsigned and still awaiting broader manual
+> validation in DirectPipe and representative third-party DAWs.
 
 <p align="center">
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
@@ -105,7 +129,7 @@ Mute/preset switch with hotkeys (Ctrl+Shift) during gameplay. **Leave [Auto] on 
 1. **포터블 실행** — USB에 DirectPipe를 넣고 상대방 컴퓨터에서 바로 실행 ([`portable.flag`로 설정도 USB에 저장](docs/USER_GUIDE.md#포터블-모드--portable-mode))
 2. **프리셋 내보내기** — 최적화된 VST 체인을 `.dppreset` 파일로 내보내서 전달
 3. **프리셋 가져오기** — 상대방이 슬롯 우클릭 → Import로 즉시 적용
-4. **Full Backup** — Settings > Maintenance에서 설정 + 모든 슬롯을 `.dpfullbackup` 하나로 백업/복원. 같은 OS끼리만 복원 가능 (백업 파일에 플랫폼 정보 포함, 다른 OS에서 복원 시 차단) / Same-OS restore only (backup includes platform info, cross-OS restore is blocked)
+4. **Full Backup** — Settings > Maintenance에서 설정, 녹음 폴더, VST 체인, 모든 슬롯을 `.dpfullbackup` 하나로 백업/복원. 같은 OS끼리만 복원 가능 (백업 파일에 플랫폼 정보 포함, 다른 OS에서 복원 시 차단) / Backs up settings, recording folder, VST chain, and all slots; same-OS restore only (cross-OS restore is blocked)
 
 ```
 세팅 도우미 PC                          스트리머 PC
@@ -1042,8 +1066,10 @@ When enabled, the VST button turns **green**; when disabled, it's **red**.
 
 DirectPipe는 **인앱 업데이트 알림**을 지원합니다. 새 버전이 있으면 하단 credit 라벨에 **"NEW vX.Y.Z"** 가 주황색으로 표시됩니다.
 
-**Windows**: "Update Now" 버튼으로 자동 다운로드 → exe 교체 → 재시작.
+**Windows**: "Update Now" 버튼으로 자동 다운로드 → exe 교체 → 재시작. v4.2.0 이후 릴리즈는 정확히 일치하는 `checksums.sha256` 항목과 SHA-256을 필수 확인하며, metadata가 없거나 읽지 못하거나 불일치하면 fail-closed로 중단합니다.
 **macOS/Linux**: "View on GitHub" 버튼으로 릴리즈 페이지에서 수동 다운로드.
+
+브라우저 수동 다운로드는 Windows 인앱 checksum 검사 범위 밖입니다.
 
 인터넷이 연결되지 않은 경우에도 기존 버전은 정상적으로 동작합니다.
 
@@ -1051,8 +1077,10 @@ DirectPipe는 **인앱 업데이트 알림**을 지원합니다. 새 버전이 �
 
 DirectPipe includes **in-app update notification**. When a newer version is available, the bottom credit label shows **"NEW vX.Y.Z"** in orange.
 
-**Windows**: Click "Update Now" for auto-download → replace exe → restart.
+**Windows**: Click "Update Now" for auto-download → replace exe → restart. Releases v4.2.0 and later require an exact readable `checksums.sha256` entry and matching SHA-256; missing, unreadable, or mismatched metadata fails closed.
 **macOS/Linux**: Click "View on GitHub" to manually download from the release page.
+
+Manual browser downloads are outside the Windows in-app checksum check.
 
 If you're offline, the current version continues to work normally.
 </details>

@@ -210,17 +210,25 @@ TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
         MapViewOfFile(retainedMapping, FILE_MAP_ALL_ACCESS, 0, 0, mappingSize));
     ASSERT_NE(retainedView, nullptr) << "MapViewOfFile failed: " << GetLastError();
 
+    RingBuffer crashedProducer;
+    crashedProducer.initAsProducer(retainedView, 1024, 2, 48000);
+    std::atomic<bool> sawQuiesce{false};
+    std::thread retainedConsumer([&] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (retainedView->producer_active.load(std::memory_order_acquire)
+               && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::yield();
+        sawQuiesce.store(
+            !retainedView->producer_active.load(std::memory_order_acquire),
+            std::memory_order_release);
+        UnmapViewOfFile(retainedView);
+        CloseHandle(retainedMapping);
+    });
+
     {
         SharedMemWriter writer;
         EXPECT_FALSE(writer.initialize(48000, 2, 1024));
         EXPECT_FALSE(writer.isConnected());
-
-        // Holding a second mapping handle proves initialize() reached and
-        // initialized the ring before the named-event failure.
-        EXPECT_EQ(retainedView->sample_rate, 48000u);
-        EXPECT_EQ(retainedView->channels, 2u);
-        EXPECT_EQ(retainedView->buffer_frames, 1024u);
-        EXPECT_FALSE(retainedView->producer_active.load(std::memory_order_acquire));
 
         // This used to dereference RingBuffer pointers after initialize()
         // had already unmapped their backing shared memory.
@@ -228,9 +236,110 @@ TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
         EXPECT_FALSE(writer.isConnected());
     }
 
+    retainedConsumer.join();
+    EXPECT_TRUE(sawQuiesce.load(std::memory_order_acquire));
+    CloseHandle(conflictingMutex);
+}
+
+TEST(SharedMemWriterTest, CrashRetainedDifferentSizedMappingIsQuiescedBeforeFreshInitialization) {
+    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
+        CloseHandle(existingEvent);
+        GTEST_SKIP() << "DirectPipe named event is already in use";
+    }
+    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
+        CloseHandle(existingMapping);
+        GTEST_SKIP() << "DirectPipe shared memory is already in use";
+    }
+
+    constexpr uint32_t oldCapacity = 512;
+    constexpr uint32_t oldChannels = 1;
+    constexpr uint32_t newCapacity = 1024;
+    constexpr uint32_t newChannels = 2;
+    const auto mappingSize = calculateSharedMemorySize(oldCapacity, oldChannels);
+    auto* retainedMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
+                                               0, static_cast<DWORD>(mappingSize), SHM_NAME);
+    ASSERT_NE(retainedMapping, nullptr) << "CreateFileMappingA failed: " << GetLastError();
+    auto* retainedView = static_cast<DirectPipeHeader*>(
+        MapViewOfFile(retainedMapping, FILE_MAP_ALL_ACCESS, 0, 0, mappingSize));
+    ASSERT_NE(retainedView, nullptr) << "MapViewOfFile failed: " << GetLastError();
+
+    RingBuffer crashedProducer;
+    crashedProducer.initAsProducer(retainedView, oldCapacity, oldChannels, 44100);
+    const auto oldGeneration =
+        retainedView->producer_generation.load(std::memory_order_acquire);
+
+    std::atomic<bool> sawQuiesce{false};
+    std::thread retainedConsumer([&] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (retainedView->producer_active.load(std::memory_order_acquire)
+               && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::yield();
+        sawQuiesce.store(
+            !retainedView->producer_active.load(std::memory_order_acquire),
+            std::memory_order_release);
+        UnmapViewOfFile(retainedView);
+        CloseHandle(retainedMapping);
+    });
+
+    SharedMemWriter writer;
+    const bool initialized = writer.initialize(48000, newChannels, newCapacity);
+    retainedConsumer.join();
+
+    ASSERT_TRUE(initialized);
+    EXPECT_TRUE(sawQuiesce.load(std::memory_order_acquire));
+    EXPECT_TRUE(writer.isConnected());
+
+    SharedMemory observer;
+    ASSERT_TRUE(observer.open(SHM_NAME, 0));
+    auto* freshHeader = static_cast<DirectPipeHeader*>(observer.getData());
+    EXPECT_TRUE(freshHeader->producer_active.load(std::memory_order_acquire));
+    EXPECT_EQ(freshHeader->sample_rate, 48000u);
+    EXPECT_EQ(freshHeader->channels, newChannels);
+    EXPECT_EQ(freshHeader->buffer_frames, newCapacity);
+    EXPECT_NE(freshHeader->producer_generation.load(std::memory_order_acquire),
+              oldGeneration);
+    observer.close();
+    writer.shutdown();
+}
+
+TEST(SharedMemWriterTest, UnreleasedMappingFailsWithoutReinitializingHeader) {
+    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
+        CloseHandle(existingEvent);
+        GTEST_SKIP() << "DirectPipe named event is already in use";
+    }
+    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
+        CloseHandle(existingMapping);
+        GTEST_SKIP() << "DirectPipe shared memory is already in use";
+    }
+
+    // 2048 mono and 1024 stereo have the same mapping size, so create() can
+    // open the retained object. The producer configuration must still remain
+    // untouched when the retained handle never releases.
+    const auto mappingSize = calculateSharedMemorySize(2048, 1);
+    auto* retainedMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
+                                               0, static_cast<DWORD>(mappingSize), SHM_NAME);
+    ASSERT_NE(retainedMapping, nullptr) << "CreateFileMappingA failed: " << GetLastError();
+    auto* retainedView = static_cast<DirectPipeHeader*>(
+        MapViewOfFile(retainedMapping, FILE_MAP_ALL_ACCESS, 0, 0, mappingSize));
+    ASSERT_NE(retainedView, nullptr) << "MapViewOfFile failed: " << GetLastError();
+
+    RingBuffer crashedProducer;
+    crashedProducer.initAsProducer(retainedView, 2048, 1, 44100);
+    const auto oldGeneration =
+        retainedView->producer_generation.load(std::memory_order_acquire);
+
+    SharedMemWriter writer;
+    EXPECT_FALSE(writer.initialize(48000, 2, 1024));
+    EXPECT_FALSE(writer.isConnected());
+    EXPECT_FALSE(retainedView->producer_active.load(std::memory_order_acquire));
+    EXPECT_EQ(retainedView->sample_rate, 44100u);
+    EXPECT_EQ(retainedView->channels, 1u);
+    EXPECT_EQ(retainedView->buffer_frames, 2048u);
+    EXPECT_EQ(retainedView->producer_generation.load(std::memory_order_acquire),
+              oldGeneration);
+
     UnmapViewOfFile(retainedView);
     CloseHandle(retainedMapping);
-    CloseHandle(conflictingMutex);
 }
 #endif
 

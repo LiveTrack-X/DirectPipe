@@ -335,12 +335,14 @@ void HotkeyTab::onSetClicked(int bindingIndex)
 
     int targetId = bindings[static_cast<size_t>(bindingIndex)].id;
 
+    auto safeThis = juce::Component::SafePointer<HotkeyTab>(this);
     handler.startRecording(
-        [this, targetId](uint32_t mods, uint32_t vk, const std::string& name) {
+        [safeThis, targetId](uint32_t mods, uint32_t vk, const std::string& name) {
+            if (!safeThis) return;
             // Update binding in-place (preserves list position)
-            auto& h = manager_.getHotkeyHandler();
+            auto& h = safeThis->manager_.getHotkeyHandler();
             h.updateHotkey(targetId, mods, vk, name);
-            manager_.saveConfig();
+            safeThis->manager_.saveConfig();
 
             // UI refresh will happen in timerCallback when isRecording() returns false
         });
@@ -416,9 +418,10 @@ void HotkeyTab::onAddClicked()
 {
     auto menu = buildActionMenu();
 
+    auto safeThis = juce::Component::SafePointer<HotkeyTab>(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addButton_),
-        [this](int result) {
-            if (result == 0) return;  // cancelled
+        [safeThis](int result) {
+            if (!safeThis || result == 0) return;  // cancelled
 
             ActionEvent action;
 
@@ -458,19 +461,18 @@ void HotkeyTab::onAddClicked()
             }
 
             // Enter recording mode to capture key combination
-            statusLabel_.setText("Press a key combination for: " +
-                                 juce::String(action.stringParam),
-                                 juce::dontSendNotification);
-            cancelButton_.setVisible(true);
-            resized();
-            recordingIndex_ = -2;  // special value for "new binding"
+            safeThis->statusLabel_.setText("Press a key combination for: " +
+                                           juce::String(action.stringParam),
+                                           juce::dontSendNotification);
+            safeThis->cancelButton_.setVisible(true);
+            safeThis->resized();
+            safeThis->recordingIndex_ = -2;  // special value for "new binding"
 
-            auto safeHotkey = juce::Component::SafePointer<HotkeyTab>(this);
-            manager_.getHotkeyHandler().startRecording(
-                [safeHotkey, action](uint32_t mods, uint32_t vk, const std::string& name) {
-                    if (!safeHotkey) return;
-                    safeHotkey->manager_.getHotkeyHandler().registerHotkey(mods, vk, action, name);
-                    safeHotkey->manager_.saveConfig();
+            safeThis->manager_.getHotkeyHandler().startRecording(
+                [safeThis, action](uint32_t mods, uint32_t vk, const std::string& name) {
+                    if (!safeThis) return;
+                    safeThis->manager_.getHotkeyHandler().registerHotkey(mods, vk, action, name);
+                    safeThis->manager_.saveConfig();
                     // UI refresh happens in timerCallback
                 });
         });

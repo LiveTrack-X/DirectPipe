@@ -3,14 +3,23 @@
 
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <thread>
 #include "Control/MidiHandler.h"
 #include "Control/ActionDispatcher.h"
+
+#if JUCE_WINDOWS
+#include <Windows.h>
+#endif
 
 using namespace directpipe;
 
 class MidiHandlerTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        juce::MessageManager::getInstance();
         dispatcher_ = std::make_unique<ActionDispatcher>();
         handler_ = std::make_unique<MidiHandler>(*dispatcher_);
     }
@@ -93,6 +102,150 @@ TEST_F(MidiHandlerTest, LearnStartComplete) {
     EXPECT_FALSE(handler_->isLearning());
 }
 
+TEST_F(MidiHandlerTest, LearnCompletionFromMidiThreadRunsOnMessageThread) {
+#if JUCE_WINDOWS
+    std::atomic<bool> learnCompleted{false};
+    std::atomic<bool> ranOnMessageThread{false};
+
+    handler_->startLearn([&](int, int, int, const juce::String&) {
+        ranOnMessageThread.store(
+            juce::MessageManager::getInstance()->isThisTheMessageThread(),
+            std::memory_order_release);
+        learnCompleted.store(true, std::memory_order_release);
+    });
+
+    std::thread midiThread([&] {
+        handler_->injectTestMessage(juce::MidiMessage::controllerEvent(1, 65, 127));
+    });
+    midiThread.join();
+
+    // A timeout event already queued at the 30-second boundary must not
+    // invalidate a completion that the MIDI thread claimed first.
+    EXPECT_FALSE(handler_->expireCurrentLearnForTest());
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!learnCompleted.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatchedMessage = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatchedMessage = true;
+        }
+        if (!dispatchedMessage)
+            std::this_thread::yield();
+    }
+
+    ASSERT_TRUE(learnCompleted.load(std::memory_order_acquire));
+    EXPECT_TRUE(ranOnMessageThread.load(std::memory_order_acquire));
+    EXPECT_FALSE(handler_->isLearning());
+#else
+    GTEST_SKIP() << "Message-loop pumping for this regression is Windows-specific";
+#endif
+}
+
+TEST_F(MidiHandlerTest, SupersededQueuedLearnCannotCancelNewSession) {
+#if JUCE_WINDOWS
+    std::atomic<int> oldCompletionCount{0};
+    std::atomic<int> newCompletionCount{0};
+
+    handler_->startLearn([&](int, int, int, const juce::String&) {
+        oldCompletionCount.fetch_add(1, std::memory_order_acq_rel);
+    });
+
+    std::thread midiThread([&] {
+        handler_->injectTestMessage(juce::MidiMessage::controllerEvent(1, 66, 127));
+    });
+    midiThread.join();
+
+    // Supersede the captured-but-not-yet-dispatched completion before pumping
+    // the message queue. The stale callback must not retire this new timer.
+    handler_->startLearn([&](int, int, int, const juce::String&) {
+        newCompletionCount.fetch_add(1, std::memory_order_acq_rel);
+    });
+
+    auto sentinelDispatched = std::make_shared<std::atomic<bool>>(false);
+    ASSERT_TRUE(juce::MessageManager::callAsync([sentinelDispatched] {
+        sentinelDispatched->store(true, std::memory_order_release);
+    }));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!sentinelDispatched->load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatchedMessage = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatchedMessage = true;
+        }
+        if (!dispatchedMessage)
+            std::this_thread::yield();
+    }
+
+    ASSERT_TRUE(sentinelDispatched->load(std::memory_order_acquire));
+    EXPECT_EQ(oldCompletionCount.load(std::memory_order_acquire), 0);
+    EXPECT_TRUE(handler_->isLearning());
+
+    handler_->injectTestMessage(juce::MidiMessage::controllerEvent(1, 67, 127));
+    EXPECT_EQ(newCompletionCount.load(std::memory_order_acquire), 1);
+    EXPECT_FALSE(handler_->isLearning());
+#else
+    GTEST_SKIP() << "Message-loop pumping for this regression is Windows-specific";
+#endif
+}
+
+TEST_F(MidiHandlerTest, RestartedLifetimeDropsOldCompletionAndAcceptsNewLearn) {
+#if JUCE_WINDOWS && defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    std::atomic<int> oldCompletionCount{0};
+    std::atomic<int> newCompletionCount{0};
+
+    handler_->startLearn([&](int, int, int, const juce::String&) {
+        oldCompletionCount.fetch_add(1, std::memory_order_acq_rel);
+    });
+    std::thread midiThread([&] {
+        handler_->injectTestMessage(juce::MidiMessage::controllerEvent(1, 68, 127));
+    });
+    midiThread.join();
+
+    handler_->shutdown();
+    handler_->beginLifetimeForTest();
+    handler_->startLearn([&](int, int, int, const juce::String&) {
+        newCompletionCount.fetch_add(1, std::memory_order_acq_rel);
+    });
+
+    auto sentinelDispatched = std::make_shared<std::atomic<bool>>(false);
+    ASSERT_TRUE(juce::MessageManager::callAsync([sentinelDispatched] {
+        sentinelDispatched->store(true, std::memory_order_release);
+    }));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!sentinelDispatched->load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatchedMessage = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatchedMessage = true;
+        }
+        if (!dispatchedMessage)
+            std::this_thread::yield();
+    }
+
+    ASSERT_TRUE(sentinelDispatched->load(std::memory_order_acquire));
+    EXPECT_EQ(oldCompletionCount.load(std::memory_order_acquire), 0);
+    EXPECT_TRUE(handler_->isLearning());
+
+    handler_->injectTestMessage(juce::MidiMessage::controllerEvent(1, 69, 127));
+    EXPECT_EQ(newCompletionCount.load(std::memory_order_acquire), 1);
+    EXPECT_FALSE(handler_->isLearning());
+#else
+    GTEST_SKIP() << "Message-loop pumping for this regression is Windows-specific";
+#endif
+}
+
 TEST_F(MidiHandlerTest, LearnCancel) {
     bool learnCompleted = false;
     handler_->startLearn([&](int, int, int, const juce::String&) {
@@ -106,18 +259,17 @@ TEST_F(MidiHandlerTest, LearnCancel) {
 }
 
 TEST_F(MidiHandlerTest, LearnTimeout) {
-    // Verify that stopLearn() can be called after a short wait
-    // (simulates timeout scenario without spinning the full 30s timer)
     bool learnCompleted = false;
     handler_->startLearn([&](int, int, int, const juce::String&) {
         learnCompleted = true;
     });
     EXPECT_TRUE(handler_->isLearning());
 
-    // Short sleep to allow message loop to run briefly (timer does NOT fire in 100ms)
-    juce::Thread::sleep(100);
-    EXPECT_TRUE(handler_->isLearning());
+    EXPECT_TRUE(handler_->expireCurrentLearnForTest());
+    EXPECT_FALSE(handler_->isLearning());
+    EXPECT_FALSE(learnCompleted);
 
+    // Retire the still-owned Timer object without waiting 30 seconds.
     handler_->stopLearn();
     EXPECT_FALSE(handler_->isLearning());
     EXPECT_FALSE(learnCompleted);

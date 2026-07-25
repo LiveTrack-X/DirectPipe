@@ -150,11 +150,21 @@ TEST_F(IPCIntegrationTest, EventSignaledPipeline) {
     std::atomic<int> blocksReceived{0};
     std::vector<std::vector<float>> receivedBlocks(kBlocks);
 
-    // Consumer thread: waits for event, then reads
+    // Consumer thread: treats the event as a wake-up hint, then drains every
+    // complete block currently available. Windows auto-reset events coalesce
+    // repeated signals, so one signal must never be assumed to represent one
+    // audio block.
     std::thread consumerThread([&]() {
         std::vector<float> readBuf(kFramesPerBlock * kChannels);
-        while (blocksReceived.load(std::memory_order_relaxed) < kBlocks) {
-            if (dataReadyEvent.wait(2000)) {
+        const auto deadline = std::chrono::steady_clock::now()
+                            + std::chrono::seconds(5);
+
+        while (blocksReceived.load(std::memory_order_relaxed) < kBlocks
+               && std::chrono::steady_clock::now() < deadline) {
+            dataReadyEvent.wait(100);
+
+            while (blocksReceived.load(std::memory_order_relaxed) < kBlocks
+                   && consumer.availableRead() >= kFramesPerBlock) {
                 uint32_t readCount = consumer.read(readBuf.data(), kFramesPerBlock);
                 if (readCount > 0) {
                     int idx = blocksReceived.fetch_add(1, std::memory_order_relaxed);

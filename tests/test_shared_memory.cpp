@@ -38,6 +38,34 @@ TEST_F(SharedMemoryTest, CreateAndMap) {
     EXPECT_EQ(shm.getData(), nullptr);
 }
 
+#if defined(_WIN32)
+TEST_F(SharedMemoryTest, CreateReportsRetainedWindowsObjectUntilEveryHandleCloses) {
+    const auto uniqueName = std::string("Local\\DirectPipeExistingState-")
+        + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto size = calculateSharedMemorySize(kCapacity, kChannels);
+
+    SharedMemory first;
+    ASSERT_TRUE(first.create(uniqueName, size));
+    EXPECT_FALSE(first.createOpenedExistingObject());
+
+    SharedMemory second;
+    ASSERT_TRUE(second.create(uniqueName, size));
+    EXPECT_TRUE(second.createOpenedExistingObject());
+
+    first.close();
+    SharedMemory third;
+    ASSERT_TRUE(third.create(uniqueName, size));
+    EXPECT_TRUE(third.createOpenedExistingObject());
+
+    second.close();
+    third.close();
+
+    SharedMemory fresh;
+    ASSERT_TRUE(fresh.create(uniqueName, size));
+    EXPECT_FALSE(fresh.createOpenedExistingObject());
+}
+#endif
+
 TEST_F(SharedMemoryTest, ProducerConsumerSharedMemory) {
     size_t size = calculateSharedMemorySize(kCapacity, kChannels);
 

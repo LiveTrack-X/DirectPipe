@@ -32,6 +32,8 @@
 #include <mutex>
 #include <vector>
 #include <functional>
+#include <cstdint>
+#include <memory>
 
 namespace directpipe {
 
@@ -119,7 +121,9 @@ public:
      * The next MIDI CC/Note message received will be captured
      * and reported via the callback.
      *
-     * @param callback Called with captured CC/Note info.
+     * @param callback Called with captured CC/Note info on the JUCE message
+     *                 thread. A real MIDI callback never invokes UI work
+     *                 directly.
      */
     void startLearn(std::function<void(int cc, int note, int channel,
                                         const juce::String& deviceName)> callback);
@@ -160,6 +164,13 @@ public:
      */
     void injectTestMessage(const juce::MidiMessage& message);
 
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    void beginLifetimeForTest() { beginLifetime(); }
+    bool expireCurrentLearnForTest() {
+        return expireLearn(learnGeneration_.load(std::memory_order_acquire));
+    }
+#endif
+
 private:
     // juce::MidiInputCallback
     void handleIncomingMidiMessage(juce::MidiInput* source,
@@ -167,6 +178,13 @@ private:
 
     void processCC(int cc, int channel, int value, const juce::String& deviceName);
     void processNote(int note, int channel, bool noteOn, const juce::String& deviceName);
+    void beginLifetime();
+    void openAvailableDevices();
+    bool expireLearn(std::uint64_t generation);
+    void dispatchLearnCompletion(
+        std::function<void(int, int, int, const juce::String&)> callback,
+        std::uint64_t generation, int cc, int note, int channel,
+        juce::String deviceName);
 
     // ═══════════════════════════════════════════════════════════════════
     // Thread Ownership — 변경 시 Control/README.md "Thread Model" 테이블도 업데이트할 것
@@ -182,6 +200,8 @@ private:
 
     std::atomic<bool> learning_{false};                   // [Message write, MIDI callback read] Atomic guard for Learn mode
     std::function<void(int, int, int, const juce::String&)> learnCallback_;  // [Protected by bindingsMutex_]
+    std::uint64_t learnCallbackGeneration_ = 0;           // [Protected by bindingsMutex_]
+    std::atomic<std::uint64_t> learnGeneration_{0};       // Invalidates queued completion/timeout work
     std::unique_ptr<juce::Timer> learnTimer_;             // [Message thread only]
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);  // [callAsync lifetime guard]
 };
