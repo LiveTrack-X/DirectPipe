@@ -15,7 +15,9 @@ Scope: Durable owner authorization and acceptance records
   Release.
 - Conditions: preserve v4.2.x IPC/VST Receiver/API/Stream Deck compatibility;
   use the checked-in release notes and CI workflow; do not publish incomplete
-  assets; do not force-push or move the tag.
+  assets; do not force-push or move a published release tag. Before publication,
+  a failed exact-tag CI attempt may recreate the unpublished tag only after the
+  failed SHA/run are recorded and GitHub confirms that no Release exists.
 - Accepted evidence limit: release may proceed without a real-device run.
   Windows Voice Clarity/device-specific runtime behavior, third-party VST crash
   containment, installed-package smoke, and macOS/Linux hardware behavior remain

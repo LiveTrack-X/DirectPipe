@@ -38,6 +38,12 @@ Do not leave closed findings in this section. Move fixed or accepted items to
 
 ## Recently Closed
 
+- [High] [packet:DP-421-RELEASE-0001] The first exact-tag CI attempt was blocked
+  by newly reported high-severity `brace-expansion` and `sharp` advisories in
+  Stream Deck development tooling. Resolution: upgraded ESLint and Sharp,
+  refreshed the lockfile, retained the full audit gate, and passed development
+  plus production audits with 0 vulnerabilities, icon generation, tests 5/5,
+  bundle build, and package validation. Run `30250350172` created no Release.
 - [High] [packet:DP-421-0001] Fixed noise-removal FIFO/latency, recorder
   publication/accounting, and VST graph lifecycle races. Evidence: focused
   regression suites plus integrated Release build and 484-test CTest run.

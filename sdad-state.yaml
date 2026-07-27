@@ -15,6 +15,10 @@ owner_gates:
   - incompatible_ipc_api_or_streamdeck_change_requires_owner_decision
 
 validation:
+  - command: 'npm audit --audit-level=high && npm audit --omit=dev --audit-level=high'
+    proves: Stream Deck development and production dependency graphs contain no known high-severity vulnerability.
+  - command: 'npm run icons && npm test && npm run build && npm run validate'
+    proves: The updated Stream Deck toolchain generates icons, passes 5 tests, builds, and validates the package.
   - command: C:/Program Files/Git/bin/bash.exe tools/pre-release-test.sh --version-only
     proves: The integrated release source and release notes are internally aligned to 4.2.1.
   - command: python tools/check_text_integrity.py --repo-root .

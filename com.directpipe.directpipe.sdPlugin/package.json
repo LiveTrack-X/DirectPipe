@@ -29,9 +29,9 @@
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
-    "eslint": "^8.56.0",
+    "eslint": "^10.8.0",
     "rollup": "^4.59.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -19,7 +19,10 @@ has built and validated every advertised artifact.
 - Merge the latest `directpipe/main` without discarding the current public
   README/DPWIM information or any v4.2.1 source, tests, and release metadata.
 - Push the integrated tree to `LiveTrack-X/DirectPipe` `main`.
-- Create and push the immutable annotated tag `v4.2.1`.
+- Create and push the annotated tag `v4.2.1`. If exact-tag CI fails before any
+  GitHub Release exists, record the failed source identity, fix the release
+  blocker, delete the unpublished tag, and recreate it once on the corrected
+  source. A published release tag is immutable.
 - Dispatch `.github/workflows/build.yml` with `release_tag=v4.2.1`.
 - Allow that workflow to create the public GitHub Release from
   `dist/release_body.md` only after all Windows, macOS, Linux, Stream Deck, and
@@ -66,13 +69,16 @@ has built and validated every advertised artifact.
 - Stop if the latest `directpipe/main` introduces a source/contract conflict,
   a Critical finding intersects the release, the tag already exists, the exact
   release-source checks fail, or any CI build/package/publish job fails.
-- Do not force-push, move the release tag, publish partial assets, weaken the
-  IPC/API/Stream Deck compatibility contract, or claim hardware verification.
+- Do not force-push, move a published release tag, publish partial assets,
+  weaken the IPC/API/Stream Deck compatibility contract, or claim hardware
+  verification.
 
 ## Rollback
 
-- Before publication, a failed run leaves no public release; a stale unpublished
-  draft may be deleted and recreated by the workflow while retaining the tag.
+- Before publication, a failed run leaves no public release. A stale unpublished
+  draft may be deleted and recreated by the workflow. An unpublished tag may be
+  recreated only after recording the failed source and confirming that no
+  GitHub Release exists.
 - After publication, never rewrite `v4.2.1`. Withdraw the release if necessary
   and publish a new corrective version from a new packet and tag.
 
@@ -88,4 +94,11 @@ has built and validated every advertised artifact.
 
 ## Release Evidence
 
-Pending exact commit, tag, CI, artifact, checksum, and publication evidence.
+- Attempt 1: source `809c53e1fd5c5d32b8e56cf00c754599e8c8e858`,
+  run `30250350172`. Text/version/tag checks passed, but Stream Deck dependency
+  audit failed on newly reported high-severity development-tool advisories in
+  `brace-expansion` and `sharp`. Production dependencies reported 0
+  vulnerabilities. No GitHub Release was created; the run was cancelled while
+  unrelated platform builds were still running.
+- Pending corrected commit, replacement pre-publication tag, successful CI,
+  artifact, checksum, and publication evidence.
