@@ -5,15 +5,12 @@ Scope: Current implementation backlog only
 
 ## Current Priority
 
-1. Complete [packet:DP-421-RELEASE-0001] by binding the exact commit, tag, CI
-   run, artifacts, checksums, and publication evidence.
-2. Keep architecture-only compatibility changes outside this completed packet.
+1. Preserve the accepted v4.2.1 release evidence and compatibility boundary.
+2. Keep architecture-only compatibility changes in their deferred packets.
 
 ## Active Work
 
-- [ ] [packet:DP-421-RELEASE-0001] Integrate the latest `directpipe/main`, push
-  `main`, create and push `v4.2.1`, dispatch exact-tag CI, and verify the complete
-  public release. Owner authorization: `OD-2026-07-27-0001`.
+None.
 
 ## Future / Deferred
 
@@ -28,13 +25,18 @@ Scope: Current implementation backlog only
 
 ## Release / Production Readiness
 
-[packet:DP-421-RELEASE-0001] is authorized to publish v4.2.1 without a real-device
-run, subject to exact-tag CI, complete artifacts, checksums, Critical 0, and the
-claim limits recorded in its SPEC. It does not authorize hardware-compatibility,
-third-party VST containment, or production-service claims.
+[packet:DP-421-RELEASE-0001] is owner accepted and published. Exact-tag CI,
+complete artifacts, checksums, and Critical 0 are recorded in its SPEC. The
+release does not establish hardware-compatibility, third-party VST containment,
+or production-service claims.
 
 ## Recently Closed
 
+- [x] [packet:DP-421-RELEASE-0001] Integrated and published DirectPipe v4.2.1.
+  Resolution: `main` and tag source
+  `258d6ebda559ba39870b611f2d0478e4743969a4`; CI run `30250688818` succeeded;
+  the public latest release contains all four product artifacts plus checksums,
+  and downloaded hashes matched the manifest.
 - [x] [packet:DP-421-0001] Audio/RT unit: noise removal, recorder lifecycle,
   writer accounting, VST graph lifecycle, and focused regression tests.
   Resolution: fixed and software verified in the integrated Release build.

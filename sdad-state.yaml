@@ -6,13 +6,11 @@ execution_scope: packet
 active_spec: SPEC/SPEC-COMPLETE.md
 active_packet:
   id: DP-421-RELEASE-0001
-  objective: Integrate and publish the software-verified DirectPipe v4.2.1 release through exact-tag CI.
-  status: in_progress
+  objective: Preserve the accepted DirectPipe v4.2.1 evidence and exact artifact identities.
+  status: owner_accepted
 
 validation_for: DP-421-RELEASE-0001
-owner_gates:
-  - release_publication_authorized_by_OD-2026-07-27-0001
-  - incompatible_ipc_api_or_streamdeck_change_requires_owner_decision
+owner_gates: []
 
 validation:
   - command: 'npm audit --audit-level=high && npm audit --omit=dev --audit-level=high'
@@ -27,7 +25,7 @@ validation:
     proves: The integrated main release source has no patch whitespace errors.
   - command: python C:/Users/livet/.codex/tmp/sdad-doctor-v3.2.2/scripts/sdad.py doctor . --require-version 3.2.2 --strict
     proves: The release packet, owner decision, ledgers, gates, and validation contract are structurally coherent.
-  - command: gh run view RUN_ID --repo LiveTrack-X/DirectPipe
+  - command: gh run view 30250688818 --repo LiveTrack-X/DirectPipe
     proves: The exact-tag Windows, macOS, Linux, Stream Deck, and publish jobs all succeeded.
   - command: gh release view v4.2.1 --repo LiveTrack-X/DirectPipe
     proves: The public latest release contains the complete expected artifact set.

@@ -25,3 +25,7 @@ Scope: Durable owner authorization and acceptance records
 - Supersedes: The unsatisfied release-publication gate for DP-421-0001 only.
   It does not authorize an incompatible contract change or production service
   deployment.
+- Outcome: Accepted and completed. `v4.2.1` was published from
+  `258d6ebda559ba39870b611f2d0478e4743969a4` after exact-tag CI run
+  `30250688818` succeeded and all published assets matched the release checksum
+  manifest. The evidence limits above remain in effect.

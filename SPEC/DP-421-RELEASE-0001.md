@@ -1,6 +1,6 @@
 # DirectPipe v4.2.1 Release
 
-Status: In progress
+Status: Owner accepted
 Baseline: SPEC/SPEC-COMPLETE.md
 Source packet: DP-421-0001
 Effective packet: DP-421-RELEASE-0001
@@ -100,5 +100,24 @@ has built and validated every advertised artifact.
   `brace-expansion` and `sharp`. Production dependencies reported 0
   vulnerabilities. No GitHub Release was created; the run was cancelled while
   unrelated platform builds were still running.
-- Pending corrected commit, replacement pre-publication tag, successful CI,
-  artifact, checksum, and publication evidence.
+- Final source/tag commit:
+  `258d6ebda559ba39870b611f2d0478e4743969a4`.
+- Successful CI: `Build & Release` run
+  [`30250688818`](https://github.com/LiveTrack-X/DirectPipe/actions/runs/30250688818).
+  Text/tag integrity, Windows, macOS, Linux, Stream Deck, and publish jobs all
+  completed successfully.
+- Published 2026-07-27 at
+  [`DirectPipe v4.2.1`](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.1)
+  as a public, non-prerelease, latest release.
+- Downloaded release assets were independently matched to `checksums.sha256`:
+  - `DirectPipe-v4.2.1-Windows.zip`:
+    `d1ea784c1639d5a41608d7fa4da3f769364afd63d32baec8ba3659f455c66c54`
+  - `DirectPipe-v4.2.1-macOS.dmg`:
+    `fdfd09fc403b27017bdc8f4fdbf8f4b7af45cb72d4f37d2646a69fe9cd9741b0`
+  - `DirectPipe-v4.2.1-Linux.tar.gz`:
+    `3c7ae7f168b60648498cf7b31ba6d2c8c8f44dafaa500872ceadfd43c2cd23ee`
+  - `com.directpipe.directpipe.streamDeckPlugin`:
+    `58a797dffe3372e33f0c341548f5de586eb482bd730b3f877d20fb0db583062d`
+- Acceptance remains bounded to the software/CI/package/publication evidence
+  above. The declared real-device and hardware/runtime exclusions remain
+  unverified.
