@@ -128,6 +128,36 @@ bool audioDeviceNamesExactlyMatch(const juce::String& a, const juce::String& b)
 
 } // namespace
 
+namespace audio_device_recovery_detail {
+
+juce::String initialiseWithDefaultDeviceFallbacks(
+    juce::AudioDeviceManager& deviceManager,
+    const juce::String& logContext)
+{
+    auto result = deviceManager.initialiseWithDefaultDevices(2, 2);
+    if (result.isNotEmpty()) {
+        Log::warn("AUDIO", logContext + " retry with single input after: " + result);
+        result = deviceManager.initialiseWithDefaultDevices(1, 2);
+    }
+    if (result.isNotEmpty()) {
+        Log::warn("AUDIO", logContext + " retry with single input/output after: " + result);
+        result = deviceManager.initialiseWithDefaultDevices(1, 1);
+    }
+    return result;
+}
+
+juce::String forceReopenAudioDevice(
+    juce::AudioDeviceManager& deviceManager,
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    // JUCE treats an unchanged setup as a no-op while a device is open.
+    // External Windows endpoint changes need a real close/recreate cycle.
+    deviceManager.closeAudioDevice();
+    return deviceManager.setAudioDeviceSetup(setup, true);
+}
+
+} // namespace audio_device_recovery_detail
+
 // SEH crash guard for VST processBlock (Windows only)
 // MSVC forbids __try/__except in functions that have C++ objects with destructors
 // on the stack (e.g. ScopedNoDenormals, AudioBuffer references). Extracting the
@@ -184,18 +214,8 @@ bool AudioEngine::initialize()
     //           syncDesiredFromDevice() below (syncs desired from actual device)
     //           audioDeviceAboutToStart callAsync (ASIO always syncs desired)
     //
-    auto result = deviceManager_.initialiseWithDefaultDevices(
-        2,  // numInputChannels
-        2   // numOutputChannels
-    );
-    if (result.isNotEmpty()) {
-        Log::warn("AUDIO", "Default device init retry with single input after: " + result);
-        result = deviceManager_.initialiseWithDefaultDevices(1, 2);
-    }
-    if (result.isNotEmpty()) {
-        Log::warn("AUDIO", "Default device init retry with single input/output after: " + result);
-        result = deviceManager_.initialiseWithDefaultDevices(1, 1);
-    }
+    auto result = audio_device_recovery_detail::initialiseWithDefaultDeviceFallbacks(
+        deviceManager_, "Default device init");
 
     if (result.isNotEmpty()) {
         Log::error("AUDIO", "Device manager init failed: " + result);
@@ -1559,16 +1579,46 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     auto snapIt = driverSnapshots_.find(typeName);
     bool hasSnapshot = snapIt != driverSnapshots_.end();
 
+    auto restorePreviousDriverAfterFailure =
+        [this, &currentType](const juce::String& failureMessage,
+                             const juce::String& notificationMessage) -> ActionResult {
+            Log::error("AUDIO", failureMessage);
+            deviceManager_.setCurrentAudioDeviceType(currentType, true);
+            const auto fallbackError =
+                audio_device_recovery_detail::initialiseWithDefaultDeviceFallbacks(
+                    deviceManager_, "Previous driver fallback");
+            const bool fallbackReady = fallbackError.isEmpty()
+                && isCurrentAudioDeviceReady();
+
+            intentionalChange_.store(false, std::memory_order_release);
+            deviceManager_.addAudioCallback(this);
+
+            auto finalMessage = failureMessage;
+            if (!fallbackReady) {
+                const auto reason = fallbackError.isNotEmpty()
+                    ? fallbackError
+                    : juce::String("device opened without a usable input/output stream");
+                finalMessage += "; previous driver fallback failed: " + reason;
+                Log::error("AUDIO", finalMessage);
+                publishInputDeviceLoss();
+                autoMuteOutputForDeviceLoss();
+                reconnectCooldown_ = 0;
+                requestImmediateReconnect();
+            } else {
+                Log::info("AUDIO", "Previous driver fallback is ready: " + currentType);
+            }
+
+            if (onDeviceError)
+                onDeviceError(fallbackReady ? notificationMessage : finalMessage);
+            return ActionResult::fail(finalMessage);
+        };
+
     // For ASIO, pick the preferred device (or first available)
     if (typeName.containsIgnoreCase("ASIO")) {
-        auto failAsioSwitch = [this, &currentType](const juce::String& msg) -> ActionResult {
-            Log::error("AUDIO", msg);
-            intentionalChange_.store(false, std::memory_order_release);
-            deviceManager_.setCurrentAudioDeviceType(currentType, true);
-            deviceManager_.initialiseWithDefaultDevices(2, 2);
-            deviceManager_.addAudioCallback(this);
-            if (onDeviceError) onDeviceError(msg);
-            return ActionResult::fail(msg);
+        auto failAsioSwitch = [&restorePreviousDriverAfterFailure](
+                                  const juce::String& msg) -> ActionResult {
+            return restorePreviousDriverAfterFailure(
+                msg, "ASIO switch failed - reverted to previous driver");
         };
 
         auto* type = deviceManager_.getCurrentDeviceTypeObject();
@@ -1667,26 +1717,16 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
 
         if (!asioOpened) {
             auto msg = juce::String("All ASIO devices failed - reverting to previous driver");
-            Log::error("AUDIO", msg);
-            intentionalChange_.store(false, std::memory_order_release);
-            deviceManager_.setCurrentAudioDeviceType(currentType, true);
-            deviceManager_.initialiseWithDefaultDevices(2, 2);
-            deviceManager_.addAudioCallback(this);
-            if (onDeviceError) onDeviceError("ASIO switch failed - reverted to previous driver");
-            return ActionResult::fail(msg);
+            return restorePreviousDriverAfterFailure(
+                msg, "ASIO switch failed - reverted to previous driver");
         }
     } else {
         // Non-ASIO: initialize with defaults first, then try to restore snapshot
         auto result = deviceManager_.initialiseWithDefaultDevices(2, 2);
         if (result.isNotEmpty()) {
             auto msg = "Failed to switch to " + typeName + ": " + result;
-            Log::error("AUDIO", msg);
-            intentionalChange_.store(false, std::memory_order_release);
-            deviceManager_.setCurrentAudioDeviceType(currentType, true);
-            deviceManager_.initialiseWithDefaultDevices(2, 2);
-            deviceManager_.addAudioCallback(this);
-            if (onDeviceError) onDeviceError("Driver switch failed - reverted to " + currentType);
-            return ActionResult::fail(msg);
+            return restorePreviousDriverAfterFailure(
+                msg, "Driver switch failed - reverted to " + currentType);
         }
 
         // Resolve device names and apply settings (restore from snapshot if available)
@@ -2726,14 +2766,17 @@ void AudioEngine::scheduleSameDeviceReopenAfterExternalRestart(
             juce::String result;
             {
                 AtomicGuard intentionalGuard(intentionalChange_);
-                result = deviceManager_.setAudioDeviceSetup(reopenSetup, true);
+                Log::info("AUDIO", "Same-device restart is closing and recreating the current audio device");
+                result = audio_device_recovery_detail::forceReopenAudioDevice(
+                    deviceManager_, reopenSetup);
                 if (result.isNotEmpty()) {
                     Log::warn("AUDIO", "Same-device restart re-open retry with driver default channels after: " + result);
                     useDefaultConfiguredChannels(reopenSetup,
                                                   reopenSetup.inputDeviceName.isNotEmpty(),
                                                   reopenSetup.outputDeviceName.isNotEmpty()
                                                       && !outputNone_.load(std::memory_order_relaxed));
-                    result = deviceManager_.setAudioDeviceSetup(reopenSetup, true);
+                    result = audio_device_recovery_detail::forceReopenAudioDevice(
+                        deviceManager_, reopenSetup);
                 }
             }
 

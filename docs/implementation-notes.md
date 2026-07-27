@@ -32,7 +32,8 @@ log. Keep it short enough for a fresh AI session to read as current context.
 - Outcome: Software verified on 2026-07-15 with the integrated Windows Release
   build, 484 registered tests (0 failed, 2 skipped), Stream Deck 5/5 plus
   build/validation, metadata/text/patch gates, and SDAD v3.2.2 strict Doctor.
-- Follow-up: Open a separate release packet for commit/push/tag/publication.
+- Follow-up: Resolved by [packet:DP-421-RELEASE-0001] and owner decision
+  `OD-2026-07-27-0001`.
 
 ## IMPL-0001 - Preserve Existing DirectPipe Authorities During SDAD Bootstrap
 

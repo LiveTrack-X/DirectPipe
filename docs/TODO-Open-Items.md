@@ -5,15 +5,15 @@ Scope: Current implementation backlog only
 
 ## Current Priority
 
-1. Preserve the software-verified v4.2.1 packet until an owner-authorized release
-   packet binds the exact commit, tag, CI run, artifacts, and publication evidence.
+1. Complete [packet:DP-421-RELEASE-0001] by binding the exact commit, tag, CI
+   run, artifacts, checksums, and publication evidence.
 2. Keep architecture-only compatibility changes outside this completed packet.
 
 ## Active Work
 
-None for the software-verified DP-421-0001 implementation scope. Explicit owner
-authorization is still required before opening a separate
-commit/push/tag/CI-publication packet; the state owner gate records that boundary.
+- [ ] [packet:DP-421-RELEASE-0001] Integrate the latest `directpipe/main`, push
+  `main`, create and push `v4.2.1`, dispatch exact-tag CI, and verify the complete
+  public release. Owner authorization: `OD-2026-07-27-0001`.
 
 ## Future / Deferred
 
@@ -28,11 +28,10 @@ commit/push/tag/CI-publication packet; the state owner gate records that boundar
 
 ## Release / Production Readiness
 
-[packet:DP-421-0001] is software verified but does not authorize a release,
-push, tag, package publication, hardware-compatibility acceptance, owner
-acceptance, or production-readiness claim. A future release packet must bind the
-pre-release workflow, exact commit/tag, CI evidence, artifact hashes, deferred
-finding scan, and applicable manual/hardware checks.
+[packet:DP-421-RELEASE-0001] is authorized to publish v4.2.1 without a real-device
+run, subject to exact-tag CI, complete artifacts, checksums, Critical 0, and the
+claim limits recorded in its SPEC. It does not authorize hardware-compatibility,
+third-party VST containment, or production-service claims.
 
 ## Recently Closed
 

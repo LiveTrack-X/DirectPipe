@@ -178,10 +178,21 @@ private:
 struct EndpointCallbackState {
     bool signal(PendingEndpointEvent event, LPCWSTR endpointId, DWORD state = 0) noexcept
     {
-        if (!accepting.load(std::memory_order_acquire)
-            || !selectedEndpointId.matches(endpointId)) {
+        if (!accepting.load(std::memory_order_acquire))
             return false;
-        }
+
+        const bool selectedEndpoint = selectedEndpointId.matches(endpointId);
+        const bool topologyEvent = event == PendingEndpointEvent::deviceAdded
+            || event == PendingEndpointEvent::deviceRemoved
+            || event == PendingEndpointEvent::deviceStateChanged;
+        if (!selectedEndpoint && !topologyEvent)
+            return false;
+
+        if (topologyEvent)
+            topologyRefreshPending.store(true, std::memory_order_release);
+
+        if (!selectedEndpoint)
+            return true;
 
         if (event == PendingEndpointEvent::deviceStateChanged)
             latestDeviceState.store(state, std::memory_order_relaxed);
@@ -192,6 +203,7 @@ struct EndpointCallbackState {
 
     LockFreeEndpointId selectedEndpointId;
     std::atomic<bool> accepting{false};
+    std::atomic<bool> topologyRefreshPending{false};
     std::atomic<std::uint32_t> pendingEvents{0};
     std::atomic<DWORD> latestDeviceState{0};
 };
@@ -376,9 +388,18 @@ struct EndpointChangeWatcher::Impl : private juce::Timer {
             return 0;
 
         const auto pending = state->pendingEvents.exchange(0, std::memory_order_acq_rel);
+        const auto refreshTopology =
+            state->topologyRefreshPending.exchange(false, std::memory_order_acq_rel);
+        if (pending == 0 && !refreshTopology)
+            return 0;
+
+        const auto previousEndpointId = resolvedEndpointId_;
+        if (refreshTopology)
+            resolveAndPublishSelectedEndpoint(false);
+
         const auto callback = callback_;
         const auto deviceName = inputDeviceName_;
-        if (pending == 0 || !callback || deviceName.isEmpty())
+        if (!callback || deviceName.isEmpty())
             return 0;
 
         int dispatched = 0;
@@ -401,6 +422,15 @@ struct EndpointChangeWatcher::Impl : private juce::Timer {
                      + ")");
         dispatch(eventBit(PendingEndpointEvent::propertyChanged),
                  "capture endpoint property changed");
+        if (refreshTopology
+            && resolvedEndpointId_ != previousEndpointId
+            && dispatched == 0) {
+            Log::audit("AUDIO", "Windows endpoint notification: target='" + deviceName
+                + "' reason='capture endpoint target changed' old-id='"
+                + previousEndpointId + "' new-id='" + resolvedEndpointId_ + "'");
+            callback(deviceName, "capture endpoint target changed");
+            ++dispatched;
+        }
         return dispatched;
     }
 
@@ -478,19 +508,24 @@ struct EndpointChangeWatcher::Impl : private juce::Timer {
         return callbackState_->selectedEndpointId.store(resolvedEndpointId_);
     }
 
-    void resolveAndPublishSelectedEndpoint()
+    void resolveAndPublishSelectedEndpoint(bool clearPendingEvents = true)
     {
         const auto state = callbackState_;
         const auto resumeNotifications = state
             && state->accepting.exchange(false, std::memory_order_acq_rel);
-        if (state)
+        if (state && clearPendingEvents) {
             state->pendingEvents.store(0, std::memory_order_release);
+            state->topologyRefreshPending.store(false, std::memory_order_release);
+        }
 
         resolvedEndpointId_ = resolveSelectedEndpointId();
         const auto published = publishResolvedEndpointId();
 
-        if (state) {
+        if (state && clearPendingEvents) {
             state->pendingEvents.store(0, std::memory_order_release);
+            state->topologyRefreshPending.store(false, std::memory_order_release);
+        }
+        if (state) {
             state->accepting.store(resumeNotifications && published,
                                    std::memory_order_release);
         }

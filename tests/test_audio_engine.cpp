@@ -8,8 +8,18 @@
 #include "Audio/AudioRingBuffer.h"
 #include "Audio/DeviceState.h"
 #include "Audio/MonitorDriftPolicy.h"
+#include "Platform/EndpointChangeWatcher.h"
 
 using namespace directpipe;
+
+namespace directpipe::audio_device_recovery_detail {
+juce::String initialiseWithDefaultDeviceFallbacks(
+    juce::AudioDeviceManager& deviceManager,
+    const juce::String& logContext);
+juce::String forceReopenAudioDevice(
+    juce::AudioDeviceManager& deviceManager,
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+}
 
 namespace {
 
@@ -81,6 +91,121 @@ private:
     bool playing_ = false;
 };
 
+struct ManagedFakeDeviceStats {
+    std::vector<std::pair<int, int>> openAttempts;
+    bool failMultiChannelOpen = false;
+    bool failEveryOpen = false;
+};
+
+class ManagedFakeAudioIODevice final : public juce::AudioIODevice {
+public:
+    explicit ManagedFakeAudioIODevice(std::shared_ptr<ManagedFakeDeviceStats> stats)
+        : juce::AudioIODevice("Recovery Device", "Recovery Test"),
+          stats_(std::move(stats))
+    {
+    }
+
+    juce::StringArray getOutputChannelNames() override { return { "Out 1", "Out 2" }; }
+    juce::StringArray getInputChannelNames() override { return { "In 1", "In 2" }; }
+    juce::Array<double> getAvailableSampleRates() override { return { 48000.0 }; }
+    juce::Array<int> getAvailableBufferSizes() override { return { 128, 256 }; }
+    int getDefaultBufferSize() override { return 128; }
+
+    juce::String open(const juce::BigInteger& inputChannels,
+                      const juce::BigInteger& outputChannels,
+                      double sampleRate,
+                      int bufferSizeSamples) override
+    {
+        const auto inputCount = inputChannels.countNumberOfSetBits();
+        const auto outputCount = outputChannels.countNumberOfSetBits();
+        stats_->openAttempts.emplace_back(inputCount, outputCount);
+        if (stats_->failEveryOpen)
+            return "test device refuses every open";
+        if (stats_->failMultiChannelOpen && (inputCount > 1 || outputCount > 1))
+            return "test device requires mono input/output";
+
+        activeInput_ = inputChannels;
+        activeOutput_ = outputChannels;
+        sampleRate_ = sampleRate;
+        bufferSize_ = bufferSizeSamples;
+        open_ = true;
+        return {};
+    }
+
+    void close() override { open_ = false; }
+    bool isOpen() override { return open_; }
+
+    void start(juce::AudioIODeviceCallback* callback) override
+    {
+        callback_ = callback;
+        if (callback_)
+            callback_->audioDeviceAboutToStart(this);
+        playing_ = true;
+    }
+
+    void stop() override
+    {
+        if (playing_ && callback_)
+            callback_->audioDeviceStopped();
+        playing_ = false;
+    }
+
+    bool isPlaying() override { return playing_; }
+    juce::String getLastError() override { return {}; }
+    int getCurrentBufferSizeSamples() override { return bufferSize_; }
+    double getCurrentSampleRate() override { return sampleRate_; }
+    int getCurrentBitDepth() override { return 32; }
+    juce::BigInteger getActiveOutputChannels() const override { return activeOutput_; }
+    juce::BigInteger getActiveInputChannels() const override { return activeInput_; }
+    int getOutputLatencyInSamples() override { return 0; }
+    int getInputLatencyInSamples() override { return 0; }
+
+private:
+    std::shared_ptr<ManagedFakeDeviceStats> stats_;
+    juce::AudioIODeviceCallback* callback_ = nullptr;
+    juce::BigInteger activeInput_;
+    juce::BigInteger activeOutput_;
+    double sampleRate_ = 0.0;
+    int bufferSize_ = 0;
+    bool open_ = false;
+    bool playing_ = false;
+};
+
+class ManagedFakeAudioIODeviceType final : public juce::AudioIODeviceType {
+public:
+    explicit ManagedFakeAudioIODeviceType(std::shared_ptr<ManagedFakeDeviceStats> stats)
+        : juce::AudioIODeviceType("Recovery Test"),
+          stats_(std::move(stats))
+    {
+    }
+
+    void scanForDevices() override {}
+    juce::StringArray getDeviceNames(bool) const override { return { "Recovery Device" }; }
+    int getDefaultDeviceIndex(bool) const override { return 0; }
+    int getIndexOfDevice(juce::AudioIODevice* device, bool) const override
+    {
+        return device && device->getName() == "Recovery Device" ? 0 : -1;
+    }
+    bool hasSeparateInputsAndOutputs() const override { return false; }
+    juce::AudioIODevice* createDevice(const juce::String& outputDeviceName,
+                                      const juce::String& inputDeviceName) override
+    {
+        if (outputDeviceName == "Recovery Device" || inputDeviceName == "Recovery Device")
+            return new ManagedFakeAudioIODevice(stats_);
+        return nullptr;
+    }
+
+private:
+    std::shared_ptr<ManagedFakeDeviceStats> stats_;
+};
+
+void addManagedFakeDeviceType(juce::AudioDeviceManager& manager,
+                              const std::shared_ptr<ManagedFakeDeviceStats>& stats)
+{
+    manager.addAudioDeviceType(std::make_unique<ManagedFakeAudioIODeviceType>(stats));
+    manager.setCurrentAudioDeviceType("Recovery Test", true);
+}
+
 } // namespace
 
 class AudioEngineTest : public ::testing::Test {
@@ -142,6 +267,84 @@ TEST_F(AudioEngineTest, ReconnectionAttempt) {
     EXPECT_FALSE(engine_->isInputDeviceLost());
     EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
+
+TEST_F(AudioEngineTest, SameDeviceRecoveryActuallyRecreatesTheOpenDevice) {
+    juce::AudioDeviceManager manager;
+    const auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    addManagedFakeDeviceType(manager, stats);
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Recovery Device";
+    setup.outputDeviceName = "Recovery Device";
+    setup.sampleRate = 48000.0;
+    setup.bufferSize = 128;
+    setup.useDefaultInputChannels = true;
+    setup.useDefaultOutputChannels = true;
+
+    ASSERT_TRUE(manager.setAudioDeviceSetup(setup, true).isEmpty());
+    const auto opensBeforeRecovery = stats->openAttempts.size();
+    ASSERT_GT(opensBeforeRecovery, 0u);
+
+    EXPECT_TRUE(audio_device_recovery_detail::forceReopenAudioDevice(manager, setup).isEmpty());
+    EXPECT_EQ(stats->openAttempts.size(), opensBeforeRecovery + 1)
+        << "re-applying an unchanged setup without closing is a JUCE no-op";
+}
+
+TEST_F(AudioEngineTest, DefaultDeviceRecoveryRetriesMonoInputThenMonoDuplex) {
+    juce::AudioDeviceManager manager;
+    const auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->failMultiChannelOpen = true;
+    addManagedFakeDeviceType(manager, stats);
+    const auto attemptsBeforeRecovery = stats->openAttempts.size();
+
+    EXPECT_TRUE(audio_device_recovery_detail::initialiseWithDefaultDeviceFallbacks(
+        manager, "test fallback").isEmpty());
+
+    ASSERT_EQ(stats->openAttempts.size(), attemptsBeforeRecovery + 3);
+    EXPECT_EQ(stats->openAttempts[attemptsBeforeRecovery], std::make_pair(2, 2));
+    EXPECT_EQ(stats->openAttempts[attemptsBeforeRecovery + 1], std::make_pair(1, 2));
+    EXPECT_EQ(stats->openAttempts[attemptsBeforeRecovery + 2], std::make_pair(1, 1));
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+}
+
+TEST_F(AudioEngineTest, DefaultDeviceRecoveryReturnsTheFinalOpenFailure) {
+    juce::AudioDeviceManager manager;
+    const auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->failEveryOpen = true;
+    addManagedFakeDeviceType(manager, stats);
+    const auto attemptsBeforeRecovery = stats->openAttempts.size();
+
+    const auto error = audio_device_recovery_detail::initialiseWithDefaultDeviceFallbacks(
+        manager, "test failed fallback");
+
+    EXPECT_TRUE(error.contains("refuses every open"));
+    EXPECT_EQ(stats->openAttempts.size(), attemptsBeforeRecovery + 3);
+    EXPECT_EQ(manager.getCurrentAudioDevice(), nullptr);
+}
+
+#if JUCE_WINDOWS
+TEST_F(AudioEngineTest, EndpointTopologyChangeRechecksARecreatedTargetId) {
+    EndpointChangeWatcher watcher;
+    int callbackCount = 0;
+    juce::String callbackReason;
+    watcher.setInputDeviceName("Microphone (Recovery Device)");
+    watcher.setCallback([&](const juce::String&, const juce::String& reason) {
+        ++callbackCount;
+        callbackReason = reason;
+    });
+    EndpointChangeWatcherTestAccess::setResolvedEndpointId(
+        watcher, "{0.0.1.00000000}.{old-endpoint-id}");
+
+    EXPECT_TRUE(EndpointChangeWatcherTestAccess::signalEndpointEvent(
+        watcher,
+        "{0.0.1.00000000}.{new-endpoint-id}",
+        EndpointChangeWatcherTestAccess::Event::deviceAdded));
+    EXPECT_EQ(EndpointChangeWatcherTestAccess::drainPendingEvents(watcher), 1);
+    EXPECT_EQ(callbackCount, 1);
+    EXPECT_EQ(callbackReason, "capture endpoint target changed");
+}
+#endif
 
 TEST_F(AudioEngineTest, ZeroActiveConfiguredChannelsMarkLostAndMuted) {
     juce::StringArray inputs;

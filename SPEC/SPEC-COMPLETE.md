@@ -149,15 +149,16 @@ WebSocket, and Stream Deck requests onto safe execution threads.
 
 ## Active Scope
 
-[packet:DP-421-0001] implements the additive requirements in
-[`SPEC/DP-421-0001.md`](DP-421-0001.md). The packet closes the verified v4.2.1
-reliability findings across audio, recording, VST lifecycle, persistence, IPC,
-control state, updater behavior, and release CI while preserving v4.2.x public
-compatibility.
+[packet:DP-421-RELEASE-0001] publishes the software-verified implementation from
+[`SPEC/DP-421-0001.md`](DP-421-0001.md) under the release requirements in
+[`SPEC/DP-421-RELEASE-0001.md`](DP-421-RELEASE-0001.md). The current leaf binds
+the exact `main` integration, `v4.2.1` tag, CI artifacts, checksums, and GitHub
+publication evidence while preserving v4.2.x public compatibility.
 
 ## Non-Goals
 
-- No commit, push, tag, package, GitHub Release, or deployment.
+- No service or production infrastructure deployment beyond the GitHub source
+  and packaged-product release authorized by the current release packet.
 - No mandatory control-API authentication, shared-memory ABI break, real-time
   sample-rate conversion, or separate-process VST sandbox in this bug-fix packet.
 - No hardware, installed-artifact, third-party plug-in containment,
@@ -174,12 +175,10 @@ compatibility.
 
 ## Roadmap
 
-1. Implement and review the independent audio, persistence/UI, and IPC/CI units
-   under [packet:DP-421-0001].
-2. Run focused tests followed by the integrated Release build and registered suites.
-3. Reconcile remaining architecture-only limitations and reach software-verified.
-4. Open a separate release packet before any push, tag, artifact publication, or
-   hardware/public compatibility claim.
+1. Integrate [packet:DP-421-0001] with the latest `directpipe/main`.
+2. Re-run the metadata, text, patch, and SDAD checks affected by integration.
+3. Push `main`, create `v4.2.1`, and dispatch the exact-tag release workflow.
+4. Verify CI, artifacts, checksums, and the public GitHub Release.
 
 ## Decision Records
 
@@ -199,9 +198,11 @@ surprise a future maintainer without context, and represents a real tradeoff.
 
 ## Completion Criteria
 
-For [packet:DP-421-0001], the acceptance criteria in
-[`SPEC/DP-421-0001.md`](DP-421-0001.md) are normative. SDAD Doctor validates the
-control plane separately from the product build and tests.
+For [packet:DP-421-RELEASE-0001], the acceptance criteria in
+[`SPEC/DP-421-RELEASE-0001.md`](DP-421-RELEASE-0001.md) are normative. The
+implementation acceptance criteria remain in
+[`SPEC/DP-421-0001.md`](DP-421-0001.md). SDAD Doctor validates the control plane
+separately from product, CI, package, and publication evidence.
 
 ## Release / Production Readiness Gate
 

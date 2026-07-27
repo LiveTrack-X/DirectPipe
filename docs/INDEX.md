@@ -42,6 +42,7 @@ Do not load full rules, large specs, history, or evidence ledgers by default.
 | New information | Record in |
 | --- | --- |
 | Scope, behavior, acceptance | active SPEC |
+| Owner authorization or acceptance | `owner-decisions.md` |
 | Current/deferred work | `TODO-Open-Items.md` |
 | Defect, failed check, risk | `../review-findings.md` |
 | Spec-unstated choice | `implementation-notes.md` |
@@ -58,7 +59,8 @@ SPECs, historical plans, legacy guides, and chat memory do not activate scope.
 
 ## Active Catalog
 
-- Core: state, `../AGENTS.md`, active SPEC, TODO, findings, implementation notes.
+- Core: state, `../AGENTS.md`, active SPEC, owner decisions, TODO, findings,
+  implementation notes.
 - Policy: `Repository-Operating-Rules.md`; procedures: `sdad/playbooks/`.
 - Legacy guide: `../CLAUDE.md` by targeted heading only.
 - Optional evidence/claim files: create only for an active claim.
