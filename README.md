@@ -50,11 +50,11 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 > 🎛️ **Companion project: [DirectPipe Windows Input Mixer (DPWIM)](https://github.com/LiveTrack-X/DPWIM)**
 >
-> DirectPipe의 마이크/VST 체인은 그대로 유지하면서, 선택한 Windows 앱이나
-> 데스크톱 소리를 함께 섞고 싶다면 DPWIM을 일반 64-bit VST2/VST3 이펙트로
+> DirectPipe의 마이크/VST 체인은 그대로 유지하면서 선택한 Windows 앱이나
+> 데스크톱 소리를 함께 믹스하려면 DPWIM을 일반 64-bit VST2/VST3 이펙트로
 > 체인에 추가할 수 있습니다.
 >
-> Keep your DirectPipe microphone/VST chain and mix in selected Windows
+> Keep your DirectPipe microphone/VST chain and mix selected Windows
 > applications or desktop audio by loading DPWIM as a regular 64-bit VST2/VST3
 > effect.
 
@@ -63,12 +63,6 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 - **독립 companion 플러그인** — DirectPipe 런타임에 종속되지 않아 다른 호환 호스트에서도 사용 가능 / Standalone companion plug-in with no DirectPipe runtime dependency
 
 **[DPWIM 프로젝트·소스·빌드 안내 보기 →](https://github.com/LiveTrack-X/DPWIM)**
-
-> **현재 상태 / Current status**: Windows x64용 **v0.2.2 public preview**입니다.
-> 로컬 소프트웨어 검증은 완료했지만 아직 unsigned이며, DirectPipe 및 다양한
-> 서드파티 DAW에서의 수동 호환성 검증이 더 필요합니다. / Locally
-> software-verified, but currently unsigned and still awaiting broader manual
-> validation in DirectPipe and representative third-party DAWs.
 
 <p align="center">
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
