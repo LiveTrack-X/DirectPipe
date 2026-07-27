@@ -64,12 +64,6 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 
 **[DPWIM 프로젝트·소스·빌드 안내 보기 →](https://github.com/LiveTrack-X/DPWIM)**
 
-> **현재 상태 / Current status**: Windows x64용 **v0.2.2 public preview**입니다.
-> 로컬 소프트웨어 검증은 완료했지만 아직 unsigned이며, DirectPipe 및 다양한
-> 서드파티 DAW에서의 수동 호환성 검증이 더 필요합니다. / Locally
-> software-verified, but currently unsigned and still awaiting broader manual
-> validation in DirectPipe and representative third-party DAWs.
-
 <p align="center">
   <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
 </p>
