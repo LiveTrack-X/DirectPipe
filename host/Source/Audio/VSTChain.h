@@ -122,7 +122,7 @@ struct PluginSlot {
  *
  * All plugin processing is inline (zero additional latency).
  */
-class VSTChain {
+class VSTChain : private juce::AudioProcessorListener {
 public:
     VSTChain();
     ~VSTChain();
@@ -232,6 +232,18 @@ public:
 
     /** Get total chain PDC from AudioProcessorGraph. [Message thread — acquires chainLock_] */
     int getTotalChainPDC() const;
+
+    /**
+     * @brief Rebuild graph latency after a loaded processor reports a change.
+     *
+     * The processor callback only sets a lock-free flag because plug-ins may
+     * report latency from the audio thread. This method consumes that flag on
+     * the message thread before status values are read.
+     *
+     * @return true when the graph render sequence was rebuilt, false when the
+     *         notification was stale or did not change active-chain latency.
+     */
+    bool refreshPendingPluginLatency();
 
     /**
      * @brief Get plugin slot info at the given index.
@@ -385,6 +397,15 @@ public:
     std::function<void(const juce::String&, const juce::String&)> onPluginLoadFailed;
 
 private:
+    void audioProcessorParameterChanged(juce::AudioProcessor*, int, float) override {}
+    void audioProcessorChanged(
+        juce::AudioProcessor*,
+        const juce::AudioProcessorListener::ChangeDetails& details) override;
+
+    void addProcessorListener(juce::AudioProcessor* processor);
+    void removeProcessorListener(juce::AudioProcessor* processor);
+    int getActiveReportedLatencySamplesLocked() const;
+
     /**
      * @brief Rebuild the audio graph connections after chain modification.
      * @param suspend If true, suspend/resume processing around rebuild
@@ -422,6 +443,7 @@ private:
     juce::MidiBuffer emptyMidi_;                         // [RT thread only] Pre-allocated (avoids per-callback allocation)
 
     std::atomic<bool> chainDirty_{false};                // [Message write, RT read] Lock-free chain swap flag
+    std::atomic<bool> latencyRebuildPending_{false};     // [Plugin callback write, Message consume]
 
     // Serializes every non-RT AudioProcessorGraph lifecycle/structural mutation.
     // Lock order is graphControlLock_ -> chainLock_. processBlock() takes neither.

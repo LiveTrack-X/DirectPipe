@@ -8,6 +8,42 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.2.3] - 2026-07-29
+
+### Fixed
+
+- **Late plug-in PDC refresh**: DirectPipe now observes latency-change reports
+  from every loaded processor and refreshes the audio graph on the message
+  thread. A plug-in that publishes its active latency after being un-bypassed
+  now updates the bottom `Latency:` value, WebSocket `latency_ms`, HTTP
+  `/api/perf` `latencyMs`, and chain PDC fields without another device or chain
+  change.
+- **Redundant latency rebuilds**: Generic plug-in host-display notifications
+  that carry JUCE's default latency flag no longer rebuild the graph when the
+  active serial chain's reported PDC is unchanged.
+- **Queued recovery lifetime**: Destroying an `AudioEngine` now invalidates
+  pending message-thread recovery work even when initialization never reached
+  the running state, preventing a stale callback from accessing the released
+  engine.
+
+### Changed
+
+- **Release synchronization**: Host, bundled Receiver, Stream Deck metadata,
+  current documentation, release notes, and test inventory are aligned to
+  v4.2.3. IPC protocol v1, the 192-byte shared-memory header, presets, Stream
+  Deck actions, and control payload schemas remain compatible.
+
+### Tests
+
+- Added regression coverage for late latency publication after un-bypass,
+  unchanged host-display notifications, and preloaded-chain listener
+  registration. The zero-active-channel recovery test now drains queued work
+  after engine destruction. Local Windows Release CTest completed all 492
+  registrations: 490 passed, 2 environment-dependent tests skipped, and 0
+  failed.
+
+---
+
 ## [4.2.2] - 2026-07-29
 
 ### Changed

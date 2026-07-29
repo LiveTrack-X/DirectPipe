@@ -1,15 +1,15 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Released version / 릴리즈 버전: 4.2.2**
+> **Released version / 릴리즈 버전: 4.2.3**
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.2 로컬 Windows Release host-test 빌드와 집중 회귀 검사를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. The v4.2.2 local Windows Release host-test build and focused regressions were verified, and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental without hardware verification for this update.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.3 로컬 Windows Release CTest 492개를 실행해 490개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. The local v4.2.3 Windows Release run completed all 492 CTest registrations (490 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental without hardware verification for this update.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.2 Release host-test build and focused regressions verified locally; exact-tag CI required; no real-device check. |
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Local v4.2.3 Release CTest: 490 passed, 2 environment-dependent skips, 0 failed; exact-tag CI required; no real-device check. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -200,9 +200,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). The v4.2.2 inventory contains **490 CTest registrations** (59 core + 429 host + 2 focused endpoint tests). The binaries contain 45 suites in total (6 core + 38 host + 1 endpoint). Historical v4.2.1 execution counts remain preserved in the [Release Note](ReleaseNote.md); v4.2.2 publication is gated by the exact-tag CI run.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). The v4.2.3 inventory contains **492 CTest registrations** (59 core + 431 host + 2 focused endpoint tests). The binaries contain 45 suites in total (6 core + 38 host + 1 endpoint). The local Windows Release run completed with 490 passed, 2 environment-dependent skips, and 0 failed; publication remains gated by the exact-tag CI run.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.2 인벤토리는 **CTest 등록 490개**(코어 59 + 호스트 429 + endpoint 집중 테스트 2), 전체 45개 suite(코어 6 + 호스트 38 + endpoint 1)입니다. v4.2.1 당시 실행 수치는 [Release Note](ReleaseNote.md)에 보존하며 v4.2.2 공개는 정확 태그 CI 통과를 조건으로 합니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.3 인벤토리는 **CTest 등록 492개**(코어 59 + 호스트 431 + endpoint 집중 테스트 2), 전체 45개 suite(코어 6 + 호스트 38 + endpoint 1)입니다. 로컬 Windows Release 실행은 490개 통과, 환경 의존 2개 skip, 실패 0개였으며 공개는 정확 태그 CI 통과를 조건으로 합니다.
 
 ### directpipe-tests (Core)
 

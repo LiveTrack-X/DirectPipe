@@ -131,6 +131,54 @@ TEST_F(VSTChainTest, ReportedTotalLatencyTracksActiveChain) {
     EXPECT_EQ(chain_->getTotalChainPDC(), 0);
 }
 
+TEST_F(VSTChainTest, LateLatencyReportAfterUnbypassRebuildsGraphPDC) {
+    addBuiltin(PluginSlot::Type::BuiltinFilter);
+
+    const auto* slot = chain_->getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    auto* processor = slot->getProcessor();
+    ASSERT_NE(processor, nullptr);
+
+    processor->setLatencySamples(480);
+    EXPECT_TRUE(chain_->refreshPendingPluginLatency());
+    ASSERT_EQ(chain_->getTotalChainPDC(), 480);
+
+    chain_->setPluginBypassed(0, true);
+    processor->setLatencySamples(0);
+    EXPECT_FALSE(chain_->refreshPendingPluginLatency());
+    ASSERT_EQ(chain_->getTotalChainPDC(), 0);
+
+    // Reproduce a plug-in that publishes its active latency only after the
+    // host has already rebuilt the graph for the un-bypass operation.
+    chain_->setPluginBypassed(0, false);
+    ASSERT_EQ(chain_->getTotalChainPDC(), 0);
+
+    processor->setLatencySamples(480);
+    ASSERT_EQ(chain_->getTotalChainPDC(), 0);
+
+    EXPECT_TRUE(chain_->refreshPendingPluginLatency());
+    EXPECT_EQ(chain_->getTotalChainPDC(), 480);
+}
+
+TEST_F(VSTChainTest, UnchangedHostDisplayNotificationDoesNotRebuildGraphPDC) {
+    addBuiltin(PluginSlot::Type::BuiltinFilter);
+
+    const auto* slot = chain_->getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    auto* processor = slot->getProcessor();
+    ASSERT_NE(processor, nullptr);
+
+    processor->setLatencySamples(480);
+    ASSERT_TRUE(chain_->refreshPendingPluginLatency());
+    ASSERT_EQ(chain_->getTotalChainPDC(), 480);
+
+    // JUCE's default host-display flags include latencyChanged even when the
+    // processor's reported latency is unchanged.
+    processor->updateHostDisplay();
+    EXPECT_FALSE(chain_->refreshPendingPluginLatency());
+    EXPECT_EQ(chain_->getTotalChainPDC(), 480);
+}
+
 // Test 6: Each built-in type correctly reports its type via getPluginSlot
 TEST_F(VSTChainTest, PluginSlotType) {
     addBuiltin(PluginSlot::Type::BuiltinFilter);
@@ -257,6 +305,12 @@ TEST_F(VSTChainTest, PreloadedSwapStagesBuiltinsBeforeReplacingOldChain) {
     auto* slot = chain_->getPluginSlot(0);
     ASSERT_NE(slot, nullptr);
     EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinAutoGain);
+
+    auto* processor = slot->getProcessor();
+    ASSERT_NE(processor, nullptr);
+    processor->setLatencySamples(480);
+    EXPECT_TRUE(chain_->refreshPendingPluginLatency());
+    EXPECT_EQ(chain_->getTotalChainPDC(), 480);
 }
 
 TEST_F(VSTChainTest, DeviceLifecycleSerializesWithStructuralMutations) {

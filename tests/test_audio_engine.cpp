@@ -3,12 +3,19 @@
 
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include "Audio/AudioEngine.h"
 
 #include "Audio/AudioRingBuffer.h"
 #include "Audio/DeviceState.h"
 #include "Audio/MonitorDriftPolicy.h"
 #include "Platform/EndpointChangeWatcher.h"
+
+#if JUCE_WINDOWS
+#include <windows.h>
+#endif
 
 using namespace directpipe;
 
@@ -206,6 +213,27 @@ void addManagedFakeDeviceType(juce::AudioDeviceManager& manager,
     manager.setCurrentAudioDeviceType("Recovery Test", true);
 }
 
+#if JUCE_WINDOWS
+bool pumpMessagesUntil(const std::atomic<bool>& completed,
+                       std::chrono::milliseconds timeout = std::chrono::seconds(2))
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!completed.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatched = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatched = true;
+        }
+        if (!dispatched)
+            std::this_thread::yield();
+    }
+    return completed.load(std::memory_order_acquire);
+}
+#endif
+
 } // namespace
 
 class AudioEngineTest : public ::testing::Test {
@@ -361,6 +389,17 @@ TEST_F(AudioEngineTest, ZeroActiveConfiguredChannelsMarkLostAndMuted) {
     EXPECT_TRUE(engine_->isInputDeviceLost());
     EXPECT_TRUE(engine_->isOutputAutoMuted());
     EXPECT_TRUE(engine_->isOutputMuted());
+
+#if JUCE_WINDOWS
+    // The recovery request above is asynchronous. Destroying an engine that
+    // was never initialized must still invalidate that queued callback.
+    engine_.reset();
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+#endif
 }
 
 TEST_F(AudioEngineTest, OutputNoneIgnoresZeroActiveOutput) {

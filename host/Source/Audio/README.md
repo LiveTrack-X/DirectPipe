@@ -28,7 +28,7 @@ AudioEngine RT callback (audioDeviceIOCallbackWithContext)
 v
 VSTChain.processBlock(workBuffer_)
 |  - AudioProcessorGraph inline processing
-|  - Plugin bypass via atomic flags
+|  - Plugin bypass via graph routing and synchronized processor state
 |  - Inline processing (체인/플러그인 PDC 설정이 전체 지연에 반영됨)
 |
 +---> SafetyLimiter.process()            [RT-safe global Safety Guard (legacy name, zero-latency sample-peak guard + hard clamp), applied before ALL outputs]
@@ -87,6 +87,7 @@ LatencyMonitor.markCallbackEnd()
 | VSTChain | `prepareToPlay`, `releaseResources` | `[Device lifecycle thread]` | `graphControlLock_ -> chainLock_` 순서로 graph lifecycle/I/O node 변경 직렬화 |
 | VSTChain | `addPlugin`, `removePlugin`, `movePlugin` | `[Message thread]` | `graphControlLock_ -> chainLock_` 보호. `rebuildGraph(true)` |
 | VSTChain | `setPluginBypassed` | `[Message thread]` | `graphControlLock_ -> chainLock_` + `rebuildGraph(false)` |
+| VSTChain | `audioProcessorChanged`, `refreshPendingPluginLatency` | `[Plugin callback]` -> `[Message thread]` | 지연 변경 콜백은 atomic flag만 설정하고, 30Hz 상태 갱신이 활성 체인 PDC가 달라진 경우에만 graph render sequence를 재빌드 |
 | VSTChain | `replaceChainAsync`, `cancelPendingAsyncLoad` | `[Message thread]` -> `[BG thread]` -> `[Message thread]` | DLL 로딩은 BG, graph 삽입은 callAsync; generation으로 취소 결과 폐기 |
 | VSTChain | `replaceChainWithPreloaded` | `[Message thread]` | `graphControlLock_ -> chainLock_`로 프리로드 인스턴스 동기 swap |
 | OutputRouter | `routeAudio` | `[RT thread]` | atomic 볼륨/활성화. scaledBuffer_ 용량 클램프 |

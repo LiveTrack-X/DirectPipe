@@ -107,6 +107,13 @@ VSTChain::~VSTChain()
     if (loadThread_ && loadThread_->joinable())
         loadThread_->join();
 
+    {
+        const juce::ScopedLock controlLock(graphControlLock_);
+        const juce::ScopedLock chainLock(chainLock_);
+        for (auto& slot : chain_)
+            removeProcessorListener(slot.getProcessor());
+    }
+
     releaseResources();
     editorWindows_.clear();
     chain_.clear();
@@ -272,6 +279,7 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
+        addProcessorListener(chain_.back().getProcessor());
         rebuildGraph();  // rebuildGraph calls suspendProcessing(false) internally
         resultIdx = static_cast<int>(chain_.size()) - 1;
         if (Log::isAuditMode())
@@ -355,6 +363,7 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
     {
         const juce::ScopedLock sl(chainLock_);
         chain_.push_back(slot);
+        addProcessorListener(chain_.back().getProcessor());
         rebuildGraph();
         resultIdx = static_cast<int>(chain_.size()) - 1;
         if (Log::isAuditMode())
@@ -449,6 +458,7 @@ ActionResult VSTChain::addBuiltinProcessor(PluginSlot::Type type, int insertInde
             chain_.push_back(slot);
             resultIdx = static_cast<int>(chain_.size()) - 1;
         }
+        addProcessorListener(chain_[static_cast<size_t>(resultIdx)].getProcessor());
 
         // NOTE: rebuildGraph() is called INSIDE chainLock_ scope to ensure the
         // graph's audio connections match the chain_ vector atomically. If we
@@ -539,6 +549,7 @@ bool VSTChain::removePlugin(int index)
         juce::String removedName = chain_[static_cast<size_t>(index)].name;
         int oldCount = static_cast<int>(chain_.size());
         auto& slot = chain_[static_cast<size_t>(index)];
+        removeProcessorListener(slot.getProcessor());
         graph_->removeNode(slot.nodeId);
         chain_.erase(chain_.begin() + index);
         rebuildGraph();
@@ -719,6 +730,60 @@ int VSTChain::getTotalChainPDC() const
     if (graph_ != nullptr)
         return graph_->getLatencySamples();
     return 0;
+}
+
+void VSTChain::audioProcessorChanged(
+    juce::AudioProcessor*,
+    const juce::AudioProcessorListener::ChangeDetails& details)
+{
+    if (details.latencyChanged)
+        latencyRebuildPending_.store(true, std::memory_order_release);
+}
+
+bool VSTChain::refreshPendingPluginLatency()
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    if (!latencyRebuildPending_.exchange(false, std::memory_order_acq_rel))
+        return false;
+
+    const juce::ScopedLock controlLock(graphControlLock_);
+    const juce::ScopedLock chainLock(chainLock_);
+    if (!prepared_.load(std::memory_order_acquire) || graph_ == nullptr)
+        return false;
+
+    // updateHostDisplay() defaults to latencyChanged=true, even when a plug-in
+    // only changed unrelated host-visible state. Avoid repeatedly rebuilding
+    // the render sequence unless the active serial path's reported PDC changed.
+    if (getActiveReportedLatencySamplesLocked() == graph_->getLatencySamples())
+        return false;
+
+    graph_->rebuild();
+    return true;
+}
+
+void VSTChain::addProcessorListener(juce::AudioProcessor* processor)
+{
+    if (processor != nullptr)
+        processor->addListener(this);
+}
+
+void VSTChain::removeProcessorListener(juce::AudioProcessor* processor)
+{
+    if (processor != nullptr)
+        processor->removeListener(this);
+}
+
+int VSTChain::getActiveReportedLatencySamplesLocked() const
+{
+    int totalSamples = 0;
+    for (const auto& slot : chain_) {
+        if (slot.bypassed)
+            continue;
+        if (const auto* processor = slot.getProcessor())
+            totalSamples += processor->getLatencySamples();
+    }
+    return totalSamples;
 }
 
 const PluginSlot* VSTChain::getPluginSlot(int index) const
@@ -1278,10 +1343,14 @@ bool VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
         }
 
         editorWindows_.clear();
-        for (auto& slot : chain_)
+        for (auto& slot : chain_) {
+            removeProcessorListener(slot.getProcessor());
             graph_->removeNode(slot.nodeId,
                 juce::AudioProcessorGraph::UpdateKind::async);
+        }
         chain_ = std::move(newChain);
+        for (auto& slot : chain_)
+            addProcessorListener(slot.getProcessor());
 
         rebuildGraph();  // single rebuild with connections + suspendProcessing(false)
         auto elapsed = juce::Time::getMillisecondCounter() - startMs;

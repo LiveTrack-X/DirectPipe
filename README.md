@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.2.2-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.2.3-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.2.2 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
+- **Latest (최신)**: [v4.2.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
 
-> **지원/검증 범위**: v4.2.2 로컬 Windows Release host-test 빌드와 집중 회귀 검사를 확인했습니다. 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 통과해야 합니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Support/validation scope**: The v4.2.2 local Windows Release host-test build and focused regressions were verified. Exact-tag CI must pass cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
+> **지원/검증 범위**: v4.2.3 로컬 Windows Release CTest 492개를 실행해 490개 통과, 환경 의존 2개 skip, 실패 0개를 확인했습니다. 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 통과해야 합니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Support/validation scope**: The local v4.2.3 Windows Release run completed all 492 CTest registrations: 490 passed, 2 environment-dependent tests skipped, and 0 failed. Exact-tag CI must pass cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
 
 
 

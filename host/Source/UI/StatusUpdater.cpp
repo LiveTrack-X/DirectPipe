@@ -259,6 +259,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
 
     auto& monitor = engine_.getLatencyMonitor();
     auto& chain = engine_.getVSTChain();
+    chain.refreshPendingPluginLatency();
     const double sampleRate = monitor.getSampleRate();
     const int chainPDCSamples = chain.getTotalChainPDC();
     const double chainPDCMs =
