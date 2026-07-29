@@ -50,6 +50,18 @@ host/Source/*/README.md
 host/Source/README.md
 docs/MAINTENANCE_RULES.md
 
+# SDAD / AI internal control plane (local only)
+/AGENTS.md
+/sdad-state.yaml
+/review-findings.md
+/SPEC/
+/docs/INDEX.md
+/docs/Repository-Operating-Rules.md
+/docs/TODO-Open-Items.md
+/docs/implementation-notes.md
+/docs/owner-decisions.md
+/docs/sdad/
+
 # Development plans
 DirectPipe-Development-Plan*.md
 
