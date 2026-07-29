@@ -573,6 +573,9 @@ TEST_F(StateSerializationTest, DefaultStateSerializesToValidJson) {
 
     // Must have "data" object
     EXPECT_TRUE(root->getProperty("data").isObject());
+    auto* data = root->getProperty("data").getDynamicObject();
+    ASSERT_NE(data, nullptr);
+    EXPECT_EQ(static_cast<int>(data->getProperty("channel_mode")), 2);
 }
 
 TEST_F(StateSerializationTest, StateContainsVolumeFields) {

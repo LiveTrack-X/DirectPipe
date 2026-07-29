@@ -51,9 +51,9 @@ namespace directpipe {
  * stabilizes (warmup period). Without this, users hear a brief noise pop on start.
  *
  * ### 48 kHz Only
- * TODO: Non-48kHz sample rates currently pass audio through unprocessed.
- *       Future: add juce::LagrangeInterpolator resampling up/down around
- *       RNNoise frames. This affects ~5% of users on non-standard rates.
+ * TODO(DP-NOISE-RESAMPLE-0001): Non-48kHz sample rates currently pass audio
+ * through unprocessed. Add resampling around RNNoise frames under a dedicated
+ * real-time acceptance packet.
  *
  * ### Dual-Mono Processing
  * Each channel (L/R) has its own RNNoise instance, FIFO, and gate state.
@@ -72,8 +72,6 @@ namespace directpipe {
  *   releaseResources()-- [Message thread]
  *   setters/getters   -- [Any thread] (atomic)
  *
- * TODO: Resampling support for sample rates != 48 kHz
- *       (juce::LagrangeInterpolator up/down around RNNoise frames)
  */
 class BuiltinNoiseRemoval : public juce::AudioProcessor {
 public:
@@ -124,14 +122,14 @@ public:
     /** Set VAD threshold directly (advanced override, 0.0-1.0). */
     void setVADThreshold(float threshold);
 
-    // I5: Status accessors for UI (e.g., edit panel can show resampling warning)
+    // The editor uses this state to explain intentional non-48kHz passthrough.
     bool isActive() const { return !needsResampling_.load(std::memory_order_relaxed); }
     bool needsResampling() const { return needsResampling_.load(std::memory_order_relaxed); }
 
 private:
     // -- Parameters --
     std::atomic<int>   strength_{ 1 };       // 0=Light, 1=Standard, 2=Aggressive
-    std::atomic<float> vadThreshold_{ 0.70f };  // raised from 0.60 to better reject transients
+    std::atomic<float> vadThreshold_{ 0.70f };  // Standard preset default
 
     // -- RNNoise instances (created in prepareToPlay, destroyed in releaseResources) --
     DenoiseState* rnnL_ = nullptr;
@@ -174,12 +172,9 @@ private:
     uint32_t outputFifoReadR_  = 0;
     uint32_t outputFifoWriteR_ = 0;
 
-    // -- Resampling (TODO) --
+    // -- Sample-rate compatibility (TODO(DP-NOISE-RESAMPLE-0001)) --
     double hostSampleRate_ = 48000.0;
-    std::atomic<bool> needsResampling_{false};  // I5: atomic -- set in prepareToPlay (msg), read in processBlock (RT)
-    // juce::LagrangeInterpolator resamplerInL_, resamplerInR_;
-    // juce::LagrangeInterpolator resamplerOutL_, resamplerOutR_;
-    // std::vector<float> resampleBuf_;
+    std::atomic<bool> needsResampling_{false};  // Message-thread write, RT-thread read.
 
     // -- VAD gating (per-channel smooth gain + hold time) --
     //

@@ -8,6 +8,34 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.2.2] - 2026-07-29
+
+### Changed
+
+- **Total latency reporting**: The bottom status bar, WebSocket state
+  `latency_ms`, and HTTP `/api/perf` `latencyMs` now include the active plugin
+  graph's reported PDC in addition to the input/output buffer estimate and
+  measured callback execution time. Bypassed plugins are excluded. This remains
+  an estimate, not a hardware loopback measurement.
+- **Latency diagnostics**: Existing control-state `chain_pdc_samples`,
+  `chain_pdc_ms`, and per-plug-in `latency_samples` fields provide the reported
+  PDC breakdown behind the new total. IPC, preset, Stream Deck action, and
+  control-client contracts remain compatible.
+- **Documentation and maintenance rules**: Current API/state counts, hotkey
+  defaults, slot filenames, Stream Deck dependency/version data, known DSP
+  limitations, and source-comment guidance now match the implementation.
+
+### Fixed
+
+- **Initial control-state channel mode**: The default `channel_mode` snapshot now
+  starts at Stereo (`2`), matching the AudioEngine default instead of briefly
+  reporting Mono before the first runtime refresh.
+- **DSP cleanup**: Removed unused Auto Gain smoothing coefficients and clarified
+  the non-48kHz noise-removal passthrough and immediate VST bypass-tail behavior
+  without changing either runtime contract.
+
+---
+
 ## [4.2.1] - 2026-07-15
 
 ### Fixed

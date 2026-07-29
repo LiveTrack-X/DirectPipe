@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.2.1-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.2.2-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.2.1 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
+- **Latest (최신)**: [v4.2.2 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
 
-> **지원/검증 범위**: v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했습니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Support/validation scope**: The v4.2.1 local Windows Release build and registered software tests were verified. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
+> **지원/검증 범위**: v4.2.2 로컬 Windows Release host-test 빌드와 집중 회귀 검사를 확인했습니다. 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 통과해야 합니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Support/validation scope**: The v4.2.2 local Windows Release host-test build and focused regressions were verified. Exact-tag CI must pass cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
 
 
 
@@ -218,7 +218,7 @@ External Control:
 
 - **DirectPipe Receiver (VST2/VST3/AU)** — OBS, DAW 등에서 공유 메모리로 직접 수신. **가상 케이블 불필요**. 입력 버스 없는 출력 전용 플러그인 (모노/스테레오 출력 지원) — OBS 필터 체인의 앞단 오디오는 무시되고 DirectPipe에서 전송된 오디오만 출력. 호스트에 버퍼링 레이턴시 보고 — Receive audio via shared memory in OBS, DAWs, and other hosts. **No virtual cable needed**. Output-only plugin (no input bus, mono/stereo output) — ignores upstream audio in the host's filter chain, only outputs audio sent from DirectPipe. Reports buffering latency to host
 - **VST 출력 토글** — 기본값 OFF. VST 버튼 / Output 탭 체크박스 / MIDI / Stream Deck / HTTP API / 사용자 정의 단축키로 켜기/끄기 — Off by default. Toggle via VST button, Output tab, MIDI, Stream Deck, HTTP API, or user-defined hotkey
-- **버퍼 크기 설정** — Receiver 플러그인 GUI에서 5단계 프리셋 선택. 실제 지연(ms)은 샘플레이트에 따라 다름 — 5 buffer presets in Receiver plugin GUI. Actual latency (ms) depends on sample rate
+- **버퍼 크기 설정** — Receiver 플러그인 GUI에서 5단계 프리셋 선택. Receiver 보고 버퍼 지연(ms)은 샘플레이트에 따라 다르며 DirectPipe 상태바 총값에는 포함되지 않음 — 5 buffer presets in the Receiver GUI. Receiver-reported buffer latency depends on sample rate and is separate from the DirectPipe status-bar total
 
   | 프리셋 / Preset | 샘플 / Samples | @48kHz | @44.1kHz | 용도 / Best for |
   |---|---|---|---|---|
@@ -246,7 +246,7 @@ External Control:
   - **Settings**: 자동 시작 (Windows/Linux: "Start with System", macOS: "Open at Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset(A-E + Auto 슬롯 포함)) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset (includes A-E + Auto slots))
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Panic Mute/Start with System or Open at Login/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
 - **Panic Mute** — 전체 출력 즉시 차단 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 OUT/MON/VST 제어는 잠기고 대부분 액션이 차단되지만, Input Mute/XRun Reset/Safety Guard(legacy SafetyLimiter actions)/Auto Processors Add는 유지보수·준비 용도로 허용 — Instant kill all output paths + auto-stop recording, restores previous states on unmute (recording does not auto-restart). OUT/MON/VST controls are locked and most actions are blocked, while Input Mute/XRun Reset/Safety Guard (legacy SafetyLimiter actions)/Auto Processors Add remain available for maintenance/prep flows
-- **상태 바** — 레이턴시, CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: latency, CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. Auto-fade notifications
+- **상태 바** — 총 추정 레이턴시(입력·출력 버퍼 추정 + 콜백 처리시간 + 활성 플러그인 체인 보고 PDC), CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 하드웨어 루프백 실측값은 아니며 Receiver/OBS 버퍼는 별도입니다. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: total estimated latency (estimated input/output buffers + callback execution time + active plugin-chain reported PDC), CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. It is not a hardware loopback measurement; Receiver/OBS buffering is separate. Auto-fade notifications
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 자동 교체 → 재시작 — In-app auto-updater with one-click update from GitHub releases
 - **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Windows: Malgun Gothic, macOS: Apple SD Gothic Neo, Linux: Noto Sans CJK KR — Korean/Chinese/Japanese device names rendered correctly with platform-specific CJK font support
 - **다크 테마** — Custom JUCE LookAndFeel
@@ -834,7 +834,7 @@ Yes! Multiple control methods are available:
 
 | 방법 / Method | 예시 / Example | 적합한 용도 / Best for |
 |---|---|---|
-| **키보드 단축키 / Hotkeys** | Ctrl+Shift+1–9 bypass, F1–F5 프리셋 / presets | 가장 간편 / Simplest |
+| **키보드 단축키 / Hotkeys** | 기본값: Ctrl+Shift+1–3 bypass, Ctrl+Shift+F1–F5 프리셋(사용자 지정 가능) / Defaults: Ctrl+Shift+1–3 bypass, Ctrl+Shift+F1–F5 presets (customizable) | 가장 간편 / Simplest |
 | **MIDI CC** | 미디 컨트롤러 노브/버튼 / MIDI controller knobs | 실시간 볼륨 조절 / Real-time volume |
 | **HTTP API** | `curl http://localhost:8766/api/...` | 스크립트 자동화 / Script automation |
 | **WebSocket** | ws://localhost:8765 | 커스텀 앱/봇 연동 / Custom app integration |

@@ -241,7 +241,8 @@ void HttpApiServer::handleClient(const std::shared_ptr<juce::StreamingSocket>& c
         }
     }
 
-    // Handle CORS preflight (OPTIONS) — browser sends this before PUT/DELETE/etc.
+    // Handle generic browser CORS preflight. The API executes only GET; broader
+    // advertised methods are retained for compatibility and documented in SECURITY.md.
     if (method == "OPTIONS") {
         std::string response = makePreflightResponse();
         client->write(response.c_str(), static_cast<int>(response.size()));
@@ -300,13 +301,20 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         return {200, broadcaster_.toJSON()};
     }
 
-    // GET /api/perf — performance/latency data from LatencyMonitor
+    // GET /api/perf — performance/total estimated latency data
     if (action == "perf" && segments.size() == 2) {
         auto& monitor = engine_.getLatencyMonitor();
+        const double sampleRate = monitor.getSampleRate();
+        const int chainPDCSamples = engine_.getVSTChain().getTotalChainPDC();
+        const double chainPDCMs =
+            (sampleRate > 0.0 && chainPDCSamples > 0)
+                ? static_cast<double>(chainPDCSamples) / sampleRate * 1000.0
+                : 0.0;
         auto obj = new juce::DynamicObject();
-        obj->setProperty("latencyMs", monitor.getTotalLatencyVirtualMicMs());
+        obj->setProperty("latencyMs",
+                         monitor.getTotalLatencyVirtualMicMs() + chainPDCMs);
         obj->setProperty("cpuPercent", monitor.getCpuUsagePercent());
-        obj->setProperty("sampleRate", monitor.getSampleRate());
+        obj->setProperty("sampleRate", sampleRate);
         obj->setProperty("bufferSize", monitor.getBufferSize());
         obj->setProperty("xrunCount", engine_.getRecentXRunCount());
         return {200, juce::JSON::toString(juce::var(obj), true).toStdString()};

@@ -35,7 +35,7 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     lufsRingBuf_.assign(static_cast<size_t>(lufsWindowSize_), 0.0f);
     lufsWritePos_ = 0;
     lufsSampleCount_ = 0;
-    runningSquareSum_.store(0.0, std::memory_order_relaxed);  // I1: reset running sum
+    runningSquareSum_.store(0.0, std::memory_order_relaxed);  // Must match the cleared LUFS ring.
 
     // Pre-allocate scratch buffer for K-weighting measurement
     kWeightScratch_.setSize(2, samplesPerBlock);
@@ -55,17 +55,7 @@ void BuiltinAutoGain::prepareToPlay(double sampleRate, int samplesPerBlock)
     limiterPrevIn_[0] = 0.0f;
     limiterPrevIn_[1] = 0.0f;
 
-    // Envelope follower coefficients:
-    //   coeff = 1 - exp(-1 / (time_seconds * sampleRate))
-    // We compute per-sample coefficients from time constants.
-    // attack = 500ms (boost quiet — gentle, avoids pumping on natural pauses)
-    // release = 150ms (cut loud — fast enough to suppress loud speech within ~0.5s)
-    // 700ms release was too slow: 20dB gain swings took ~4s to converge.
-    // 150ms with hiCorr=0.90 gives ~167ms effective, 99% in ~0.8s.
-    // Typical compressor release: 50-200ms. 150ms is in the normal range.
     if (sampleRate > 0.0) {
-        attackCoeff_  = 1.0f - std::exp(-1.0f / (0.5f  * static_cast<float>(sampleRate)));  // 500ms boost
-        releaseCoeff_ = 1.0f - std::exp(-1.0f / (0.1f * static_cast<float>(sampleRate)));   // 100ms cut
         limiterLookAheadSamples_ = juce::jmax(1, juce::roundToInt(static_cast<float>(sampleRate) * 0.001f)); // fixed 1ms
         limiterDelaySize_ = limiterLookAheadSamples_ + 1;
         limiterReleaseCoeff_ = std::exp(-1.0f / static_cast<float>(sampleRate * 0.05)); // fixed 50ms
@@ -99,9 +89,8 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // Step 1: Copy buffer to scratch for K-weighting measurement (PRE-GAIN signal).
     // Open-loop control: measure input loudness, compute full correction to target.
-    // Closed-loop (post-gain measurement) was tried but has a stability issue:
-    // correction=0 at target → gain resets to 1.0x → output drops → oscillation.
-    // Open-loop with proper envelope follower gives stable convergence.
+    // Post-gain measurement would feed the applied correction back into the next
+    // estimate and oscillate around unity, so measurement remains pre-gain.
     for (int ch = 0; ch < juce::jmin(numChannels, 2); ++ch)
         juce::FloatVectorOperations::copy(
             kWeightScratch_.getWritePointer(ch),
@@ -176,11 +165,11 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // ═══ Step 5: Dual-Envelope Level Detection (WebRTC AGC pattern) ═══
     //
-    // Instead of using a single LUFS window for both level detection AND gain smoothing
-    // (which was too slow for loud speech suppression), we separate the two stages:
+    // A single LUFS window would couple stable averaging to transient response,
+    // so level detection and gain computation use separate stages:
     //
     // Stage A: LEVEL DETECTION — dual envelope on the LUFS measurement
-    //   Fast envelope (~100ms): catches loud transients immediately
+    //   Fast envelope (~10ms attack, ~200ms release): catches loud transients immediately
     //   Slow envelope (LUFS window): provides stable average for boost
     //   Effective level = max(fast, slow) — loud signals are caught instantly
     //
@@ -191,11 +180,8 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // Reference: WebRTC AGC uses capacitorFast + capacitorSlow, max selection,
     //   then gain table lookup. No separate gain envelope follower.
 
-    // Aim 6dB below user target — compensate for systematic overshoot.
-    // Real-time open-loop AGC measures pre-gain input; the fast envelope + LUFS window
-    // combination has ~4-6dB overshoot vs commercial levelers (closed-loop with look-ahead).
-    // 6dB offset brings the average output closer to what users expect from standard levelers.
-    // (Previously 4dB, but measured output was still 3-5dB above target.)
+    // Reserve 6dB below the user target because the open-loop estimate has no
+    // post-gain feedback; the margin prevents systematic target overshoot.
     const float target  = targetLUFS_.load(std::memory_order_relaxed) - 6.0f;
     const float lowCorr = lowCorrect_.load(std::memory_order_relaxed);
     const float hiCorr  = highCorrect_.load(std::memory_order_relaxed);
@@ -216,7 +202,7 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         ? 20.0f * std::log10(blockRMS)
         : -120.0f;
 
-    // Fast envelope on LUFS measurement (~100ms attack, ~200ms release)
+    // Fast envelope on LUFS measurement (~10ms attack, ~200ms release)
     // Catches loud speech instantly; releases moderately fast
     {
         float blockDuration = static_cast<float>(numSamples) / static_cast<float>(currentSR_);

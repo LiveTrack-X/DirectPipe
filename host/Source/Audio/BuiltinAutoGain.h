@@ -31,10 +31,9 @@ namespace directpipe {
  *
  * ### Direct Gain Computation (no IIR gain envelope)
  * Gain is computed directly from the level measurement and applied via linear ramp.
- * Previous design used an IIR envelope follower on the gain (500ms/700ms), which
- * created DOUBLE smoothing (slow measurement + slow gain convergence). Removing
- * the gain envelope and using only level-domain smoothing gives faster response.
- * Correction % (lowCorr/hiCorr) now blends between hold and full correction per block.
+ * A second IIR gain envelope would stack with the level-domain smoothing and delay
+ * convergence, so correction percentages blend between hold and full correction
+ * per block and the output ramp only removes discontinuities.
  *
  * ### Sidechain Measurement (K-weighting on copy, not original)
  * K-weighting reshapes the frequency response to match human hearing perception
@@ -160,9 +159,7 @@ private:
     float fastEnvelope_ = -60.0f;      // fast envelope on LUFS (~10ms attack, ~200ms release)
 
     // -- Gain state (RT thread only) --
-    float currentGainLinear_ = 1.0f;   // current smoothed gain (persists across blocks for continuity)
-    float attackCoeff_ = 0.0f;         // per-sample smoothing: 500ms attack (gain increasing = boosting)
-    float releaseCoeff_ = 0.0f;        // per-sample smoothing: 100ms release (gain decreasing = cutting)
+    float currentGainLinear_ = 1.0f;   // previous block's applied gain; anchors the next click-free ramp
 
     double currentSR_ = 48000.0;
 

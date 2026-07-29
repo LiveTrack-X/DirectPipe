@@ -1,15 +1,15 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current source version / 현재 소스 버전: 4.2.1**
+> **Released version / 릴리즈 버전: 4.2.2**
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했지만 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 소스·CI 지원만 유지하고 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. The v4.2.1 local Windows Release build and registered software tests were verified, but real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental; both retain source/CI support without hardware verification for this update.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.2 로컬 Windows Release host-test 빌드와 집중 회귀 검사를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. The v4.2.2 local Windows Release host-test build and focused regressions were verified, and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental without hardware verification for this update.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.1 Release build and registered software tests verified locally; no real-device check. |
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.2 Release host-test build and focused regressions verified locally; exact-tag CI required; no real-device check. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -200,9 +200,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). Current v4.2.1 inventory: **484 CTest registrations** (59 core + 423 host + 2 focused endpoint tests). The binaries contain 45 suites in total (6 core + 38 host + 1 endpoint); in the current Windows verification run, 2 host tests are environment-dependent skips.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). The v4.2.2 inventory contains **490 CTest registrations** (59 core + 429 host + 2 focused endpoint tests). The binaries contain 45 suites in total (6 core + 38 host + 1 endpoint). Historical v4.2.1 execution counts remain preserved in the [Release Note](ReleaseNote.md); v4.2.2 publication is gated by the exact-tag CI run.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). 현재 v4.2.1 기준 **CTest 등록 484개**(코어 59 + 호스트 423 + endpoint 집중 테스트 2), 전체 45개 suite(코어 6 + 호스트 38 + endpoint 1)이며 Windows 검증에서 호스트 테스트 2개는 환경 의존 skip입니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.2 인벤토리는 **CTest 등록 490개**(코어 59 + 호스트 429 + endpoint 집중 테스트 2), 전체 45개 suite(코어 6 + 호스트 38 + endpoint 1)입니다. v4.2.1 당시 실행 수치는 [Release Note](ReleaseNote.md)에 보존하며 v4.2.2 공개는 정확 태그 CI 통과를 조건으로 합니다.
 
 ### directpipe-tests (Core)
 
@@ -222,30 +222,31 @@ Three test executables are built: `directpipe-tests` (core, no JUCE dependency),
 | WebSocket server/protocol | 39 | Shutdown/shared lifetime, handshake-ready ordering, idle sweep, listen and strict action-parameter validation / 종료·shared lifetime, handshake-ready 순서, idle sweep, listen 및 action parameter 엄격 검증 |
 | StateSerializationTest | 13 | State JSON fields, reproducibility, device-loss/recording/IPC fields / 상태 JSON 필드, 재현성, 장치 손실/녹음/IPC 필드 |
 | ActionDispatcherTest | 31 | Action dispatch, listener management, thread safety, ActionResult / 액션 디스패치, 리스너 관리, 스레드 안전, ActionResult |
-| HttpApiServerTest | 4 | Restart/socket lifetime, input and listen-port validation / 재시작·socket lifetime, 입력 및 listen-port 검증 |
+| HttpApiServerTest | 5 | Restart/socket lifetime, input/listen-port validation, PDC-inclusive performance latency / 재시작·검증·PDC 포함 성능 레이턴시 |
 | ActionResultTest | 12 | ActionResult data type: ok/fail factory methods, bool conversion, message propagation / ActionResult 데이터 타입 테스트 |
 | ControlMappingTest | 19 | Hotkey/MIDI/server roundtrip plus strict enum/range/type validation / 핫키·MIDI·서버 왕복 및 enum/range/type 검증 |
 | NotificationQueueTest | 10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐 |
-| PresetManager + portable/constants | 47 | Slot save/load/copy, canonical Base64 validation, structural backup fallback even when repair-copy fails, cache/ASIO/import guards / slot 저장·로드·복사, canonical Base64 검증, repair-copy 실패 시에도 backup fallback, cache·ASIO·import 보호 |
-| SettingsExporterTest | 24 | Settings/full-backup exact restore, strict optional-action schema, transactional rollback, structural slot rejection / 설정·전체 백업 정확 복원, optional action schema 엄격 검증, transaction rollback, 잘못된 slot 거부 |
-| SettingsAutosaverTest | 15 | Dirty/debounce auto-save, startup mute restore, partial-load guard / dirty·debounce auto-save, 시작 mute 복원, partial-load 보호 |
+| PresetManager + portable/constants | 53 | Slot save/load/copy, canonical Base64 validation, structural backup fallback even when repair-copy fails, cache/ASIO/import guards / slot 저장·로드·복사, canonical Base64 검증, repair-copy 실패 시에도 backup fallback, cache·ASIO·import 보호 |
+| SettingsExporterTest | 27 | Settings/full-backup exact restore, strict optional-action schema, transactional rollback, structural slot rejection / 설정·전체 백업 정확 복원, optional action schema 엄격 검증, transaction rollback, 잘못된 slot 거부 |
+| SettingsAutosaverTest | 17 | Dirty/debounce auto-save, startup mute restore, partial-load guard / dirty·debounce auto-save, 시작 mute 복원, partial-load 보호 |
 | OutputRouterTest | 10 | Monitor output routing, mute state, inactive meter reset / 모니터 출력 라우팅, 뮤트 상태, 비활성 meter reset |
-| AudioEngineTest | 39 | Driver/device recovery, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun/SR-BS behavior / driver·장치 복구, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun·SR-BS 동작 |
+| AudioEngineTest | 43 | Driver/device recovery, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun/SR-BS behavior / driver·장치 복구, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun·SR-BS 동작 |
+| AudioRecorderTest | 7 | Recording lifecycle, output-path fallback, playback readiness, and invalid-state guards / 녹음 수명주기, 출력 경로 fallback, 재생 준비 상태, invalid-state 방어 |
 | AudioRingBufferTest | 8 | Lock-free audio ring buffer reset/discard and fractional interpolation behavior / 오디오 링 버퍼 reset/discard 및 fractional interpolation 동작 |
 | MonitorDriftPolicyTest | 10 | Adaptive monitor target, PLL ratio, and emergency trim policy / adaptive 모니터 target, PLL ratio, emergency trim 정책 |
 | MonitorOutputTest | 10 | RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
 | DeviceStateTest | 10 | Device state FSM and invalid-state guards / 장치 상태 FSM 및 invalid-state 방어 |
-| MidiHandlerTest | 8 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
+| MidiHandlerTest | 11 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
 | SafetyLimiterTest | 15 | Guard ceiling, gain reduction, zero-latency sample-peak guard behavior / 가드 실링, 게인 리덕션, zero-latency 샘플-피크 가드 동작 |
 | BuiltinFilterTest | 8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
-| BuiltinNoiseRemovalTest + FIFO | 8 | RNNoise VAD thresholds, non-48k passthrough, latency, FIFO overflow guard / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시, FIFO overflow 보호 |
+| BuiltinNoiseRemovalTest + FIFO | 9 | RNNoise VAD thresholds, non-48k passthrough, latency, FIFO overflow guard / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시, FIFO overflow 보호 |
 | BuiltinAutoGainTest | 8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
-| VSTChainTest | 11 | VST chain operations, stable status snapshot, cached-swap partial-failure guard / VST chain 연산, 안정된 status snapshot, cached swap 부분 실패 보호 |
+| VSTChainTest | 16 | VST chain operations, active-path PDC/bypass, stable status snapshot, cached-swap partial-failure guard / VST chain 연산, 활성 경로 PDC, 안정된 snapshot |
 | PlatformTest | 8 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
-| SharedMemWriterTest | 2 | Initialization failure cleanup and in-flight write drain before unmap / 초기화 실패 정리 및 unmap 전 진행 write drain |
+| SharedMemWriterTest | 4 | Initialization failure cleanup and in-flight write drain before unmap / 초기화 실패 정리 및 unmap 전 진행 write drain |
 | EndpointChangeWatcherTest | 2 | Exact selected-endpoint filtering and signal coalescing / 선택 endpoint 정확 일치 및 signal coalescing |
-| UpdateChecker/UpdateScript tests | 12 | Finished-worker reap/retry, strict semver/PID wait, staging, rollback, ZIP and percent-path handling / 완료 worker reap·재시도, 엄격 semver·PID wait, staging·rollback·ZIP·percent path 처리 |
+| UpdateChecker/UpdateScript tests | 16 | Finished-worker reap/retry, strict semver/PID wait, staging, rollback, ZIP and percent-path handling / 완료 worker reap·재시도, 엄격 semver·PID wait, staging·rollback·ZIP·percent path 처리 |
 
 Host test source files additionally include HTTP/WebSocket shutdown, shared-memory writer, endpoint watcher, and updater-script coverage. `test_endpoint_change_watcher.cpp` is also built as the dedicated focused executable so the two endpoint cases can run independently of the full host binary.
 

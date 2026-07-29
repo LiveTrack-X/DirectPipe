@@ -62,7 +62,7 @@ struct AppState {
     float cpuPercent = 0.0f;
     double sampleRate = 48000.0;
     int bufferSize = 480;
-    int channelMode = 1;  // 1 = Mono, 2 = Stereo
+    int channelMode = 2;  // 1 = Mono, 2 = Stereo (matches AudioEngine default)
     bool monitorEnabled = false;
     int activeSlot = 0;   // Quick preset slot index: 0=A, 1=B, 2=C, 3=D, 4=E, 5=Auto, -1=none
     bool autoSlotActive = false;  // Deprecated — auto-derived from activeSlot==5. Kept for backward compat.

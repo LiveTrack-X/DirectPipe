@@ -288,7 +288,7 @@ MainComponent::MainComponent(bool enableExternalControls)
     rightTabs_->addTab("Output",   tabBg, outputPanel_.release(), true);
     rightTabs_->addTab("Controls", tabBg, controlSettingsPanel_.release(), true);
 
-    // Settings Panel (formerly Log + General)
+    // Settings panel owns logs, startup behavior, and maintenance actions.
     {
         auto settingsPanel = std::make_unique<LogPanel>();
         settingsPanel->setStartMinimizedToTrayEnabled(startMinimizedToTrayOnLaunch_);

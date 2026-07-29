@@ -87,7 +87,7 @@ Input → [1. Filter] → [2. Noise Removal] → [3. Auto Gain / Limiter] → [G
 
 - Noise Removal 전에 제거해야 RNNoise가 저주파 에너지에 혼동하지 않음 / Must be removed before Noise Removal so RNNoise is not confused by low-frequency energy
 - Auto Gain 전에 제거해야 LUFS 측정이 험에 의해 왜곡되지 않음 / Must be removed before Auto Gain so LUFS measurement is not skewed by hum
-- 가장 가벼운 처리(IIR 필터)이므로 레이턴시 0 / Lightest processing (IIR filter), so zero latency
+- 가장 가벼운 처리(IIR 필터)이며 보고 알고리즘 레이턴시 0 samples / Lightest processing (IIR filter), with zero reported algorithmic-latency samples
 
 #### 2번: Noise Removal (RNNoise) / Stage 2: Noise Removal (RNNoise)
 
@@ -140,9 +140,9 @@ Noise Removal(RNNoise)은 **48kHz에서만 동작**합니다. 비-48kHz 샘플�
 
 Noise Removal (RNNoise) **only works at 48kHz**. Activating [Auto] at a non-48kHz sample rate causes NR to passthrough (noise removal disabled). A warning notification is shown in this case.
 
-이는 "원클릭이 항상 같은 결과를 보장"하는 Auto 철학과 충돌하는 지점입니다. 향후 내부 리샘플링(juce::LagrangeInterpolator) 구현으로 해결 예정입니다.
+이는 "원클릭이 항상 같은 결과를 보장"하는 Auto 철학과 충돌하는 지점입니다. 내부 리샘플링은 `DP-NOISE-RESAMPLE-0001`의 실시간 설계·승인 전까지 보류합니다.
 
-This conflicts with Auto's "one click always gives the same result" philosophy. A future internal resampling implementation (juce::LagrangeInterpolator) is planned to resolve this.
+This conflicts with Auto's "one click always gives the same result" philosophy. Internal resampling remains deferred under `DP-NOISE-RESAMPLE-0001` until its real-time design is approved.
 
 ### 권장 환경 / Recommended Environment
 

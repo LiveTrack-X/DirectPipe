@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Version 4.2.1** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Released Version 4.2.2** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했지만 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.2 로컬 Windows Release host-test 빌드와 집중 회귀 검사를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The v4.2.1 local Windows Release build and registered software tests were verified, but real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
+> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The v4.2.2 local Windows Release host-test build and focused regressions were verified, and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)
@@ -277,7 +277,8 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 - OUTPUT 레벨 미터 / OUTPUT level meter
 
 **하단 상태 바 / Status Bar:**
-- 레이턴시 (ms), CPU 사용률 (%) + XRun 카운터 (60초간), 오디오 포맷, 포터블 모드 표시 (Audio Only 시 주황색) / Latency (ms), CPU usage (%) + XRun counter (60s window), audio format, portable mode indicator (orange in Audio Only)
+- 총 추정 레이턴시 (입력·출력 버퍼 추정 + 콜백 처리시간 + 활성 플러그인 체인 보고 PDC), CPU 사용률 (%) + XRun 카운터 (60초간), 오디오 포맷, 포터블 모드 표시 (Audio Only 시 주황색) / Total estimated latency (estimated input/output buffers + callback execution time + active plugin-chain reported PDC), CPU usage (%) + XRun counter (60s window), audio format, portable mode indicator (orange in Audio Only)
+- 상태바 값은 하드웨어 루프백 실측값이 아니며 Receiver/OBS 버퍼 지연은 포함하지 않음 / The status-bar value is not a hardware loopback measurement and excludes Receiver/OBS buffering
 - XRun 발생 시 빨간색으로 강조 / XRun count highlighted in red when > 0
 - 오류/경고/정보 알림 (자동 페이드) / Error/warning/info notifications (auto-fade)
 - 버전 정보 + 업데이트 알림 / Version info + update notification
@@ -351,12 +352,14 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 
 **버퍼 크기 가이드 / Buffer size guide:**
 
-| 버퍼 / Buffer | 지연 (@48kHz) | 권장 / Recommended |
+| 버퍼 / Buffer | 한 버퍼 주기 (@48kHz) / One buffer period | 권장 / Recommended |
 |---|---|---|
 | 128 samples | ~2.7ms | 고사양 PC, 최소 지연 / High-end PC, minimum latency |
 | 256 samples | ~5.3ms | 일반적인 시작점 / Common starting point |
 | 512 samples | ~10.7ms | 안정적, 저사양 PC / Stable, low-end PC |
 | 1024 samples | ~21.3ms | CPU 부하 높을 때 / High CPU load |
+
+> Audio 탭의 `Latency` 값은 입력+출력 버퍼의 단순 추정치(`2 × buffer / sample rate`)입니다. 최하단 상태바의 총 추정 레이턴시는 여기에 콜백 처리시간과 활성 플러그인 체인의 보고 PDC를 추가합니다. / The Audio tab `Latency` value is a simple input+output buffer estimate (`2 × buffer / sample rate`). The bottom status-bar total also adds callback execution time and active plugin-chain reported PDC.
 
 ### 샘플레이트 맞추기 체크리스트 / Sample Rate Matching Checklist
 
@@ -528,8 +531,8 @@ Auto chain order: Filter -> Noise Removal -> Auto Gain -> Post Limiter -> Global
 - **Limiter Ceiling**: Post limiter ceiling (고급에서 노출되는 유일한 limiter 항목, -2.0~0.0 dBTP, 기본 -1.0)
 - **고정 내부값 / Fixed internal**: post limiter lookahead 1ms, release 50ms (UI 미노출)
 
-> **참고**: 48kHz가 아닌 샘플레이트에서는 Noise Removal이 비활성화됩니다 (향후 리샘플링 지원 예정).
-> **Note**: Noise Removal is inactive at non-48kHz sample rates (resampling support planned).
+> **참고**: 48kHz가 아닌 샘플레이트에서는 Noise Removal이 비활성화됩니다. 내부 리샘플링은 `DP-NOISE-RESAMPLE-0001`로 보류되어 있습니다.
+> **Note**: Noise Removal is inactive at non-48kHz sample rates. Internal resampling is deferred under `DP-NOISE-RESAMPLE-0001`.
 
 ### 내장 프로세서 상세 가이드 / Built-in Processor Details
 
@@ -609,13 +612,13 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 >
 > Monitor uses a **separate shared-mode output device**, independent from the main driver. On Windows it uses WASAPI; on macOS, CoreAudio; on Linux, ALSA. Works even with ASIO (Windows).
 
-> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 메인 출력 대비 추가 지연이 발생할 수 있습니다. adaptive PLL fractional playback으로 작은 독립 장치 clock drift를 흡수하고, 정상 drift 상황에서는 프레임을 버리지 않습니다. 부분 underrun 후에는 다시 prime하며, Windows 모니터 콜백이 main OUT 콜백보다 높은 우선순위로 실행되지 않도록 유지합니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
+> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 장치·드라이버·버퍼 설정에 따라 메인 출력 대비 추가 지연이 발생할 수 있습니다. Output 탭의 모니터 레이턴시는 메인 경로 총 추정값에 활성 모니터 장치 버퍼 추정값을 더해 표시합니다. adaptive PLL fractional playback으로 작은 독립 장치 clock drift를 흡수하고, 정상 drift 상황에서는 프레임을 버리지 않습니다. 부분 underrun 후에는 다시 prime하며, Windows 모니터 콜백이 main OUT 콜백보다 높은 우선순위로 실행되지 않도록 유지합니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
 > - **ASIO 드라이버 사용 (Windows)** — 입력과 출력이 하나의 ASIO 디바이스에서 처리되어 별도 모니터 장치 없이 최소 지연으로 자기 목소리를 들을 수 있습니다
-> - **하드웨어 다이렉트 모니터링** — 오디오 인터페이스 자체의 Direct Monitor 기능을 사용하면 컴퓨터를 거치지 않아 지연이 0입니다
+> - **하드웨어 다이렉트 모니터링** — 오디오 인터페이스 자체의 Direct Monitor 기능을 사용하면 DirectPipe의 소프트웨어 경로 지연을 피할 수 있습니다(하드웨어 변환 지연은 남을 수 있음)
 >
-> **⚠️ Monitor latency note**: Monitor output routes through a separate audio device, adding **~15-20ms extra latency** compared to the main output. DirectPipe uses adaptive PLL fractional playback for small independent-device clock drift, keeps the monitor callback below the main OUT callback priority, and re-primes after partial monitor underruns so small monitor buffers do not force OUT XRuns upward. If monitoring latency is noticeable, consider:
+> **⚠️ Monitor latency note**: Monitor output routes through a separate audio device, so added latency depends on its device, driver, and buffer settings. The Output tab monitor latency adds the active monitor-device buffer estimate to the main-path total estimate. DirectPipe uses adaptive PLL fractional playback for small independent-device clock drift, keeps the monitor callback below the main OUT callback priority, and re-primes after partial monitor underruns so small monitor buffers do not force OUT XRuns upward. If monitoring latency is noticeable, consider:
 > - **ASIO driver (Windows)** — Input and output share a single ASIO device, so you can hear yourself with minimal latency without a separate monitor device
-> - **Hardware direct monitoring** — Use your audio interface's built-in Direct Monitor feature for zero latency (bypasses the computer entirely)
+> - **Hardware direct monitoring** — Use your audio interface's built-in Direct Monitor feature to avoid DirectPipe's software-path latency (hardware conversion latency may remain)
 
 ### VST Receiver (IPC) / VST 리시버
 
@@ -751,9 +754,11 @@ DirectPipe/
     ├── plugin-cache.xml       ← 플러그인 스캔 캐시 / plugin scan cache
     ├── scanner-log.txt        ← 스캐너 로그 / scanner log
     └── Slots/                 ← 프리셋 슬롯 A-E + Auto / preset slots A-E + Auto
-        ├── slot_0.dppreset
-        ├── slot_1.dppreset
-        └── ...
+        ├── slot_A.dppreset
+        ├── slot_B.dppreset
+        ├── ...
+        ├── slot_E.dppreset
+        └── slot_Auto.dppreset
 ```
 
 **포터블 모드에 포함되지 않는 항목 / Not included in portable mode:**
@@ -1006,9 +1011,11 @@ During streams, taking hands off the keyboard is difficult. Use Stream Deck or M
 
 **Instantly compare** before/after effects. Works in real-time, even during streams.
 
-- **개별 Bypass / Individual Bypass**: 플러그인 행의 Bypass 토글 또는 **Ctrl+Shift+1~9** / Bypass toggle on plugin row or **Ctrl+Shift+1~9**
+- **개별 Bypass / Individual Bypass**: 플러그인 행의 Bypass 토글 또는 기본 단축키 **Ctrl+Shift+1~3**(Controls 탭에서 추가 가능) / Bypass toggle on plugin row or default hotkeys **Ctrl+Shift+1~3** (more can be added in Controls)
 - **마스터 Bypass / Master Bypass**: **Ctrl+Shift+0** — 전체 VST 체인 한 번에 우회 (원본 마이크 소리) / Bypass entire VST chain at once (raw mic sound)
 - 모니터(헤드폰)로 실시간 확인하면서 OUT/VST 출력은 계속 유지 / Monitor in real-time via headphones while OUT/VST outputs remain active
+
+> **알려진 제한 / Known limitation**: 개별 플러그인 Bypass는 그래프에서 해당 노드를 우회하므로 리버브·딜레이 잔향이 즉시 끊깁니다. 자연스러운 tail 처리 방식은 `DP-VST-BYPASS-TAIL-0001`로 보류되어 있습니다. / Individual plugin bypass routes around the graph node, so reverb and delay tails stop immediately. Natural tail handling is deferred under `DP-VST-BYPASS-TAIL-0001`.
 
 > **활용**: EQ 세팅 조정 중 원본과 비교, 노이즈 제거 효과 확인, 컴프레서 세기 미세 조정 시. / Use cases: comparing with original during EQ tweaking, verifying noise removal effect, fine-tuning compressor settings.
 

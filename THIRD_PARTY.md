@@ -44,7 +44,7 @@ Path: `com.directpipe.directpipe.sdPlugin/`
 
 ### Runtime dependencies
 - `@elgato/streamdeck` (`^2.0.1`) — Elgato Stream Deck SDK bindings
-- `ws` (`^8.16.0`) — WebSocket client library
+- `ws` (`^8.21.0`) — WebSocket client library
 
 ### Dev/build dependencies
 - `rollup`, `@rollup/plugin-commonjs`, `@rollup/plugin-node-resolve` — bundling

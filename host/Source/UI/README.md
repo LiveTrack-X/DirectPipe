@@ -52,7 +52,7 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `PresetManager.h/cpp` | 프리셋 저장/로드 + 퀵 슬롯 A-E. 활성 슬롯 import는 파일군·runtime snapshot을 보존하고 성공 뒤 커밋, 실패 시 롤백 |
 | `PresetSlotBar.h/cpp` | A-E 프리셋 슬롯 버튼 (5개). Auto 슬롯(index 5)은 별도 Auto 버튼과 연동되며 A-E 순환에서 제외. 우클릭 컨텍스트 메뉴 |
 | `SettingsExporter.h/cpp` | 설정 내보내기/가져오기 — `.dpbackup` / `.dpfullbackup`, recording-folder 포함, 크로스-OS 및 부분 복원 오류 보고 |
-| `StatusUpdater.h/cpp` | 30Hz 타이머 틱에서 UI 상태 업데이트 (뮤트/레이턴시/CPU/레벨/게인 동기화). 색상 체계: INPUT(녹색/빨강), OUT/MON/VST(녹색/사용자뮤트빨강/패닉잠금진빨강), PANIC(대기=빨강, 활성=녹색 `UNMUTE`) |
+| `StatusUpdater.h/cpp` | 30Hz UI/WebSocket 상태 업데이트. 레이턴시는 입력·출력 버퍼 추정 + 콜백 실행시간 + 활성 chain PDC의 총 추정값이며, 모니터 값은 모니터 장치 버퍼를 추가. 뮤트/CPU/레벨/게인도 동기화 |
 | `StreamDeckTab.h/cpp` | WebSocket/HTTP 서버 상태 표시 + Start/Stop 토글 |
 | `UpdateChecker.h/cpp` | 백그라운드 GitHub 릴리스 확인 + Windows 인앱 업데이트. 반복 worker를 안전하게 reap하고 v4.2.0+ asset은 exact-name SHA-256을 fail-closed 검증 |
 | `UpdateScript.h/cpp` | Windows 업데이트 설치 배치의 staging/교체/rollback 구문을 생성하는 상태 없는 테스트 가능 헬퍼 |

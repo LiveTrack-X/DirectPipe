@@ -230,8 +230,8 @@ TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
         EXPECT_FALSE(writer.initialize(48000, 2, 1024));
         EXPECT_FALSE(writer.isConnected());
 
-        // This used to dereference RingBuffer pointers after initialize()
-        // had already unmapped their backing shared memory.
+        // Shutdown must remain safe when failed initialization has already
+        // unmapped the RingBuffer backing memory.
         writer.shutdown();
         EXPECT_FALSE(writer.isConnected());
     }

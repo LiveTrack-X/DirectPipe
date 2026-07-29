@@ -30,10 +30,12 @@
 namespace directpipe {
 
 /**
- * @brief Bundles application settings into a single exportable JSON file (.dpbackup).
+ * @brief Exports and restores settings-only and full application backups.
  *
- * Includes: audio device settings, output/monitor settings, and control mappings.
- * Does NOT include VST chain or preset slots (those are managed via slots A-E).
+ * Settings-only .dpbackup files contain audio, output/monitor, and control
+ * mappings but exclude the VST chain and quick slots. Full .dpfullbackup files
+ * also contain the recording folder, VST chain, and A-E + Auto slots; full
+ * restores use the transactional asynchronous path while a stable runtime is held.
  */
 class SettingsExporter {
 public:

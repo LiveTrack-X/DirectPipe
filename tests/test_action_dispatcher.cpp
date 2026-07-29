@@ -610,6 +610,32 @@ TEST(HttpApiServerTest, RejectsMissingPluginBypassTarget)
     EXPECT_EQ(status, 404);
 }
 
+TEST(HttpApiServerTest, PerformanceLatencyIncludesActiveChainPDC)
+{
+    ActionDispatcher dispatcher;
+    StateBroadcaster broadcaster;
+    AudioEngine engine;
+    HttpApiServer server(dispatcher, broadcaster, engine);
+
+    engine.getLatencyMonitor().reset(48000.0, 480);
+    auto& chain = engine.getVSTChain();
+    chain.prepareToPlay(48000.0, 480);
+    const auto added =
+        chain.addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemoval);
+    ASSERT_TRUE(added.success);
+    ASSERT_EQ(chain.getTotalChainPDC(), 480);
+
+    const auto [status, body] =
+        server.processRequestForTest("GET", "/api/perf");
+    ASSERT_EQ(status, 200);
+
+    const auto parsed = juce::JSON::parse(juce::String(body));
+    ASSERT_TRUE(parsed.isObject());
+    EXPECT_NEAR(static_cast<double>(
+                    parsed.getDynamicObject()->getProperty("latencyMs")),
+                30.0, 0.01);
+}
+
 TEST(HttpApiServerTest, RejectsInvalidListenPorts)
 {
     ActionDispatcher dispatcher;

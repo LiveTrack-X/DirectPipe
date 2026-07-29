@@ -34,11 +34,11 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     hostSampleRate_ = sampleRate;
 
-    // TODO: When sampleRate != 48000, set up LagrangeInterpolator resampling.
-    //       For now we only handle 48 kHz natively.
+    // TODO(DP-NOISE-RESAMPLE-0001): Add RT-safe conversion around RNNoise.
+    // Until then, non-48kHz input is intentionally passed through.
     needsResampling_.store(sampleRate != 48000.0, std::memory_order_relaxed);
 
-    // I5: Log when noise removal is inactive due to non-48kHz sample rate
+    // Surface the intentional passthrough state for diagnosis.
     if (needsResampling_.load(std::memory_order_relaxed)) {
         juce::Logger::writeToLog("WRN [AUDIO] BuiltinNoiseRemoval: sample rate "
             + juce::String(sampleRate) + "Hz -- noise removal INACTIVE (requires 48kHz)");
@@ -191,9 +191,8 @@ void BuiltinNoiseRemoval::processChannel(
     //   gateSmooth_ = exp(-1 / (SR * 0.020))
     //   At 48kHz: exp(-1/960) ≈ 0.9990, at 44.1kHz: exp(-1/882) ≈ 0.9989
     //
-    // NOTE: Was originally 5ms (0.9958 at 48kHz) but that was too abrupt -- the gate
-    // opening/closing was audible as a "click" between words. 20ms gives a
-    // smooth, natural fade that's imperceptible to listeners.
+    // The 20ms time constant avoids audible gate clicks between words while
+    // remaining short enough for natural speech transitions.
     // Recalculated from sample rate in prepareToPlay (member variable gateSmooth_).
 
     // IMPORTANT: RNNoise was trained on int16 audio data (range [-32767, +32767]).
@@ -292,9 +291,9 @@ void BuiltinNoiseRemoval::setStrength(int strength)
 
     float threshold;
     switch (strength) {
-        case 0:  threshold = 0.50f; break;  // Light (was 0.35)
-        case 2:  threshold = 0.90f; break;  // Aggressive (was 0.85)
-        default: threshold = 0.70f; break;  // Standard (was 0.60)
+        case 0:  threshold = 0.50f; break;  // Light
+        case 2:  threshold = 0.90f; break;  // Aggressive
+        default: threshold = 0.70f; break;  // Standard
     }
     vadThreshold_.store(threshold, std::memory_order_relaxed);
 }
@@ -323,7 +322,7 @@ void BuiltinNoiseRemoval::setStateInformation(const void* data, int sizeInBytes)
     if (auto* obj = parsed.getDynamicObject()) {
         if (obj->hasProperty("strength"))
             setStrength(static_cast<int>(obj->getProperty("strength")));
-        // I7: Restore custom VAD threshold (may differ from strength-derived default)
+        // A persisted advanced override takes precedence over the strength preset.
         if (obj->hasProperty("vadThreshold"))
             setVADThreshold(static_cast<float>(static_cast<double>(obj->getProperty("vadThreshold"))));
     }

@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 현재 구현된 기능을 기반으로 작성 (v4.2.1 기준)
+> 역기획서 — v4.2.2 릴리즈 구현을 기준으로 작성
 >
-> Reverse spec — written based on currently implemented features (as of v4.2.1)
+> Reverse spec — based on the released v4.2.2 implementation
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.2.1
+Released: 4.2.2
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- The v4.2.1 local Windows Release build and registered software tests were verified; real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
-- v4.2.1 로컬 Windows Release 빌드와 등록 소프트웨어 테스트를 검증했지만 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
+- The v4.2.2 local Windows Release host-test build and focused regressions were verified; exact-tag CI gates publication with cross-platform builds, registered tests, and package validation. Real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.2.2 로컬 Windows Release host-test 빌드와 집중 회귀 검사를 확인했으며 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 검증으로 공개를 게이트한다. 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -185,6 +185,8 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | `outputLatencyMs_` | 출력 버퍼 레이턴시 / Output buffer latency |
 | `cpuUsage_` | 콜백 시간 대비 처리 비율 (%) / Processing ratio relative to callback time (%) |
 | 스무딩 / Smoothing | 지수 이동 평균 / Exponential moving average, `kSmoothingFactor = 0.1` |
+| 사용자용 총 추정값 / User-facing total estimate | 입력 버퍼 + 출력 버퍼 + 콜백 실행시간 + 활성 그래프 보고 PDC / Input buffer + output buffer + callback execution time + active-graph reported PDC |
+| 제외 / Excluded | 하드웨어 루프백 실측, Receiver/OBS 버퍼 / Hardware loopback measurement and Receiver/OBS buffering |
 
 #### 4.1.8 Global Safety Guard (legacy SafetyLimiter names)
 | 항목 / Item | 상세 / Details |
@@ -203,9 +205,9 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 소스 / Source | `VSTChain::getPluginLatencies()` + `getTotalChainPDC()` — chainLock_ 하에서 각 플러그인의 PDC 조회 / queries each plugin's PDC under chainLock_ |
-| UI | Per-plugin latency display와 chain PDC summary는 UX 피드백으로 UI에서 제거됨 / Per-plugin latency display and chain PDC summary removed from UI (UX feedback) |
-| 보상 / Compensation | AudioProcessorGraph가 PDC 보상을 자동 처리 / AudioProcessorGraph handles PDC compensation automatically |
-| 상태 전파 / State Propagation | StateBroadcaster: `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms` (API에서 여전히 사용 가능 / still available via API) |
+| UI | 별도 per-plugin/chain 행은 표시하지 않고 활성 chain PDC를 하단 상태바 총 추정 레이턴시에 포함 / No separate per-plugin/chain row; active chain PDC is folded into the bottom status-bar total estimate |
+| 그래프 / Graph | AudioProcessorGraph가 활성 경로의 PDC를 추적하며 바이패스된 노드는 경로에서 제외 / AudioProcessorGraph tracks active-path PDC; bypassed nodes are excluded |
+| 상태 전파 / State Propagation | `latency_ms`는 PDC 포함 총 추정값. `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms`는 세부값 / `latency_ms` is the PDC-inclusive total estimate; plugin and chain PDC fields provide the breakdown |
 
 #### 4.1.10 Built-in Processors
 VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 프로세서 3종.
@@ -215,7 +217,7 @@ VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 
 | 프로세서 / Processor | 클래스 / Class | 상세 / Details |
 |---------|--------|------|
 | **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz / default ON, 60Hz) + LPF (기본 OFF, 16kHz / default OFF, 16kHz). 범위 / Range: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터 / IIR filters, atomic 파라미터 / atomic parameters. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
-| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-frame FIFO (~10ms 레이턴시 / ~10ms latency). 48kHz only (비-48kHz = 패스스루 / non-48kHz = passthrough, TODO: 리샘플링 / resampling). 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, SR 기반 재계산 / SR-dependent). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, SR 기반 재계산 / SR-dependent). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
+| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-frame FIFO (~10ms 레이턴시 / ~10ms latency). 48kHz only (비-48kHz = 패스스루 / non-48kHz = passthrough; deferred: `DP-NOISE-RESAMPLE-0001`). 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, SR 기반 재계산 / SR-dependent). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, SR 기반 재계산 / SR-dependent). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
 | **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC / LUFS-based AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 / default (범위 / range -24~-6, 내부적으로 -6dB 오프셋 적용하여 오픈루프 오버슈트 보정 / internal -6dB offset for open-loop overshoot compensation). Low Correct 0.50 기본 / default (hold↔full correction 블렌드, 부스트 / blend, boost). High Correct 0.90 기본 / default (hold↔full correction 블렌드, 컷 / blend, cut). Max Gain 22 dB 기본 / default. ITU-R BS.1770 K-weighting 사이드체인 / sidechain (copy, 실제 오디오 미적용 / not applied to actual audio). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음 / none), per-block linear ramp으로 click-free 전환 / for click-free transitions. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 / holds current gain on freeze (0dB 리셋 아님 / NOT reset to 0dB), -65 dBFS 미만 시 바이패스 / bypassed below -65 dBFS. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) / blend ratio between hold and full correction (NOT envelope speed). Fixed post limiter: limiter ceiling only user-facing (default -1.0 dBTP), fixed internal lookahead 1ms + release 50ms, constant latency path, final hard clamp. |
 
 **[Auto] 버튼 / [Auto] Button**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults. Auto Gain 내부에는 고정 post limiter가 포함됩니다.
@@ -394,7 +396,7 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 
 #### 4.5.3 키보드 핫키 / Keyboard Hotkeys
 
-**기본 매핑 (11개) / Default Mappings (11):**
+**기본 매핑 (12개) / Default Mappings (12):**
 | 핫키 / Hotkey | 액션 / Action | 파라미터 / Parameters |
 |------|------|---------|
 | Ctrl+Shift+M | PanicMute | — |
@@ -525,7 +527,7 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | `GET /api/mute/panic` | 패닉 뮤트 / Panic mute | — |
 | `GET /api/mute/toggle` | 마스터 뮤트 토글 / Master mute toggle | — |
 | `GET /api/volume/{target}/{value}` | 볼륨 설정 / Set volume | target: monitor(0~1)/input(0~2)/output(0~1). 범위 초과 시 400 / 400 on out-of-range |
-| `GET /api/volume/output/{value}` | 출력 볼륨 설정 / Set output volume | 0~1 범위 / range |
+| `GET /api/xrun/reset` | XRun 카운터 리셋 / Reset XRun counter | ActionDispatcher를 우회해 엔진에 직접 요청 / Direct engine request |
 | `GET /api/preset/{index}` | 프리셋 로드 / Load preset | A-E 슬롯 0~4 / A-E slots 0-4. Auto는 `/api/auto/add` 사용 / use `/api/auto/add` for Auto |
 | `GET /api/slot/{index}` | 슬롯 전환 / Switch slot | A-E 슬롯 0~4 / A-E slots 0-4. Auto는 `/api/auto/add` 사용 / use `/api/auto/add` for Auto |
 | `GET /api/gain/{delta}` | 입력 게인 조정 / Adjust input gain | float 델타 / delta |
@@ -604,8 +606,8 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
     "output_muted": false,
     "input_muted": false,
     "preset": "Default",
-    "latency_ms": 10.5,
-    "monitor_latency_ms": 12.0,
+    "latency_ms": 22.9,
+    "monitor_latency_ms": 32.9,
     "level_db": -25.5,
     "cpu_percent": 5.2,
     "sample_rate": 48000.0,
@@ -689,7 +691,7 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | 샘플레이트 ComboBox / Sample Rate ComboBox | 장치에서 동적 팝업 / Dynamic popup from device |
 | 버퍼 크기 ComboBox / Buffer Size ComboBox | 장치에서 동적 팝업 / Dynamic popup from device |
 | Mono/Stereo 토글 버튼 / Mono/Stereo Toggle Button | 채널 모드 전환 / Channel mode switching |
-| 레이턴시 라벨 / Latency Label | "-- ms" 또는 / or "10.5 ms" 실시간 표시 / real-time display |
+| 레이턴시 라벨 / Latency Label | 입력+출력 버퍼 단순 추정치 `2 × buffer / sample rate`; 상태바 총 추정값과 구분 / Simple input+output buffer estimate; distinct from the status-bar total |
 | 출력 볼륨 슬라이더 / Output Volume Slider | Output Volume (0.0~1.0) — Audio 탭에서 출력 볼륨 조절 / output volume control in Audio tab |
 | ASIO Control Panel 버튼 / ASIO Control Panel Button | ASIO 모드에서만 표시 / Shown only in ASIO mode (Windows only). 드라이버 설정 패널 열기 / Opens driver settings panel |
 
@@ -777,7 +779,7 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 #### 4.6.6 상태 바 / Status Bar (30px)
 | 요소 / Element | 설명 / Description |
 |------|------|
-| 레이턴시 라벨 / Latency Label | 메인 + 모니터 레이턴시. 녹음 중 자동 숨김 / Main + monitor latency. Auto-hidden during recording |
+| 레이턴시 라벨 / Latency Label | 메인: 입력·출력 버퍼 추정 + 콜백 실행시간 + 활성 chain PDC. `Mon`: 메인 총값 + 모니터 장치 버퍼. 하드웨어 루프백 실측 및 Receiver/OBS 버퍼 제외. 녹음 중 자동 숨김 / Main: estimated I/O buffers + callback execution time + active-chain PDC. `Mon`: main total + monitor-device buffer. Excludes hardware loopback measurement and Receiver/OBS buffering. Auto-hidden during recording |
 | CPU% 라벨 / CPU% Label | 오디오 콜백 오버로드 시 빨간 하이라이트 / Red highlight on audio callback overload |
 | 포맷 라벨 / Format Label | "48kHz 512 Stereo" 형식 / format |
 | 포터블 라벨 / Portable Label | 포터블 모드에서만 표시 (노란 배경) / Shown only in portable mode (yellow background) |
@@ -952,7 +954,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.2.1" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.2.2" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1086,7 +1088,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.2.1",
+  "appVersion": "4.2.2",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1109,7 +1111,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.2.1",
+  "appVersion": "4.2.2",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */
@@ -1231,7 +1233,7 @@ DirectPipe/
 │   ├── Resources/                  → 아이콘 / Icons (16~512px PNG + SVG)
 │   └── Source/
 │       ├── Main.cpp                → 앱 진입점, 트레이, 스캐너 모드 / App entry point, tray, scanner mode
-│       ├── MainComponent.h/cpp     → 메인 UI 레이아웃 / Main UI layout (~729줄/lines, 헬퍼 클래스에 위임 / delegates to helper classes)
+│       ├── MainComponent.h/cpp     → 메인 UI 레이아웃, 헬퍼 클래스에 책임 위임 / Main UI layout, delegates responsibilities to helper classes
 │       ├── ActionResult.h          → 성공/실패 반환 타입 / Success/failure return type (ok/fail/bool 변환 / conversion)
 │       ├── Audio/
 │       │   ├── AudioEngine.h/cpp       → 오디오 콜백, 장치 관리, 재연결, XRun / Audio callback, device management, reconnection, XRun
@@ -1253,12 +1255,12 @@ DirectPipe/
 │       │   ├── ActionHandler.h/cpp     → 중앙 액션 이벤트 처리 / Central action event handling (MainComponent에서 추출 / extracted from MainComponent)
 │       │   ├── SettingsAutosaver.h/cpp → dirty-flag + 디바운스 자동 저장 / dirty-flag + debounce auto-save (MainComponent에서 추출 / extracted from MainComponent)
 │       │   ├── ControlManager.h        → 컨트롤 핸들러 소유 / Control handler ownership, configStore_
-│       │   ├── ControlMapping.cpp      → 기본 핫키 11개 / 11 default hotkeys
+│       │   ├── ControlMapping.cpp      → 기본 핫키 12개 / 12 default hotkeys
 │       │   ├── WebSocketServer.h/cpp   → RFC 6455, UDP 디스커버리 / discovery, 19 명령 / commands
 │       │   ├── HttpApiServer.cpp       → REST API, 23 엔드포인트 / endpoints, CORS
 │       │   ├── HotkeyHandler.h/cpp     → RegisterHotKey, 글로벌 핫키 / global hotkeys
 │       │   ├── MidiHandler.h/cpp       → CC/Note, Learn, 4 바인딩 타입 / 4 binding types
-│       │   ├── StateBroadcaster.h/cpp  → 26필드 상태 JSON / 26-field state JSON, 해시 기반 더티 체크 / hash-based dirty check
+│       │   ├── StateBroadcaster.h/cpp  → `data` 최상위 27필드 상태 JSON / 27 top-level `data` fields, 해시 기반 더티 체크 / hash-based dirty check
 │       │   ├── DirectPipeLogger.h/cpp  → 링 버퍼 로깅 / Ring buffer logging, 13 카테고리 / categories
 │       │   └── Log.h/cpp              → 로그 유틸리티 / Log utilities, 스코프드 타이머 / scoped timer
 │       ├── IPC/
@@ -1292,14 +1294,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.1.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.2.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host + endpoint, 484 CTest registrations)
+├── tests/                          → Google Test (core + host + endpoint, current `main`: 490 CTest registrations)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin

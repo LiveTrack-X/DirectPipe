@@ -258,6 +258,13 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         Log::warn("AUDIO", "Buffer truncation detected — consider increasing buffer size");
 
     auto& monitor = engine_.getLatencyMonitor();
+    auto& chain = engine_.getVSTChain();
+    const double sampleRate = monitor.getSampleRate();
+    const int chainPDCSamples = chain.getTotalChainPDC();
+    const double chainPDCMs =
+        (sampleRate > 0.0 && chainPDCSamples > 0)
+            ? static_cast<double>(chainPDCSamples) / sampleRate * 1000.0
+            : 0.0;
     bool muted = engine_.isMuted();
 
     // ── Level meters ──
@@ -343,7 +350,9 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     }
 
     // ── Latency label ──
-    double mainLatency = monitor.getTotalLatencyVirtualMicMs();
+    // User-facing total: estimated device buffers + measured callback execution
+    // time + algorithmic latency reported by the active plugin graph.
+    double mainLatency = monitor.getTotalLatencyVirtualMicMs() + chainPDCMs;
     auto& monOut = engine_.getMonitorOutput();
     auto& router = engine_.getOutputRouter();
     bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
@@ -425,7 +434,6 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     }
 
     // ── Broadcast state to WebSocket clients (Stream Deck, etc.) ──
-    auto& chain = engine_.getVSTChain();
     broadcaster_.updateState([&](AppState& s) {
         s.inputGain = engine_.getInputGain();
         s.monitorVolume = router.getVolume(OutputRouter::Output::Monitor);
@@ -517,10 +525,8 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
             s.masterBypassed = anyLoaded && allLoadedBypassed;
         }
 
-        s.chainPDCSamples = chain.getTotalChainPDC();
-        double sr = monitor.getSampleRate();
-        s.chainPDCMs = (sr > 0.0 && s.chainPDCSamples > 0)
-            ? static_cast<float>(s.chainPDCSamples) / static_cast<float>(sr) * 1000.0f : 0.0f;
+        s.chainPDCSamples = chainPDCSamples;
+        s.chainPDCMs = static_cast<float>(chainPDCMs);
 
         if (pm) {
             for (int si = 0; si < numPresetSlots; ++si)

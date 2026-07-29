@@ -15,7 +15,7 @@ DirectPipe Stream Deck 플러그인은 WebSocket으로 호스트에 연결하여
 | **Monitor Toggle** | Toggle monitor output (headphones) on/off. / 모니터 출력(헤드폰) 켜기/끄기. |
 | **Recording Toggle** | Start/stop audio recording to WAV. Shows elapsed time. / 오디오 녹음 시작/중지. 경과 시간 표시. |
 | **IPC Toggle** | Toggle IPC output (DirectPipe Receiver) on/off. / IPC 출력(DirectPipe Receiver) 켜기/끄기. |
-| **Performance Monitor** | Display latency, CPU usage, XRun count. Button press resets XRun counter. / 레이턴시, CPU 사용률, XRun 카운트 표시. 버튼 누름으로 XRun 카운터 초기화. |
+| **Performance Monitor** | Display total estimated latency (including active-chain reported PDC), CPU usage, XRun count. Button press resets XRun counter. / 활성 chain 보고 PDC를 포함한 총 추정 레이턴시, CPU 사용률, XRun 카운터 표시 |
 | **Plugin Parameter** *(SD+)* | Control individual VST plugin parameters via SD+ dial. / SD+ 다이얼로 개별 VST 플러그인 파라미터 제어. |
 | **Preset Bar** *(SD+)* | Show current preset slot name on SD+ touchscreen, cycle presets with dial. / SD+ 터치스크린에 현재 프리셋 슬롯 이름 표시, 다이얼로 프리셋 순환. |
 
@@ -199,7 +199,7 @@ Supports both Keypad and SD+ Encoder (dial). / 키패드와 SD+ 인코더 (다�
 - **Keypad press** — Reset XRun counter / XRun 카운터 초기화
 - **Encoder dial press** — Reset XRun counter / XRun 카운터 초기화
 
-**Display:** Shows latency (ms), CPU usage (%), and XRun count. / 레이턴시 (ms), CPU 사용률 (%), XRun 카운트 표시.
+**Display:** Shows total estimated latency (ms; estimated I/O buffers + callback execution time + active-chain reported PDC), CPU usage (%), and XRun count. This is not hardware loopback measurement and excludes Receiver/OBS buffering. / 총 추정 레이턴시, CPU 사용률, XRun 카운터 표시.
 
 **Settings (Property Inspector):**
 - `displayMode` — `"all"` (default), `"latency"`, or `"cpu"` / 표시 모드 선택
@@ -290,7 +290,7 @@ Dual-app setup with VB-Cable (Discord) + DirectPipe Receiver (OBS) + Monitor (he
 
 ### SDK Version / SDK 버전
 
-Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.2.1.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.2.1.0. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.2.2.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.2.2.0. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket 클라이언트 / WebSocket Client (`websocket-client.js`)
 

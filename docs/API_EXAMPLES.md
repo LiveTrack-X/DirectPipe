@@ -603,7 +603,8 @@ client.run(BOT_TOKEN)
 
 ## 7. AutoHotkey v2 — 커스텀 글로벌 핫키
 
-DirectPipe에 내장된 핫키(Ctrl+Shift+1~9, F1~F5 등)로 부족할 때,
+DirectPipe의 기본 핫키(Ctrl+Shift+1~3, Ctrl+Shift+F1~F5 등)나
+Controls 탭의 사용자 지정만으로 부족할 때,
 AutoHotkey로 더 복잡한 조합이나 매크로를 만들 수 있다.
 
 > [AutoHotkey v2 다운로드](https://www.autohotkey.com/)
@@ -1137,10 +1138,10 @@ AutoHotkey로 커스텀 핫키:
 | `GET /api/plugin/:p/param/:i/:v` | 플러그인 파라미터 설정 / Set plugin parameter |
 | `GET /api/midi/cc/:ch/:num/:val` | MIDI CC 테스트 / Test MIDI CC |
 | `GET /api/midi/note/:ch/:num/:vel` | MIDI Note 테스트 / Test MIDI Note |
-| `GET /api/plugins` | 로드된 플러그인 목록 / List loaded plugins |
+| `GET /api/plugins` | 보고 레이턴시(`latencySamples`)를 포함한 로드 플러그인 목록 / List loaded plugins including reported latency |
 | `GET /api/plugin/:idx/params` | 플러그인 파라미터 목록 / List plugin parameters |
 | `GET /api/xrun/reset` | XRun 카운터 리셋 / Reset XRun counter |
-| `GET /api/perf` | 성능 통계 / Performance stats |
+| `GET /api/perf` | PDC 포함 총 추정 레이턴시를 사용하는 성능 통계 / Performance stats using the PDC-inclusive total estimate |
 | `GET /api/limiter/toggle` | Safety Guard 토글 (legacy limiter endpoint) / Toggle Safety Guard (legacy limiter endpoint) |
 | `GET /api/limiter/ceiling/:value` | Safety Guard ceiling 설정 (-6.0~0.0, legacy limiter endpoint) / Set Safety Guard ceiling (legacy limiter endpoint) |
 | `GET /api/auto/add` | 내장 프로세서 추가 / Add auto processors |
@@ -1165,8 +1166,8 @@ AutoHotkey로 커스텀 핫키:
 | `auto_slot_active` | bool | **Deprecated** — `active_slot == 5`에서 자동 파생. 하위 호환용. |
 | `slot_names` | array | 슬롯 이름 배열 (6개: A-E + Auto, 빈 문자열 = 이름 없음) |
 | `preset` | string | 현재 프리셋 이름 |
-| `latency_ms` | number | 메인 레이턴시 (ms) |
-| `monitor_latency_ms` | number | 모니터 레이턴시 (ms) |
+| `latency_ms` | number | 메인 총 추정 레이턴시: 입력·출력 버퍼 추정 + 콜백 실행시간 + 활성 chain 보고 PDC (하드웨어 루프백 및 Receiver/OBS 버퍼 제외) |
+| `monitor_latency_ms` | number | 메인 총 추정값 + 모니터 장치 버퍼 추정값 (모니터 비활성 시 0) |
 | `level_db` | number | 입력 레벨 (dBFS) |
 | `cpu_percent` | number | 오디오 CPU 사용률 (%) |
 | `sample_rate` | number | 샘플레이트 (Hz) |

@@ -2,6 +2,113 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## DirectPipe v4.2.2
+
+v4.2.2 makes the latency shown by DirectPipe a complete main-path estimate:
+input/output buffers, measured callback execution time, and the active plug-in
+chain's reported PDC are now combined in the bottom status bar and control APIs.
+
+v4.2.2는 DirectPipe가 표시하는 레이턴시를 메인 경로의 총 추정값으로
+개선합니다. 입력/출력 버퍼, 측정된 callback 실행시간, 활성 플러그인 체인이
+보고한 PDC를 합산해 하단 상태바와 control API에 동일하게 제공합니다.
+
+The IPC wire ABI remains protocol v1. Preset schema, Stream Deck action
+UUIDs/request payloads, and plug-in identities remain compatible with v4.2.x.
+Existing control-state fields retain their schema.
+
+IPC wire ABI는 protocol v1을 유지합니다. preset schema, Stream Deck action
+UUID/request payload, 플러그인 식별자는 v4.2.x 호환성을 유지하며 기존
+control-state field schema도 그대로입니다.
+
+### Highlights / 주요 변경
+
+- **Total estimated latency**: The bottom-left status value, WebSocket
+  `state.data.latency_ms`, and HTTP `/api/perf` `latencyMs` now combine estimated
+  input/output buffers, callback execution time, and active-chain reported PDC.
+  Bypassed plug-ins are excluded.
+- **총 추정 레이턴시**: 하단 왼쪽 상태값, WebSocket
+  `state.data.latency_ms`, HTTP `/api/perf` `latencyMs`가 입력/출력 버퍼
+  추정치, callback 실행시간, 활성 체인 보고 PDC를 합산합니다. bypass된
+  플러그인은 제외합니다.
+- **Inspectable PDC**: Existing `chain_pdc_samples` and `chain_pdc_ms` fields
+  expose the chain total while each plug-in reports its own `latency_samples`.
+- **확인 가능한 PDC**: 기존 `chain_pdc_samples`, `chain_pdc_ms` 필드가 체인
+  합계를 제공하고 각 플러그인은 자체 `latency_samples`를 보고합니다.
+- **Initial state correctness**: The first snapshot now reports Stereo
+  (`channel_mode: 2`), matching the AudioEngine default.
+- **초기 상태 정합성**: 첫 snapshot이 AudioEngine 기본값과 같은 Stereo
+  (`channel_mode: 2`)를 보고합니다.
+- **Documentation sync**: API/state counts, hotkeys, slot filenames, Stream Deck
+  metadata, latency definitions, known DSP limitations, and comment rules were
+  synchronized with the implementation.
+- **문서 동기화**: API/state 개수, 단축키, slot 파일명, Stream Deck metadata,
+  레이턴시 정의, 알려진 DSP 제한, 주석 원칙을 구현과 동기화했습니다.
+
+### Upgrade Notes / 업그레이드 안내
+
+- Update the DirectPipe host to receive the new total-latency display and
+  `latency_ms` calculation.
+  Receiver/VST replacement is not required for IPC compatibility because the
+  protocol and shared-memory layout are unchanged.
+- 새 총 레이턴시 표시와 `latency_ms` 계산을 사용하려면 DirectPipe host를
+  업데이트하세요.
+  IPC protocol과 공유 메모리 layout은 그대로이므로 호환을 위해 Receiver/VST를
+  반드시 교체할 필요는 없습니다.
+- Existing Stream Deck packages continue to receive `latency_ms` without an
+  action/request-schema change. The 4.2.2 package is recommended for version
+  alignment, not required by a breaking protocol change.
+- 기존 Stream Deck 패키지도 action/request schema 변경 없이 `latency_ms`를
+  계속 받습니다. 4.2.2 패키지는 버전 정합성을 위해 권장하지만 breaking
+  protocol 변경 때문에 필수인 것은 아닙니다.
+- Existing v4.2.x presets and settings remain compatible.
+- 기존 v4.2.x preset과 설정은 호환됩니다.
+
+### Measurement Boundary / 측정 범위
+
+- The displayed value is a software estimate, not hardware loopback
+  measurement. Hidden converter/driver latency, Receiver/OBS buffering,
+  scheduling, and downstream buffering are excluded.
+- 표시값은 소프트웨어 추정치이며 하드웨어 loopback 실측값이 아닙니다. 숨은
+  converter/driver 지연, Receiver/OBS buffering, scheduling, 후단 buffering은
+  포함하지 않습니다.
+- Incorrect latency reported by a plug-in can make the estimate differ from
+  actual end-to-end latency.
+- 플러그인이 잘못된 지연을 보고하면 추정치와 실제 end-to-end 지연이 다를 수
+  있습니다.
+
+### Validation / 검증
+
+- The local Windows Release host-test target compiled successfully, focused
+  latency/control regressions passed, and 490 CTest registrations were
+  discovered.
+- 로컬 Windows Release host-test target compile, 집중 레이턴시/control 회귀
+  검사, CTest 490개 등록 확인을 완료했습니다.
+- Stream Deck dependency audits reported 0 vulnerabilities; tests passed 5/5,
+  and the production bundle build and package validation succeeded before
+  tagging.
+- 태그 전 Stream Deck dependency audit 취약점 0건, 테스트 5/5, production
+  bundle build, package validation을 확인했습니다.
+- Exact-tag CI must pass Windows, macOS, Linux, and Stream Deck build/test/package
+  gates before publishing this release.
+- 정확 태그 CI가 Windows, macOS, Linux, Stream Deck 빌드·테스트·패키지
+  게이트를 통과한 뒤에만 이 릴리즈를 공개합니다.
+- Real-device audio, third-party VST crash containment, and macOS/Linux hardware
+  checks were not run.
+- 실기기 오디오, 제3자 VST crash containment, macOS/Linux 하드웨어 검증은
+  수행하지 않았습니다.
+
+### Downloads / 다운로드
+
+- `DirectPipe-v4.2.2-Windows.zip` — Windows stable artifact, CI-built.
+- `DirectPipe-v4.2.2-macOS.dmg` — macOS beta artifact, CI-built.
+- `DirectPipe-v4.2.2-Linux.tar.gz` — Linux experimental artifact, CI-built.
+- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 4.2.2 package.
+- `checksums.sha256` — SHA-256 manifest generated after all artifacts are built.
+
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.1...v4.2.2
+
+---
+
 ## DirectPipe v4.2.1
 
 v4.2.1 is a reliability hotfix for recording, real-time audio lifecycle,

@@ -62,7 +62,7 @@ LatencyMonitor.markCallbackEnd()
 | `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, low-watermark priming, adaptive PLL fractional playback, near-overflow emergency trim |
 | `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 장치 콜백(consumer), integer read/discard 및 fractional interpolated read 지원 |
 | `AudioRecorder.h/cpp` | WAV 파일 녹음. start/stop writer 상태를 SpinLock으로 선형화하고 RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
-| `LatencyMonitor.h/cpp` | 오디오 경로 레이턴시 측정 (입력/처리/출력 버퍼). CPU 사용률 계산 |
+| `LatencyMonitor.h/cpp` | 입력·출력 버퍼 주기 추정과 콜백 실행시간 측정, CPU 사용률 계산. 사용자용 총 추정 레이턴시는 StatusUpdater/HTTP가 활성 chain PDC를 추가 |
 | `PluginPreloadCache.h/cpp` | 프리셋 슬롯 전환용 플러그인 인스턴스 백그라운드 프리로딩. 캐시 hit 시 DLL 로딩 건너뜀 |
 | `PluginLoadHelper.h` | 크로스플랫폼 플러그인 인스턴스 생성 헬퍼 (header-only). macOS에서 AppKit 메인 스레드 디스패치 |
 | `SafetyLimiter.h/cpp` | RT-safe global Safety Guard (legacy class name). Atomic params (enabled, ceiling). Zero-latency stereo-linked sample-peak guard, instant attack, 50ms release smoothing, hard ceiling clamp. GR feedback for UI. Final `Safety Volume` trim (enable + dB) is applied in `AudioEngine` after guard processing |

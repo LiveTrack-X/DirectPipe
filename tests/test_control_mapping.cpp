@@ -42,9 +42,9 @@ protected:
 
 TEST_F(ControlMappingTest, DefaultsHaveHotkeys) {
     auto config = ControlMappingStore::createDefaults();
-    // 9 bypass (1-9) + master (0) + panic + input mute + output mute +
-    // monitor + IPC + 5 slots = 21
-    EXPECT_GE(config.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
+    // Curated conflict-free defaults: panic + master + 3 plugin bypass +
+    // input mute + monitor + 5 preset slots.
+    EXPECT_EQ(config.hotkeys.size(), 12u);
 }
 
 TEST_F(ControlMappingTest, DefaultsHaveNoMidi) {
@@ -250,20 +250,19 @@ TEST_F(ControlMappingTest, IntParam2Roundtrip) {
 TEST_F(ControlMappingTest, LoadNonexistentReturnsDefaults) {
     auto nonexistent = tempDir_.getChildFile("does_not_exist.json");
     auto loaded = store_.load(nonexistent);
-    // Should return defaults, not empty
-    EXPECT_GE(loaded.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
+    EXPECT_EQ(loaded.hotkeys.size(), 12u);
 }
 
 TEST_F(ControlMappingTest, LoadInvalidJsonReturnsDefaults) {
     testFile_.replaceWithText("this is not json { garbage");
     auto loaded = store_.load(testFile_);
-    EXPECT_GE(loaded.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
+    EXPECT_EQ(loaded.hotkeys.size(), 12u);
 }
 
 TEST_F(ControlMappingTest, LoadEmptyFileReturnsDefaults) {
     testFile_.replaceWithText("");
     auto loaded = store_.load(testFile_);
-    EXPECT_GE(loaded.hotkeys.size(), 5u);  // reduced defaults (11 conflict-free hotkeys)
+    EXPECT_EQ(loaded.hotkeys.size(), 12u);
 }
 
 TEST_F(ControlMappingTest, LoadEmptyObjectReturnsEmptyConfig) {

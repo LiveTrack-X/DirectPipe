@@ -245,12 +245,12 @@ node test_api.js
 57. 녹음 중 장치 변경 → 녹음 자동 중지
 
 ### 단축키
-58. Ctrl+Shift+1~9 → 해당 플러그인 바이패스 토글
-59. F1~F5 → 슬롯 A~E 전환
-60. Ctrl+Shift+O → Output Mute 토글
-61. Ctrl+Shift+H → Monitor 토글
-62. Ctrl+Shift+I → IPC 토글
-63. Controls > Hotkeys 탭에서 단축키 변경 → 반영 확인
+58. Ctrl+Shift+1~3 → 해당 플러그인 바이패스 토글
+59. Ctrl+Shift+F1~F5 → 슬롯 A~E 전환
+60. Ctrl+Shift+M → Panic Mute 토글
+61. Ctrl+Shift+F6 → Input Mute 토글
+62. Ctrl+Shift+H → Monitor 토글
+63. Controls > Hotkeys 탭에서 단축키 추가/변경(예: Output Mute 또는 IPC) → 반영 확인
 
 ### MIDI
 64. MIDI 장치 연결 → Controls > MIDI 탭에서 인식
@@ -296,7 +296,7 @@ node test_api.js
 92. Controls 서브탭(Hotkeys/MIDI/Stream Deck) 전환 → 정상
 93. 창 리사이즈 → 레이아웃 정상 유지
 94. 한글/CJK 장치 이름 → □□□ 없이 정상 렌더링
-95. 상태바: 레이턴시(ms), CPU(%), XRun 카운트 표시
+95. 상태바: 활성 플러그인 추가/바이패스 시 보고 PDC만큼 총 추정 레이턴시가 증감하고 CPU(%), XRun 카운트도 표시
 96. XRun 발생 시 빨간 표시, 0이면 기본 색상
 97. 버전 라벨 "Created by LiveTrack" 하단 표시
 98. 새 버전 존재 시 "NEW vX.Y.Z" 주황 표시 → 클릭 시 업데이트 다이얼로그

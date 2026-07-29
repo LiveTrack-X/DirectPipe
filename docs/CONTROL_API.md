@@ -317,8 +317,8 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
     "output_muted": false,
     "input_muted": false,
     "preset": "Streaming Vocal",
-    "latency_ms": 5.2,
-    "monitor_latency_ms": 3.8,
+    "latency_ms": 5.6,
+    "monitor_latency_ms": 8.3,
     "level_db": -18.3,
     "cpu_percent": 3.1,
     "sample_rate": 48000,
@@ -367,8 +367,8 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
 | `auto_slot_active` | boolean | **Deprecated** — auto-derived from `active_slot == 5`. Kept for backward compat. / **Deprecated** — `active_slot == 5`에서 자동 파생. 하위 호환용. |
 | `slot_names` | array | Slot names (6 strings (A-E + Auto), empty = unnamed) / 슬롯 이름 (6개 (A-E + Auto), 빈 문자열 = 이름 없음) |
 | `preset` | string | Current preset name / 현재 프리셋 이름 |
-| `latency_ms` | number | Latency in ms / 레이턴시 (ms) |
-| `monitor_latency_ms` | number | Monitor output latency in ms / 모니터 출력 레이턴시 (ms) |
+| `latency_ms` | number | Total estimated main-path latency: estimated input/output buffers + callback execution time + active-chain reported PDC. Not a hardware loopback measurement; excludes Receiver/OBS buffering. / 메인 경로 총 추정 레이턴시 |
+| `monitor_latency_ms` | number | `latency_ms` plus the active monitor device buffer estimate; 0 when monitor is disabled / `latency_ms` + 모니터 장치 버퍼 추정값, 모니터 비활성 시 0 |
 | `level_db` | number | Input level in dBFS / 입력 레벨 (dBFS) |
 | `cpu_percent` | number | Audio CPU usage % / 오디오 CPU 사용률 |
 | `sample_rate` | number | Sample rate (Hz) / 샘플레이트 |
@@ -415,10 +415,10 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/recording/toggle` | Toggle audio recording on/off / 오디오 녹음 토글 |
 | `GET /api/ipc/toggle` | Toggle IPC output (DirectPipe Receiver) on/off / IPC 출력 (DirectPipe Receiver) 토글 |
 | `GET /api/plugin/:pluginIndex/param/:paramIndex/:value` | Set plugin parameter (0.0-1.0) / 플러그인 파라미터 설정 |
-| `GET /api/plugins` | List loaded plugins: `[{index, name, bypassed, loaded, parameterCount}]` / 로드된 플러그인 목록 |
+| `GET /api/plugins` | List loaded plugins: `[{index, name, bypassed, loaded, parameterCount, latencySamples}]` / 보고 레이턴시를 포함한 로드 플러그인 목록 |
 | `GET /api/plugin/:idx/params` | List plugin parameters: `[{index, name, value}]` / 플러그인 파라미터 목록 |
 | `GET /api/xrun/reset` | Reset XRun counter (bypasses ActionDispatcher, direct engine call) / XRun 카운터 리셋 (ActionDispatcher 우회, 엔진 직접 호출) |
-| `GET /api/perf` | Performance stats: `{latencyMs, cpuPercent, sampleRate, bufferSize, xrunCount}` / 성능 통계 |
+| `GET /api/perf` | Performance stats: `{latencyMs, cpuPercent, sampleRate, bufferSize, xrunCount}`. `latencyMs` uses the same PDC-inclusive total estimate as state `latency_ms`. / 상태 `latency_ms`와 동일한 PDC 포함 총 추정값 |
 | `GET /api/limiter/toggle` | Toggle global Safety Guard on/off (legacy endpoint name) / 전역 Safety Guard 토글 (레거시 엔드포인트 이름) |
 | `GET /api/limiter/ceiling/:value` | Set Safety Guard ceiling (-6.0 to 0.0 dBFS, legacy endpoint name) / Safety Guard 실링 설정 (레거시 엔드포인트 이름) |
 | `GET /api/auto/add` | Add built-in Filter+NoiseRemoval+AutoGain processors / 내장 프로세서 자동 추가 |
@@ -427,7 +427,7 @@ Base URL: `http://127.0.0.1:8766`
 
 **Action success response:** `{ "ok": true, "action": "..." }`
 
-**Data query responses:** `/api/status` returns `{ "type": "state", "data": { ... } }`, `/api/perf` returns `{ "latencyMs": ..., ... }`, `/api/plugins` and `/api/plugin/:idx/params` return JSON arrays.
+**Data query responses:** `/api/status` returns `{ "type": "state", "data": { ... } }`, `/api/perf` returns `{ "latencyMs": ..., ... }`, `/api/plugins` and `/api/plugin/:idx/params` return JSON arrays. `/api/status` `latency_ms` and `/api/perf` `latencyMs` share the same total-estimate formula.
 
 **Error response:** `{ "error": "..." }`
 

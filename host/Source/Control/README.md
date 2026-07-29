@@ -68,8 +68,8 @@ StateBroadcaster.updateState()
 | `HotkeyHandler.h/cpp` | 글로벌 키보드 단축키. Windows: `RegisterHotKey` + 메시지 창. macOS: `CGEventTap`. Linux: stub |
 | `MidiHandler.h/cpp` | MIDI CC/Note 매핑 및 Learn 모드. 핫플러그 감지. LED 피드백. `bindingsMutex_`로 바인딩 보호 |
 | `WebSocketServer.h/cpp` | RFC 6455 WebSocket 서버 (port 8765). 초기 상태 완료 후 broadcast-ready, 최신 상태 재조회, strict JSON 파라미터 검증, 유휴 중 client thread 회수. 실제 포트를 시작 즉시/2초 주기로 알리는 Stream Deck UDP 디스커버리 (port 8767) |
-| `HttpApiServer.h/cpp` | REST API 서버 (port 8766). GET-only. CORS/OPTIONS 지원. 상태 코드 404/405/400. 엔드포인트: status/perf/xrun-reset, volume, preset/slot, gain, bypass, recording, ipc, panic/input-mute, plugin param, **plugins (목록)**, **plugin/:idx/params**, **auto/add**, MIDI test injection |
-| `StateBroadcaster.h/cpp` | 앱 상태 스냅샷 (`AppState`) 관리 및 브로드캐스트. 메시지 스레드 리스너 전달 보장 |
+| `HttpApiServer.h/cpp` | REST API 서버 (port 8766). GET-only. CORS/OPTIONS 지원. `perf.latencyMs`는 상태바/WebSocket과 동일하게 활성 chain PDC를 포함한 총 추정값. 엔드포인트: status/perf/xrun-reset, volume, preset/slot, gain, bypass, recording, ipc, panic/input-mute, plugin param, plugins, auto/add, MIDI test injection |
+| `StateBroadcaster.h/cpp` | 앱 상태 스냅샷 (`AppState`) 관리 및 브로드캐스트. `latency_ms`는 활성 chain PDC 포함 총 추정값, `chain_pdc_*`는 세부값. 메시지 스레드 리스너 전달 보장 |
 | `Log.h/cpp` | 구조화 로깅 헬퍼. severity 레벨 (info/warn/error/audit), 카테고리 태그, RAII 타이머, 세션 헤더 |
 
 ---

@@ -2554,7 +2554,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     // Signal message-thread to resync xrun baseline counter (avoids data race
     // between device thread writing and message-thread timer reading).
-    // NOTE: Do NOT clear recentXRuns_ or history here device restarts (WASAPI
+    // NOTE: Do NOT clear recentXRuns_ or history here; device restarts (WASAPI
     // session events, internal JUCE recovery) would erase legitimate XRun display.
     // Only the user-initiated XRunReset action clears history.
     xrunBaselineResync_.store(true, std::memory_order_release);
@@ -2570,7 +2570,7 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     workBuffer_.clear();
 
     vstChain_.prepareToPlay(currentSampleRate_, currentBufferSize_);
-    // NOTE: chainCrashed_ is NOT reset here device events (WASAPI session changes,
+    // NOTE: chainCrashed_ is NOT reset here: device events (WASAPI session changes,
     // ASIO buffer size change) fire audioDeviceAboutToStart without any chain change,
     // which would silently re-enable a crashed chain. Instead, chainCrashed_ is cleared
     // by clearChainCrash() which is called from onChainModified (plugin add/remove/slot switch).
@@ -2830,7 +2830,8 @@ void AudioEngine::scheduleSameDeviceReopenAfterExternalRestart(
 // 2) 3s timer polling fallback (covers missed ChangeListener events).
 // reconnectMissCount_: after repeated misses, accept current device to avoid loop
 // unless startup restore or output loss requires waiting for an explicit target.
-// WARNING: desiredInputDevice_/desiredOutputDevice_Message thread only
+// WARNING: checkReconnection() is message-thread only. Access desired device
+// targets only while holding desiredDeviceLock_ because device callbacks also read them.
 // ===========================================================================
 void AudioEngine::checkReconnection()
 {
@@ -3098,7 +3099,7 @@ void AudioEngine::attemptReconnection()
 
 // NOTE: notifQueue_[slot] assignment copies a juce::String (heap allocation).
 // This is acceptable because pushNotification is only called from the device
-// error thread (audioDeviceError) and message thread never from the RT
+// error thread (audioDeviceError) and the message thread, never from the RT
 // audio callback. If a future caller needs to push from the RT callback,
 // switch to a fixed-size char array or pre-allocated string pool.
 void AudioEngine::pushNotification(const juce::String& msg, NotificationLevel level)

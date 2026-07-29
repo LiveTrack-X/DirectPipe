@@ -277,7 +277,7 @@ ControlConfig ControlMappingStore::createDefaults()
         config.hotkeys.push_back(hk);
     }
 
-    // Input mute toggle: Ctrl+Shift+F6 (was N, conflicted with Chrome incognito)
+    // Input mute uses F6 to avoid the common Ctrl+Shift+N browser conflict.
     {
         HotkeyMapping hk;
         hk.modifiers = HK_CTRL | HK_SHIFT;

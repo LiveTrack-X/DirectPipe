@@ -118,6 +118,19 @@ TEST_F(VSTChainTest, BypassToggle) {
     EXPECT_FALSE(chain_->isPluginBypassed(0));
 }
 
+TEST_F(VSTChainTest, ReportedTotalLatencyTracksActiveChain) {
+    addBuiltin(PluginSlot::Type::BuiltinNoiseRemoval);
+    addBuiltin(PluginSlot::Type::BuiltinAutoGain);
+
+    EXPECT_EQ(chain_->getTotalChainPDC(), 528);  // 480 + 48 samples
+
+    chain_->setPluginBypassed(0, true);
+    EXPECT_EQ(chain_->getTotalChainPDC(), 48);
+
+    chain_->setPluginBypassed(1, true);
+    EXPECT_EQ(chain_->getTotalChainPDC(), 0);
+}
+
 // Test 6: Each built-in type correctly reports its type via getPluginSlot
 TEST_F(VSTChainTest, PluginSlotType) {
     addBuiltin(PluginSlot::Type::BuiltinFilter);
