@@ -15,12 +15,13 @@ v4.2.7은 회수된 v4.2.6 빌드를 대체합니다. 자동 ASIO 후보를 수�
 updater 동작을 강화합니다.
 
 The v4.2.6 source tag and assets remain available for provenance, but its
-GitHub Release is marked withdrawn/prerelease and is not recommended. v4.2.3
-remains the public stable version until exact-tag v4.2.7 CI succeeds.
+GitHub Release is marked withdrawn/prerelease and is not recommended. v4.2.7
+is the current public stable release after exact-tag CI run `30571612012`
+completed successfully.
 
 v4.2.6 소스 태그와 자산은 출처 추적용으로 유지하지만 GitHub Release는
-withdrawn/prerelease로 표시하며 설치를 권장하지 않습니다. 정확 태그
-v4.2.7 CI가 성공하기 전까지 공개 안정판은 v4.2.3입니다.
+withdrawn/prerelease로 표시하며 설치를 권장하지 않습니다. v4.2.7은
+정확 태그 CI run `30571612012`를 통과한 현재 공개 안정판입니다.
 
 ### Highlights / 주요 변경
 
@@ -33,7 +34,7 @@ v4.2.7 CI가 성공하기 전까지 공개 안정판은 v4.2.3입니다.
 - **Input-front dual mono**: Mono opens the selected input pair, averages L+R
   before the VST chain, duplicates the mono signal to internal L/R, and sends
   the processed two-channel result to the selected output pair.
-- **입력단 dual mono**: Mono는 선택한 입력 L/R을 VST 체인 전에 평균 합산하고
+- **입력단 dual mono**: Mono는 선택한 입력 L/R의 평균을 VST 체인 전에 만들고
   같은 신호를 내부 L/R로 복제한 뒤 처리된 2채널 결과를 선택한 출력 쌍에
   보냅니다.
 - **Legacy mask repair**: A v4.2.6 one-channel Mono mask expands to its pair on
@@ -93,12 +94,15 @@ v4.2.7 CI가 성공하기 전까지 공개 안정판은 v4.2.3입니다.
   2개 건너뜀, 실패 0개로 완료했습니다(59 core + 507 host + 2 focused
   endpoint). Stream Deck 테스트 22/22과 lint, dependency audit, production
   bundle, 공식 validation·packaging도 통과했습니다.
-- v4.2.7 is published only after exact-tag cross-platform builds, all registered
+- Exact-tag CI run `30571612012` passed cross-platform builds, all registered
   tests, Stream Deck audit/build/validation/official packaging, Windows
-  executable identity and signature-state checks, and checksum generation pass.
-- v4.2.7은 정확 태그의 전체 플랫폼 빌드, 등록 테스트, Stream Deck
-  audit/build/검증/공식 패키징, Windows 실행 파일 신원·서명 상태,
-  checksum 생성이 모두 통과한 경우에만 게시합니다.
+  executable identity and signature-state checks, checksum generation, and
+  release publication. Public downloads and their hashes were independently
+  verified against `checksums.sha256`.
+- 정확 태그 CI run `30571612012`는 전체 플랫폼 빌드, 등록 테스트,
+  Stream Deck audit/build/검증/공식 패키징, Windows 실행 파일 신원·서명
+  상태, checksum 생성과 릴리즈 게시를 모두 통과했습니다. 공개 다운로드와
+  해시는 `checksums.sha256`을 기준으로 독립 확인했습니다.
 - No trusted Windows code-signing certificate is configured, so the Windows
   package is explicitly unsigned and may still trigger browser/SmartScreen
   reputation warnings. Verify `checksums.sha256`.
@@ -110,7 +114,7 @@ v4.2.7 CI가 성공하기 전까지 공개 안정판은 v4.2.3입니다.
 - 실기기 오디오, 제3자 VST crash containment, macOS/Linux 하드웨어 동작은
   검증하지 않았습니다.
 
-### Planned downloads / 예정 다운로드
+### Downloads / 다운로드
 
 - `DirectPipe-v4.2.7-Windows.zip`
 - `DirectPipe-v4.2.7-macOS.dmg`
@@ -121,6 +125,10 @@ v4.2.7 CI가 성공하기 전까지 공개 안정판은 v4.2.3입니다.
 **Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.7
 
 **전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.7
+
+**Release**: https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.7
+
+**Release commit**: `c96415d4e7ff906460f501c786163a05dcb128a5`
 
 ---
 

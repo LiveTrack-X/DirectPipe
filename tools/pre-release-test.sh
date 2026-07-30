@@ -120,7 +120,7 @@ else
   # README.md badge/link (optional -- may not have version badge)
   if [[ -f README.md ]]; then
     if grep -Eq "(version-|latest-v|v)[0-9]+\.[0-9]+\.[0-9]+" README.md 2>/dev/null; then
-      if grep -Eq "(latest|candidate)-v${CANONICAL}-" README.md 2>/dev/null; then
+      if grep -Eq "(latest|candidate|release)-v${CANONICAL}-" README.md 2>/dev/null; then
         pass "README.md badge"
       else
         fail "README.md badge"; VER_FAIL=$((VER_FAIL+1))
@@ -163,8 +163,8 @@ else
 
   # docs/USER_GUIDE.md
   if [[ -f docs/USER_GUIDE.md ]]; then
-    if grep -q "Version [0-9]" docs/USER_GUIDE.md 2>/dev/null; then
-      if grep -q "Version $CANONICAL" docs/USER_GUIDE.md 2>/dev/null; then
+    if grep -Eq "(Version|Release) [0-9]" docs/USER_GUIDE.md 2>/dev/null; then
+      if grep -Eq "(Version|Release) $CANONICAL" docs/USER_GUIDE.md 2>/dev/null; then
         pass "docs/USER_GUIDE.md"
       else
         fail "docs/USER_GUIDE.md"; VER_FAIL=$((VER_FAIL+1))

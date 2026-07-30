@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/candidate-v4.2.7-f0ad4e?style=flat-square" alt="Release candidate">
+  <img src="https://img.shields.io/badge/release-v4.2.7-brightgreen?style=flat-square" alt="Latest release">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest stable (최신 안정판)**: [v4.2.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. v4.2.6은 추가 릴리스 차단 결함 때문에 withdrawn/prerelease로 전환했으며 v4.2.7 수정판은 정확 태그 CI 통과 후에만 안정판으로 게시합니다.
+- **Latest stable (최신 안정판)**: [v4.2.7 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. v4.2.6은 withdrawn/prerelease로 유지됩니다.
 
-> **지원/검증 범위**: v4.2.7은 ASIO 후보 검증, 입력단 dual-mono, Stream Deck, HTTP, updater 회귀를 포함한 전체 Windows Release 검증과 정확 태그 CI를 모두 통과한 경우에만 게시합니다. 인증서가 없으므로 Windows 패키지는 unsigned이며, 실기기 및 제3자 VST crash-containment는 별도 검증 범위입니다.
-> **Support/validation scope**: v4.2.7 is published only after the complete Windows Release suite and exact-tag CI cover the ASIO candidate, input-front dual-mono, Stream Deck, HTTP, and updater regressions. Without a certificate the Windows package is unsigned. Real-device and third-party VST crash-containment remain outside this software-only evidence.
+> **지원/검증 범위**: v4.2.7은 전체 Windows Release 검증과 [정확 태그 CI](https://github.com/LiveTrack-X/DirectPipe/actions/runs/30571612012)를 통과했고, 공개 자산의 checksum과 Windows 실행 파일 신원을 독립 확인했습니다. 인증서가 없으므로 Windows 패키지는 unsigned이며, 실기기 및 제3자 VST crash-containment는 별도 검증 범위입니다.
+> **Support/validation scope**: v4.2.7 passed the complete Windows Release suite and [exact-tag CI](https://github.com/LiveTrack-X/DirectPipe/actions/runs/30571612012); public checksums and Windows executable identities were independently verified. Without a certificate the Windows package is unsigned. Real-device and third-party VST crash-containment remain outside this software-only evidence.
 
 
 
@@ -457,7 +457,7 @@ Windows hides tray icons in the overflow area (▲ arrow) by default. To keep th
 <summary><b>처음 실행할 때 보안 경고가 떠요 / Security warning on first run</b></summary>
 
 보안 경고만으로 악성 파일 여부가 판정되는 것은 아닙니다. 현재 신뢰된
-Windows 코드 서명 인증서가 없어 v4.2.7도 unsigned로 배포될 수 있으며,
+Windows 코드 서명 인증서가 없어 v4.2.7은 unsigned로 배포되며,
 Chrome/Brave/SmartScreen 경고를 코드만으로 없앨 수는 없습니다. 반드시
 공식 GitHub Release에서 받고 `checksums.sha256`이 ZIP과 정확히 일치하는지
 확인하세요. 디지털 서명이 표시되는 빌드라면 상태가 `Valid`인지도
@@ -477,7 +477,7 @@ Chrome/Brave/SmartScreen 경고를 코드만으로 없앨 수는 없습니다. �
 ---
 
 A security warning by itself is not a malware verdict. DirectPipe currently has
-no trusted Windows code-signing certificate, so v4.2.7 may also be distributed
+no trusted Windows code-signing certificate, so v4.2.7 is distributed
 unsigned; code changes alone cannot remove Chrome, Brave, or SmartScreen
 reputation warnings. Download only from the official GitHub Release and verify
 the ZIP against `checksums.sha256`. If a build does carry a digital signature,

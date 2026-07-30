@@ -40,7 +40,7 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## 테스트 / Testing
 
-- Google Test 기반 현재 `main` v4.2.7 후보는 core, host, focused endpoint의 전체 CTest 등록을 모두 통과해야 합니다. 확정 결과는 `docs/ReleaseNote.md`에 기록합니다. / The current `main` v4.2.7 candidate must pass every registered core, host, and focused endpoint CTest. Final results are recorded in `docs/ReleaseNote.md`.
+- Google Test 기반 v4.2.7 릴리즈 라인은 core, host, focused endpoint의 전체 CTest 등록을 통과했습니다. 후속 릴리즈도 같은 게이트를 통과해야 하며 확정 결과는 `docs/ReleaseNote.md`에 기록합니다. / The v4.2.7 release line passed every registered core, host, and focused endpoint CTest. Subsequent releases must pass the same gate, with final results recorded in `docs/ReleaseNote.md`.
 - `tools/pre-release-test.sh` — `--version-only` metadata gate, exact candidate `--api-only`, candidate 종료 후 `--skip-api` Release build/core/host/endpoint/Stream Deck 검증 / `--version-only` metadata gate, exact-candidate `--api-only`, then `--skip-api` Release build/core/host/endpoint/Stream Deck verification after closing the candidate (Windows Git Bash)
 - `tools/pre-release-dashboard.html` — 수동 테스트 대시보드 / Manual test dashboard
 

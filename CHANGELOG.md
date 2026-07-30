@@ -52,7 +52,7 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 - **v4.2.6 withdrawal**: The v4.2.6 tag and assets remain for provenance, but
   the GitHub Release is marked withdrawn/prerelease and is not recommended.
-  v4.2.7 replaces it only after exact-tag CI and public artifact verification.
+  v4.2.7 replaces it after exact-tag CI and public artifact verification.
 - **Unsigned Windows package**: No trusted code-signing certificate is
   configured. CI therefore requires every staged Windows binary to be
   `NotSigned`; browser or SmartScreen reputation warnings may still occur.
@@ -73,6 +73,10 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
   (59 core + 507 host + 2 focused endpoint).
 - Stream Deck tests passed 22/22; lint, dependency audit, production bundle,
   official validation, and official packaging also passed.
+- Exact-tag CI run `30571612012` passed every Windows, macOS, Linux,
+  Stream Deck, integrity, and publication job. Four downloaded payload hashes,
+  the five-asset set, release body, and Windows 4.2.7 binary identities were
+  independently verified after publication.
 - Real-device audio, third-party VST crash-containment, and macOS/Linux hardware
   behavior remain outside this software-only evidence.
 
