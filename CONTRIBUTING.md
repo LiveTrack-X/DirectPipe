@@ -40,7 +40,7 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## 테스트 / Testing
 
-- Google Test 기반 현재 `main` **CTest 500개 등록**: core 59 + host 439 + focused endpoint 2. v4.2.5 로컬 Release 결과는 498 pass, 환경 의존 2 skip, 0 fail이며 상세는 `docs/ReleaseNote.md` 참조 / Current `main` has **500 CTest registrations**: 59 core + 439 host + 2 focused endpoint tests. The local v4.2.5 Release result is 498 passed, 2 environment-dependent skips, and 0 failed; see `docs/ReleaseNote.md`.
+- Google Test 기반 현재 `main` v4.2.6은 **CTest 546개 등록**: core 59 + host 485 + focused endpoint 2. 로컬 Windows Release 결과는 544 pass + 환경 의존 2 skip + 0 fail이며 `docs/ReleaseNote.md`에 기록 / Current `main` v4.2.6 has **546 CTest registrations**: 59 core + 485 host + 2 focused endpoint tests. Local Windows Release validation completed with 544 passed, 2 environment-dependent skips, and 0 failures; see `docs/ReleaseNote.md`.
 - `tools/pre-release-test.sh` — `--version-only` metadata gate, exact candidate `--api-only`, candidate 종료 후 `--skip-api` Release build/core/host/endpoint/Stream Deck 검증 / `--version-only` metadata gate, exact-candidate `--api-only`, then `--skip-api` Release build/core/host/endpoint/Stream Deck verification after closing the candidate (Windows Git Bash)
 - `tools/pre-release-dashboard.html` — 수동 테스트 대시보드 / Manual test dashboard
 

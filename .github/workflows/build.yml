@@ -128,6 +128,142 @@ jobs:
           echo "=== Windows package contents ==="
           ls -lh staging/
 
+      - name: Restore optional Windows code-signing certificate
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_B64: ${{ secrets.WINDOWS_SIGNING_PFX_B64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          $hasCertificate = -not [string]::IsNullOrWhiteSpace(
+            $env:WINDOWS_SIGNING_PFX_B64)
+          $hasPassword = -not [string]::IsNullOrWhiteSpace(
+            $env:WINDOWS_SIGNING_PFX_PASSWORD)
+
+          if ($hasCertificate -ne $hasPassword) {
+            throw "Windows signing is partially configured; provide both PFX and password or neither"
+          }
+
+          if (-not $hasCertificate) {
+            "WINDOWS_SIGNING_ENABLED=false" >> $env:GITHUB_ENV
+            Write-Warning "No trusted Authenticode certificate is configured; publishing an explicitly unsigned Windows package"
+            exit 0
+          }
+
+          $certificatePath = Join-Path $env:RUNNER_TEMP "directpipe-release-signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $certificatePath,
+            [Convert]::FromBase64String($env:WINDOWS_SIGNING_PFX_B64))
+          "WINDOWS_SIGNING_PFX_PATH=$certificatePath" >> $env:GITHUB_ENV
+          "WINDOWS_SIGNING_ENABLED=true" >> $env:GITHUB_ENV
+
+      - name: Validate and optionally sign Windows release binaries
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $timestampUrl = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) {
+            "https://timestamp.digicert.com"
+          } else {
+            $env:WINDOWS_TIMESTAMP_URL
+          }
+
+          try {
+            if ($env:WINDOWS_SIGNING_ENABLED -eq "true") {
+              ./tools/sign-windows-release.ps1 `
+                -StagingDirectory "staging" `
+                -CertificatePath $env:WINDOWS_SIGNING_PFX_PATH `
+                -TimestampUrl $timestampUrl
+              "WINDOWS_RELEASE_SIGNATURE_MODE=signed" >> $env:GITHUB_ENV
+            } else {
+              $expectedRelativePaths = @(
+                "DirectPipe.exe",
+                "DirectPipe Receiver.dll",
+                "DirectPipe Receiver.vst3\Contents\x86_64-win\DirectPipe Receiver.vst3"
+              )
+              $releaseBinaries = @(
+                foreach ($relativePath in $expectedRelativePaths) {
+                  $binaryPath = Join-Path "staging" $relativePath
+                  if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
+                    throw "Required Windows release binary is missing: $relativePath"
+                  }
+                  Get-Item -LiteralPath $binaryPath
+                }
+              )
+              $allReleaseBinaries = @(
+                Get-ChildItem -LiteralPath "staging" -Recurse -File |
+                Where-Object {
+                  $_.Extension.ToLowerInvariant() -in ".exe", ".dll", ".vst3"
+                }
+              )
+              if ($allReleaseBinaries.Count -ne $releaseBinaries.Count) {
+                throw "Expected exactly DirectPipe.exe and Receiver VST2/VST3 binaries; found $($allReleaseBinaries.Count)"
+              }
+
+              foreach ($binary in $releaseBinaries) {
+                $signature = Get-AuthenticodeSignature -LiteralPath $binary.FullName
+                if ($signature.Status -ne
+                    [System.Management.Automation.SignatureStatus]::NotSigned) {
+                  throw "No signing certificate is configured, but the Windows binary is not explicitly unsigned: $($binary.FullName) ($($signature.Status))"
+                }
+              }
+              Write-Warning "Windows release binaries are unsigned; exact asset, SHA-256, and executable-version checks remain mandatory"
+              "WINDOWS_RELEASE_SIGNATURE_MODE=unsigned" >> $env:GITHUB_ENV
+            }
+          } finally {
+            if ($env:WINDOWS_SIGNING_PFX_PATH -and
+                (Test-Path -LiteralPath $env:WINDOWS_SIGNING_PFX_PATH)) {
+              Remove-Item -LiteralPath $env:WINDOWS_SIGNING_PFX_PATH -Force
+            }
+          }
+
+      - name: Verify Windows release binary versions
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ github.event.inputs.release_tag }}
+        run: |
+          $releaseTag = $env:EXPECTED_VERSION.Trim()
+          if ($releaseTag -notmatch '^v(\d+\.\d+\.\d+)$') {
+            throw "Release tag is not strict vMAJOR.MINOR.PATCH: $env:EXPECTED_VERSION"
+          }
+          $expected = $Matches[1]
+
+          $expectedRelativePaths = @(
+            "DirectPipe.exe",
+            "DirectPipe Receiver.dll",
+            "DirectPipe Receiver.vst3\Contents\x86_64-win\DirectPipe Receiver.vst3"
+          )
+          $releaseBinaries = @(
+            foreach ($relativePath in $expectedRelativePaths) {
+              $binaryPath = Join-Path "staging" $relativePath
+              if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
+                throw "Required Windows release binary is missing: $relativePath"
+              }
+              Get-Item -LiteralPath $binaryPath
+            }
+          )
+          $allReleaseBinaries = @(
+            Get-ChildItem -LiteralPath "staging" -Recurse -File |
+              Where-Object {
+                $_.Extension.ToLowerInvariant() -in ".exe", ".dll", ".vst3"
+              }
+          )
+          if ($allReleaseBinaries.Count -ne $releaseBinaries.Count) {
+            throw "Expected exactly DirectPipe.exe and Receiver VST2/VST3 binaries; found $($allReleaseBinaries.Count)"
+          }
+
+          foreach ($binary in $releaseBinaries) {
+            $version = $binary.VersionInfo
+            if (($version.FileVersion -ne $expected) -or
+                ($version.ProductVersion -ne $expected)) {
+              throw "Windows binary version mismatch: $($binary.FullName) (FileVersion=$($version.FileVersion), ProductVersion=$($version.ProductVersion), expected=$expected)"
+            }
+            Write-Host "Verified version $expected`: $($binary.FullName)"
+          }
+
       - name: Create ZIP
         shell: bash
         run: |

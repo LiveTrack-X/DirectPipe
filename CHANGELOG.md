@@ -4,11 +4,80 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
-## [Unreleased]
+## [4.2.6] - 2026-07-31
+
+### Fixed
+
+- **Exact driver rollback**: A failed ASIO or Windows driver transition now
+  restores the saved input, output, sample rate, buffer size, and channel masks
+  instead of opening arbitrary Windows defaults. If the snapshot cannot be
+  restored, DirectPipe closes the invalid stream and remains in recovery.
+- **Transactional endpoint selection**: Failed input or output selection now
+  recreates the previous duplex setup before returning the error. A failed
+  `CABLE Input (VB-Audio Virtual Cable)` selection no longer leaves the main
+  engine in an unintended input-only/default-device state.
+- **First Windows-mode transition**: The first switch among Windows Audio
+  shared, low-latency, and exclusive modes carries the current endpoint
+  selection. The switch is cancelled if the target mode cannot expose those
+  endpoints.
+- **Endpoint-event coalescing**: Duplicate Windows state/property events are
+  folded into one pending same-device reopen cycle.
+- **Explicit same-device recovery**: When a saved endpoint needs recovery, the
+  device combo selects a disabled `Device (Reconnect)` placeholder while
+  leaving the real same-name device item clickable. Windows Audio marks only
+  the lost direction; ASIO marks both sides of its duplex device.
+- **Shutdown settings durability**: Non-plugin settings changed while a VST
+  chain is loading or partial are merged with the last complete persisted
+  chain. If no complete chain exists, a recovery sidecar restores those
+  settings on next start without replacing slot/plugin files; Factory Reset
+  removes the sidecar family.
+- **ASIO runtime synchronization**: Successful ASIO selection adopts the
+  device's actual buffer size and runtime sample rate while preserving an
+  explicit requested sample-rate target when the driver reports a mismatch.
+- **Bounded monitor recovery**: A missing monitor keeps three-second
+  availability polling. If it is enumerated but repeatedly cannot be opened,
+  retries back off 3→10→20→30 seconds. Automatic reconnect/open diagnostics
+  are emitted on the first and every twentieth attempt.
+- **Driver-aware latency estimate**: The bottom `Latency`, control API, and
+  Stream Deck state now use the active driver's reported input/output latency,
+  with an independent one-buffer fallback for an unreported direction, plus
+  active-chain PDC. Callback execution time remains a CPU/XRun diagnostic and
+  is no longer double-counted as signal-path delay.
+- **Correct separate-monitor path**: `Mon` now follows the path that audio
+  actually takes: main input-device latency + active PDC + adaptive monitor
+  queue target + monitor output-device latency. It excludes the unrelated main
+  output-device latency and shows unavailable rather than a false number when
+  the monitor cannot open.
+### Security / Distribution
+
+- **Explicit Windows signature state**: Exact-tag CI signs and verifies the app
+  and Receiver binaries when both trusted PFX secrets are configured. Without
+  them it requires every staged binary to be `NotSigned` and publishes an
+  explicitly unsigned package; partial configuration or any mismatched
+  signature state fails the build. Canonical assets and `checksums.sha256`
+  remain mandatory.
+- **v4.2.5 withdrawal**: The v4.2.5 GitHub Release was removed after browser
+  reputation warnings were reported. The immutable source tag is retained;
+  v4.2.6 is its replacement. Public assets are produced only after the exact-tag
+  build, test, package, and checksum gates pass.
+
+### Compatibility
+
+- IPC protocol v1 and its 192-byte shared-memory header are unchanged. Existing
+  Receiver VST and Stream Deck v4.2.x packages remain wire-compatible; bundled
+  copies are version-aligned only.
+
+### Tests
+
+- Local Windows Release validation completed all 546 CTest registrations:
+  544 passed, 2 environment-dependent tests skipped, and 0 failed
+  (59 core + 485 host + 2 focused endpoint). Stream Deck tests passed 5/5;
+  dependency audit, bundle build, and package validation also passed.
+  Real-device and third-party VST crash-containment checks remain pending.
 
 ---
 
-## [4.2.5] - 2026-07-30
+## [4.2.5] - 2026-07-30 (withdrawn)
 
 ### Fixed
 
@@ -46,8 +115,9 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
   failed.
 - Corrected the platform-audio regression itself so macOS and Linux validate
   their native shared device types instead of applying a Windows-only
-  expectation. The failed `v4.2.4` CI tag was not published as a GitHub Release;
-  v4.2.5 is the immutable release tag for this update.
+  expectation. The failed `v4.2.4` CI tag was not published as a GitHub Release.
+  The v4.2.5 GitHub Release was later withdrawn; its immutable source tag is
+  retained for provenance.
 
 ---
 

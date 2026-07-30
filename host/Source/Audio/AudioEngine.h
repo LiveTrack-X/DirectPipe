@@ -294,8 +294,16 @@ public:
     void forceSameDeviceReopenPendingForTest(bool pending) noexcept {
         sameDeviceReopenPending_.store(pending, std::memory_order_release);
     }
+    bool isSameDeviceReopenPendingForTest() const noexcept {
+        return sameDeviceReopenPending_.load(std::memory_order_acquire);
+    }
+    bool isActiveChannelRecoveryPendingForTest() const noexcept {
+        return activeChannelRecoveryPending_.load(std::memory_order_acquire);
+    }
     void attemptImmediateReconnectionForTest() { attemptImmediateReconnectionFromMessageThread(); }
     int getReconnectCooldownForTest() const noexcept { return reconnectCooldown_; }
+    double getCurrentSampleRateForTest() const noexcept { return currentSampleRate_.load(); }
+    int getCurrentBufferSizeForTest() const noexcept { return currentBufferSize_.load(); }
     juce::AudioDeviceManager& getAudioDeviceManagerForTest() noexcept { return deviceManager_; }
     bool recoverActiveChannelsWithDriverDefaultsForTest(const juce::String& reason)
     {
@@ -337,8 +345,29 @@ private:
     static float calculateRMS(const float* data, int numSamples);
     bool hasUsableActiveChannels(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
                                  juce::AudioIODevice* device) const;
+    bool hasUsableActiveChannels(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+                                 juce::AudioIODevice* device,
+                                 bool outputNone) const;
     bool restoredDeviceTargetsSatisfied(const juce::AudioDeviceManager::AudioDeviceSetup& setup) const;
     bool clearDeviceLossAfterReady(const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+    void enterDeviceRecoveryAfterRestoreFailure();
+    struct DeviceRecoverySnapshot {
+        bool deviceLost = false;
+        bool inputDeviceLost = false;
+        bool outputAutoMuted = false;
+        bool startupRestorePending = false;
+        int reconnectCooldown = 0;
+        int reconnectMissCount = 0;
+    };
+    DeviceRecoverySnapshot captureDeviceRecoveryState() const noexcept;
+    void restoreDeviceRecoveryState(
+        const DeviceRecoverySnapshot& snapshot) noexcept;
+    bool restorePreviousSetupAfterFailedChange(
+        const juce::AudioDeviceManager::AudioDeviceSetup& previousSetup,
+        bool previousOutputNone,
+        const DeviceRecoverySnapshot& previousRecoveryState,
+        juce::String& failureMessage,
+        const juce::String& context);
     void autoMuteOutputForDeviceLoss() noexcept;
     void releaseAutomaticOutputMute() noexcept;
     void publishInputDeviceLoss() noexcept;

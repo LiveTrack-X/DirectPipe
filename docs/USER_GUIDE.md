@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Released Version 4.2.5** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Current Stable Version 4.2.6 / 현재 안정 버전 4.2.6** — [Download / 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest)
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.5 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(59 core + 485 host + 2 focused endpoint). 공개 자산은 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원을 검증한 뒤 생성합니다. 신뢰 인증서가 있으면 Authenticode를 검증하고, 없으면 Windows 패키지를 명시적으로 unsigned로 배포합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The local v4.2.5 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
+> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI creates public assets only after running cross-platform builds, registered tests, package checksums, and executable-version verification. Authenticode is verified when a trusted certificate is configured; otherwise Windows is explicitly unsigned. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)
@@ -47,8 +47,8 @@ USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 �
 
 ### 1단계: 기본 설정 / Step 1: Basic Setup
 
-1. **DirectPipe 실행** — 처음 실행 시 보안 경고가 나타날 수 있습니다 (오픈소스라 코드 서명이 없어서 나타나는 정상적인 경고):
-   - **Windows**: SmartScreen → "추가 정보" → "실행" 클릭
+1. **DirectPipe 실행** — 현재 신뢰된 Windows 코드 서명 인증서가 없어 v4.2.6도 미서명일 수 있습니다. 공식 GitHub Release에서만 내려받고 ZIP을 `checksums.sha256`과 대조하세요. 서명이 있는 빌드는 서명 상태도 `Valid`여야 합니다:
+   - **Windows**: 공식 해시가 일치하고, 존재하는 서명이 유효한데도 SmartScreen 평판 경고가 남으면 "추가 정보" → "실행"을 선택할 수 있습니다
    - **macOS**: Gatekeeper → 시스템 설정 → 보안 및 개인 정보 → "확인 없이 열기"
    - **Linux**: `chmod +x DirectPipe` 후 실행
 2. **Audio 탭**에서 드라이버 선택 (대부분 기본값으로 자동 선택됨):
@@ -62,8 +62,8 @@ USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 �
 
 ---
 
-1. **Launch DirectPipe** — A security warning may appear on first run (normal for unsigned open-source apps):
-   - **Windows**: SmartScreen → click "More info" → "Run anyway"
+1. **Launch DirectPipe** — DirectPipe currently has no trusted Windows code-signing certificate, so v4.2.6 may be unsigned. Verify the official Release ZIP against `checksums.sha256`; if a signature is present, require it to be `Valid`:
+   - **Windows**: If the official hash matches and any present signature is valid but a SmartScreen reputation warning remains, you can choose "More info" → "Run anyway"
    - **macOS**: Gatekeeper → System Settings → Privacy & Security → "Open Anyway"
    - **Linux**: `chmod +x DirectPipe` then run
 2. **Audio tab** — Select driver (usually auto-selected by default):
@@ -277,7 +277,7 @@ DirectPipe는 2컬럼 레이아웃입니다. / DirectPipe uses a two-column layo
 - OUTPUT 레벨 미터 / OUTPUT level meter
 
 **하단 상태 바 / Status Bar:**
-- 총 추정 레이턴시 (입력·출력 버퍼 추정 + 콜백 처리시간 + 활성 플러그인 체인 보고 PDC), CPU 사용률 (%) + XRun 카운터 (60초간), 오디오 포맷, 포터블 모드 표시 (Audio Only 시 주황색) / Total estimated latency (estimated input/output buffers + callback execution time + active plugin-chain reported PDC), CPU usage (%) + XRun counter (60s window), audio format, portable mode indicator (orange in Audio Only)
+- 총 추정 레이턴시 (드라이버 보고 입력·출력 지연, 미보고 방향은 1버퍼 대체 + 활성 플러그인 체인 보고 PDC), CPU 사용률 (%) + XRun 카운터 (60초간), 오디오 포맷, 포터블 모드 표시 (Audio Only 시 주황색). 콜백 처리시간은 CPU/XRun 진단용이며 총 지연에 합산하지 않음 / Total estimated latency (driver-reported input/output latency with per-direction one-buffer fallback + active plugin-chain reported PDC), CPU usage (%) + XRun counter (60s window), audio format, portable mode indicator (orange in Audio Only). Callback time is diagnostic only
 - 상태바 값은 하드웨어 루프백 실측값이 아니며 Receiver/OBS 버퍼 지연은 포함하지 않음 / The status-bar value is not a hardware loopback measurement and excludes Receiver/OBS buffering
 - XRun 발생 시 빨간색으로 강조 / XRun count highlighted in red when > 0
 - 오류/경고/정보 알림 (자동 페이드) / Error/warning/info notifications (auto-fade)
@@ -359,7 +359,7 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 | 512 samples | ~10.7ms | 안정적, 저사양 PC / Stable, low-end PC |
 | 1024 samples | ~21.3ms | CPU 부하 높을 때 / High CPU load |
 
-> Audio 탭의 `Latency` 값은 입력+출력 버퍼의 단순 추정치(`2 × buffer / sample rate`)입니다. 최하단 상태바의 총 추정 레이턴시는 여기에 콜백 처리시간과 활성 플러그인 체인의 보고 PDC를 추가합니다. / The Audio tab `Latency` value is a simple input+output buffer estimate (`2 × buffer / sample rate`). The bottom status-bar total also adds callback execution time and active plugin-chain reported PDC.
+> Audio 탭의 `Estimated I/O Latency`는 드라이버가 보고한 입력+출력 지연을 사용하고, 어느 한 방향이 지연을 보고하지 않을 때만 그 방향을 1버퍼로 대체합니다. 최하단 `Latency`는 여기에 활성 플러그인 체인의 보고 PDC를 더합니다. 콜백 처리시간은 CPU/XRun 진단용이며 신호 경로 지연에 중복 합산하지 않습니다. / The Audio tab uses driver-reported I/O latency with a one-buffer fallback per unreported direction. The bottom `Latency` adds active-chain PDC; callback time remains diagnostic only.
 
 ### 샘플레이트 맞추기 체크리스트 / Sample Rate Matching Checklist
 
@@ -409,6 +409,18 @@ VST2와 VST3 플러그인을 직렬 체인으로 연결합니다. / Connects VST
 - 앱 종료 시 / On app exit
 
 Plugin parameters are auto-saved/restored on setting change (1-second debounce), preset slot switch, and app exit.
+
+VST가 아직 loading 중이거나 일부 플러그인만 복원된 상태에서는 불완전한
+chain으로 기존 plugin/slot 파일을 덮지 않습니다. 비플러그인 설정은 마지막
+완전 chain과 병합하고, 앱 종료 시 완전 chain이 없으면 별도 recovery
+sidecar에 저장해 다음 실행에서 복원합니다. Factory Reset은 이 sidecar도
+삭제합니다.
+
+While a VST chain is loading or only partially restored, DirectPipe does not
+replace complete plugin/slot files with the incomplete chain. Non-plugin
+settings are merged with the last complete chain; if none is available at
+shutdown, an independent recovery sidecar restores those settings on the next
+start. Factory Reset removes that sidecar too.
 
 ### 플러그인 체인 순서 가이드 / Plugin Chain Order Guide
 
@@ -614,11 +626,11 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 >
 > 독점 모드(ASIO 또는 Windows Audio Exclusive Mode)에서 모니터 장치는 메인 출력과 **다른 장치**를 선택해야 합니다. 같은 장치 구성은 거부하며, 드라이버 또는 출력 변경으로 충돌이 생기면 DirectPipe가 모니터를 비활성화합니다. / With an exclusive main driver (ASIO or Windows Audio Exclusive Mode), select a **different device** for Monitor. The same-device configuration is rejected; if a driver or output change creates the conflict, DirectPipe disables Monitor.
 
-> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 장치·드라이버·버퍼 설정에 따라 메인 출력 대비 추가 지연이 발생할 수 있습니다. Output 탭의 모니터 레이턴시는 메인 경로 총 추정값에 활성 모니터 장치 버퍼 추정값을 더해 표시합니다. adaptive PLL fractional playback으로 작은 독립 장치 clock drift를 흡수하고, 정상 drift 상황에서는 프레임을 버리지 않습니다. 부분 underrun 후에는 다시 prime하며, Windows 모니터 콜백이 main OUT 콜백보다 높은 우선순위로 실행되지 않도록 유지합니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
+> **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 장치·드라이버·버퍼 설정에 따라 메인 출력과 다른 지연이 생깁니다. 하단 `Mon`은 메인 입력 장치 지연 + 활성 PDC + adaptive monitor queue 목표량 + 모니터 출력 장치 지연이며 메인 출력 장치 지연은 포함하지 않습니다. Output 탭의 보조 값은 이 중 monitor queue+output 구간만 표시합니다. Monitor가 열리지 않으면 허위 숫자 대신 `unavailable`을 표시합니다. adaptive PLL fractional playback으로 작은 독립 장치 clock drift를 흡수하고, 부분 underrun 후에는 다시 prime합니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
 > - **ASIO 드라이버 사용 (Windows)** — 입력과 출력이 하나의 ASIO 디바이스에서 처리되어 별도 모니터 장치 없이 최소 지연으로 자기 목소리를 들을 수 있습니다
 > - **하드웨어 다이렉트 모니터링** — 오디오 인터페이스 자체의 Direct Monitor 기능을 사용하면 DirectPipe의 소프트웨어 경로 지연을 피할 수 있습니다(하드웨어 변환 지연은 남을 수 있음)
 >
-> **⚠️ Monitor latency note**: Monitor output routes through a separate audio device, so added latency depends on its device, driver, and buffer settings. The Output tab monitor latency adds the active monitor-device buffer estimate to the main-path total estimate. DirectPipe uses adaptive PLL fractional playback for small independent-device clock drift, keeps the monitor callback below the main OUT callback priority, and re-primes after partial monitor underruns so small monitor buffers do not force OUT XRuns upward. If monitoring latency is noticeable, consider:
+> **⚠️ Monitor latency note**: The bottom `Mon` estimate is main input-device latency + active PDC + adaptive monitor queue target + monitor output-device latency; it does not include the unrelated main output-device latency. The Output tab's secondary value shows only the monitor queue+output leg, and unavailable Monitor state is not shown as a numeric estimate. DirectPipe uses adaptive PLL fractional playback for small independent-device clock drift, keeps the monitor callback below the main OUT callback priority, and re-primes after partial underruns. If monitoring latency is noticeable, consider:
 > - **ASIO driver (Windows)** — Input and output share a single ASIO device, so you can hear yourself with minimal latency without a separate monitor device
 > - **Hardware direct monitoring** — Use your audio interface's built-in Direct Monitor feature to avoid DirectPipe's software-path latency (hardware conversion latency may remain)
 
@@ -1223,7 +1235,7 @@ DirectPipe는 USB 오디오 장치가 분리되면 **자동 재연결**을 시�
 - **설정 보존** → 샘플레이트, 버퍼 크기, 채널 라우팅 유지 / SR, buffer size, and channel routing preserved
 - **모니터 장치** → 메인 장치와 독립적으로 자동 재연결 / Monitor device reconnects independently
 
-> **Tip**: 재연결이 안 되면 Audio 탭에서 장치 콤보박스를 클릭하세요 — 클릭 시 자동으로 장치 목록을 새로고침합니다. / If reconnection fails, click the device combo box in the Audio tab — it auto-refreshes the device list on click.
+> **Tip**: 재연결이 필요하면 콤보박스에는 비활성 `장치명 (Reconnect)` 상태가 선택됩니다. 목록을 열고 별도로 남아 있는 실제 `장치명` 항목을 한 번 클릭하면 같은 장치를 명시적으로 다시 엽니다. 다른 장치를 골랐다 돌아올 필요는 없습니다. Windows Audio는 유실된 입력/출력만, ASIO는 duplex 양쪽에 이 상태를 표시합니다. / When recovery is required, the combo selects a disabled `Device (Reconnect)` status. Open the list and click the separate real `Device` item once to explicitly reopen the same device; selecting another device first is unnecessary. Windows Audio shows this only for the lost direction, while ASIO shows it on both sides of the duplex device.
 
 ### Windows 소리 속성을 바꾼 뒤 마이크가 멈췄어요 / Mic stopped after changing Windows sound properties
 
@@ -1239,12 +1251,12 @@ DirectPipe does not use physical microphone mute or normal silence as a recovery
 
 - 입력 미터가 멈추면 잠시 기다리세요. 장치 목록 변경 알림이 들어오면 재연결 쿨다운 없이 즉시 재시도합니다.
 - 재연결 중에는 저장된 target이 돌아올 때까지 입력을 무음 처리합니다. 다른 마이크로 몰래 바꾸지 않습니다.
-- 계속 복구되지 않으면 Audio 탭의 Input 콤보박스를 클릭해 장치 목록을 새로고침한 뒤 저장된 마이크를 다시 선택하세요.
+- 계속 복구되지 않으면 Audio 탭의 Input 콤보박스를 열고 비활성 `(Reconnect)` 상태가 아닌 실제 저장 마이크 항목을 한 번 선택하세요.
 - 문제 신고 시 `%AppData%/DirectPipe/directpipe.log`와 `.prev` 로그를 함께 첨부하세요.
 
 - If the input meter stops, wait briefly. Device-list notifications bypass the reconnect cooldown and retry immediately.
 - During reconnect, input stays silent until the saved target returns. DirectPipe does not silently switch to another microphone.
-- If it still does not recover, click the Audio tab Input combo box to refresh the device list, then reselect the saved microphone.
+- If it still does not recover, open the Audio tab Input combo and select the real saved-microphone item once, not the disabled `(Reconnect)` status.
 - When reporting the issue, attach `%AppData%/DirectPipe/directpipe.log` and `.prev`.
 
 ### 모니터 출력이 안 돼요 / No monitor output
@@ -1255,7 +1267,7 @@ DirectPipe does not use physical microphone mute or normal silence as a recovery
 4. 모니터는 별도 shared-mode 오디오 장치를 사용 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) — ASIO 모드(Windows)에서도 동작 / Monitor uses a separate shared-mode audio device (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) — works even with ASIO (Windows)
 5. 독점 모드에서는 메인 출력과 다른 모니터 장치를 선택 / In exclusive mode, select a monitor device different from the main output
 
-> 실패한 모니터 장치 재연결은 약 3초 간격으로 제한됩니다. 로그에 초당 여러 번 `Reconnection attempt`가 반복되면 정상 동작이 아닙니다. / Failed monitor reconnects are limited to about one attempt every 3 seconds. Multiple `Reconnection attempt` entries per second are not expected.
+> 목록에서 사라진 모니터는 약 3초 간격으로 확인합니다. 장치가 목록에는 있지만 반복해서 열리지 않으면 3→10→20→30초로 재시도 간격을 늘리고, 자동 재연결 진단은 첫 시도와 매 20번째 시도에 남깁니다. 로그에 초당 여러 번 `Reconnection attempt`가 반복되면 정상 동작이 아닙니다. / A missing monitor is checked about every 3 seconds. If it is enumerated but repeatedly cannot be opened, retries back off 3→10→20→30 seconds; automatic reconnect diagnostics are emitted on the first and every twentieth attempt. Multiple `Reconnection attempt` entries per second are not expected.
 
 #### 모니터 출력 무음 (SR 불일치) / Monitor Silent (Sample Rate Mismatch)
 
@@ -1365,6 +1377,7 @@ Config file base path varies by platform. `<CONFIG>` below refers to the paths l
 | 파일 / File | 경로 / Path |
 |---|---|
 | 기본 설정 / Main settings | `<CONFIG>/settings.dppreset` |
+| 종료 복구 설정 / Shutdown recovery settings | `<CONFIG>/settings.shutdown-recovery.json` (loading/partial VST 종료에서만 생성되는 임시 비플러그인 설정 / temporary non-plugin settings used only after shutdown during loading/partial VST state) |
 | 프리셋 슬롯 / Preset slots | `<CONFIG>/Slots/` |
 | 플러그인 캐시 / Plugin cache | `<CONFIG>/plugin-cache.xml` |
 | 스캐너 로그 / Scanner log | `<CONFIG>/scanner-log.txt` |

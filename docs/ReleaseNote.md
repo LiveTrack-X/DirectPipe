@@ -2,94 +2,134 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
-## DirectPipe v4.2.5
+## DirectPipe v4.2.6
 
-v4.2.5 hardens audio-device recovery. Failed main and monitor recovery is
-rate-limited correctly, the configured monitor output is opened directly, and
-an exclusive main-output transition releases a potentially conflicting monitor
-before attempting the exclusive open.
+v4.2.6 is the replacement for the withdrawn v4.2.5 release. It
+prevents failed driver or endpoint changes from silently switching to arbitrary
+Windows defaults, keeps the selected `CABLE Input`/output snapshot across input
+loss and rollback, and makes the Windows package's signed or unsigned state
+explicit in exact-tag CI.
 
-v4.2.5는 오디오 장치 복구를 안정화합니다. 메인·모니터 복구 실패 시 올바른
-재시도 간격을 유지하고, 선택한 모니터 출력을 직접 열며, 독점 메인 출력
-전환 전에 충돌 가능 모니터를 먼저 해제합니다.
+v4.2.6은 회수된 v4.2.5를 대체합니다. 드라이버·endpoint 전환 실패
+시 임의 Windows 기본 장치로 바뀌는 것을 막고, 입력 장치 손실과 rollback
+과정에서도 선택한 `CABLE Input`/출력 스냅샷을 유지합니다. 현재 신뢰된
+인증서가 없으므로 정확 태그 CI는 Windows 패키지를 unsigned로 명시합니다.
 
-The `v4.2.4` source tag failed the macOS/Linux CI test gate and was never
-published as a GitHub Release. v4.2.5 contains the same product fixes plus the
-platform-correct regression and is the release tag for this update.
+The v4.2.5 GitHub Release was removed after Chrome/Brave reputation warnings
+were reported. Local Microsoft Defender scans found no threat, but the package
+was unsigned. Its immutable source tag remains for provenance; v4.2.6 is the
+current public stable release.
 
-`v4.2.4` 소스 태그는 macOS/Linux CI 테스트 게이트에서 실패해 GitHub
-Release로 공개되지 않았습니다. v4.2.5는 동일한 제품 수정과 플랫폼별로
-수정된 회귀 테스트를 포함한 이번 업데이트의 실제 릴리즈 태그입니다.
+Chrome/Brave 신뢰 경고 제보 뒤 v4.2.5 GitHub Release를 내렸습니다. 로컬
+Microsoft Defender 검사에서는 위협이 발견되지 않았지만 패키지가
+미서명 상태였습니다. 출처 추적을 위해 불변 소스 태그는 유지하며, 현재
+공개 안정판은 v4.2.6입니다.
 
 ### Highlights / 주요 변경
 
-- **Bounded failed recovery**: Failed zero-active-channel recovery for both the
-  main engine and monitor output now waits the full three-second cooldown
-  instead of retrying on every 30 Hz status update.
-- **복구 실패 제한**: 메인 엔진과 모니터 출력의 zero-active-channel 복구가
-  실패하면 30 Hz 상태 갱신마다 반복하지 않고 전체 3초 쿨다운을 기다립니다.
-- **Selected monitor first**: The monitor manager opens the configured
-  shared-mode output directly. A blocked system default no longer prevents a
-  different valid selected output from opening.
-- **선택 모니터 우선**: monitor manager가 설정된 shared-mode 출력을 직접
-  엽니다. 시스템 기본 장치가 막혀 있어도 다른 유효 선택 장치를 열 수
-  있습니다.
-- **Exclusive transition preflight**: A monitor that could block an exclusive
-  main output is suspended before the main open. It is restored on rollback or
-  when the actual endpoints differ, and remains disabled only for a confirmed
-  same-endpoint conflict.
-- **독점 전환 사전 처리**: 독점 메인 출력을 막을 수 있는 모니터를 main
-  open 전에 중지합니다. rollback 또는 서로 다른 endpoint면 복원하고,
-  동일 endpoint 충돌이 확인될 때만 비활성 상태를 유지합니다.
-- **Endpoint-event stability**: Self-generated Windows endpoint events are
-  ignored for a bounded settle window, and Windows Audio Exclusive Mode is
-  classified consistently as exclusive.
-- **Endpoint 이벤트 안정화**: DirectPipe 자체가 만든 Windows endpoint
-  이벤트는 제한된 안정화 구간 동안 무시하며 Windows Audio Exclusive
-  Mode를 일관되게 독점 드라이버로 분류합니다.
+- **Exact driver rollback**: Failed ASIO/Windows driver switches restore the
+  saved input, output, sample rate, buffer size, and channel masks. An
+  unavailable snapshot fails closed instead of accepting an unrelated default.
+- **정확한 드라이버 rollback**: ASIO/Windows 전환 실패 시 저장된 입력,
+  출력, sample rate, buffer size, channel mask를 복원합니다. 스냅샷이
+  불가능하면 무관한 기본 장치를 수용하지 않고 안전하게 중단합니다.
+- **Transactional endpoint selection**: Failed input or output selection
+  recreates the previous duplex setup. A failed VB-Cable output choice no
+  longer leaves an input-only or arbitrary-default stream.
+- **원자적 endpoint 선택**: 입력·출력 선택 실패 시 이전 duplex 설정을
+  재생성합니다. VB-Cable 출력 선택 실패가 입력 전용 또는 임의 기본 장치
+  스트림을 남기지 않습니다.
+- **Windows-mode endpoint preservation**: The first shared/low-latency/exclusive
+  transition carries the current endpoints and cancels if they are unavailable
+  in the target mode.
+- **Windows 모드 endpoint 보존**: shared/low-latency/exclusive 첫 전환에서
+  현재 endpoint를 이어 가며 대상 모드에 없으면 전환을 취소합니다.
+- **Explicit same-device recovery**: A disabled `Device (Reconnect)`
+  placeholder keeps the real same-name item clickable for one-step recovery.
+  Windows Audio marks only the lost direction; ASIO marks both sides.
+- **명시적 동일 장치 복구**: 비활성 `장치명 (Reconnect)` placeholder와
+  실제 같은 이름의 항목을 분리해 한 번의 클릭으로 다시 열 수 있습니다.
+  Windows Audio는 유실 방향만, ASIO는 양쪽을 복구 상태로 표시합니다.
+- **Durable shutdown settings**: Non-plugin settings changed during a loading
+  or partial VST chain are merged with the last complete chain. If none exists,
+  a recovery sidecar restores them on next start without replacing plugin or
+  slot files; Factory Reset removes the sidecar family.
+- **종료 설정 내구성**: VST chain loading/partial 중 바뀐 비플러그인 설정은
+  마지막 완전 chain과 병합합니다. 완전 chain이 없으면 recovery sidecar가
+  plugin·slot 파일을 대체하지 않고 다음 실행에 설정을 복원하며 Factory
+  Reset은 sidecar 파일군을 삭제합니다.
+- **Bounded monitor recovery**: Missing devices keep three-second polling;
+  enumerated endpoints that repeatedly fail to open back off
+  3→10→20→30 seconds. Automatic diagnostics are emitted on the first and every
+  twentieth attempt.
+- **제한된 모니터 복구**: 누락 장치는 3초 polling을 유지하고, 열거되지만
+  반복해서 열리지 않는 endpoint는 3→10→20→30초로 backoff합니다. 자동
+  진단은 첫 시도와 매 20번째 시도에 남깁니다.
+- **Driver-aware latency estimate**: Bottom `Latency` and control state use
+  driver-reported input/output latency (one-buffer fallback per missing
+  direction) plus active-chain PDC. Callback time remains a CPU/XRun diagnostic.
+- **드라이버 기반 레이턴시 추정**: 하단 `Latency`와 control state는 드라이버
+  보고 입·출력 지연(미보고 방향은 1버퍼 대체) + 활성 chain PDC를 사용하며,
+  callback 시간은 CPU/XRun 진단으로만 유지합니다.
+- **Correct Monitor route**: `Mon` is main input latency + PDC + adaptive
+  monitor queue target + monitor output-device latency, excluding the main
+  output device. An unopened Monitor is shown as unavailable.
+- **정확한 Monitor 경로**: `Mon`은 메인 입력 지연 + PDC + adaptive monitor
+  queue 목표량 + 모니터 출력 장치 지연이며, 무관한 메인 출력 지연은 제외하고
+  열리지 않은 Monitor는 unavailable로 표시합니다.
+- **Explicit signature state**: Exact-tag CI signs and verifies Windows
+  binaries when both trusted PFX secrets are configured. With no certificate it
+  requires every staged binary to be `NotSigned` and publishes an explicitly
+  unsigned package; partial configuration or a mismatched signature state
+  still fails.
+- **명시적 서명 상태**: 신뢰된 PFX secret 두 개가 모두 있으면 Windows
+  바이너리를 서명·검증하고, 현재처럼 인증서가 없으면 unsigned 패키지임을
+  확인할 수 있도록 모든 staged 바이너리가 `NotSigned`여야 합니다. 불완전
+  구성이나 서명 상태 불일치는 실패합니다.
 
 ### Compatibility / 호환성
 
-- IPC wire ABI remains protocol v1 with the existing 192-byte shared-memory
-  header. Receiver/VST replacement is not required for compatibility.
-- IPC wire ABI는 기존 192-byte shared-memory header의 protocol v1을
-  유지합니다. 호환성 때문에 Receiver/VST를 교체할 필요는 없습니다.
-- Stream Deck action IDs, request/state schemas, discovery, and profiles are
-  unchanged. Existing v4.2.x packages remain compatible; 4.2.5 is bundled only
-  for package alignment.
-- Stream Deck action ID, request/state schema, discovery, profile은 변경되지
-  않았습니다. 기존 v4.2.x 패키지는 계속 호환되며 4.2.5는 패키지 버전
-  정합성을 위해 함께 제공합니다.
-- Existing v4.2.x presets and settings remain compatible.
-- 기존 v4.2.x preset과 settings는 호환됩니다.
+- IPC protocol v1 and the 192-byte shared-memory header are unchanged.
+- IPC protocol v1과 192-byte shared-memory header는 변경되지 않았습니다.
+- Existing v4.2.x Receiver VST, Stream Deck actions/profiles, presets, and
+  settings remain compatible. Bundled components are version-aligned only.
+- 기존 v4.2.x Receiver VST, Stream Deck action/profile, preset, settings는
+  호환됩니다. 번들 구성요소는 패키지 버전 정합성만 맞춥니다.
 
 ### Validation / 검증
 
-- The local Windows Release run completed all 500 CTest registrations: 498
-  passed, 2 environment-dependent tests skipped, and 0 failed. Focused
-  regressions for all three blocker paths and related Windows
-  classification/event handling pass.
-- 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개
-  skip, 실패 0개를 확인했습니다. 세 차단 경로와 관련 Windows 분류·이벤트
-  처리 집중 회귀 테스트가 통과했습니다.
-- Exact-tag cross-platform CI gates publication.
-- 정확 태그 전체 플랫폼 CI가 공개를 게이트합니다.
+- Local Windows Release validation completed all 546 CTest registrations:
+  544 passed, 2 environment-dependent tests skipped, and 0 failed
+  (59 core + 485 host + 2 focused endpoint).
+- 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존
+  2개 건너뜀, 실패 0개로 완료했습니다(59 core + 485 host + 2 focused
+  endpoint).
+- Stream Deck tests passed 5/5; dependency audit reported 0 vulnerabilities,
+  and the production bundle build and package validation succeeded.
+- Stream Deck 테스트 5/5, 의존성 취약점 0건, 프로덕션 번들 빌드와 패키지
+  검증이 통과했습니다.
+- Publication remains blocked until exact-tag cross-platform CI, package
+  validation, and checksums succeed. Authenticode is optional until a trusted
+  certificate is available.
+- 정확 태그 전체 플랫폼 CI, 패키지 검증, checksum 성공 전에는 게시하지
+  않습니다. 신뢰된 인증서를 확보하기 전 Authenticode는 선택 사항입니다.
 - Real audio hardware, third-party VST crash-containment, and macOS/Linux
-  hardware behavior were not verified for this update.
-- 이번 업데이트에서는 실기기 오디오, 제3자 VST crash-containment,
-  macOS/Linux 하드웨어 동작을 검증하지 않았습니다.
+  hardware behavior were not verified for this candidate.
+- 이 후보는 실기기 오디오, 제3자 VST crash-containment, macOS/Linux
+  하드웨어 동작을 검증하지 않았습니다.
 
-### Downloads / 다운로드
+### Planned downloads / 예정 다운로드
 
-- `DirectPipe-v4.2.5-Windows.zip` — Windows stable artifact, CI-built.
-- `DirectPipe-v4.2.5-macOS.dmg` — macOS beta artifact, CI-built.
-- `DirectPipe-v4.2.5-Linux.tar.gz` — Linux experimental artifact, CI-built.
-- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 4.2.5 package.
+- `DirectPipe-v4.2.6-Windows.zip` — CI-built Windows stable artifact; unsigned
+  unless trusted signing secrets are configured.
+- `DirectPipe-v4.2.6-macOS.dmg` — macOS beta artifact, CI-built.
+- `DirectPipe-v4.2.6-Linux.tar.gz` — Linux experimental artifact, CI-built.
+- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 4.2.6 package.
 - `checksums.sha256` — SHA-256 manifest for all payload artifacts.
 
-**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.5
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.6
 
-**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.5
+**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.6
 
 ---
 

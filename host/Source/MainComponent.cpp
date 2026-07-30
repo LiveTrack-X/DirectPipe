@@ -304,6 +304,10 @@ MainComponent::MainComponent(bool enableExternalControls)
         };
         settingsPanel->onResetSettings = [this] {
             clearPresetRuntimeForMaintenance();
+            if (!SettingsAutosaver::deleteShutdownRecoveryFiles()) {
+                juce::Logger::writeToLog(
+                    "[PRESET] Factory Reset could not remove every shutdown recovery file");
+            }
             // Reload with factory defaults
             controlManager_->reloadConfig();
             setStartMinimizedToTrayOnLaunch(false, false);
@@ -836,7 +840,10 @@ MainComponent::MainComponent(bool enableExternalControls)
 MainComponent::~MainComponent()
 {
     stopTimer();
-    settingsAutosaver_->saveNow();
+    if (!settingsAutosaver_->flushForShutdown()) {
+        juce::Logger::writeToLog(
+            "[PRESET] Shutdown completed without persisting the latest non-plugin settings");
+    }
     dispatcher_.removeListener(this);
     controlManager_->shutdown();
     audioEngine_.shutdown();

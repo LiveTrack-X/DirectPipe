@@ -23,6 +23,8 @@ using namespace directpipe;
 namespace directpipe::monitor_output_detail {
 int reconnectCooldownAfterAttempt(bool reconnected,
                                   VirtualCableStatus status) noexcept;
+bool shouldLogReconnectAttempt(uint64_t attemptNumber) noexcept;
+int reconnectCooldownAfterOpenFailure(uint64_t consecutiveFailures) noexcept;
 juce::String initialiseSelectedOutputDevice(
     juce::AudioDeviceManager& deviceManager,
     const juce::AudioDeviceManager::AudioDeviceSetup& setup);
@@ -33,11 +35,13 @@ namespace {
 class FakeAudioIODevice final : public juce::AudioIODevice {
 public:
     FakeAudioIODevice(const juce::String& deviceName, double sampleRate, int bufferSize,
-                      const juce::BigInteger& activeOutput)
+                      const juce::BigInteger& activeOutput,
+                      int outputLatency = 0)
         : juce::AudioIODevice(deviceName, "Fake Audio"),
           sampleRate_(sampleRate),
           bufferSize_(bufferSize),
-          activeOutput_(activeOutput)
+          activeOutput_(activeOutput),
+          outputLatency_(outputLatency)
     {
         outputNames_.add("Out L");
         outputNames_.add("Out R");
@@ -82,7 +86,7 @@ public:
     int getCurrentBitDepth() override { return 32; }
     juce::BigInteger getActiveOutputChannels() const override { return activeOutput_; }
     juce::BigInteger getActiveInputChannels() const override { return activeInput_; }
-    int getOutputLatencyInSamples() override { return 0; }
+    int getOutputLatencyInSamples() override { return outputLatency_; }
     int getInputLatencyInSamples() override { return 0; }
 
 private:
@@ -91,6 +95,7 @@ private:
     int bufferSize_ = 128;
     juce::BigInteger activeInput_;
     juce::BigInteger activeOutput_;
+    int outputLatency_ = 0;
     bool open_ = true;
     bool playing_ = false;
 };
@@ -387,6 +392,26 @@ TEST(MonitorOutputTest, FailedReconnectRearmsThreeSecondCooldown)
               0);
 }
 
+TEST(MonitorOutputTest, EnumeratedOpenFailuresUseBoundedReconnectBackoff)
+{
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterOpenFailure(0), 90);
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterOpenFailure(1), 90);
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterOpenFailure(2), 300);
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterOpenFailure(3), 600);
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterOpenFailure(4), 900);
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterOpenFailure(100), 900);
+}
+
+TEST(MonitorOutputTest, MissingDeviceReconnectLogsAreRateLimited)
+{
+    EXPECT_TRUE(monitor_output_detail::shouldLogReconnectAttempt(1));
+    EXPECT_FALSE(monitor_output_detail::shouldLogReconnectAttempt(2));
+    EXPECT_FALSE(monitor_output_detail::shouldLogReconnectAttempt(19));
+    EXPECT_TRUE(monitor_output_detail::shouldLogReconnectAttempt(20));
+    EXPECT_FALSE(monitor_output_detail::shouldLogReconnectAttempt(21));
+    EXPECT_TRUE(monitor_output_detail::shouldLogReconnectAttempt(40));
+}
+
 TEST(MonitorOutputTest, InitialOpenTargetsTheSelectedDeviceInsteadOfTheDefault)
 {
     auto stats = std::make_shared<SelectedOutputStats>();
@@ -547,6 +572,51 @@ TEST(MonitorOutputTest, ActiveOutputCanReportActive)
     EXPECT_EQ(monitor.getStatus(), VirtualCableStatus::Active);
     EXPECT_FALSE(monitor.monitorLost_.load(std::memory_order_relaxed));
     EXPECT_TRUE(monitor.isActive());
+}
+
+TEST(MonitorOutputTest, CapturesReportedOutputLatencyAndFallsBackToBuffer)
+{
+    juce::BigInteger activeStereo;
+    activeStereo.setRange(0, 2, true);
+
+    MonitorOutput reportedMonitor;
+    reportedMonitor.deviceName_ = "Monitor Device";
+    reportedMonitor.sampleRate_ = 48000.0;
+    reportedMonitor.bufferSize_ = 128;
+    FakeAudioIODevice reportedDevice(
+        "Monitor Device", 48000.0, 128, activeStereo, 384);
+    juce::AudioIODeviceCallback& reportedCallback = reportedMonitor;
+    reportedCallback.audioDeviceAboutToStart(&reportedDevice);
+
+    EXPECT_TRUE(reportedMonitor.isActive());
+    EXPECT_EQ(reportedMonitor.getOutputLatencySamples(), 384);
+
+    MonitorOutput fallbackMonitor;
+    fallbackMonitor.deviceName_ = "Monitor Device";
+    fallbackMonitor.sampleRate_ = 48000.0;
+    fallbackMonitor.bufferSize_ = 128;
+    FakeAudioIODevice fallbackDevice(
+        "Monitor Device", 48000.0, 128, activeStereo, 0);
+    juce::AudioIODeviceCallback& fallbackCallback = fallbackMonitor;
+    fallbackCallback.audioDeviceAboutToStart(&fallbackDevice);
+
+    EXPECT_TRUE(fallbackMonitor.isActive());
+    EXPECT_EQ(fallbackMonitor.getOutputLatencySamples(), 128);
+}
+
+TEST(MonitorOutputTest, QueueAndOutputEstimateUsesTargetFillOnlyWhileActive)
+{
+    MonitorOutput monitor;
+    prepareActiveMonitor(monitor, 256, 128);
+    monitor.targetFillFrames_.store(384, std::memory_order_relaxed);
+    monitor.actualOutputLatencySamples_.store(192, std::memory_order_relaxed);
+
+    EXPECT_NEAR(monitor.getEstimatedQueueAndOutputLatencyMs(),
+                static_cast<double>(576) / 48000.0 * 1000.0, 0.0001);
+
+    monitor.status_.store(
+        VirtualCableStatus::Error, std::memory_order_release);
+    EXPECT_DOUBLE_EQ(monitor.getEstimatedQueueAndOutputLatencyMs(), 0.0);
 }
 
 TEST(MonitorOutputTest, FallbackWithSampleRateMismatchRemainsRetryable)

@@ -367,8 +367,8 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
 | `auto_slot_active` | boolean | **Deprecated** — auto-derived from `active_slot == 5`. Kept for backward compat. / **Deprecated** — `active_slot == 5`에서 자동 파생. 하위 호환용. |
 | `slot_names` | array | Slot names (6 strings (A-E + Auto), empty = unnamed) / 슬롯 이름 (6개 (A-E + Auto), 빈 문자열 = 이름 없음) |
 | `preset` | string | Current preset name / 현재 프리셋 이름 |
-| `latency_ms` | number | Total estimated main-path latency: estimated input/output buffers + callback execution time + active-chain reported PDC. Not a hardware loopback measurement; excludes Receiver/OBS buffering. / 메인 경로 총 추정 레이턴시 |
-| `monitor_latency_ms` | number | `latency_ms` plus the active monitor device buffer estimate; 0 when monitor is disabled / `latency_ms` + 모니터 장치 버퍼 추정값, 모니터 비활성 시 0 |
+| `latency_ms` | number | Total estimated main-path latency: driver-reported input + output latency (one-buffer fallback per unreported direction) + active-chain reported PDC. Callback time is diagnostic only. Not a hardware loopback measurement; excludes Receiver/OBS buffering. / 메인 경로 총 추정 레이턴시 |
+| `monitor_latency_ms` | number | Separate monitor-route estimate: main input-device latency + active-chain PDC + adaptive monitor queue target + monitor output-device latency. Excludes the main output-device latency; 0 when Monitor is disabled or unavailable. / 별도 모니터 경로 추정값 |
 | `level_db` | number | Input level in dBFS / 입력 레벨 (dBFS) |
 | `cpu_percent` | number | Audio CPU usage % / 오디오 CPU 사용률 |
 | `sample_rate` | number | Sample rate (Hz) / 샘플레이트 |

@@ -18,12 +18,12 @@
 
 /**
  * @file LatencyMonitor.h
- * @brief Real-time latency measurement and display
+ * @brief Audio-path latency estimation and callback timing diagnostics
  *
- * Measures the total audio path latency including:
- * - Input buffer latency (current audio driver)
- * - VST processing time
- * - Output buffer latency
+ * Tracks the input/output latency reported by the current audio driver, with a
+ * one-buffer fallback for either direction when the driver cannot report it.
+ * Callback execution time is measured separately for CPU/XRun diagnostics and
+ * is not treated as additional sample-path latency.
  */
 #pragma once
 
@@ -33,11 +33,11 @@
 namespace directpipe {
 
 /**
- * @brief Measures and reports audio path latency.
+ * @brief Estimates device-path latency and reports callback timing.
  *
- * Uses high-resolution timestamps in the audio callback to measure
- * actual processing time. Combines this with known buffer latencies
- * to report total end-to-end latency.
+ * Uses a monotonic clock in the audio callback to measure actual processing
+ * time. Device latency remains a software estimate based on driver-reported
+ * samples (or a one-buffer fallback), not a hardware loopback measurement.
  */
 class LatencyMonitor {
 public:
@@ -47,8 +47,14 @@ public:
      * @brief Reset the monitor with new audio parameters.
      * @param sampleRate Audio sample rate in Hz.
      * @param bufferSize Audio buffer size in samples.
+     * @param inputLatencySamples Driver-reported input latency, or <= 0 to
+     *        fall back to one buffer.
+     * @param outputLatencySamples Driver-reported output latency, or <= 0 to
+     *        fall back to one buffer.
      */
-    void reset(double sampleRate, int bufferSize);
+    void reset(double sampleRate, int bufferSize,
+               int inputLatencySamples = 0,
+               int outputLatencySamples = 0);
 
     /**
      * @brief Mark the start of an audio callback (called from RT thread).
@@ -61,27 +67,41 @@ public:
     void markCallbackEnd();
 
     /**
-     * @brief Get the input buffer latency in milliseconds.
+     * @brief Get the estimated input-device latency in milliseconds.
      */
     double getInputLatencyMs() const { return inputLatencyMs_.load(std::memory_order_relaxed); }
 
     /**
-     * @brief Get the VST processing time in milliseconds.
+     * @brief Get the input-device latency used by the estimate, in samples.
+     */
+    int getInputLatencySamples() const { return inputLatencySamples_.load(std::memory_order_relaxed); }
+
+    /**
+     * @brief Get the measured callback execution time in milliseconds.
      */
     double getProcessingTimeMs() const { return processingTimeMs_.load(std::memory_order_relaxed); }
 
     /**
-     * @brief Get the output buffer latency in milliseconds.
+     * @brief Get the estimated output-device latency in milliseconds.
      */
     double getOutputLatencyMs() const { return outputLatencyMs_.load(std::memory_order_relaxed); }
 
     /**
-     * @brief Get the total end-to-end latency for shared memory path (OBS).
+     * @brief Get the output-device latency used by the estimate, in samples.
+     */
+    int getOutputLatencySamples() const { return outputLatencySamples_.load(std::memory_order_relaxed); }
+
+    /**
+     * @brief Get the estimated input-device latency before shared-memory output.
+     *
+     * Receiver/host buffering and active plug-in PDC are intentionally separate.
      */
     double getTotalLatencyOBSMs() const;
 
     /**
-     * @brief Get the total end-to-end latency for virtual mic path.
+     * @brief Get the estimated main device I/O latency.
+     *
+     * Active plug-in PDC is intentionally added by the caller.
      */
     double getTotalLatencyVirtualMicMs() const;
 
@@ -118,6 +138,8 @@ private:
 
     // Timing (updated from RT thread)
     std::atomic<uint64_t> callbackStartTicks_{0};    // [RT thread only, atomic for safety across reset()]
+    std::atomic<int> inputLatencySamples_{128};
+    std::atomic<int> outputLatencySamples_{128};
     std::atomic<double> inputLatencyMs_{0.0};
     std::atomic<double> processingTimeMs_{0.0};
     std::atomic<double> outputLatencyMs_{0.0};

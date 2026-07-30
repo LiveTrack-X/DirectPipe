@@ -120,7 +120,7 @@ else
   # README.md badge/link (optional -- may not have version badge)
   if [[ -f README.md ]]; then
     if grep -Eq "(version-|latest-v|v)[0-9]+\.[0-9]+\.[0-9]+" README.md 2>/dev/null; then
-      if grep -q "latest-v${CANONICAL}-" README.md 2>/dev/null; then
+      if grep -Eq "(latest|candidate)-v${CANONICAL}-" README.md 2>/dev/null; then
         pass "README.md badge"
       else
         fail "README.md badge"; VER_FAIL=$((VER_FAIL+1))

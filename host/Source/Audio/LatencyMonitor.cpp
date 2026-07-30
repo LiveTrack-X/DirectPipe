@@ -32,26 +32,36 @@ static_assert(std::atomic<uint64_t>::is_always_lock_free,
 
 namespace directpipe {
 
-void LatencyMonitor::reset(double sampleRate, int bufferSize)
+void LatencyMonitor::reset(double sampleRate, int bufferSize,
+                           int inputLatencySamples, int outputLatencySamples)
 {
     double sr = (sampleRate > 0.0) ? sampleRate : 48000.0;
     int bs = (bufferSize > 0) ? bufferSize : 128;
+    const int inputSamples = inputLatencySamples > 0 ? inputLatencySamples : bs;
+    const int outputSamples = outputLatencySamples > 0 ? outputLatencySamples : bs;
     sampleRate_.store(sr, std::memory_order_relaxed);
     bufferSize_.store(bs, std::memory_order_relaxed);
 
-    // Calculate buffer latencies
-    double bufferMs = (static_cast<double>(bs) / sr) * 1000.0;
-    inputLatencyMs_.store(bufferMs, std::memory_order_relaxed);
-    outputLatencyMs_.store(bufferMs, std::memory_order_relaxed);
+    // Prefer the device's own latency report. Some drivers return zero when
+    // unavailable, so each direction independently falls back to one buffer.
+    inputLatencySamples_.store(inputSamples, std::memory_order_relaxed);
+    outputLatencySamples_.store(outputSamples, std::memory_order_relaxed);
+    inputLatencyMs_.store(
+        (static_cast<double>(inputSamples) / sr) * 1000.0,
+        std::memory_order_relaxed);
+    outputLatencyMs_.store(
+        (static_cast<double>(outputSamples) / sr) * 1000.0,
+        std::memory_order_relaxed);
     processingTimeMs_.store(0.0, std::memory_order_relaxed);
     cpuUsage_.store(0.0, std::memory_order_relaxed);
     avgProcessingTime_.store(0.0, std::memory_order_relaxed);
+    callbackStartTicks_.store(0, std::memory_order_relaxed);
     callbackOverruns_.store(0, std::memory_order_relaxed);
 }
 
 void LatencyMonitor::markCallbackStart()
 {
-    auto now = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::steady_clock::now();
     callbackStartTicks_.store(static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
             now.time_since_epoch()).count()), std::memory_order_relaxed);
@@ -59,13 +69,20 @@ void LatencyMonitor::markCallbackStart()
 
 void LatencyMonitor::markCallbackEnd()
 {
-    auto now = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::steady_clock::now();
     uint64_t endTicks = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
             now.time_since_epoch()).count());
 
-    // Calculate processing time
-    double processingNs = static_cast<double>(endTicks - callbackStartTicks_.load(std::memory_order_relaxed));
+    const uint64_t startTicks =
+        callbackStartTicks_.load(std::memory_order_relaxed);
+    // A missing start marker or a non-monotonic/corrupt sample must not turn an
+    // unsigned subtraction into a huge false latency/CPU/XRun spike.
+    if (startTicks == 0 || endTicks < startTicks)
+        return;
+
+    // Calculate callback execution time for diagnostics only.
+    double processingNs = static_cast<double>(endTicks - startTicks);
     double processingMs = processingNs / 1000000.0;
 
     // Exponential moving average for smooth display
@@ -91,16 +108,15 @@ void LatencyMonitor::markCallbackEnd()
 
 double LatencyMonitor::getTotalLatencyOBSMs() const
 {
-    // OBS path: Input buffer + Processing + Shared memory (negligible)
-    return inputLatencyMs_.load(std::memory_order_relaxed) +
-           processingTimeMs_.load(std::memory_order_relaxed);
+    // DirectPipe-side shared-memory path stops before Receiver/host buffering.
+    return inputLatencyMs_.load(std::memory_order_relaxed);
 }
 
 double LatencyMonitor::getTotalLatencyVirtualMicMs() const
 {
-    // Virtual mic path: Input buffer + Processing + Output buffer (WASAPI)
+    // Main device path: driver-reported input + output latency. Callback
+    // execution is part of the real-time budget, not an algorithmic sample delay.
     return inputLatencyMs_.load(std::memory_order_relaxed) +
-           processingTimeMs_.load(std::memory_order_relaxed) +
            outputLatencyMs_.load(std::memory_order_relaxed);
 }
 

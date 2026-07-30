@@ -96,6 +96,9 @@ public:
     int getCapacityFrames() const { return capacityFrames_.load(std::memory_order_relaxed); }
     int getActualBufferSize() const { return actualBufferSize_.load(std::memory_order_relaxed); }
     double getActualSampleRate() const { return actualSampleRate_.load(std::memory_order_relaxed); }
+    int getOutputLatencySamples() const { return actualOutputLatencySamples_.load(std::memory_order_relaxed); }
+    /** Estimated monitor queue + output-device latency; 0 while inactive. */
+    double getEstimatedQueueAndOutputLatencyMs() const;
 
     /** @brief Check and attempt monitor device reconnection (call from message thread timer). */
     void checkReconnection();  // [Message thread only]
@@ -115,6 +118,12 @@ public:
     static juce::String getSetupGuideMessage();
 
 private:
+    bool initializeInternal(const juce::String& deviceName,
+                            double sampleRate,
+                            int bufferSize,
+                            bool logDetails,
+                            bool reconnectAttempt);
+
     // juce::AudioIODeviceCallback — monitor device's shared-mode callback
     // [Monitor RT thread — SEPARATE from main AudioEngine RT thread]
     void audioDeviceIOCallbackWithContext(
@@ -155,12 +164,15 @@ private:
     std::atomic<int> droppedFrames_{0};                   // [Monitor RT write, Message read]
     std::atomic<int> actualBufferSize_{0};                // [Monitor RT write, Message read]
     std::atomic<double> actualSampleRate_{0.0};           // [Monitor RT write, Message read]
+    std::atomic<int> actualOutputLatencySamples_{0};      // [Monitor device write, Message read]
 
     // Device reconnection tracking
     std::atomic<bool> monitorLost_{false};                // [Monitor RT/Device write, Message read]
     std::atomic<bool> intentionalTeardown_{false};        // [Message write, Device callback read]
     std::atomic<bool> activeOutputRecoveryPending_{false}; // [Monitor RT/Message write, Message read] Guards zero-active reopen retry
     int reconnectCooldown_ = 0;                           // [Message thread only] Ticks before next attempt
+    uint64_t reconnectAttemptCount_ = 0;                  // [Message thread only] Rate-limits automatic reconnect diagnostics
+    uint64_t consecutiveOpenFailureCount_ = 0;            // [Message thread only] Bounded backoff for enumerated-but-busy devices
 
     // Drift monitoring: keeps monitor latency bounded when independent device clocks diverge.
     std::atomic<int> underrunCount_{0};                   // [Monitor RT write, Message read]

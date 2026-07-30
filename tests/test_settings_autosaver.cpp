@@ -11,6 +11,47 @@
 
 using namespace directpipe;
 
+namespace {
+
+class CapturingLogger final : public juce::Logger {
+public:
+    void logMessage(const juce::String& message) override
+    {
+        messages.add(message);
+    }
+
+    int countContaining(const juce::String& text) const
+    {
+        int count = 0;
+        for (const auto& message : messages)
+            if (message.contains(text))
+                ++count;
+        return count;
+    }
+
+private:
+    juce::StringArray messages;
+};
+
+class ScopedCurrentLogger final {
+public:
+    explicit ScopedCurrentLogger(juce::Logger& logger)
+        : previous_(juce::Logger::getCurrentLogger())
+    {
+        juce::Logger::setCurrentLogger(&logger);
+    }
+
+    ~ScopedCurrentLogger()
+    {
+        juce::Logger::setCurrentLogger(previous_);
+    }
+
+private:
+    juce::Logger* previous_;
+};
+
+} // namespace
+
 class SettingsAutosaverTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -130,22 +171,400 @@ TEST_F(SettingsAutosaverTest, DeferredAutosaveRemainsPendingAfterMaxDefer) {
 
 TEST_F(SettingsAutosaverTest, SaveNowSkipsDuringLoading) {
     auto file = getAutoSaveFile();
-    file.deleteFile();
+    const juce::String original =
+        R"({"version":4,"deviceType":"Windows Audio","plugins":[{"name":"LoadingPlugin"}]})";
+    ASSERT_TRUE(file.replaceWithText(original));
 
     loadingSlot_ = true;
-    autosaver_->saveNow();
+    EXPECT_FALSE(autosaver_->saveNow());
+    EXPECT_EQ(file.loadFileAsString(), original);
+}
+
+TEST_F(SettingsAutosaverTest, ShutdownFlushMergesSettingsWithoutReplacingCompletePlugins) {
+    auto file = getAutoSaveFile();
+    const juce::String original = R"json({
+        "version": 4,
+        "deviceType": "Windows Audio",
+        "inputDevice": "Old Input",
+        "outputDevice": "Old Output",
+        "plugins": [
+            {
+                "name": "PreservedPlugin",
+                "path": "C:/plugins/preserved.vst3",
+                "bypassed": false
+            }
+        ]
+    })json";
+    ASSERT_TRUE(file.replaceWithText(original));
+
+    presetMgr_->onExportAppSettings = [](juce::DynamicObject& root) {
+        root.setProperty("startMinimizedToTray", true);
+    };
+    engine_->rememberRestoredDeviceTargets(
+        "ASIO", "Recovery ASIO", "Recovery ASIO");
+    engine_->setInputGain(0.75f);
+    loadingSlot_ = true;
+
+    ASSERT_TRUE(autosaver_->flushForShutdown());
+
+    auto saved = juce::JSON::parse(file.loadFileAsString());
+    auto* root = saved.getDynamicObject();
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(root->getProperty("deviceType").toString(), "ASIO");
+    EXPECT_EQ(root->getProperty("inputDevice").toString(), "Recovery ASIO");
+    EXPECT_EQ(root->getProperty("outputDevice").toString(), "Recovery ASIO");
+    EXPECT_DOUBLE_EQ(static_cast<double>(root->getProperty("inputGain")), 0.75);
+    EXPECT_TRUE(static_cast<bool>(
+        root->getProperty("startMinimizedToTray")));
+
+    auto* plugins = root->getProperty("plugins").getArray();
+    ASSERT_NE(plugins, nullptr);
+    ASSERT_EQ(plugins->size(), 1);
+    auto* plugin = plugins->getReference(0).getDynamicObject();
+    ASSERT_NE(plugin, nullptr);
+    EXPECT_EQ(plugin->getProperty("name").toString(), "PreservedPlugin");
+    EXPECT_EQ(plugin->getProperty("path").toString(),
+              "C:/plugins/preserved.vst3");
+    EXPECT_FALSE(SettingsAutosaver::getShutdownRecoveryFile().existsAsFile());
+}
+
+TEST_F(SettingsAutosaverTest, ShutdownFlushUsesSidecarUntilCompleteChainReturns) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+    file.getSiblingFile(file.getFileName() + ".bak").deleteFile();
+    file.withFileExtension(file.getFileExtension() + ".backup").deleteFile();
+    auto recoveryFile = SettingsAutosaver::getShutdownRecoveryFile();
+    recoveryFile.deleteFile();
+
+    presetMgr_->onExportAppSettings = [](juce::DynamicObject& root) {
+        root.setProperty("startMinimizedToTray", true);
+    };
+    engine_->rememberRestoredDeviceTargets(
+        "ASIO", "Recovery ASIO", "Recovery ASIO");
+    loadingSlot_ = true;
+
+    ASSERT_TRUE(autosaver_->flushForShutdown());
     EXPECT_FALSE(file.existsAsFile());
+    ASSERT_TRUE(recoveryFile.existsAsFile());
+
+    auto pending = juce::JSON::parse(recoveryFile.loadFileAsString());
+    auto* pendingRoot = pending.getDynamicObject();
+    ASSERT_NE(pendingRoot, nullptr);
+    EXPECT_FALSE(pendingRoot->hasProperty("plugins"));
+    EXPECT_EQ(pendingRoot->getProperty("deviceType").toString(), "ASIO");
+    EXPECT_TRUE(static_cast<bool>(
+        pendingRoot->getProperty("startMinimizedToTray")));
+
+    ASSERT_TRUE(file.replaceWithText(R"json({
+        "version": 4,
+        "deviceType": "Windows Audio",
+        "plugins": [
+            {
+                "name": "RecoveredPlugin",
+                "path": "C:/plugins/recovered.vst3",
+                "bypassed": false
+            }
+        ]
+    })json"));
+
+    bool restoredStartMinimized = false;
+    presetMgr_->onImportAppSettings =
+        [&restoredStartMinimized](const juce::DynamicObject& root) {
+            restoredStartMinimized =
+                root.hasProperty("startMinimizedToTray")
+                && static_cast<bool>(
+                    root.getProperty("startMinimizedToTray"));
+            return true;
+        };
+    loadingSlot_ = false;
+
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(restoredStartMinimized);
+    EXPECT_FALSE(recoveryFile.existsAsFile());
+    auto merged = juce::JSON::parse(file.loadFileAsString());
+    auto* mergedRoot = merged.getDynamicObject();
+    ASSERT_NE(mergedRoot, nullptr);
+    auto* plugins = mergedRoot->getProperty("plugins").getArray();
+    ASSERT_NE(plugins, nullptr);
+    ASSERT_EQ(plugins->size(), 1);
+    EXPECT_EQ(plugins->getReference(0).getDynamicObject()
+                  ->getProperty("name").toString(),
+              "RecoveredPlugin");
+    EXPECT_TRUE(static_cast<bool>(
+        mergedRoot->getProperty("startMinimizedToTray")));
+}
+
+TEST_F(SettingsAutosaverTest, ShutdownSidecarRestoresImmediatelyWithoutMainPreset) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+    file.getSiblingFile(file.getFileName() + ".bak").deleteFile();
+    file.withFileExtension(file.getFileExtension() + ".backup").deleteFile();
+    auto recoveryFile = SettingsAutosaver::getShutdownRecoveryFile();
+    recoveryFile.deleteFile();
+
+    presetMgr_->onExportAppSettings = [](juce::DynamicObject& root) {
+        root.setProperty("startMinimizedToTray", true);
+    };
+    loadingSlot_ = true;
+    ASSERT_TRUE(autosaver_->flushForShutdown());
+    ASSERT_FALSE(file.existsAsFile());
+    ASSERT_TRUE(recoveryFile.existsAsFile());
+
+    bool restoredStartMinimized = false;
+    presetMgr_->onImportAppSettings =
+        [&restoredStartMinimized](const juce::DynamicObject& root) {
+            restoredStartMinimized =
+                root.hasProperty("startMinimizedToTray")
+                && static_cast<bool>(
+                    root.getProperty("startMinimizedToTray"));
+            return true;
+        };
+    loadingSlot_ = false;
+
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(restoredStartMinimized);
+    EXPECT_FALSE(partialLoad_.load());
+    EXPECT_FALSE(file.existsAsFile());
+    EXPECT_TRUE(recoveryFile.existsAsFile());
+}
+
+TEST_F(SettingsAutosaverTest, RecoverySidecarSurvivesLockedMainMergeFailure) {
+#if JUCE_WINDOWS
+    auto file = getAutoSaveFile();
+    ASSERT_TRUE(file.replaceWithText(R"json({
+        "version": 4,
+        "plugins": [
+            {
+                "name": "PreservedPlugin",
+                "path": "C:/plugins/preserved.vst3"
+            }
+        ]
+    })json"));
+    auto recoveryFile = SettingsAutosaver::getShutdownRecoveryFile();
+    ASSERT_TRUE(recoveryFile.replaceWithText(R"json({
+        "version": 4,
+        "startMinimizedToTray": true
+    })json"));
+
+    bool restoredStartMinimized = false;
+    presetMgr_->onImportAppSettings =
+        [&restoredStartMinimized](const juce::DynamicObject& root) {
+            restoredStartMinimized =
+                root.hasProperty("startMinimizedToTray")
+                && static_cast<bool>(
+                    root.getProperty("startMinimizedToTray"));
+            return true;
+        };
+
+    auto lockedPrimary = CreateFileW(
+        file.getFullPathName().toWideCharPointer(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    ASSERT_NE(lockedPrimary, INVALID_HANDLE_VALUE) << GetLastError();
+
+    autosaver_->loadFromFile();
+
+    EXPECT_TRUE(restoredStartMinimized);
+    EXPECT_TRUE(recoveryFile.existsAsFile());
+    EXPECT_FALSE(file.loadFileAsString().contains(
+        "startMinimizedToTray"));
+    CloseHandle(lockedPrimary);
+#else
+    GTEST_SKIP() << "Windows file-share semantics are required";
+#endif
+}
+
+TEST_F(SettingsAutosaverTest, FactoryResetDeletesShutdownRecoveryFamily) {
+    const auto recoveryFile =
+        SettingsAutosaver::getShutdownRecoveryFile();
+    const juce::File recoveryFamily[] {
+        recoveryFile,
+        recoveryFile.getSiblingFile(
+            recoveryFile.getFileName() + ".bak"),
+        recoveryFile.withFileExtension(
+            recoveryFile.getFileExtension() + ".backup"),
+        recoveryFile.getSiblingFile(
+            recoveryFile.getFileName() + ".tmp")
+    };
+    for (const auto& file : recoveryFamily)
+        ASSERT_TRUE(file.replaceWithText("{}"));
+
+    ASSERT_TRUE(SettingsAutosaver::deleteShutdownRecoveryFiles());
+
+    for (const auto& file : recoveryFamily)
+        EXPECT_FALSE(file.existsAsFile());
 }
 
 TEST_F(SettingsAutosaverTest, SaveNowPreservesSettingsFileDuringPartialLoad) {
     auto file = getAutoSaveFile();
-    const juce::String original = R"({"version":4,"plugins":[{"name":"MissingPlugin"}]})";
+    const juce::String original = R"json({
+        "version": 4,
+        "deviceType": "Windows Audio",
+        "inputDevice": "Old Input",
+        "outputDevice": "CABLE Input(VB-Audio Virtual Cable)",
+        "plugins": [
+            {
+                "name": "MissingPlugin",
+                "path": "C:/missing/plugin.vst3",
+                "bypassed": false
+            }
+        ]
+    })json";
     ASSERT_TRUE(file.replaceWithText(original));
 
-    partialLoad_ = true;
-    autosaver_->saveNow();
+    const auto slotFile = PresetManager::getSlotFile(presetMgr_->getActiveSlot());
+    const juce::String originalSlot =
+        R"({"version":4,"type":"chain","plugins":[{"name":"SlotPlugin"}]})";
+    ASSERT_TRUE(slotFile.replaceWithText(originalSlot));
 
-    EXPECT_EQ(file.loadFileAsString(), original);
+    engine_->rememberRestoredDeviceTargets(
+        "ASIO", "Recovery ASIO", "Recovery ASIO");
+    partialLoad_ = true;
+    ASSERT_TRUE(autosaver_->saveNow());
+
+    auto saved = juce::JSON::parse(file.loadFileAsString());
+    auto* root = saved.getDynamicObject();
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(root->getProperty("deviceType").toString(), "ASIO");
+    EXPECT_EQ(root->getProperty("inputDevice").toString(), "Recovery ASIO");
+    EXPECT_EQ(root->getProperty("outputDevice").toString(), "Recovery ASIO");
+
+    auto* plugins = root->getProperty("plugins").getArray();
+    ASSERT_NE(plugins, nullptr);
+    ASSERT_EQ(plugins->size(), 1);
+    auto* plugin = plugins->getReference(0).getDynamicObject();
+    ASSERT_NE(plugin, nullptr);
+    EXPECT_EQ(plugin->getProperty("name").toString(), "MissingPlugin");
+    EXPECT_EQ(plugin->getProperty("path").toString(), "C:/missing/plugin.vst3");
+    EXPECT_FALSE(static_cast<bool>(plugin->getProperty("bypassed")));
+    EXPECT_EQ(slotFile.loadFileAsString(), originalSlot);
+}
+
+TEST_F(SettingsAutosaverTest, PartialLoadAutosavePersistsDeviceSettingsWithoutReplacingPlugins) {
+    auto file = getAutoSaveFile();
+    ASSERT_TRUE(file.replaceWithText(R"({
+        "version": 4,
+        "deviceType": "Windows Audio",
+        "plugins": [{"name":"MissingPlugin","path":"C:/missing/plugin.vst3"}]
+    })"));
+
+    engine_->rememberRestoredDeviceTargets(
+        "ASIO", "Recovery ASIO", "Recovery ASIO");
+    partialLoad_ = true;
+    autosaver_->markDirty();
+    for (int i = 0; i < 30; ++i)
+        autosaver_->tick();
+
+    auto saved = juce::JSON::parse(file.loadFileAsString());
+    auto* root = saved.getDynamicObject();
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(root->getProperty("deviceType").toString(), "ASIO");
+    auto* plugins = root->getProperty("plugins").getArray();
+    ASSERT_NE(plugins, nullptr);
+    ASSERT_EQ(plugins->size(), 1);
+    auto* plugin = plugins->getReference(0).getDynamicObject();
+    ASSERT_NE(plugin, nullptr);
+    EXPECT_EQ(plugin->getProperty("name").toString(), "MissingPlugin");
+}
+
+TEST_F(SettingsAutosaverTest, PartialLoadSaveUsesCompleteBackupPluginChain) {
+    auto file = getAutoSaveFile();
+    auto backup = file.getSiblingFile(file.getFileName() + ".bak");
+    ASSERT_TRUE(file.replaceWithText(
+        R"({"version":4,"deviceType":"Windows Audio"})"));
+    ASSERT_TRUE(backup.replaceWithText(R"({
+        "version": 4,
+        "deviceType": "Windows Audio",
+        "plugins": [{"name":"BackupPlugin","path":"C:/backup/plugin.vst3"}]
+    })"));
+
+    engine_->rememberRestoredDeviceTargets(
+        "ASIO", "Recovery ASIO", "Recovery ASIO");
+    partialLoad_ = true;
+    ASSERT_TRUE(autosaver_->saveNow());
+
+    auto saved = juce::JSON::parse(file.loadFileAsString());
+    auto* root = saved.getDynamicObject();
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(root->getProperty("deviceType").toString(), "ASIO");
+    auto* plugins = root->getProperty("plugins").getArray();
+    ASSERT_NE(plugins, nullptr);
+    ASSERT_EQ(plugins->size(), 1);
+    auto* plugin = plugins->getReference(0).getDynamicObject();
+    ASSERT_NE(plugin, nullptr);
+    EXPECT_EQ(plugin->getProperty("name").toString(), "BackupPlugin");
+}
+
+TEST_F(SettingsAutosaverTest, MissingCompleteChainRetriesQuietlyWithBoundedBackoff) {
+    auto file = getAutoSaveFile();
+    file.deleteFile();
+    file.getSiblingFile(file.getFileName() + ".bak").deleteFile();
+    file.withFileExtension(file.getFileExtension() + ".backup").deleteFile();
+
+    engine_->rememberRestoredDeviceTargets(
+        "ASIO", "Recovery ASIO", "Recovery ASIO");
+    partialLoad_ = true;
+
+    CapturingLogger logger;
+    ScopedCurrentLogger loggerScope(logger);
+
+    autosaver_->markDirty();
+    for (int i = 0; i < 30; ++i)
+        autosaver_->tick();
+
+    EXPECT_EQ(logger.countContaining(
+                  "complete persisted plugin chain unavailable"),
+              1);
+    EXPECT_EQ(logger.countContaining(
+                  "Autosave failed; keeping changes pending"),
+              0);
+
+    // Exercise every backoff step while no complete chain is available:
+    // 5s, 10s, 20s, then the bounded 30s maximum twice.
+    for (int ticks : { 150, 300, 600, 900 })
+        for (int i = 0; i < ticks; ++i)
+            autosaver_->tick();
+
+    EXPECT_EQ(logger.countContaining(
+                  "complete persisted plugin chain unavailable"),
+              1);
+
+    ASSERT_TRUE(file.replaceWithText(R"({
+        "version": 4,
+        "deviceType": "Windows Audio",
+        "plugins": [{"name":"RecoveredPlugin","path":"C:/recovered/plugin.vst3"}]
+    })"));
+
+    for (int i = 0; i < 899; ++i)
+        autosaver_->tick();
+
+    auto beforeRetry = juce::JSON::parse(file.loadFileAsString());
+    ASSERT_NE(beforeRetry.getDynamicObject(), nullptr);
+    EXPECT_EQ(beforeRetry.getDynamicObject()
+                  ->getProperty("deviceType").toString(),
+              "Windows Audio");
+
+    autosaver_->tick();
+
+    auto afterRetry = juce::JSON::parse(file.loadFileAsString());
+    auto* root = afterRetry.getDynamicObject();
+    ASSERT_NE(root, nullptr);
+    EXPECT_EQ(root->getProperty("deviceType").toString(), "ASIO");
+    auto* plugins = root->getProperty("plugins").getArray();
+    ASSERT_NE(plugins, nullptr);
+    ASSERT_EQ(plugins->size(), 1);
+    auto* plugin = plugins->getReference(0).getDynamicObject();
+    ASSERT_NE(plugin, nullptr);
+    EXPECT_EQ(plugin->getProperty("name").toString(), "RecoveredPlugin");
+    EXPECT_EQ(logger.countContaining(
+                  "complete persisted plugin chain unavailable"),
+              1);
 }
 
 TEST_F(SettingsAutosaverTest, FailedAutosaveRemainsDirtyAndRetriesWithoutAnotherEdit) {
@@ -254,7 +673,7 @@ TEST_F(SettingsAutosaverTest, StartupGuardRestoresMuteWhenNoSettingsFile) {
     engine_->setOutputMuted(false);
     autosaver_->loadFromFile();
 
-    EXPECT_FALSE(engine_->isOutputMuted());
+    EXPECT_FALSE(engine_->isOutputManuallyMuted());
 }
 
 TEST_F(SettingsAutosaverTest, NoSettingsFileAlwaysReleasesFactoryResetLoadingState) {
@@ -281,7 +700,7 @@ TEST_F(SettingsAutosaverTest, StartupGuardRestoresMuteForLegacyPresetWithoutOutp
     engine_->setOutputMuted(false);
     autosaver_->loadFromFile();
 
-    EXPECT_FALSE(engine_->isOutputMuted());
+    EXPECT_FALSE(engine_->isOutputManuallyMuted());
 }
 
 TEST_F(SettingsAutosaverTest, StartupGuardKeepsExplicitOutputMutedFromPreset) {
@@ -294,7 +713,7 @@ TEST_F(SettingsAutosaverTest, StartupGuardKeepsExplicitOutputMutedFromPreset) {
     engine_->setOutputMuted(false);
     autosaver_->loadFromFile();
 
-    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_TRUE(engine_->isOutputManuallyMuted());
 
     // Atomic writes may be interrupted after primary -> .bak rotation. The
     // backup-only family must still restore settings and explicit mute intent.
@@ -308,7 +727,7 @@ TEST_F(SettingsAutosaverTest, StartupGuardKeepsExplicitOutputMutedFromPreset) {
 
     autosaver_->loadFromFile();
 
-    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_TRUE(engine_->isOutputManuallyMuted());
 
 #if JUCE_WINDOWS
     // When a corrupt primary cannot be repaired because another process has
@@ -330,7 +749,7 @@ TEST_F(SettingsAutosaverTest, StartupGuardKeepsExplicitOutputMutedFromPreset) {
 
     autosaver_->loadFromFile();
 
-    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_TRUE(engine_->isOutputManuallyMuted());
     CloseHandle(lockedPrimary);
 #endif
 }
@@ -353,5 +772,5 @@ TEST_F(SettingsAutosaverTest, PartialLoadKeepsExplicitOutputMutedFromPreset) {
     autosaver_->loadFromFile();
 
     EXPECT_TRUE(partialLoad_.load());
-    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_TRUE(engine_->isOutputManuallyMuted());
 }

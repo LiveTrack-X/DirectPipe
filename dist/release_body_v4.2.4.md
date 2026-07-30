@@ -1,5 +1,13 @@
 ## DirectPipe v4.2.4
 
+> **Unpublished tag / 미게시 태그**: v4.2.4 failed the macOS/Linux CI gate
+> and was never published as a GitHub Release. Its source tag remains for
+> provenance; v4.2.3 remained the public stable release.
+>
+> v4.2.4는 macOS/Linux CI 게이트에서 실패해 GitHub Release로 게시되지
+> 않았습니다. 출처 추적을 위해 소스 태그만 유지하며 공개 안정판은
+> v4.2.3으로 남았습니다.
+
 v4.2.4 hardens audio-device recovery. Failed main and monitor recovery is
 rate-limited correctly, the configured monitor output is opened directly, and
 an exclusive main-output transition releases a potentially conflicting monitor
@@ -67,7 +75,7 @@ v4.2.4는 오디오 장치 복구를 안정화합니다. 메인·모니터 복�
 - 이번 업데이트에서는 실기기 오디오, 제3자 VST crash-containment,
   macOS/Linux 하드웨어 동작을 검증하지 않았습니다.
 
-### Downloads / 다운로드
+### Planned assets (not published) / 예정 자산 (미게시)
 
 - `DirectPipe-v4.2.4-Windows.zip` — Windows stable artifact, CI-built.
 - `DirectPipe-v4.2.4-macOS.dmg` — macOS beta artifact, CI-built.

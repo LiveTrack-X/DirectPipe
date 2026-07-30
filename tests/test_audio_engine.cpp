@@ -12,6 +12,7 @@
 #include "Audio/DeviceState.h"
 #include "Audio/MonitorDriftPolicy.h"
 #include "Platform/EndpointChangeWatcher.h"
+#include "UI/AudioSettingsPolicy.h"
 
 #if JUCE_WINDOWS
 #include <windows.h>
@@ -37,6 +38,19 @@ bool shouldSuspendMonitorBeforeExclusiveOpen(
     const juce::String& targetOutputDevice,
     const juce::String& monitorDevice,
     bool suspendForAnyExclusiveTypeSwitch);
+bool seedCompatibleWindowsDriverSnapshot(
+    const juce::String& currentType,
+    const juce::String& targetType,
+    bool targetHasSnapshot,
+    const DriverTypeSnapshot& currentSnapshot,
+    DriverTypeSnapshot& seededSnapshot);
+bool snapshotEndpointsAvailable(
+    const DriverTypeSnapshot& snapshot,
+    const juce::StringArray& availableInputs,
+    const juce::StringArray& availableOutputs);
+juce::String restoreDriverSnapshot(
+    juce::AudioDeviceManager& deviceManager,
+    const DriverTypeSnapshot& snapshot);
 }
 
 namespace {
@@ -111,21 +125,43 @@ private:
 
 struct ManagedFakeDeviceStats {
     std::vector<std::pair<int, int>> openAttempts;
+    juce::StringArray openRequestLog;
+    juce::String typeName { "Recovery Test" };
+    juce::String deviceName { "Recovery Device" };
+    juce::StringArray deviceNames;
+    juce::String failDeviceName;
+    juce::String noActiveChannelsDeviceName;
     bool failMultiChannelOpen = false;
     bool failEveryOpen = false;
+    bool reportNoActiveChannels = false;
+    double failSampleRate = 0.0;
+    int failBufferSize = 0;
+    int failInputFirstChannel = -1;
+    int failOutputFirstChannel = -1;
+    double reportedSampleRate = 0.0;
+    int reportedBufferSize = 0;
+    int reportedInputLatency = 0;
+    int reportedOutputLatency = 0;
+    bool separateInputsAndOutputs = false;
 };
 
 class ManagedFakeAudioIODevice final : public juce::AudioIODevice {
 public:
-    explicit ManagedFakeAudioIODevice(std::shared_ptr<ManagedFakeDeviceStats> stats)
-        : juce::AudioIODevice("Recovery Device", "Recovery Test"),
+    ManagedFakeAudioIODevice(std::shared_ptr<ManagedFakeDeviceStats> stats,
+                             const juce::String& outputDeviceName,
+                             const juce::String& inputDeviceName)
+        : juce::AudioIODevice(
+              outputDeviceName.isNotEmpty() ? outputDeviceName : inputDeviceName,
+              stats->typeName),
+          outputDeviceName_(outputDeviceName),
+          inputDeviceName_(inputDeviceName),
           stats_(std::move(stats))
     {
     }
 
     juce::StringArray getOutputChannelNames() override { return { "Out 1", "Out 2" }; }
     juce::StringArray getInputChannelNames() override { return { "In 1", "In 2" }; }
-    juce::Array<double> getAvailableSampleRates() override { return { 48000.0 }; }
+    juce::Array<double> getAvailableSampleRates() override { return { 44100.0, 48000.0 }; }
     juce::Array<int> getAvailableBufferSizes() override { return { 128, 256 }; }
     int getDefaultBufferSize() override { return 128; }
 
@@ -137,15 +173,43 @@ public:
         const auto inputCount = inputChannels.countNumberOfSetBits();
         const auto outputCount = outputChannels.countNumberOfSetBits();
         stats_->openAttempts.emplace_back(inputCount, outputCount);
+        stats_->openRequestLog.add(
+            "inFirst=" + juce::String(inputChannels.findNextSetBit(0))
+            + " outFirst=" + juce::String(outputChannels.findNextSetBit(0))
+            + " sr=" + juce::String(sampleRate)
+            + " bs=" + juce::String(bufferSizeSamples));
+        if (inputDeviceName_ == stats_->failDeviceName
+            || outputDeviceName_ == stats_->failDeviceName)
+            return "test selected device refuses open";
         if (stats_->failEveryOpen)
             return "test device refuses every open";
+        if (stats_->failSampleRate > 0.0
+            && std::abs(sampleRate - stats_->failSampleRate) < 1.0)
+            return "test device refuses requested sample rate";
+        if (stats_->failBufferSize > 0
+            && bufferSizeSamples == stats_->failBufferSize)
+            return "test device refuses requested buffer size";
+        if (stats_->failInputFirstChannel >= 0
+            && inputChannels.findNextSetBit(0) == stats_->failInputFirstChannel)
+            return "test device refuses requested input channel";
+        if (stats_->failOutputFirstChannel >= 0
+            && outputChannels.findNextSetBit(0) == stats_->failOutputFirstChannel)
+            return "test device refuses requested output channel";
         if (stats_->failMultiChannelOpen && (inputCount > 1 || outputCount > 1))
             return "test device requires mono input/output";
 
-        activeInput_ = inputChannels;
-        activeOutput_ = outputChannels;
-        sampleRate_ = sampleRate;
-        bufferSize_ = bufferSizeSamples;
+        const bool reportNoActiveChannels =
+            stats_->reportNoActiveChannels
+            || inputDeviceName_ == stats_->noActiveChannelsDeviceName
+            || outputDeviceName_ == stats_->noActiveChannelsDeviceName;
+        activeInput_ = reportNoActiveChannels ? juce::BigInteger() : inputChannels;
+        activeOutput_ = reportNoActiveChannels ? juce::BigInteger() : outputChannels;
+        sampleRate_ = stats_->reportedSampleRate > 0.0
+            ? stats_->reportedSampleRate
+            : sampleRate;
+        bufferSize_ = stats_->reportedBufferSize > 0
+            ? stats_->reportedBufferSize
+            : bufferSizeSamples;
         open_ = true;
         return {};
     }
@@ -175,10 +239,12 @@ public:
     int getCurrentBitDepth() override { return 32; }
     juce::BigInteger getActiveOutputChannels() const override { return activeOutput_; }
     juce::BigInteger getActiveInputChannels() const override { return activeInput_; }
-    int getOutputLatencyInSamples() override { return 0; }
-    int getInputLatencyInSamples() override { return 0; }
+    int getOutputLatencyInSamples() override { return stats_->reportedOutputLatency; }
+    int getInputLatencyInSamples() override { return stats_->reportedInputLatency; }
 
 private:
+    juce::String outputDeviceName_;
+    juce::String inputDeviceName_;
     std::shared_ptr<ManagedFakeDeviceStats> stats_;
     juce::AudioIODeviceCallback* callback_ = nullptr;
     juce::BigInteger activeInput_;
@@ -192,24 +258,40 @@ private:
 class ManagedFakeAudioIODeviceType final : public juce::AudioIODeviceType {
 public:
     explicit ManagedFakeAudioIODeviceType(std::shared_ptr<ManagedFakeDeviceStats> stats)
-        : juce::AudioIODeviceType("Recovery Test"),
+        : juce::AudioIODeviceType(stats->typeName),
           stats_(std::move(stats))
     {
     }
 
     void scanForDevices() override {}
-    juce::StringArray getDeviceNames(bool) const override { return { "Recovery Device" }; }
+    juce::StringArray getDeviceNames(bool) const override
+    {
+        return stats_->deviceNames.isEmpty()
+            ? juce::StringArray { stats_->deviceName }
+            : stats_->deviceNames;
+    }
     int getDefaultDeviceIndex(bool) const override { return 0; }
     int getIndexOfDevice(juce::AudioIODevice* device, bool) const override
     {
-        return device && device->getName() == "Recovery Device" ? 0 : -1;
+        return device ? getDeviceNames(false).indexOf(device->getName()) : -1;
     }
-    bool hasSeparateInputsAndOutputs() const override { return false; }
+    bool hasSeparateInputsAndOutputs() const override
+    {
+        return stats_->separateInputsAndOutputs;
+    }
     juce::AudioIODevice* createDevice(const juce::String& outputDeviceName,
                                       const juce::String& inputDeviceName) override
     {
-        if (outputDeviceName == "Recovery Device" || inputDeviceName == "Recovery Device")
-            return new ManagedFakeAudioIODevice(stats_);
+        const auto names = getDeviceNames(false);
+        const bool outputValid =
+            outputDeviceName.isEmpty() || names.contains(outputDeviceName);
+        const bool inputValid =
+            inputDeviceName.isEmpty() || names.contains(inputDeviceName);
+        if (outputValid && inputValid
+            && (outputDeviceName.isNotEmpty() || inputDeviceName.isNotEmpty())) {
+            return new ManagedFakeAudioIODevice(
+                stats_, outputDeviceName, inputDeviceName);
+        }
         return nullptr;
     }
 
@@ -218,10 +300,29 @@ private:
 };
 
 void addManagedFakeDeviceType(juce::AudioDeviceManager& manager,
-                              const std::shared_ptr<ManagedFakeDeviceStats>& stats)
+                              const std::shared_ptr<ManagedFakeDeviceStats>& stats,
+                              bool makeCurrent = true)
 {
     manager.addAudioDeviceType(std::make_unique<ManagedFakeAudioIODeviceType>(stats));
-    manager.setCurrentAudioDeviceType("Recovery Test", true);
+    if (makeCurrent)
+        manager.setCurrentAudioDeviceType(stats->typeName, true);
+}
+
+juce::AudioDeviceManager::AudioDeviceSetup managedDuplexSetup(
+    const juce::String& deviceName,
+    double sampleRate = 48000.0,
+    int bufferSize = 128)
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = deviceName;
+    setup.outputDeviceName = deviceName;
+    setup.sampleRate = sampleRate;
+    setup.bufferSize = bufferSize;
+    setup.useDefaultInputChannels = false;
+    setup.useDefaultOutputChannels = false;
+    setup.inputChannels.setRange(0, 2, true);
+    setup.outputChannels.setRange(0, 2, true);
+    return setup;
 }
 
 #if JUCE_WINDOWS
@@ -259,6 +360,43 @@ protected:
 
     std::unique_ptr<AudioEngine> engine_;
 };
+
+TEST(LatencyMonitorTest, UsesReportedDeviceLatencyAndFallsBackPerDirection)
+{
+    LatencyMonitor monitor;
+
+    monitor.reset(48000.0, 256, 480, 960);
+    EXPECT_EQ(monitor.getInputLatencySamples(), 480);
+    EXPECT_EQ(monitor.getOutputLatencySamples(), 960);
+    EXPECT_NEAR(monitor.getInputLatencyMs(), 10.0, 0.0001);
+    EXPECT_NEAR(monitor.getOutputLatencyMs(), 20.0, 0.0001);
+    EXPECT_NEAR(monitor.getTotalLatencyVirtualMicMs(), 30.0, 0.0001);
+
+    // Invalid reports fall back independently, not as an all-or-nothing pair.
+    monitor.reset(48000.0, 256, 480, 0);
+    EXPECT_EQ(monitor.getInputLatencySamples(), 480);
+    EXPECT_EQ(monitor.getOutputLatencySamples(), 256);
+    EXPECT_NEAR(monitor.getTotalLatencyVirtualMicMs(),
+                static_cast<double>(736) / 48000.0 * 1000.0, 0.0001);
+
+    monitor.reset(48000.0, 256, -1, -1);
+    EXPECT_EQ(monitor.getInputLatencySamples(), 256);
+    EXPECT_EQ(monitor.getOutputLatencySamples(), 256);
+}
+
+TEST(LatencyMonitorTest, CallbackExecutionRemainsDiagnosticOnly)
+{
+    LatencyMonitor monitor;
+    monitor.reset(48000.0, 256, 480, 960);
+    const double devicePathBefore = monitor.getTotalLatencyVirtualMicMs();
+
+    monitor.markCallbackStart();
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    monitor.markCallbackEnd();
+
+    EXPECT_GT(monitor.getProcessingTimeMs(), 0.0);
+    EXPECT_DOUBLE_EQ(monitor.getTotalLatencyVirtualMicMs(), devicePathBefore);
+}
 
 TEST_F(AudioEngineTest, DriverSnapshotSaveRestore) {
     engine_->setOutputNone(true);
@@ -329,6 +467,26 @@ TEST_F(AudioEngineTest, SameDeviceRecoveryActuallyRecreatesTheOpenDevice) {
         << "re-applying an unchanged setup without closing is a JUCE no-op";
 }
 
+TEST_F(AudioEngineTest, DeviceStartPublishesReportedLatencyToMonitor)
+{
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->reportedInputLatency = 384;
+    stats->reportedOutputLatency = 768;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName, 48000.0, 128), true).isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    auto& latency = engine_->getLatencyMonitor();
+    EXPECT_EQ(latency.getInputLatencySamples(), 384);
+    EXPECT_EQ(latency.getOutputLatencySamples(), 768);
+    EXPECT_NEAR(latency.getTotalLatencyVirtualMicMs(), 24.0, 0.0001);
+}
+
 TEST_F(AudioEngineTest, ExclusiveMainOutputRejectsTheSameMonitorDevice) {
     EXPECT_TRUE(audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
         "Windows Audio (Exclusive Mode)", "Line(3- AG06/AG03)", "Line(3- AG06/AG03)"));
@@ -355,6 +513,740 @@ TEST_F(AudioEngineTest, ExclusiveOpenSuspendsOnlyTheMonitorThatCanBlockIt) {
         "Windows Audio (Exclusive Mode)", "Speakers", "Headphones", false));
     EXPECT_FALSE(audio_device_recovery_detail::shouldSuspendMonitorBeforeExclusiveOpen(
         "Windows Audio", "Speakers", "Speakers", true));
+}
+
+TEST_F(AudioEngineTest, AvailableInputRecoveryUsesDistinctPlaceholderSelection) {
+    const juce::StringArray outputs {
+        "Speakers",
+        "CABLE Input(VB-Audio Virtual Cable)"
+    };
+
+    const auto selection = audio_settings_detail::makeRecoverySelection(
+        "CABLE Input(VB-Audio Virtual Cable)", outputs, 1);
+
+    EXPECT_TRUE(selection.desiredDeviceAvailable);
+    EXPECT_EQ(selection.desiredDeviceId, 2);
+    EXPECT_EQ(selection.placeholderId, 3);
+    EXPECT_NE(selection.placeholderId, selection.desiredDeviceId);
+    EXPECT_EQ(selection.placeholderText,
+              "CABLE Input(VB-Audio Virtual Cable) (Reconnect)");
+}
+
+TEST_F(AudioEngineTest, AvailableOutputRecoveryUsesDistinctPlaceholderSelection) {
+    const juce::StringArray outputs {
+        "Speakers",
+        "CABLE Input(VB-Audio Virtual Cable)"
+    };
+
+    const auto selection = audio_settings_detail::makeRecoverySelection(
+        "CABLE Input(VB-Audio Virtual Cable)", outputs, 2);
+
+    EXPECT_TRUE(selection.desiredDeviceAvailable);
+    EXPECT_EQ(selection.desiredDeviceId, 3);
+    EXPECT_EQ(selection.placeholderId, 4);
+    EXPECT_NE(selection.placeholderId, selection.desiredDeviceId);
+    EXPECT_EQ(selection.placeholderText,
+              "CABLE Input(VB-Audio Virtual Cable) (Reconnect)");
+}
+
+TEST_F(AudioEngineTest, MissingRecoveryDeviceUsesDisconnectedPlaceholder) {
+    const juce::StringArray devices { "Speakers" };
+
+    const auto selection = audio_settings_detail::makeRecoverySelection(
+        "Missing Device", devices, 2);
+
+    EXPECT_FALSE(selection.desiredDeviceAvailable);
+    EXPECT_EQ(selection.desiredDeviceId, 0);
+    EXPECT_EQ(selection.placeholderId, 3);
+    EXPECT_EQ(selection.placeholderText, "Missing Device (Disconnected)");
+    EXPECT_TRUE(audio_settings_detail::isRecoveryPlaceholderText(
+        selection.placeholderText));
+    EXPECT_FALSE(audio_settings_detail::isRecoveryPlaceholderText("Speakers"));
+}
+
+TEST_F(AudioEngineTest, AsioDuplexLossShowsRecoveryForBothDeviceCombos) {
+    using audio_settings_detail::DeviceDirection;
+
+    EXPECT_TRUE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Input, true, true, false));
+    EXPECT_TRUE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Output, true, true, false));
+    EXPECT_TRUE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Input, true, false, true));
+    EXPECT_TRUE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Output, true, false, true));
+}
+
+TEST_F(AudioEngineTest, WindowsAudioLossOnlyMarksAffectedDirection) {
+    using audio_settings_detail::DeviceDirection;
+
+    EXPECT_TRUE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Input, false, true, false));
+    EXPECT_FALSE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Output, false, true, false));
+    EXPECT_FALSE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Input, false, false, true));
+    EXPECT_TRUE(audio_settings_detail::needsRecoveryPlaceholder(
+        DeviceDirection::Output, false, false, true));
+}
+
+TEST_F(AudioEngineTest, FirstWindowsExclusiveSwitchKeepsTheCurrentDeviceSelection) {
+    DriverTypeSnapshot current;
+    current.inputDevice = "Microphone(Yeti Stereo Microphone)";
+    current.outputDevice = "CABLE Input(VB-Audio Virtual Cable)";
+    current.sampleRate = 48000.0;
+    current.bufferSize = 512;
+    current.inputChannels.setRange(0, 2, true);
+    current.outputChannels.setRange(0, 2, true);
+    current.outputNone = true;
+
+    DriverTypeSnapshot seeded;
+    ASSERT_TRUE(audio_device_recovery_detail::seedCompatibleWindowsDriverSnapshot(
+        "Windows Audio", "Windows Audio (Exclusive Mode)", false, current, seeded));
+    EXPECT_EQ(seeded.inputDevice, current.inputDevice);
+    EXPECT_EQ(seeded.outputDevice, current.outputDevice);
+    EXPECT_EQ(seeded.sampleRate, current.sampleRate);
+    EXPECT_EQ(seeded.bufferSize, current.bufferSize);
+    EXPECT_EQ(seeded.inputChannels, current.inputChannels);
+    EXPECT_EQ(seeded.outputChannels, current.outputChannels);
+    EXPECT_FALSE(seeded.outputNone)
+        << "a first switch carries routing, not the source driver's None state";
+
+    EXPECT_FALSE(audio_device_recovery_detail::seedCompatibleWindowsDriverSnapshot(
+        "Windows Audio", "Windows Audio (Exclusive Mode)", true, current, seeded));
+    EXPECT_FALSE(audio_device_recovery_detail::seedCompatibleWindowsDriverSnapshot(
+        "Windows Audio", "ASIO", false, current, seeded));
+
+    EXPECT_TRUE(audio_device_recovery_detail::snapshotEndpointsAvailable(
+        seeded,
+        { "Microphone(Yeti Stereo Microphone)", "Microphone(FHD60F)" },
+        { "CABLE Input(VB-Audio Virtual Cable)", "Speakers(Yeti Stereo Microphone)" }));
+    EXPECT_FALSE(audio_device_recovery_detail::snapshotEndpointsAvailable(
+        seeded,
+        { "Microphone(FHD60F)" },
+        { "CABLE Input(VB-Audio Virtual Cable)", "Speakers(Yeti Stereo Microphone)" }));
+    EXPECT_FALSE(audio_device_recovery_detail::snapshotEndpointsAvailable(
+        seeded,
+        { "Microphone(Yeti Stereo Microphone)" },
+        { "Speakers(Yeti Stereo Microphone)" }));
+}
+
+TEST_F(AudioEngineTest, FailedDriverSwitchRestoresTheExactPreviousSnapshot) {
+    juce::AudioDeviceManager manager;
+    const auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    addManagedFakeDeviceType(manager, stats);
+
+    DriverTypeSnapshot snapshot;
+    snapshot.inputDevice = "Recovery Device";
+    snapshot.outputDevice = "Recovery Device";
+    snapshot.sampleRate = 48000.0;
+    snapshot.bufferSize = 256;
+    snapshot.inputChannels.setRange(0, 2, true);
+    snapshot.outputChannels.setRange(0, 2, true);
+
+    manager.closeAudioDevice();
+    ASSERT_TRUE(audio_device_recovery_detail::restoreDriverSnapshot(
+        manager, snapshot).isEmpty());
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, snapshot.inputDevice);
+    EXPECT_EQ(restored.outputDeviceName, snapshot.outputDevice);
+    EXPECT_EQ(restored.sampleRate, snapshot.sampleRate);
+    EXPECT_EQ(restored.bufferSize, snapshot.bufferSize);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+}
+
+TEST_F(AudioEngineTest, FailedOutputSelectionRestoresThePreviousDuplexDevice) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto initial = managedDuplexSetup("Recovery Device");
+    ASSERT_TRUE(manager.setAudioDeviceSetup(initial, true).isEmpty());
+
+    // Reject a stale UI selection before JUCE can close/recreate the current
+    // duplex stream.
+    const auto openAttemptsBefore = stats->openAttempts.size();
+    const auto result = engine_->setOutputDevice("Missing Output");
+    SCOPED_TRACE(result.message.toStdString());
+    SCOPED_TRACE("open attempts=" + std::to_string(stats->openAttempts.size()));
+    EXPECT_FALSE(result);
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, initial.inputDeviceName);
+    EXPECT_EQ(restored.outputDeviceName, initial.outputDeviceName);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_EQ(stats->openAttempts.size(), openAttemptsBefore);
+}
+
+TEST_F(AudioEngineTest, FailedInputSelectionRestoresThePreviousDuplexDevice) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto initial = managedDuplexSetup("Recovery Device");
+    ASSERT_TRUE(manager.setAudioDeviceSetup(initial, true).isEmpty());
+
+    const auto openAttemptsBefore = stats->openAttempts.size();
+    const auto result = engine_->setInputDevice("Missing Input");
+    SCOPED_TRACE(result.message.toStdString());
+    EXPECT_FALSE(result);
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, initial.inputDeviceName);
+    EXPECT_EQ(restored.outputDeviceName, initial.outputDeviceName);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_EQ(stats->openAttempts.size(), openAttemptsBefore);
+}
+
+TEST_F(AudioEngineTest, FailedOutputSelectionAndRollbackEnterDeviceRecovery) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "Working Device", "Failing Device" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto initial = managedDuplexSetup("Working Device");
+    ASSERT_TRUE(manager.setAudioDeviceSetup(initial, true).isEmpty());
+
+    stats->failEveryOpen = true;
+    engine_->forceReconnectCooldownForTest(37);
+    const auto result = engine_->setOutputDevice("Failing Device");
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("previous setup restore failed"));
+    EXPECT_EQ(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 90);
+}
+
+TEST_F(AudioEngineTest, FailedInputSelectionAndRollbackEnterDeviceRecovery) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "Working Device", "Failing Device" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto initial = managedDuplexSetup("Working Device");
+    ASSERT_TRUE(manager.setAudioDeviceSetup(initial, true).isEmpty());
+
+    stats->failEveryOpen = true;
+    engine_->forceReconnectCooldownForTest(37);
+    const auto result = engine_->setInputDevice("Failing Device");
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("previous setup restore failed"));
+    EXPECT_EQ(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 90);
+}
+
+TEST_F(AudioEngineTest, UnusableDriverSwitchRestoresThePreviousDriverSnapshot) {
+    auto goodStats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, goodStats);
+
+    juce::AudioDeviceManager::AudioDeviceSetup initial;
+    initial.inputDeviceName = goodStats->deviceName;
+    initial.outputDeviceName = goodStats->deviceName;
+    initial.sampleRate = 48000.0;
+    initial.bufferSize = 128;
+    initial.useDefaultInputChannels = true;
+    initial.useDefaultOutputChannels = true;
+    ASSERT_TRUE(manager.setAudioDeviceSetup(initial, true).isEmpty());
+    juce::AudioDeviceManager::AudioDeviceSetup expectedRestored;
+    manager.getAudioDeviceSetup(expectedRestored);
+    engine_->syncDesiredFromDevice();
+
+    auto brokenStats = std::make_shared<ManagedFakeDeviceStats>();
+    brokenStats->typeName = "Broken Recovery Test";
+    brokenStats->deviceName = "Broken Recovery Device";
+    brokenStats->reportNoActiveChannels = true;
+    brokenStats->reportedSampleRate = 44100.0;
+    brokenStats->reportedBufferSize = 256;
+    addManagedFakeDeviceType(manager, brokenStats, false);
+
+    const auto result = engine_->setAudioDeviceType(brokenStats->typeName);
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("audio device is not ready"));
+    EXPECT_EQ(engine_->getCurrentDeviceType(), goodStats->typeName);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, expectedRestored.inputDeviceName);
+    EXPECT_EQ(restored.outputDeviceName, expectedRestored.outputDeviceName);
+    EXPECT_EQ(restored.sampleRate, expectedRestored.sampleRate);
+    EXPECT_EQ(restored.bufferSize, expectedRestored.bufferSize);
+    EXPECT_TRUE(engine_->hasUsableActiveChannelsForTest(
+        restored, manager.getCurrentAudioDevice()));
+    EXPECT_EQ(engine_->getDesiredDeviceType(), goodStats->typeName);
+    EXPECT_EQ(engine_->getCurrentSampleRateForTest(), expectedRestored.sampleRate);
+    EXPECT_EQ(engine_->getCurrentBufferSizeForTest(), expectedRestored.bufferSize);
+    EXPECT_EQ(engine_->getDesiredSampleRate(), expectedRestored.sampleRate);
+    EXPECT_EQ(engine_->getDesiredBufferSize(), expectedRestored.bufferSize);
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+}
+
+TEST_F(AudioEngineTest, UnavailableDriverTypeLeavesCurrentStreamUntouched) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    juce::AudioDeviceManager::AudioDeviceSetup initial;
+    initial.inputDeviceName = stats->deviceName;
+    initial.outputDeviceName = stats->deviceName;
+    initial.sampleRate = 48000.0;
+    initial.bufferSize = 128;
+    initial.useDefaultInputChannels = true;
+    initial.useDefaultOutputChannels = true;
+    ASSERT_TRUE(manager.setAudioDeviceSetup(initial, true).isEmpty());
+    engine_->syncDesiredFromDevice();
+
+    auto* originalDevice = manager.getCurrentAudioDevice();
+    ASSERT_NE(originalDevice, nullptr);
+    const auto openAttemptsBefore = stats->openAttempts.size();
+    engine_->forceSameDeviceReopenPendingForTest(true);
+    engine_->forceReconnectCooldownForTest(37);
+
+    const auto result = engine_->setAudioDeviceType("Missing Driver Type");
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("not available"));
+    EXPECT_EQ(engine_->getCurrentDeviceType(), stats->typeName);
+    EXPECT_EQ(manager.getCurrentAudioDevice(), originalDevice);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_EQ(stats->openAttempts.size(), openAttemptsBefore);
+    EXPECT_EQ(engine_->getDesiredDeviceType(), stats->typeName);
+    EXPECT_TRUE(engine_->isSameDeviceReopenPendingForTest());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 37);
+}
+
+TEST_F(AudioEngineTest, UnavailableDriverTypeIsRejectedWithoutAnOpenStream) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    manager.closeAudioDevice();
+
+    const auto result = engine_->setAudioDeviceType("Missing Driver Type");
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("not available"));
+    EXPECT_EQ(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(engine_->getDesiredDeviceType(), stats->typeName);
+}
+
+TEST_F(AudioEngineTest, FailedAsioDeviceSelectionRestoresPreviousDuplexStream) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->typeName = "Recovery ASIO";
+    stats->deviceNames = { "Working ASIO", "Failing ASIO" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto initial = managedDuplexSetup("Working ASIO");
+    ASSERT_TRUE(manager.setAudioDeviceSetup(initial, true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "Working ASIO", "Working ASIO");
+    engine_->syncDesiredFromDevice();
+
+    stats->failDeviceName = "Failing ASIO";
+    const auto result = engine_->setAsioDevice("Failing ASIO");
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("Failed to set ASIO device"));
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), "Working ASIO");
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, "Working ASIO");
+    EXPECT_EQ(restored.outputDeviceName, "Working ASIO");
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "Working ASIO");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "Working ASIO");
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+}
+
+TEST_F(AudioEngineTest, SuccessfulAsioDeviceSelectionPreservesRequestedSampleRateAndAdoptsActualBuffer) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->typeName = "Recovery ASIO";
+    stats->deviceNames = { "Working ASIO", "New ASIO" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup("Working ASIO", 48000.0, 128), true).isEmpty());
+    engine_->presetAudioParams(48000.0, 128);
+
+    stats->reportedSampleRate = 44100.0;
+    stats->reportedBufferSize = 256;
+    const auto result = engine_->setAsioDevice("New ASIO");
+
+    ASSERT_TRUE(result) << result.message.toStdString();
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), "New ASIO");
+    EXPECT_DOUBLE_EQ(engine_->getCurrentSampleRateForTest(), 44100.0);
+    EXPECT_EQ(engine_->getCurrentBufferSizeForTest(), 256);
+    EXPECT_DOUBLE_EQ(engine_->getDesiredSampleRate(), 48000.0);
+    EXPECT_EQ(engine_->getDesiredBufferSize(), 256);
+}
+
+TEST_F(AudioEngineTest, SavedDriverSnapshotDoesNotUseAReplacementEndpoint) {
+    auto firstStats = std::make_shared<ManagedFakeDeviceStats>();
+    firstStats->typeName = "First Recovery Type";
+    firstStats->deviceName = "First Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, firstStats);
+
+    juce::AudioDeviceManager::AudioDeviceSetup firstSetup;
+    firstSetup.inputDeviceName = firstStats->deviceName;
+    firstSetup.outputDeviceName = firstStats->deviceName;
+    firstSetup.sampleRate = 48000.0;
+    firstSetup.bufferSize = 128;
+    firstSetup.useDefaultInputChannels = true;
+    firstSetup.useDefaultOutputChannels = true;
+    ASSERT_TRUE(manager.setAudioDeviceSetup(firstSetup, true).isEmpty());
+    engine_->syncDesiredFromDevice();
+
+    auto secondStats = std::make_shared<ManagedFakeDeviceStats>();
+    secondStats->typeName = "Second Recovery Type";
+    secondStats->deviceName = "Saved Second Device";
+    addManagedFakeDeviceType(manager, secondStats, false);
+
+    ASSERT_TRUE(engine_->setAudioDeviceType(secondStats->typeName));
+    ASSERT_TRUE(engine_->setAudioDeviceType(firstStats->typeName));
+    secondStats->deviceName = "Replacement Second Device";
+
+    const auto result = engine_->setAudioDeviceType(secondStats->typeName);
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("unavailable"));
+    EXPECT_EQ(engine_->getCurrentDeviceType(), firstStats->typeName);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), firstStats->deviceName);
+    EXPECT_EQ(engine_->getDesiredDeviceType(), firstStats->typeName);
+}
+
+TEST_F(AudioEngineTest, MissingSavedAsioDeviceIsRejectedBeforeOpeningAReplacement) {
+    auto firstStats = std::make_shared<ManagedFakeDeviceStats>();
+    firstStats->typeName = "Windows Recovery Type";
+    firstStats->deviceName = "Windows Recovery Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, firstStats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(firstStats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+
+    auto asioStats = std::make_shared<ManagedFakeDeviceStats>();
+    asioStats->typeName = "Saved Recovery ASIO";
+    asioStats->deviceNames = { "Saved ASIO Device" };
+    addManagedFakeDeviceType(manager, asioStats, false);
+
+    ASSERT_TRUE(engine_->setAudioDeviceType(
+        asioStats->typeName, "Saved ASIO Device"));
+    ASSERT_TRUE(engine_->setAudioDeviceType(firstStats->typeName));
+    const auto targetOpenAttemptsBefore = asioStats->openAttempts.size();
+    asioStats->deviceNames = { "Replacement ASIO Device" };
+
+    const auto result = engine_->setAudioDeviceType(asioStats->typeName);
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.contains("unavailable"));
+    EXPECT_EQ(asioStats->openAttempts.size(), targetOpenAttemptsBefore);
+    EXPECT_EQ(engine_->getCurrentDeviceType(), firstStats->typeName);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), firstStats->deviceName);
+}
+
+TEST_F(AudioEngineTest, FailedDesiredAsioRecoveryRestoresActualWindowsFallback) {
+    auto windowsStats = std::make_shared<ManagedFakeDeviceStats>();
+    windowsStats->typeName = "Windows Fallback Recovery";
+    windowsStats->deviceName = "Fallback Windows Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, windowsStats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(windowsStats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+
+    auto asioStats = std::make_shared<ManagedFakeDeviceStats>();
+    asioStats->typeName = "Wanted Recovery ASIO";
+    asioStats->deviceName = "Wanted ASIO Device";
+    asioStats->failEveryOpen = true;
+    addManagedFakeDeviceType(manager, asioStats, false);
+    engine_->rememberRestoredDeviceTargets(
+        asioStats->typeName, asioStats->deviceName, asioStats->deviceName);
+
+    const auto result = engine_->setAudioDeviceType(
+        asioStats->typeName, asioStats->deviceName);
+
+    EXPECT_FALSE(result);
+    EXPECT_EQ(engine_->getCurrentDeviceType(), windowsStats->typeName);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), windowsStats->deviceName);
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, windowsStats->deviceName);
+    EXPECT_EQ(restored.outputDeviceName, windowsStats->deviceName);
+    EXPECT_EQ(engine_->getDesiredDeviceType(), asioStats->typeName);
+    EXPECT_EQ(engine_->getDesiredInputDevice(), asioStats->deviceName);
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), asioStats->deviceName);
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+}
+
+TEST_F(AudioEngineTest, FailedBufferSizeChangeRestoresPreviousReadyStream) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+    stats->failBufferSize = 256;
+
+    const auto result = engine_->setBufferSize(256);
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr)
+        << stats->openRequestLog.joinIntoString(" | ").toStdString();
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getCurrentBufferSizeSamples(), 128);
+    EXPECT_EQ(engine_->getCurrentBufferSizeForTest(), 128);
+    EXPECT_EQ(engine_->getDesiredBufferSize(), 128);
+}
+
+TEST_F(AudioEngineTest, FailedBufferChangePreservesExistingOutputRecoveryState) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+    engine_->markOutputDeviceLostForTest("Missing Speakers");
+    ASSERT_TRUE(engine_->isDeviceLost());
+    ASSERT_TRUE(engine_->isOutputAutoMuted());
+    ASSERT_FALSE(engine_->isStartupRestorePendingForTest());
+    stats->failBufferSize = 256;
+
+    const auto result = engine_->setBufferSize(256);
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getCurrentBufferSizeSamples(), 128);
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+    EXPECT_FALSE(engine_->isStartupRestorePendingForTest());
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "Missing Speakers");
+}
+
+TEST_F(AudioEngineTest, FailedSampleRateChangeRestoresPreviousReadyStream) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+    stats->failSampleRate = 44100.0;
+
+    const auto result = engine_->setSampleRate(44100.0);
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr)
+        << stats->openRequestLog.joinIntoString(" | ").toStdString();
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_DOUBLE_EQ(manager.getCurrentAudioDevice()->getCurrentSampleRate(), 48000.0);
+    EXPECT_DOUBLE_EQ(engine_->getCurrentSampleRateForTest(), 48000.0);
+    EXPECT_DOUBLE_EQ(engine_->getDesiredSampleRate(), 48000.0);
+}
+
+TEST_F(AudioEngineTest, FailedExplicitInputChannelChangeRestoresPreviousRouting) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    stats->failInputFirstChannel = 1;
+
+    const auto result = engine_->setActiveInputChannels(1, 1);
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_NE(restored.inputChannels.findNextSetBit(0), 1);
+}
+
+TEST_F(AudioEngineTest, FailedExplicitOutputChannelChangeRestoresPreviousRouting) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    stats->failOutputFirstChannel = 1;
+
+    const auto result = engine_->setActiveOutputChannels(1, 1);
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr)
+        << stats->openRequestLog.joinIntoString(" | ").toStdString();
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_NE(restored.outputChannels.findNextSetBit(0), 1);
+}
+
+TEST_F(AudioEngineTest, FailedFullSetupApplyRestoresPreviousReadyStream) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    stats->failBufferSize = 256;
+    auto target = managedDuplexSetup(stats->deviceName, 48000.0, 256);
+
+    const auto result = engine_->applyAudioDeviceSetup(target, "test setup");
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr)
+        << stats->openRequestLog.joinIntoString(" | ").toStdString();
+    EXPECT_TRUE(manager.getCurrentAudioDevice()->isOpen());
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getCurrentBufferSizeSamples(), 128);
+}
+
+TEST_F(AudioEngineTest, ZeroActiveOutputSelectionRestoresPreviousDevice) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "Working Device", "Silent Device" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup("Working Device"), true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "Working Device", "Working Device");
+    stats->noActiveChannelsDeviceName = "Silent Device";
+
+    const auto result = engine_->setOutputDevice("Silent Device");
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, "Working Device");
+    EXPECT_EQ(restored.outputDeviceName, "Working Device");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "Working Device");
+    EXPECT_FALSE(engine_->isActiveChannelRecoveryPendingForTest());
+}
+
+TEST_F(AudioEngineTest, ZeroActiveInputSelectionRestoresPreviousDevice) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "Working Device", "Silent Device" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup("Working Device"), true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "Working Device", "Working Device");
+    stats->noActiveChannelsDeviceName = "Silent Device";
+
+    const auto result = engine_->setInputDevice("Silent Device");
+
+    EXPECT_FALSE(result);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, "Working Device");
+    EXPECT_EQ(restored.outputDeviceName, "Working Device");
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "Working Device");
+}
+
+TEST_F(AudioEngineTest, ZeroActiveRollbackEntersFailClosedDeviceRecovery) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "Working Device", "Failing Device" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup("Working Device"), true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "Working Device", "Working Device");
+    stats->failDeviceName = "Failing Device";
+    stats->reportNoActiveChannels = true;
+
+    const auto result = engine_->setInputDevice("Failing Device");
+
+    EXPECT_FALSE(result);
+    EXPECT_EQ(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 90);
+}
+
+TEST_F(AudioEngineTest, ReselectingCurrentOutputClearsOutputRecoveryMute) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+    engine_->markOutputDeviceLostForTest("Missing Speakers");
+    ASSERT_TRUE(engine_->isDeviceLost());
+    ASSERT_TRUE(engine_->isOutputAutoMuted());
+
+    const auto result = engine_->setOutputDevice(stats->deviceName);
+
+    EXPECT_TRUE(result);
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), stats->deviceName);
+}
+
+TEST_F(AudioEngineTest, ReselectingCurrentInputClearsInputRecoveryMute) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+    engine_->markInputDeviceLostForTest("Missing Microphone");
+    ASSERT_TRUE(engine_->isDeviceLost());
+    ASSERT_TRUE(engine_->isInputDeviceLost());
+
+    const auto result = engine_->setInputDevice(stats->deviceName);
+
+    EXPECT_TRUE(result);
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_EQ(engine_->getDesiredInputDevice(), stats->deviceName);
 }
 
 TEST_F(AudioEngineTest, FailedActiveChannelRecoveryRearmsThreeSecondCooldown) {
@@ -615,6 +1507,20 @@ TEST_F(AudioEngineTest, EndpointPropertyChangeMarksSameInputLost) {
     EXPECT_TRUE(engine_->isOutputMuted());
     EXPECT_EQ(engine_->getReconnectCooldownForTest(), 0);
     EXPECT_EQ(engine_->getDesiredInputDevice(), setup.inputDeviceName);
+}
+
+TEST_F(AudioEngineTest, EndpointChangesCoalesceWhileSameDeviceReopenIsPending) {
+    engine_->forceSameDeviceReopenPendingForTest(true);
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Microphone(Yeti Stereo Microphone)";
+    setup.outputDeviceName = "CABLE Input(VB-Audio Virtual Cable)";
+
+    EXPECT_FALSE(engine_->markInputEndpointRestartPendingForTest(
+        setup, "capture endpoint property changed"));
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
 
 TEST_F(AudioEngineTest, EndpointRecoveryPreservesManualOutputMute) {

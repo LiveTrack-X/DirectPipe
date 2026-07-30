@@ -38,6 +38,9 @@ namespace {
 constexpr int kMonitorRingBufferFrames = 8192;
 constexpr int kDriftWarmupCallbacks = 50;
 constexpr int kReconnectCooldownTicks = 90;
+constexpr int kReconnectTenSecondCooldownTicks = 300;
+constexpr int kReconnectTwentySecondCooldownTicks = 600;
+constexpr int kReconnectThirtySecondCooldownTicks = 900;
 #if defined(_WIN32)
 constexpr int kMonitorMmcssPriority = 0; // AVRT_PRIORITY_NORMAL; monitor must not preempt main OUT.
 #endif
@@ -111,6 +114,25 @@ int reconnectCooldownAfterAttempt(bool reconnected,
     return kReconnectCooldownTicks;
 }
 
+int reconnectCooldownAfterOpenFailure(uint64_t consecutiveFailures) noexcept
+{
+    if (consecutiveFailures <= 1)
+        return kReconnectCooldownTicks;
+    if (consecutiveFailures == 2)
+        return kReconnectTenSecondCooldownTicks;
+    if (consecutiveFailures == 3)
+        return kReconnectTwentySecondCooldownTicks;
+    return kReconnectThirtySecondCooldownTicks;
+}
+
+bool shouldLogReconnectAttempt(uint64_t attemptNumber) noexcept
+{
+    // Attempt cadence may back off after an enumerated device repeatedly fails
+    // to open, so this is deliberately attempt-based rather than wall-clock based.
+    constexpr uint64_t kLogEveryAttempts = 20;
+    return attemptNumber == 1 || attemptNumber % kLogEveryAttempts == 0;
+}
+
 juce::String initialiseSelectedOutputDevice(
     juce::AudioDeviceManager& deviceManager,
     const juce::AudioDeviceManager::AudioDeviceSetup& setup)
@@ -129,7 +151,21 @@ MonitorOutput::~MonitorOutput()
 }
 
 bool MonitorOutput::initialize(const juce::String& deviceName,
-                                   double sampleRate, int bufferSize)
+                               double sampleRate,
+                               int bufferSize)
+{
+    // Public initialize calls represent a fresh manual/configuration attempt.
+    // Do not carry automatic reconnect backoff or log cadence across them.
+    reconnectAttemptCount_ = 0;
+    consecutiveOpenFailureCount_ = 0;
+    return initializeInternal(deviceName, sampleRate, bufferSize, true, false);
+}
+
+bool MonitorOutput::initializeInternal(const juce::String& deviceName,
+                                       double sampleRate,
+                                       int bufferSize,
+                                       bool logDetails,
+                                       bool reconnectAttempt)
 {
     shutdown();
 
@@ -172,27 +208,45 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
         monitor_output_detail::initialiseSelectedOutputDevice(*deviceManager_, setup);
     if (auto* type = deviceManager_->getCurrentDeviceTypeObject()) {
         type->scanForDevices();
-        Log::info("MONITOR", "Available outputs: ["
-            + type->getDeviceNames(false).joinIntoString(", ") + "]");
+        if (logDetails) {
+            Log::info("MONITOR", "Available outputs: ["
+                + type->getDeviceNames(false).joinIntoString(", ") + "]");
+        }
     }
 
     if (result.isNotEmpty()) {
-        Log::warn("MONITOR", "Setup retry with driver default output channels after: " + result);
+        if (logDetails) {
+            Log::warn("MONITOR",
+                      "Setup retry with driver default output channels after: " + result);
+        }
         useDefaultOutputChannels(setup);
         result = deviceManager_->setAudioDeviceSetup(setup, true);
     }
     if (result.isNotEmpty() && bufferSize > 0) {
-        Log::warn("MONITOR", "Setup retry with driver buffer after: " + result);
+        if (logDetails)
+            Log::warn("MONITOR", "Setup retry with driver buffer after: " + result);
         setup.bufferSize = 0;
         useDefaultOutputChannels(setup);
         result = deviceManager_->setAudioDeviceSetup(setup, true);
     }
     if (result.isNotEmpty()) {
-        Log::error("MONITOR", "Setup error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
+        if (logDetails) {
+            Log::error("MONITOR",
+                       "Setup error (device='" + deviceName + "' SR="
+                           + juce::String(sampleRate) + " BS="
+                           + juce::String(bufferSize) + "): " + result);
+        }
         monitorLost_.store(true, std::memory_order_relaxed);
         status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
+        reconnectCooldown_ = reconnectAttempt
+            ? monitor_output_detail::reconnectCooldownAfterOpenFailure(
+                  ++consecutiveOpenFailureCount_)
+            : kReconnectCooldownTicks;
         return false;
     }
+
+    consecutiveOpenFailureCount_ = 0;
+    reconnectCooldown_ = 0;
 
     // Register as the audio callback for this device
     deviceManager_->addAudioCallback(this);
@@ -217,6 +271,7 @@ void MonitorOutput::shutdown()
     closeProducerAdmissionAndWait();
     actualSampleRate_.store(0.0, std::memory_order_relaxed);
     actualBufferSize_.store(0, std::memory_order_relaxed);
+    actualOutputLatencySamples_.store(0, std::memory_order_relaxed);
     callbacksSinceStart_.store(0, std::memory_order_relaxed);
     producerBlockSize_.store(0, std::memory_order_relaxed);
     consumerBlockSize_.store(0, std::memory_order_relaxed);
@@ -253,6 +308,24 @@ bool MonitorOutput::setDevice(const juce::String& deviceName)
 {
     // Re-initialize with the new device, keeping current sample rate/buffer
     return initialize(deviceName, sampleRate_, bufferSize_);
+}
+
+double MonitorOutput::getEstimatedQueueAndOutputLatencyMs() const
+{
+    if (!isActive())
+        return 0.0;
+
+    const double sampleRate =
+        actualSampleRate_.load(std::memory_order_relaxed);
+    if (sampleRate <= 0.0)
+        return 0.0;
+
+    const int queuedFrames =
+        (std::max)(0, targetFillFrames_.load(std::memory_order_relaxed));
+    const int outputLatency =
+        (std::max)(0, actualOutputLatencySamples_.load(std::memory_order_relaxed));
+    return static_cast<double>(queuedFrames + outputLatency)
+        / sampleRate * 1000.0;
 }
 
 bool MonitorOutput::setBufferSize(int bufferSize)
@@ -619,9 +692,13 @@ void MonitorOutput::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     double deviceSR = device->getCurrentSampleRate();
     int deviceBS = device->getCurrentBufferSizeSamples();
+    const int reportedOutputLatency = device->getOutputLatencyInSamples();
 
     actualSampleRate_.store(deviceSR, std::memory_order_relaxed);
     actualBufferSize_.store(deviceBS, std::memory_order_relaxed);
+    actualOutputLatencySamples_.store(
+        reportedOutputLatency > 0 ? reportedOutputLatency : deviceBS,
+        std::memory_order_relaxed);
 
     if (isFallback) {
         // A different device is always a retryable loss, even when that
@@ -766,33 +843,45 @@ void MonitorOutput::checkReconnection()
     }
     reconnectCooldown_ = kReconnectCooldownTicks;  // ~3 seconds at 30Hz
 
-    Log::info("MONITOR", "Reconnection attempt: " + deviceName_);
+    const auto attemptNumber = ++reconnectAttemptCount_;
+    const bool logAttempt =
+        monitor_output_detail::shouldLogReconnectAttempt(attemptNumber);
+    if (logAttempt) {
+        Log::info("MONITOR", "Reconnection attempt #" + juce::String(attemptNumber)
+            + ": " + deviceName_);
+    }
 
     scanDevices();
     auto devices = getAvailableOutputDevices();
-    Log::audit("MONITOR", "Available devices: [" + devices.joinIntoString(", ") + "]");
+    if (logAttempt)
+        Log::audit("MONITOR", "Available devices: [" + devices.joinIntoString(", ") + "]");
 
     if (!devices.contains(deviceName_)) {
-        Log::info("MONITOR", "Device '" + deviceName_ + "' not yet available");
+        if (logAttempt)
+            Log::info("MONITOR", "Device '" + deviceName_ + "' not yet available");
         return;
     }
 
-    const bool initialized = initialize(deviceName_, sampleRate_, bufferSize_);
+    const bool initialized = initializeInternal(
+        deviceName_, sampleRate_, bufferSize_, logAttempt, true);
     const auto status = status_.load(std::memory_order_relaxed);
     const bool reconnected = initialized
         && status == VirtualCableStatus::Active
         && !isDeviceLost();
-    reconnectCooldown_ =
-        monitor_output_detail::reconnectCooldownAfterAttempt(reconnected, status);
+    if (initialized) {
+        reconnectCooldown_ =
+            monitor_output_detail::reconnectCooldownAfterAttempt(reconnected, status);
+    }
 
     if (reconnected) {
         // monitorLost_ cleared in audioDeviceAboutToStart
+        reconnectAttemptCount_ = 0;
         Log::info("MONITOR", "Device reconnected: " + deviceName_);
     } else if (status == VirtualCableStatus::SampleRateMismatch) {
         Log::warn("MONITOR", "Reconnection paused: sample rate mismatch (device='" + deviceName_
             + "' expected SR=" + juce::String(sampleRate_)
             + " actual SR=" + juce::String(actualSampleRate_.load(std::memory_order_relaxed)) + ")");
-    } else {
+    } else if (logAttempt) {
         Log::error("MONITOR", "Reconnection failed: initialize returned false (device='" + deviceName_ + "' SR=" + juce::String(sampleRate_) + " BS=" + juce::String(bufferSize_) + ")");
     }
 }

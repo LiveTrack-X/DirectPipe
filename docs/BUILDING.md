@@ -1,15 +1,15 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Released version / 릴리즈 버전: 4.2.5**
+> **Current release version / 현재 릴리즈 버전: 4.2.6**
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.5 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. The local v4.2.5 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental without hardware verification for this update.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(59 core + 485 host + 2 focused endpoint). 공개 자산은 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지·checksum과 Windows 서명 상태를 검증한 뒤 생성합니다. 현재 인증서가 없으므로 Windows 패키지는 unsigned일 수 있습니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI creates public assets only after validating cross-platform builds, tests, packages, checksums, and Windows signature state. With no configured certificate, the Windows package may be unsigned. Real-device and third-party VST crash-containment checks were not run.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Local v4.2.5 Release CTest: 498 passed, 2 environment-dependent skips, 0 failed; exact-tag CI required; no real-device check. |
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.6: local Release 544 passed + 2 environment-dependent skips + 0 failed out of 546 CTest registrations; public assets are exact-tag CI-built; unsigned unless trusted signing secrets are configured; no real-device check. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -200,16 +200,16 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). The v4.2.5 inventory contains **500 CTest registrations** (59 core + 439 host + 2 focused endpoint tests). The binaries contain 46 suites in total (6 core + 39 host + 1 endpoint). The local Windows Release run completed with 498 passed, 2 environment-dependent skips, and 0 failed; publication remains gated by the exact-tag CI run.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). Local Windows Release validation for v4.2.6 completed **546 CTest registrations** with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint tests). Public assets remain gated by exact-tag CI, package checksums, and executable-version identity; Authenticode is optional until a trusted certificate is configured.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.5 인벤토리는 **CTest 등록 500개**(코어 59 + 호스트 439 + endpoint 집중 테스트 2), 전체 46개 suite(코어 6 + 호스트 39 + endpoint 1)입니다. 로컬 Windows Release 실행은 498개 통과, 환경 의존 2개 skip, 실패 0개였으며 공개는 정확 태그 CI 통과를 조건으로 합니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.6의 로컬 Windows Release 검증은 **CTest 등록 546개** 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(코어 59 + 호스트 485 + endpoint 집중 테스트 2). 공개 자산은 정확 태그 CI, 패키지 checksum, 실행 파일 버전 신원 검증을 조건으로 하며, 신뢰 인증서가 설정되기 전 Authenticode는 선택 사항입니다.
 
 ### directpipe-tests (Core)
 
 | Test Group | Tests | Description |
 |------------|-------|-------------|
 | RingBufferTest | 23 | SPSC ring buffer correctness, atomic consumer claim, restart generation, bounds checks, and concurrency / 링 버퍼 정확성, atomic consumer 획득, 재시작 generation, 경계 검사, 동시성 |
-| SharedMemoryTest | 8 | Shared memory create/map, named events, full IPC pipeline / 공유 메모리 생성/매핑, named event, 전체 IPC 파이프라인 |
+| SharedMemoryTest | 9 | Shared memory create/map, named events, full IPC pipeline / 공유 메모리 생성/매핑, named event, 전체 IPC 파이프라인 |
 | LatencyTest | 3 | Write/read latency, throughput benchmark / 레이턴시, 처리량 벤치마크 |
 | IPCIntegrationTest | 12 | End-to-end IPC pipeline, data integrity / IPC 파이프라인 무결성 |
 | ReceiverSimulationTest | 10 | Receiver VST processBlock simulation (de-interleave, underrun, clock drift, producer death) / Receiver VST processBlock 시뮬레이션 |
@@ -228,13 +228,13 @@ Three test executables are built: `directpipe-tests` (core, no JUCE dependency),
 | NotificationQueueTest | 10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐 |
 | PresetManager + portable/constants | 53 | Slot save/load/copy, canonical Base64 validation, structural backup fallback even when repair-copy fails, cache/ASIO/import guards / slot 저장·로드·복사, canonical Base64 검증, repair-copy 실패 시에도 backup fallback, cache·ASIO·import 보호 |
 | SettingsExporterTest | 27 | Settings/full-backup exact restore, strict optional-action schema, transactional rollback, structural slot rejection / 설정·전체 백업 정확 복원, optional action schema 엄격 검증, transaction rollback, 잘못된 slot 거부 |
-| SettingsAutosaverTest | 17 | Dirty/debounce auto-save, startup mute restore, partial-load guard / dirty·debounce auto-save, 시작 mute 복원, partial-load 보호 |
+| SettingsAutosaverTest | 25 | Debounced save, transitional/partial-chain guard, preserved-chain merge, shutdown recovery sidecar, bounded retry, backup fallback, reset behavior, manual/automatic mute separation / debounce 저장, 전환·부분 chain 보호, 보존 chain 병합, 종료 복구 sidecar, 제한 재시도, backup fallback, reset 및 수동·자동 mute 분리 |
 | OutputRouterTest | 10 | Monitor output routing, mute state, inactive meter reset / 모니터 출력 라우팅, 뮤트 상태, 비활성 meter reset |
-| AudioEngineTest | 47 | Driver/device recovery, bounded zero-active retry, exclusive-output monitor preflight, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun/SR-BS behavior / driver·장치 복구, 제한된 zero-active 재시도, 독점 출력 monitor 사전 중지, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun·SR-BS 동작 |
+| AudioEngineTest | 78 | Transactional driver/device/SR/BS/channel recovery, strict endpoint preflight, exact rollback/fail-closed behavior, same-device reconnect UI policy, exclusive-output monitor preflight, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun behavior / 트랜잭션 driver·장치·SR·BS·channel 복구, 엄격 endpoint 사전검사, 정확 rollback·fail-closed, 동일 장치 재연결 UI 정책, 독점 출력 monitor 사전 중지, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun 동작 |
 | AudioRecorderTest | 7 | Recording lifecycle, output-path fallback, playback readiness, and invalid-state guards / 녹음 수명주기, 출력 경로 fallback, 재생 준비 상태, invalid-state 방어 |
 | AudioRingBufferTest | 8 | Lock-free audio ring buffer reset/discard and fractional interpolation behavior / 오디오 링 버퍼 reset/discard 및 fractional interpolation 동작 |
 | MonitorDriftPolicyTest | 10 | Adaptive monitor target, PLL ratio, and emergency trim policy / adaptive 모니터 target, PLL ratio, emergency trim 정책 |
-| MonitorOutputTest | 13 | Selected-device-first open, bounded failed recovery, RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / 선택 장치 우선 open, 실패 복구 제한, RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
+| MonitorOutputTest | 15 | Selected-device-first open, bounded failed recovery, enumerated-open backoff, reconnect log cadence, RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / 선택 장치 우선 open, 실패 복구 제한, 열거 장치 open backoff, 재연결 로그 주기, RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
 | DeviceStateTest | 10 | Device state FSM and invalid-state guards / 장치 상태 FSM 및 invalid-state 방어 |
 | MidiHandlerTest | 11 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
@@ -242,7 +242,7 @@ Three test executables are built: `directpipe-tests` (core, no JUCE dependency),
 | BuiltinFilterTest | 8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
 | BuiltinNoiseRemovalTest + FIFO | 9 | RNNoise VAD thresholds, non-48k passthrough, latency, FIFO overflow guard / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시, FIFO overflow 보호 |
 | BuiltinAutoGainTest | 8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
-| VSTChainTest | 16 | VST chain operations, active-path PDC/bypass, stable status snapshot, cached-swap partial-failure guard / VST chain 연산, 활성 경로 PDC, 안정된 snapshot |
+| VSTChainTest | 18 | VST chain operations, late active-path PDC refresh/bypass, stable status snapshot, cached-swap partial-failure guard / VST chain 연산, 늦은 활성 경로 PDC 갱신·bypass, 안정된 snapshot |
 | PlatformTest | 8 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
 | PlatformAudioTest | 1 | Shared/exclusive Windows driver classification / Windows shared·exclusive 드라이버 분류 |
 | SharedMemWriterTest | 4 | Initialization failure cleanup and in-flight write drain before unmap / 초기화 실패 정리 및 unmap 전 진행 write drain |
@@ -303,9 +303,11 @@ bash tools/pre-release-test.sh --skip-api
 |---|---|---|
 | `VST2_SDK_B64` | Base64-encoded VST2 SDK archive | PR에서는 VST2 생략, release-tag 실행은 실패 / VST2 skipped on PR; release-tag run fails |
 | `ASIO_SDK_B64` | Base64-encoded Steinberg ASIO SDK (Windows only) | PR에서는 ASIO 비활성, release-tag 실행은 실패 / ASIO disabled on PR; release-tag run fails |
+| `WINDOWS_SIGNING_PFX_B64` | Optional Base64-encoded trusted Authenticode PFX | 비어 있으면 Windows package를 명시적으로 unsigned 게시 / explicitly unsigned when absent |
+| `WINDOWS_SIGNING_PFX_PASSWORD` | Password paired with the optional PFX | PFX와 둘 중 하나만 있으면 구성 오류로 release 실패 / partial configuration fails |
 
-> VST2/ASIO SDK는 라이선스 제약으로 리포지토리에 포함되지 않습니다. CI에서는 Secrets에서 디코딩하여 `thirdparty/` 하위에 복원합니다.
-> VST2/ASIO SDKs are excluded from the repository due to licensing. CI decodes them from Secrets into `thirdparty/`.
+> VST2/ASIO SDK는 라이선스 제약으로 리포지토리에 포함되지 않습니다. CI에서는 Secrets에서 디코딩하여 `thirdparty/` 하위에 복원합니다. Windows 서명 secret은 선택 사항이며 둘 다 있으면 서명·검증하고, 둘 다 없으면 모든 staged 바이너리가 `NotSigned`인지 확인한 뒤 unsigned 상태를 명시합니다. 하나만 설정된 불완전 구성이나 서명 상태 불일치는 실패합니다.
+> VST2/ASIO SDKs are restored from Secrets. Windows signing is optional: both secrets sign and verify the binaries; neither requires every staged binary to be `NotSigned` before publishing an explicitly unsigned package. Partial configuration or any signature-state mismatch fails.
 
 ### 릴리스 프로세스 / Release Process
 

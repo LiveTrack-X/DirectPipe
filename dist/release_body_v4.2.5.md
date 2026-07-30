@@ -1,5 +1,14 @@
 ## DirectPipe v4.2.5
 
+> **Withdrawn / 회수됨**: The v4.2.5 GitHub Release and assets were removed
+> after browser reputation warnings and unresolved stability investigation.
+> Its source tag remains for provenance. Use v4.2.3 until v4.2.6 completes its
+> release gates.
+>
+> 브라우저 평판 경고와 미해결 안정성 조사로 v4.2.5 GitHub Release와
+> 자산을 회수했습니다. 출처 추적용 소스 태그만 유지합니다. v4.2.6이
+> 릴리즈 게이트를 통과하기 전에는 v4.2.3을 사용하세요.
+
 v4.2.5 hardens audio-device recovery. Failed main and monitor recovery is
 rate-limited correctly, the configured monitor output is opened directly, and
 an exclusive main-output transition releases a potentially conflicting monitor
@@ -10,12 +19,12 @@ v4.2.5는 오디오 장치 복구를 안정화합니다. 메인·모니터 복�
 전환 전에 충돌 가능 모니터를 먼저 해제합니다.
 
 The `v4.2.4` source tag failed the macOS/Linux CI test gate and was never
-published as a GitHub Release. v4.2.5 contains the same product fixes plus the
-platform-correct regression and is the release tag for this update.
+published as a GitHub Release. v4.2.5 contained the same product fixes plus the
+platform-correct regression, but its GitHub Release was later withdrawn.
 
 `v4.2.4` 소스 태그는 macOS/Linux CI 테스트 게이트에서 실패해 GitHub
 Release로 공개되지 않았습니다. v4.2.5는 동일한 제품 수정과 플랫폼별로
-수정된 회귀 테스트를 포함한 이번 업데이트의 실제 릴리즈 태그입니다.
+수정된 회귀 테스트를 포함했지만 GitHub Release는 이후 회수했습니다.
 
 ### Highlights / 주요 변경
 
@@ -75,7 +84,7 @@ Release로 공개되지 않았습니다. v4.2.5는 동일한 제품 수정과 �
 - 이번 업데이트에서는 실기기 오디오, 제3자 VST crash-containment,
   macOS/Linux 하드웨어 동작을 검증하지 않았습니다.
 
-### Downloads / 다운로드
+### Withdrawn assets (no longer published) / 회수된 자산 (현재 미게시)
 
 - `DirectPipe-v4.2.5-Windows.zip` — Windows stable artifact, CI-built.
 - `DirectPipe-v4.2.5-macOS.dmg` — macOS beta artifact, CI-built.

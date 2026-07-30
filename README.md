@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.2.5-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.2.6-4fc3f7?style=flat-square" alt="Latest stable">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.2.5 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
+- **Latest stable (최신 안정판)**: [v4.2.6 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. v4.2.5는 브라우저 신뢰 경고와 추가 오디오 복구 결함 조사 때문에 공개 릴리즈에서 회수했습니다.
 
-> **지원/검증 범위**: v4.2.5 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했습니다(59 core + 439 host + 2 focused endpoint). 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 통과해야 합니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Support/validation scope**: The local v4.2.5 Windows Release run completed all 500 CTest registrations: 498 passed, 2 environment-dependent tests skipped, and 0 failed (59 core + 439 host + 2 focused endpoint). Exact-tag CI must pass cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
+> **지원/검증 범위**: v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(59 core + 485 host + 2 focused endpoint). 공개 자산은 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지·checksum과 Windows 서명 상태를 검증한 뒤 생성합니다. 인증서가 없으면 unsigned임을 명시하며, 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다.
+> **Support/validation scope**: Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI creates the public assets only after validating cross-platform builds, registered tests, packages, checksums, and Windows signature state. Without a configured certificate the Windows package is explicitly unsigned. Real-device and third-party VST crash-containment checks were not run.
 
 
 
@@ -184,7 +184,7 @@ External Control:
 
 - **WASAPI Shared + ASIO** (Windows), **CoreAudio** (macOS), **ALSA/JACK** (Linux) — 런타임 전환 가능 — Runtime driver switching
 - 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
-- **장치 자동 재연결** — USB 장치 분리 시 알림, 원하는 장치가 다시 연결될 때까지 무기한 대기 후 자동 복구 (SR/BS/채널 설정 보존, 다른 장치로 폴백하지 않음). 메인·모니터의 실패한 zero-active 복구는 약 3초 간격으로 제한되며, 모니터는 기본 장치를 먼저 열지 않고 선택한 shared-mode 장치를 직접 엽니다 — Auto-reconnection waits indefinitely for the desired device and preserves SR/BS/channel settings. Failed zero-active main/monitor recovery is limited to about one attempt every three seconds, and Monitor opens the selected shared-mode device directly instead of bootstrapping the system default
+- **장치 자동 재연결** — USB 장치 분리 시 알림, 원하는 장치가 다시 연결될 때까지 무기한 대기 후 자동 복구 (SR/BS/채널 설정 보존, 다른 장치로 폴백하지 않음). 복구가 필요하면 선택 상자에 비활성 `장치명 (Reconnect)` 상태를 표시하고 실제 장치 항목을 한 번 클릭해 같은 장치를 다시 열 수 있습니다. 메인·모니터의 실패한 zero-active 복구는 약 3초 간격으로 제한되며, 열거되지만 열리지 않는 모니터는 3→10→20→30초로 재시도 간격을 늘립니다. 모니터는 기본 장치를 먼저 열지 않고 선택한 shared-mode 장치를 직접 엽니다 — Auto-reconnection waits indefinitely for the desired device and preserves SR/BS/channel settings. A disabled `Device (Reconnect)` placeholder keeps the real device item selectable for an explicit same-device reopen. Failed zero-active main/monitor recovery is limited to about one attempt every three seconds, while an enumerated monitor that repeatedly fails to open backs off 3→10→20→30 seconds. Monitor opens the selected shared-mode device directly instead of bootstrapping the system default
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 오디오 장치로 헤드폰 모니터링) + VST Output (DirectPipe Receiver → OBS/DAW) — Three output paths: main, monitor headphones (via separate audio device), VST output to OBS/DAW
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
@@ -246,7 +246,7 @@ External Control:
   - **Settings**: 자동 시작 (Windows/Linux: "Start with System", macOS: "Open at Login"), 설정 저장/불러오기(.dpbackup, 설정만), 로그 뷰어, 유지보수(Full Backup/Restore — 같은 OS끼리만, Clear Cache/Presets, Factory Reset(A-E + Auto 슬롯 포함)) — Auto-start (platform-adaptive label), settings save/load (.dpbackup, settings only), log viewer, maintenance (Full Backup/Restore — same OS only, Clear Cache/Presets, Factory Reset (includes A-E + Auto slots))
 - **시스템 트레이** — X 버튼 = 트레이 최소화. 더블클릭 복원, 우클릭 메뉴(Show/Panic Mute/Start with System or Open at Login/Quit). 툴팁에 현재 상태 표시 — Tray resident, tooltip shows current state
 - **Panic Mute** — 전체 출력 즉시 차단 + 녹음 자동 중지, 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 패닉 중 OUT/MON/VST 제어는 잠기고 대부분 액션이 차단되지만, Input Mute/XRun Reset/Safety Guard(legacy SafetyLimiter actions)/Auto Processors Add는 유지보수·준비 용도로 허용 — Instant kill all output paths + auto-stop recording, restores previous states on unmute (recording does not auto-restart). OUT/MON/VST controls are locked and most actions are blocked, while Input Mute/XRun Reset/Safety Guard (legacy SafetyLimiter actions)/Auto Processors Add remain available for maintenance/prep flows
-- **상태 바** — 총 추정 레이턴시(입력·출력 버퍼 추정 + 콜백 처리시간 + 활성 플러그인 체인 보고 PDC), CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 하드웨어 루프백 실측값은 아니며 Receiver/OBS 버퍼는 별도입니다. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: total estimated latency (estimated input/output buffers + callback execution time + active plugin-chain reported PDC), CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. It is not a hardware loopback measurement; Receiver/OBS buffering is separate. Auto-fade notifications
+- **상태 바** — 총 추정 레이턴시(드라이버 보고 입력·출력 지연, 미보고 방향은 1버퍼 대체 + 활성 플러그인 체인 보고 PDC), CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 콜백 처리시간은 CPU/XRun 진단에만 사용하며 총 지연에 중복 합산하지 않습니다. 하드웨어 루프백 실측값은 아니며 Receiver/OBS 버퍼는 별도입니다. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: total estimated latency (driver-reported input/output latency, with a one-buffer fallback per unreported direction, plus active plugin-chain reported PDC), CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. Callback execution time remains a CPU/XRun diagnostic and is not double-counted as path latency. This is not a hardware loopback measurement; Receiver/OBS buffering is separate. Auto-fade notifications
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 자동 교체 → 재시작 — In-app auto-updater with one-click update from GitHub releases
 - **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Windows: Malgun Gothic, macOS: Apple SD Gothic Neo, Linux: Noto Sans CJK KR — Korean/Chinese/Japanese device names rendered correctly with platform-specific CJK font support
 - **다크 테마** — Custom JUCE LookAndFeel
@@ -456,33 +456,44 @@ Windows hides tray icons in the overflow area (▲ arrow) by default. To keep th
 <details>
 <summary><b>처음 실행할 때 보안 경고가 떠요 / Security warning on first run</b></summary>
 
-정상입니다! DirectPipe는 오픈소스라 코드 서명 인증서가 없어서 나타나는 경고입니다. 악성 소프트웨어가 아닙니다.
+보안 경고만으로 악성 파일 여부가 판정되는 것은 아닙니다. 현재 신뢰된
+Windows 코드 서명 인증서가 없어 v4.2.6도 unsigned로 배포될 수 있으며,
+Chrome/Brave/SmartScreen 경고를 코드만으로 없앨 수는 없습니다. 반드시
+공식 GitHub Release에서 받고 `checksums.sha256`이 ZIP과 정확히 일치하는지
+확인하세요. 디지털 서명이 표시되는 빌드라면 상태가 `Valid`인지도
+확인하고, 손상되었거나 유효하지 않은 서명은 실행하지 마세요.
 
 **Windows (SmartScreen):**
-1. **"추가 정보"** 텍스트를 클릭하세요
-2. 아래에 나타나는 **"실행"** 버튼을 누르세요
+1. 공식 Release의 `checksums.sha256`과 ZIP의 SHA-256을 먼저 확인하세요. 서명이 있으면 `DirectPipe.exe`의 **디지털 서명** 상태도 확인하세요
+2. 공식 파일의 해시가 일치하고, 서명이 있는 경우 그 상태도 유효한데 평판 경고가 나타나면 **"추가 정보"** → **"실행"**을 선택할 수 있습니다
 3. 다운로드한 파일 자체가 차단되어 실행되지 않으면 `DirectPipe.exe`를 우클릭 → **속성** → **일반** 탭 하단의 **보안** → **차단 해제** 체크 → **적용/확인**을 누르세요
 
 **macOS (Gatekeeper):**
 1. **시스템 설정** → **개인 정보 보호 및 보안** → 하단의 **"확인 없이 열기"** 클릭
 2. 또는: Finder에서 DirectPipe.app을 **우클릭** → **열기** → **열기** 클릭
 
-한 번만 하면 이후로는 경고 없이 실행됩니다.
+운영체제와 파일 평판에 따라 이후 버전에서도 경고가 다시 나타날 수 있습니다.
 
 ---
 
-This is normal! DirectPipe is open-source and does not have a code signing certificate, so your OS shows a warning. It is not malware.
+A security warning by itself is not a malware verdict. DirectPipe currently has
+no trusted Windows code-signing certificate, so v4.2.6 may also be distributed
+unsigned; code changes alone cannot remove Chrome, Brave, or SmartScreen
+reputation warnings. Download only from the official GitHub Release and verify
+the ZIP against `checksums.sha256`. If a build does carry a digital signature,
+also require its status to be `Valid`; do not run a damaged or invalidly signed
+binary.
 
 **Windows (SmartScreen):**
-1. Click the **"More info"** text
-2. Click the **"Run anyway"** button that appears
+1. First verify the ZIP against the official Release's `checksums.sha256`; when a signature is present, also check the **Digital Signatures** status of `DirectPipe.exe`
+2. If the official hash matches and any present signature is valid but a reputation warning remains, you can choose **"More info"** → **"Run anyway"**
 3. If Windows still blocks the downloaded file, right-click `DirectPipe.exe` → **Properties** → **General** tab → **Security** → check **Unblock** → **Apply/OK**
 
 **macOS (Gatekeeper):**
 1. **System Settings** → **Privacy & Security** → click **"Open Anyway"** at the bottom
 2. Or: Right-click DirectPipe.app in Finder → **Open** → click **Open**
 
-You only need to do this once — the warning won't appear again.
+The warning can reappear for a later version depending on OS and file reputation.
 </details>
 
 <details>
@@ -1171,8 +1182,8 @@ This short gap is a major improvement over v3's 1-3 second mute gap. With the pr
 모니터 출력은 메인 출력과 **별도의 오디오 장치**를 사용하므로, 추가 지연이 발생할 수 있습니다.
 
 **원인:**
-1. **모니터 장치의 버퍼 크기** — 별도 shared-mode 장치의 실제 버퍼 크기를 사용합니다 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
-2. **샘플레이트 불일치** — 메인 장치와 모니터 장치의 샘플레이트가 다르면 리샘플링 지연 발생
+1. **모니터 큐와 출력 장치 지연** — 별도 shared-mode 경로의 adaptive queue 목표량과 모니터 드라이버가 보고한 출력 지연(미보고 시 1버퍼 대체)이 더해집니다 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
+2. **샘플레이트 불일치** — 메인 장치와 모니터 장치의 샘플레이트가 다르면 잘못된 리샘플링 추정값을 표시하지 않고 Monitor를 비활성화합니다
 3. **독립 장치 클록 드리프트** — 서로 다른 물리 장치가 장시간 동작하면 clock drift가 생길 수 있습니다. DirectPipe는 adaptive PLL fractional playback으로 작은 drift를 흡수하고, near-overflow 상황에서만 emergency trim을 사용합니다
 
 **해결 방법:**
@@ -1185,8 +1196,8 @@ This short gap is a major improvement over v3's 1-3 second mute gap. With the pr
 Monitor output uses a **separate audio device** from the main output, which can introduce additional latency.
 
 **Causes:**
-1. **Monitor device buffer size** — Uses the actual buffer size of the separate shared-mode device (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
-2. **Sample rate mismatch** — Different sample rates between main and monitor devices cause resampling delay
+1. **Monitor queue and output-device latency** — Adds the adaptive queue target of the separate shared-mode path and the monitor driver's reported output latency, with a one-buffer fallback when unreported (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
+2. **Sample rate mismatch** — If the main and monitor sample rates differ, DirectPipe disables Monitor instead of displaying a misleading resampling estimate
 3. **Independent device clock drift** — Separate physical devices can drift over long sessions. DirectPipe uses adaptive PLL fractional playback for small drift and reserves emergency trim only for near-overflow recovery
 
 **Solutions:**

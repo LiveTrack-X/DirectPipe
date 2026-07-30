@@ -351,33 +351,41 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     }
 
     // ── Latency label ──
-    // User-facing total: estimated device buffers + measured callback execution
-    // time + algorithmic latency reported by the active plugin graph.
+    // User-facing total: driver-reported (or one-buffer fallback) device I/O
+    // latency + algorithmic latency reported by the active plugin graph.
+    // Callback execution time remains a CPU/XRun diagnostic and is not an
+    // additional sample-path delay.
     double mainLatency = monitor.getTotalLatencyVirtualMicMs() + chainPDCMs;
     auto& monOut = engine_.getMonitorOutput();
     auto& router = engine_.getOutputRouter();
     bool monEnabled = router.isEnabled(OutputRouter::Output::Monitor);
     double monitorLatency = 0.0;
+    const bool monitorLatencyAvailable = monEnabled && monOut.isActive();
 
     {
         if (monEnabled) {
-            monitorLatency = mainLatency;
-            if (monOut.isActive()) {
-                double monSR = monOut.getActualSampleRate();
-                if (monSR > 0.0)
-                    monitorLatency += (static_cast<double>(monOut.getActualBufferSize()) / monSR) * 1000.0;
-            }
+            // The separate monitor branches before the main output device.
+            // Include the main input side and active PDC, then the monitor's
+            // adaptive queue target and its own output-device latency.
+            if (monitorLatencyAvailable)
+                monitorLatency = monitor.getInputLatencyMs() + chainPDCMs
+                    + monOut.getEstimatedQueueAndOutputLatencyMs();
         }
+        const double monitorCacheValue =
+            monitorLatencyAvailable ? monitorLatency : -1.0;
         if (std::abs(mainLatency - cachedMainLatency_) > 0.05 ||
-            std::abs(monitorLatency - cachedMonitorLatency_) > 0.05 ||
+            std::abs(monitorCacheValue - cachedMonitorLatency_) > 0.05 ||
             monEnabled != cachedMonEnabled_)
         {
             cachedMainLatency_ = mainLatency;
-            cachedMonitorLatency_ = monitorLatency;
+            cachedMonitorLatency_ = monitorCacheValue;
             cachedMonEnabled_ = monEnabled;
             juce::String latencyText = "Latency: " + juce::String(mainLatency, 1) + "ms";
-            if (monEnabled)
-                latencyText += " | Mon: " + juce::String(monitorLatency, 1) + "ms";
+            if (monEnabled) {
+                latencyText += monitorLatencyAvailable
+                    ? " | Mon: " + juce::String(monitorLatency, 1) + "ms"
+                    : " | Mon: unavailable";
+            }
             latencyLabel_->setText(latencyText, juce::dontSendNotification);
         }
     }
@@ -444,17 +452,9 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.inputMuted = engine_.isInputMuted();
         s.masterBypassed = false;
         s.latencyMs = static_cast<float>(mainLatency);
-        if (monEnabled) {
-            double monitorLat = mainLatency;
-            if (monOut.isActive()) {
-                double monSR2 = monOut.getActualSampleRate();
-                if (monSR2 > 0.0)
-                    monitorLat += (static_cast<double>(monOut.getActualBufferSize()) / monSR2) * 1000.0;
-            }
-            s.monitorLatencyMs = static_cast<float>(monitorLat);
-        } else {
-            s.monitorLatencyMs = 0.0f;
-        }
+        s.monitorLatencyMs = monitorLatencyAvailable
+            ? static_cast<float>(monitorLatency)
+            : 0.0f;
         s.inputLevelDb = engine_.getInputLevel();
         s.cpuPercent = static_cast<float>(monitor.getCpuUsagePercent());
         s.sampleRate = monitor.getSampleRate();

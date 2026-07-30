@@ -23,7 +23,8 @@ If you discover a security vulnerability in DirectPipe, **please do NOT report i
 
 | Version | Supported |
 |---|---|
-| v4.2.x (latest) | ✅ |
+| v4.2.6 (current public stable) | ✅ |
+| v4.2.3 | ⚠️ Critical fixes only / 치명적 버그만 |
 | v4.1.x | ⚠️ Critical fixes only / 치명적 버그만 |
 | v3.10.x (legacy) | ⚠️ Critical fixes only / 치명적 버그만 |
 | < v3.10 | ❌ |
@@ -107,13 +108,15 @@ Audio transfer between host and Receiver VST uses OS shared memory.
 The auto-updater checks the GitHub Releases API for new versions and downloads binaries.
 
 **무결성 검증 / Integrity Verification**:
-- 릴리스에 `checksums.sha256` 파일이 포함되어 있으면, 다운로드된 파일의 SHA-256 해시를 검증합니다
-- `checksums.sha256`가 없는 경우(구 릴리스 호환) 검증을 건너뜁니다
+- v4.2.0 이상 Windows 인앱 업데이트는 정확히 일치하는 `checksums.sha256` 항목과 다운로드 파일의 SHA-256 일치를 필수로 검증합니다
+- checksum metadata가 없거나 읽을 수 없거나 일치하지 않으면 교체 전에 fail-closed합니다
 - 최소 파일 크기 검증 (100KB 이상)
+- 현재 신뢰된 코드 서명 인증서가 없으므로 공식 Windows 패키지도 unsigned일 수 있습니다. 인앱 checksum은 전송/패키지 정합성 검사이며 Authenticode publisher identity를 대신하지 않습니다
 
-- If the release includes a `checksums.sha256` file, the downloaded file's SHA-256 hash is verified
-- Verification is skipped if `checksums.sha256` is absent (backward compatibility with older releases)
+- Windows in-app updates for v4.2.0 and later require an exact readable `checksums.sha256` entry and matching downloaded SHA-256
+- Missing, unreadable, or mismatched checksum metadata fails closed before replacement
 - Minimum file size check (>100KB)
+- With no trusted code-signing certificate configured, official Windows packages may be unsigned. The in-app checksum verifies package/transport consistency; it does not replace Authenticode publisher identity
 
 **플랫폼별 동작 / Platform Behavior**:
 - **Windows**: 자동 다운로드 → 배치 스크립트로 교체 → 재시작 / Auto-download → batch script replacement → restart

@@ -282,17 +282,21 @@ void OutputPanel::timerCallback()
     if (std::abs(monitorVolumeSlider_.getValue() - actualVol) > 0.5)
         monitorVolumeSlider_.setValue(actualVol, juce::dontSendNotification);
 
-    // Update monitor latency display (only when Active, using monitor's own SR)
+    // Show only the separate monitor leg here. The bottom status bar owns the
+    // complete route estimate (main input + active PDC + this monitor leg).
     {
         auto& monOut = engine_.getMonitorOutput();
         if (monOut.getStatus() == VirtualCableStatus::Active) {
-            double sr = monOut.getActualSampleRate();
-            int bs = monOut.getActualBufferSize();
-            if (sr > 0.0 && bs > 0) {
-                double ms = (static_cast<double>(bs) / sr) * 1000.0;
+            const double sr = monOut.getActualSampleRate();
+            const int queueFrames = monOut.getTargetFillFrames();
+            const int outputLatencySamples = monOut.getOutputLatencySamples();
+            const double ms = monOut.getEstimatedQueueAndOutputLatencyMs();
+            if (sr > 0.0 && queueFrames > 0
+                && outputLatencySamples > 0 && ms > 0.0) {
+                const int totalSamples = queueFrames + outputLatencySamples;
                 monitorLatencyLabel_.setText(
-                    juce::String(ms, 2) + " ms  (" + juce::String(bs) + " samples @ "
-                        + juce::String(static_cast<int>(sr)) + " Hz)",
+                    "Est. monitor leg: " + juce::String(ms, 2)
+                        + " ms  (" + juce::String(totalSamples) + " smp)",
                     juce::dontSendNotification);
             } else {
                 monitorLatencyLabel_.setText("", juce::dontSendNotification);

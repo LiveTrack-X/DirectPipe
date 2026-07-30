@@ -52,6 +52,22 @@ public:
      *  @return true only when every required settings file was persisted. */
     bool saveNow();
 
+    /**
+     * Persist current non-plugin settings during shutdown even when an
+     * in-flight chain transition makes saveNow() unsafe.
+     *
+     * A complete persisted plugin chain is merged when available. Otherwise a
+     * separate recovery sidecar is written; the main preset is never replaced
+     * by an incomplete chain.
+     */
+    [[nodiscard]] bool flushForShutdown();
+
+    /** Recovery sidecar used only when shutdown cannot safely update the full preset. */
+    static juce::File getShutdownRecoveryFile();
+
+    /** Remove the recovery sidecar and its atomic-write siblings (Factory Reset). */
+    [[nodiscard]] static bool deleteShutdownRecoveryFiles();
+
     /** Load settings from auto-save file.
      *  Calls onPostLoad after loading (for UI refresh). */
     void loadFromFile();
@@ -80,8 +96,18 @@ private:
 
     bool dirty_ = false;
     int cooldown_ = 0;      // ticks remaining before save (at 30Hz)
-    int deferCount_ = 0;    // consecutive deferred attempts (force save after limit)
-    static constexpr int kMaxDeferCount = 50;  // ~15s at 300ms per retry
+    int deferCount_ = 0;    // consecutive transitional-state deferrals
+
+    // A partial load may have no complete persisted chain to merge yet. Keep
+    // the dirty state pending, but avoid retrying and logging every 10 ticks.
+    static constexpr int kMissingChainInitialRetryTicks = 150; // 5s
+    static constexpr int kMissingChainMaxRetryTicks = 900;     // 30s
+    bool waitingForCompletePluginChain_ = false;
+    bool missingCompletePluginChainLogged_ = false;
+    bool lastSaveDeferredForMissingChain_ = false;
+    int missingChainRetryTicks_ = kMissingChainInitialRetryTicks;
+
+    static constexpr int kMaxDeferCount = 50;  // report prolonged transition after ~15s
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsAutosaver)
 };

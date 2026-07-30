@@ -167,7 +167,9 @@ private:
 
     // Shared atomics (owned here, shared with PresetSlotBar/ActionHandler/SettingsAutosaver)
     std::atomic<bool> loadingSlot_ { false };
-    std::atomic<bool> partialLoad_ { false };  // prevents auto-save after partial plugin load
+    // Prevents incomplete runtime chains from replacing slot files. Settings
+    // autosave may still merge non-plugin changes into a preserved full chain.
+    std::atomic<bool> partialLoad_ { false };
     double lastCachedSR_ = 0.0;  // track SR/BS for smart cache invalidation
     int lastCachedBS_ = 0;
 

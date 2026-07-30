@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.2.5 릴리즈 구현을 기준으로 작성
+> 역기획서 — v4.2.6 릴리즈 구현을 기준으로 작성
 >
-> Reverse spec — based on the released v4.2.5 implementation
+> Reverse spec — based on the v4.2.6 release implementation
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-Released: 4.2.5
+4.2.6
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- The local v4.2.5 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed); exact-tag CI gates publication with cross-platform builds, registered tests, and package validation. Real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
-- v4.2.5 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했으며 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 검증으로 공개를 게이트한다. 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
+- Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI gates public assets with cross-platform builds, registered tests, package checksums, and executable-version identity. Authenticode is verified when a trusted certificate is configured; otherwise Windows is explicitly unsigned. Real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개다(59 core + 485 host + 2 focused endpoint). 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원으로 공개 자산을 게이트한다. 신뢰 인증서가 있으면 Authenticode를 검증하고, 없으면 Windows 패키지를 명시적으로 unsigned로 배포한다. 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -180,12 +180,12 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 #### 4.1.7 레이턴시 모니터 / Latency Monitor
 | 측정값 / Metric | 설명 / Description |
 |--------|------|
-| `inputLatencyMs_` | 입력 버퍼 레이턴시 / Input buffer latency |
-| `processingTimeMs_` | VST 체인 처리 시간 (고해상도 타임스탬프 델타) / VST chain processing time (high-resolution timestamp delta) |
-| `outputLatencyMs_` | 출력 버퍼 레이턴시 / Output buffer latency |
+| `inputLatencyMs_` | 드라이버 보고 입력 지연, 미보고 시 1버퍼 대체 / Driver-reported input latency, one-buffer fallback when unreported |
+| `processingTimeMs_` | 전체 콜백 실행시간 진단 (단조 시계 델타, 총 지연에는 미합산) / Full callback execution diagnostic (monotonic-clock delta, not added to path latency) |
+| `outputLatencyMs_` | 드라이버 보고 출력 지연, 미보고 시 1버퍼 대체 / Driver-reported output latency, one-buffer fallback when unreported |
 | `cpuUsage_` | 콜백 시간 대비 처리 비율 (%) / Processing ratio relative to callback time (%) |
 | 스무딩 / Smoothing | 지수 이동 평균 / Exponential moving average, `kSmoothingFactor = 0.1` |
-| 사용자용 총 추정값 / User-facing total estimate | 입력 버퍼 + 출력 버퍼 + 콜백 실행시간 + 활성 그래프 보고 PDC / Input buffer + output buffer + callback execution time + active-graph reported PDC |
+| 사용자용 총 추정값 / User-facing total estimate | 드라이버 보고 입력 + 출력 지연 + 활성 그래프 보고 PDC / Driver-reported input + output latency + active-graph reported PDC |
 | 제외 / Excluded | 하드웨어 루프백 실측, Receiver/OBS 버퍼 / Hardware loopback measurement and Receiver/OBS buffering |
 
 #### 4.1.8 Global Safety Guard (legacy SafetyLimiter names)
@@ -691,7 +691,7 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 | 샘플레이트 ComboBox / Sample Rate ComboBox | 장치에서 동적 팝업 / Dynamic popup from device |
 | 버퍼 크기 ComboBox / Buffer Size ComboBox | 장치에서 동적 팝업 / Dynamic popup from device |
 | Mono/Stereo 토글 버튼 / Mono/Stereo Toggle Button | 채널 모드 전환 / Channel mode switching |
-| 레이턴시 라벨 / Latency Label | 입력+출력 버퍼 단순 추정치 `2 × buffer / sample rate`; 상태바 총 추정값과 구분 / Simple input+output buffer estimate; distinct from the status-bar total |
+| 레이턴시 라벨 / Latency Label | `Estimated I/O Latency`: 드라이버 보고 입력+출력 지연, 미보고 방향은 1버퍼 대체. 활성 chain PDC는 하단 상태바에 포함 / Driver-reported input+output latency with per-direction one-buffer fallback; active-chain PDC appears in the bottom status bar |
 | 출력 볼륨 슬라이더 / Output Volume Slider | Output Volume (0.0~1.0) — Audio 탭에서 출력 볼륨 조절 / output volume control in Audio tab |
 | ASIO Control Panel 버튼 / ASIO Control Panel Button | ASIO 모드에서만 표시 / Shown only in ASIO mode (Windows only). 드라이버 설정 패널 열기 / Opens driver settings panel |
 
@@ -779,7 +779,7 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 #### 4.6.6 상태 바 / Status Bar (30px)
 | 요소 / Element | 설명 / Description |
 |------|------|
-| 레이턴시 라벨 / Latency Label | 메인: 입력·출력 버퍼 추정 + 콜백 실행시간 + 활성 chain PDC. `Mon`: 메인 총값 + 모니터 장치 버퍼. 하드웨어 루프백 실측 및 Receiver/OBS 버퍼 제외. 녹음 중 자동 숨김 / Main: estimated I/O buffers + callback execution time + active-chain PDC. `Mon`: main total + monitor-device buffer. Excludes hardware loopback measurement and Receiver/OBS buffering. Auto-hidden during recording |
+| 레이턴시 라벨 / Latency Label | 메인: 드라이버 보고 입·출력 지연(방향별 1버퍼 fallback) + 활성 chain PDC. `Mon`: 메인 입력 지연 + PDC + monitor queue 목표량 + monitor 출력 장치 지연(메인 출력 지연 제외). Monitor unavailable 시 `Mon: unavailable`; 외부 상태값은 0. 하드웨어 루프백 실측 및 Receiver/OBS 버퍼 제외. 녹음 중 자동 숨김 / Main and separate-monitor route estimates; callback time is diagnostic only. Auto-hidden during recording |
 | CPU% 라벨 / CPU% Label | 오디오 콜백 오버로드 시 빨간 하이라이트 / Red highlight on audio callback overload |
 | 포맷 라벨 / Format Label | "48kHz 512 Stereo" 형식 / format |
 | 포터블 라벨 / Portable Label | 포터블 모드에서만 표시 (노란 배경) / Shown only in portable mode (yellow background) |
@@ -954,7 +954,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.2.5" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.2.6" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1024,8 +1024,10 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
 - Dirty-flag 패턴 + 1초 디바운스 (30Hz 타이머에서 30틱 카운트다운) / Dirty-flag pattern + 1-second debounce (30-tick countdown at 30Hz timer)
 - `onSettingsChanged` 콜백 → `markSettingsDirty()` → 카운터 리셋 → 0 도달 시 `saveSettings()` / callback → `markSettingsDirty()` → counter reset → `saveSettings()` on reaching 0
 - 저장 실패 시 dirty를 유지하고 새 UI 변경 없이 재시도한다 / A failed save retains dirty state and retries without another UI edit
-- `loadingSlot_` 또는 `isLoading()` true면 저장 스킵 (부분 상태 손상 방지) / Saves skipped when `loadingSlot_` or `isLoading()` is true (prevents partial state corruption)
-- 불완전한 settings preset load 후 `partialLoad_`를 설정하여 quick-slot autosave가 깨진 체인을 덮어쓰지 않게 함 / Incomplete settings preset loads set `partialLoad_` so quick-slot autosave cannot overwrite a slot with a broken chain
+- `loadingSlot_` 또는 unstable chain이면 완전 preset/slot 저장을 스킵하고 dirty를 유지 / Loading or unstable chains defer full preset/slot writes while retaining dirty state
+- 안정된 `partialLoad_`에서는 현재 비플러그인 설정을 마지막 구조적으로 완전한 persisted `plugins` 배열과 병합하고 active quick-slot을 쓰지 않음 / A stable `partialLoad_` merges current non-plugin settings with the last structurally complete persisted `plugins` array without writing the active quick slot
+- 완전 chain이 없으면 5→10→20→최대 30초로 재시도하고 동일 경고를 반복하지 않음 / Missing complete chains retry with 5→10→20→30-second bounded backoff without repeating the same warning
+- 종료 시 완전 chain과 병합할 수 없으면 `settings.shutdown-recovery.json`에 비플러그인 설정만 atomic 저장. 다음 시작은 plugin chain을 재구성하지 않고 overlay하며 commit 실패 시 sidecar 유지, Factory Reset은 sidecar family 삭제 / Shutdown atomically writes only non-plugin settings to `settings.shutdown-recovery.json` when a complete-chain merge is unsafe. Startup overlays it without reconstructing the plugin chain, retains it on commit failure, and Factory Reset deletes the sidecar family
 - `plugins` 배열이 아니거나 entry 구조가 잘못된 settings JSON은 active slot, audio state, output state 적용 전에 실패 / Settings JSON with a non-array `plugins` field or malformed plugin entries fails before active slot, audio state, or output state is applied
 - Atomic-write family를 먼저 복구하여 primary가 없거나 잠겨도 유효 `.bak`의 명시적 `outputMuted` 값을 보존하며, partial plugin load도 이 안전 상태를 해제하지 않음 / Resolves the atomic-write family first, preserving an explicit `outputMuted` value from a valid `.bak` when the primary is missing or locked; a partial plugin load does not clear that safety state
 - Full-backup slot restore는 파일 clear/write 단계 전에 기존 quick-slot file family를 snapshot하고 실패 시 롤백 / Full-backup slot restore snapshots existing quick-slot file families before the clear/write phase and rolls them back on failure
@@ -1088,7 +1090,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.2.5",
+  "appVersion": "4.2.6",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1111,7 +1113,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.2.5",
+  "appVersion": "4.2.6",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */
@@ -1294,14 +1296,14 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.5.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.6.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
 │       ├── websocket-client.js     → WS 클라이언트, 재연결, 큐잉 / WS client, reconnection, queuing
 │       └── actions/                → 10개 SingletonAction 클래스 / 10 SingletonAction classes
 │
-├── tests/                          → Google Test (core + host + endpoint, current `main`: 500 CTest registrations)
+├── tests/                          → Google Test (core + host + endpoint; current count is generated with `ctest -N`)
 ├── tools/                          → midi-test.py, pre-release-test.sh, pre-release-dashboard.html
 ├── docs/                           → USER_GUIDE, CONTROL_API, STREAMDECK_GUIDE 등 / etc.
 └── dist/                           → 빌드 산출물 / Build artifacts + .streamDeckPlugin

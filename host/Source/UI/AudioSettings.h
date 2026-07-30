@@ -134,7 +134,7 @@ private:
     juce::Slider outputVolumeSlider_;
 
     // Latency display
-    juce::Label latencyTitleLabel_{"", "Round-trip Latency:"};
+    juce::Label latencyTitleLabel_{"", "Estimated I/O Latency:"};
     juce::Label latencyValueLabel_{"", "-- ms"};
 
     // ASIO Control Panel button (visible only in ASIO mode)

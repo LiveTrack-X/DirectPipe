@@ -199,7 +199,7 @@ Supports both Keypad and SD+ Encoder (dial). / 키패드와 SD+ 인코더 (다�
 - **Keypad press** — Reset XRun counter / XRun 카운터 초기화
 - **Encoder dial press** — Reset XRun counter / XRun 카운터 초기화
 
-**Display:** Shows total estimated latency (ms; estimated I/O buffers + callback execution time + active-chain reported PDC), CPU usage (%), and XRun count. This is not hardware loopback measurement and excludes Receiver/OBS buffering. / 총 추정 레이턴시, CPU 사용률, XRun 카운터 표시.
+**Display:** Shows total estimated latency (ms; driver-reported input/output latency with per-direction one-buffer fallback + active-chain reported PDC), CPU usage (%), and XRun count. Callback execution time is a CPU/XRun diagnostic, not an added path-delay term. This is not hardware loopback measurement and excludes Receiver/OBS buffering. / 총 추정 레이턴시, CPU 사용률, XRun 카운터 표시.
 
 **Settings (Property Inspector):**
 - `displayMode` — `"all"` (default), `"latency"`, or `"cpu"` / 표시 모드 선택
@@ -290,7 +290,7 @@ Dual-app setup with VB-Cable (Discord) + DirectPipe Receiver (OBS) + Monitor (he
 
 ### SDK Version / SDK 버전
 
-Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.2.5.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.2.5.0. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.2.6.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.2.6.0. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket 클라이언트 / WebSocket Client (`websocket-client.js`)
 

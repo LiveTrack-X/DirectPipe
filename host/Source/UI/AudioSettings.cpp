@@ -22,6 +22,7 @@
  */
 
 #include "AudioSettings.h"
+#include "AudioSettingsPolicy.h"
 
 namespace directpipe {
 
@@ -385,7 +386,9 @@ void AudioSettings::onDriverTypeChanged()
 void AudioSettings::onInputDeviceChanged()
 {
     auto selectedText = inputCombo_.getText();
-    if (selectedText.isEmpty() || selectedText.contains("(Disconnected)")) return;
+    if (selectedText.isEmpty()
+        || audio_settings_detail::isRecoveryPlaceholderText(selectedText))
+        return;
 
     if (isAsioMode()) {
         auto r = engine_.setAsioDevice(selectedText);
@@ -421,7 +424,9 @@ void AudioSettings::onInputDeviceChanged()
 void AudioSettings::onOutputDeviceChanged()
 {
     auto selectedText = outputCombo_.getText();
-    if (selectedText.isEmpty() || selectedText.contains("(Disconnected)")) return;
+    if (selectedText.isEmpty()
+        || audio_settings_detail::isRecoveryPlaceholderText(selectedText))
+        return;
 
     // "None" = mute main output (keep device open for input)
     if (selectedText == "None") {
@@ -588,20 +593,28 @@ void AudioSettings::rebuildDeviceLists()
     juce::AudioDeviceManager::AudioDeviceSetup setup;
     engine_.getDeviceManager().getAudioDeviceSetup(setup);
 
-    // Input selection — show "(Disconnected)" when input device is lost
-    if (engine_.isInputDeviceLost() && !isAsioMode()) {
+    const bool asio = isAsioMode();
+    const bool inputLost = engine_.isInputDeviceLost();
+    const bool outputLost = engine_.isOutputAutoMuted();
+    bool inputRecoverySelected = false;
+    if (audio_settings_detail::needsRecoveryPlaceholder(
+            audio_settings_detail::DeviceDirection::Input,
+            asio, inputLost, outputLost)) {
         auto desired = engine_.getDesiredInputDevice();
-        if (desired.isNotEmpty() && !inputs.contains(desired)) {
-            int dcId = inputs.size() + 1;
-            inputCombo_.addItem(desired + " (Disconnected)", dcId);
-            inputCombo_.setSelectedId(dcId, juce::dontSendNotification);
-        } else {
-            // Desired device is back in list but flag not yet cleared
-            int inIdx = inputs.indexOf(desired);
-            if (inIdx >= 0)
-                inputCombo_.setSelectedId(inIdx + 1, juce::dontSendNotification);
+        if (desired.isEmpty() && asio)
+            desired = engine_.getDesiredOutputDevice();
+        const auto recovery = audio_settings_detail::makeRecoverySelection(
+            desired, inputs, 1);
+        if (recovery.placeholderId > 0) {
+            inputCombo_.addItem(
+                recovery.placeholderText, recovery.placeholderId);
+            inputCombo_.setItemEnabled(recovery.placeholderId, false);
+            inputCombo_.setSelectedId(
+                recovery.placeholderId, juce::dontSendNotification);
+            inputRecoverySelected = true;
         }
-    } else {
+    }
+    if (!inputRecoverySelected) {
         juce::String inputName = setup.inputDeviceName;
         if (inputName.isEmpty()) {
             if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice())
@@ -615,17 +628,25 @@ void AudioSettings::rebuildDeviceLists()
     }
 
     // Output selection
-    if (engine_.isOutputNone() && !isAsioMode()) {
+    if (engine_.isOutputNone() && !asio) {
         outputCombo_.setSelectedId(1, juce::dontSendNotification); // "None" (intentional)
-    } else if (engine_.isOutputAutoMuted() && !isAsioMode()) {
-        // Device lost — show desired device name with "(Disconnected)"
+    } else if (audio_settings_detail::needsRecoveryPlaceholder(
+                   audio_settings_detail::DeviceDirection::Output,
+                   asio, inputLost, outputLost)) {
         auto desired = engine_.getDesiredOutputDevice();
-        if (desired.isNotEmpty() && !outputs.contains(desired)) {
-            int dcId = outputs.size() + outputIdOffset;
-            outputCombo_.addItem(desired + " (Disconnected)", dcId);
-            outputCombo_.setSelectedId(dcId, juce::dontSendNotification);
-        } else {
-            outputCombo_.setSelectedId(1, juce::dontSendNotification); // "None" fallback
+        if (desired.isEmpty() && asio)
+            desired = engine_.getDesiredInputDevice();
+        const auto recovery = audio_settings_detail::makeRecoverySelection(
+            desired, outputs, outputIdOffset);
+        if (recovery.placeholderId > 0) {
+            outputCombo_.addItem(
+                recovery.placeholderText, recovery.placeholderId);
+            outputCombo_.setItemEnabled(recovery.placeholderId, false);
+            outputCombo_.setSelectedId(
+                recovery.placeholderId, juce::dontSendNotification);
+        } else if (outputs.size() > 0) {
+            outputCombo_.setSelectedId(
+                outputIdOffset, juce::dontSendNotification);
         }
     } else {
         juce::String outputName = setup.outputDeviceName;
@@ -734,12 +755,14 @@ void AudioSettings::updateLatencyDisplay()
 {
     auto& monitor = engine_.getLatencyMonitor();
     double sr = monitor.getSampleRate();
-    int bs = monitor.getBufferSize();
+    const int totalLatencySamples =
+        monitor.getInputLatencySamples() + monitor.getOutputLatencySamples();
 
     if (sr > 0.0) {
-        double latencyMs = (static_cast<double>(bs) / sr) * 1000.0 * 2.0;
+        const double latencyMs =
+            (static_cast<double>(totalLatencySamples) / sr) * 1000.0;
         latencyValueLabel_.setText(
-            juce::String(latencyMs, 2) + " ms  (" + juce::String(bs) + " samples @ "
+            juce::String(latencyMs, 2) + " ms  (" + juce::String(totalLatencySamples) + " samples @ "
                 + juce::String(static_cast<int>(sr)) + " Hz)",
             juce::dontSendNotification);
     } else {
