@@ -8,7 +8,7 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
-## [4.2.4] - 2026-07-30
+## [4.2.5] - 2026-07-30
 
 ### Fixed
 
@@ -33,7 +33,7 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 - **Release synchronization**: Host, bundled Receiver, Stream Deck metadata,
   current documentation, release notes, and test inventory are aligned to
-  v4.2.4. IPC protocol v1, the 192-byte shared-memory header, presets, Stream
+  v4.2.5. IPC protocol v1, the 192-byte shared-memory header, presets, Stream
   Deck actions, and control payload schemas remain compatible.
 
 ### Tests
@@ -44,6 +44,10 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
   event suppression. Local Windows Release CTest completed all 500
   registrations: 498 passed, 2 environment-dependent tests skipped, and 0
   failed.
+- Corrected the platform-audio regression itself so macOS and Linux validate
+  their native shared device types instead of applying a Windows-only
+  expectation. The failed `v4.2.4` CI tag was not published as a GitHub Release;
+  v4.2.5 is the immutable release tag for this update.
 
 ---
 

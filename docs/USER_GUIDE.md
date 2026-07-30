@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Released Version 4.2.4** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Released Version 4.2.5** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.4 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.5 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The local v4.2.4 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
+> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The local v4.2.5 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)

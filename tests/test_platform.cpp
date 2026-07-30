@@ -171,13 +171,23 @@ TEST_F(PlatformTest, ProcessPriorityRestore) {
     SUCCEED();
 }
 
-TEST(PlatformAudioTest, RecognizesNativeAndWasapiExclusiveDrivers) {
+TEST(PlatformAudioTest, RecognizesPlatformSharedAndExclusiveDrivers) {
     EXPECT_TRUE(PlatformAudio::isExclusiveDriverType("ASIO"));
     EXPECT_TRUE(PlatformAudio::isExclusiveDriverType("Windows Audio (Exclusive Mode)"));
     EXPECT_FALSE(PlatformAudio::isExclusiveDriverType("Windows Audio"));
     EXPECT_FALSE(PlatformAudio::isExclusiveDriverType("Windows Audio (Low Latency)"));
+
+#if JUCE_WINDOWS
     EXPECT_FALSE(PlatformAudio::isSharedDeviceType("Windows Audio (Exclusive Mode)"));
     EXPECT_TRUE(PlatformAudio::isSharedDeviceType("Windows Audio"));
+#elif JUCE_MAC
+    EXPECT_TRUE(PlatformAudio::isSharedDeviceType("CoreAudio"));
+    EXPECT_FALSE(PlatformAudio::isSharedDeviceType("Windows Audio"));
+#elif JUCE_LINUX
+    EXPECT_TRUE(PlatformAudio::isSharedDeviceType("ALSA"));
+    EXPECT_TRUE(PlatformAudio::isSharedDeviceType("JACK"));
+    EXPECT_FALSE(PlatformAudio::isSharedDeviceType("Windows Audio"));
+#endif
 }
 
 TEST_F(PlatformTest, MultiInstanceAcquire) {

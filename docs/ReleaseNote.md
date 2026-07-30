@@ -2,16 +2,24 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
-## DirectPipe v4.2.4
+## DirectPipe v4.2.5
 
-v4.2.4 hardens audio-device recovery. Failed main and monitor recovery is
+v4.2.5 hardens audio-device recovery. Failed main and monitor recovery is
 rate-limited correctly, the configured monitor output is opened directly, and
 an exclusive main-output transition releases a potentially conflicting monitor
 before attempting the exclusive open.
 
-v4.2.4는 오디오 장치 복구를 안정화합니다. 메인·모니터 복구 실패 시 올바른
+v4.2.5는 오디오 장치 복구를 안정화합니다. 메인·모니터 복구 실패 시 올바른
 재시도 간격을 유지하고, 선택한 모니터 출력을 직접 열며, 독점 메인 출력
 전환 전에 충돌 가능 모니터를 먼저 해제합니다.
+
+The `v4.2.4` source tag failed the macOS/Linux CI test gate and was never
+published as a GitHub Release. v4.2.5 contains the same product fixes plus the
+platform-correct regression and is the release tag for this update.
+
+`v4.2.4` 소스 태그는 macOS/Linux CI 테스트 게이트에서 실패해 GitHub
+Release로 공개되지 않았습니다. v4.2.5는 동일한 제품 수정과 플랫폼별로
+수정된 회귀 테스트를 포함한 이번 업데이트의 실제 릴리즈 태그입니다.
 
 ### Highlights / 주요 변경
 
@@ -47,10 +55,10 @@ v4.2.4는 오디오 장치 복구를 안정화합니다. 메인·모니터 복�
 - IPC wire ABI는 기존 192-byte shared-memory header의 protocol v1을
   유지합니다. 호환성 때문에 Receiver/VST를 교체할 필요는 없습니다.
 - Stream Deck action IDs, request/state schemas, discovery, and profiles are
-  unchanged. Existing v4.2.x packages remain compatible; 4.2.4 is bundled only
+  unchanged. Existing v4.2.x packages remain compatible; 4.2.5 is bundled only
   for package alignment.
 - Stream Deck action ID, request/state schema, discovery, profile은 변경되지
-  않았습니다. 기존 v4.2.x 패키지는 계속 호환되며 4.2.4는 패키지 버전
+  않았습니다. 기존 v4.2.x 패키지는 계속 호환되며 4.2.5는 패키지 버전
   정합성을 위해 함께 제공합니다.
 - Existing v4.2.x presets and settings remain compatible.
 - 기존 v4.2.x preset과 settings는 호환됩니다.
@@ -73,15 +81,15 @@ v4.2.4는 오디오 장치 복구를 안정화합니다. 메인·모니터 복�
 
 ### Downloads / 다운로드
 
-- `DirectPipe-v4.2.4-Windows.zip` — Windows stable artifact, CI-built.
-- `DirectPipe-v4.2.4-macOS.dmg` — macOS beta artifact, CI-built.
-- `DirectPipe-v4.2.4-Linux.tar.gz` — Linux experimental artifact, CI-built.
-- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 4.2.4 package.
+- `DirectPipe-v4.2.5-Windows.zip` — Windows stable artifact, CI-built.
+- `DirectPipe-v4.2.5-macOS.dmg` — macOS beta artifact, CI-built.
+- `DirectPipe-v4.2.5-Linux.tar.gz` — Linux experimental artifact, CI-built.
+- `com.directpipe.directpipe.streamDeckPlugin` — Stream Deck 4.2.5 package.
 - `checksums.sha256` — SHA-256 manifest for all payload artifacts.
 
-**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.4
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.5
 
-**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.4
+**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.5
 
 ---
 

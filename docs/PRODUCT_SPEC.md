@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.2.4 릴리즈 구현을 기준으로 작성
+> 역기획서 — v4.2.5 릴리즈 구현을 기준으로 작성
 >
-> Reverse spec — based on the released v4.2.4 implementation
+> Reverse spec — based on the released v4.2.5 implementation
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-Released: 4.2.4
+Released: 4.2.5
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- The local v4.2.4 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed); exact-tag CI gates publication with cross-platform builds, registered tests, and package validation. Real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
-- v4.2.4 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했으며 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 검증으로 공개를 게이트한다. 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
+- The local v4.2.5 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed); exact-tag CI gates publication with cross-platform builds, registered tests, and package validation. Real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.2.5 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했으며 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 검증으로 공개를 게이트한다. 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -954,7 +954,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.2.4" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.2.5" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1088,7 +1088,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.2.4",
+  "appVersion": "4.2.5",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1111,7 +1111,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.2.4",
+  "appVersion": "4.2.5",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */
@@ -1294,7 +1294,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.4.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.5.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
