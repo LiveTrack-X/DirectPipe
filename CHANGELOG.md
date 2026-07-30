@@ -42,6 +42,11 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 - **Retained update rollback**: Startup cleanup preserves the previous
   executable backup until the next update rotation while still removing
   transient update files.
+- **Fail-fast missing-install recovery**: The Windows updater now checks that
+  the installed executable still exists before archive extraction or
+  PowerShell candidate validation, preserving an existing backup without a
+  cold-process delay. Script tests allow a bounded 60 seconds for the first
+  runner PowerShell/VersionInfo launch.
 
 ### Distribution
 

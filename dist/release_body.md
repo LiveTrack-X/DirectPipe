@@ -7,7 +7,7 @@ Deck controls with actual plug-in values and defaults, and hardens asynchronous
 HTTP and Windows update behavior.
 
 v4.2.7은 회수된 v4.2.6 빌드의 수정 대체판입니다. 자동 ASIO 후보를
-수락하기 전에 각각 검증하고, Mono를 입력단 L+R 합산 후 2채널 VST 경로로
+수락하기 전에 각각 검증하고, Mono를 입력단 L+R 평균 합산 후 2채널 VST 경로로
 복제하는 구조로 유지하며, Stream Deck 제어를 실제 플러그인 값·기본값과
 동기화하고 비동기 HTTP 및 Windows 업데이트 동작을 보강합니다.
 
@@ -60,6 +60,12 @@ v4.2.7은 회수된 v4.2.6 빌드의 수정 대체판입니다. 자동 ASIO 후�
 - **강화된 Windows updater 신원**: ZIP 안에 `DirectPipe.exe`가 정확히
   하나 있어야 하고 FileVersion·ProductVersion이 요청 버전과 일치해야
   교체합니다. 이전 실행 파일 backup은 다음 업데이트 회전까지 유지합니다.
+- **Fail-fast missing install**: If the installed executable is already
+  missing, the updater fails before extraction or PowerShell candidate
+  validation and leaves any existing backup untouched.
+- **빠른 설치 누락 실패**: 설치된 실행 파일이 이미 없으면 updater는
+  압축 해제나 PowerShell 후보 검증 전에 실패하고 기존 backup을 그대로
+  보존합니다.
 
 ### Compatibility / 호환성
 

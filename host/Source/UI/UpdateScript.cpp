@@ -95,6 +95,12 @@ juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spe
     juce::String script;
     juce::String installSourcePath = paths.downloadedFilePath;
 
+    // A missing installed executable cannot be repaired by validating or
+    // extracting the candidate. Fail before PowerShell startup or backup
+    // rotation so an existing known-good backup remains untouched.
+    script << "if not exist \"" << paths.currentExePath
+           << "\" goto update_install_failed\r\n";
+
     if (paths.isZip) {
         script << "echo  Extracting update...\r\n";
         script << "if exist \"" << paths.updateDirPath << "\" rd /s /q \""
@@ -144,8 +150,6 @@ juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spe
     script << "if errorlevel 1 goto update_install_failed\r\n";
 
     // Rotate the known-good executable only after a replacement has been staged.
-    script << "if not exist \"" << paths.currentExePath
-           << "\" goto update_install_failed\r\n";
     script << "if exist \"" << paths.backupExePath << "\" del /f /q \""
            << paths.backupExePath << "\"\r\n";
     script << "if exist \"" << paths.backupExePath

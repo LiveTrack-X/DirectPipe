@@ -62,6 +62,12 @@ v4.2.7 CI가 성공하기 전까지 공개 안정판은 v4.2.3입니다.
 - **검증된 updater payload**: Windows 업데이트는 정확히 하나의
   `DirectPipe.exe`와 일치하는 FileVersion/ProductVersion을 요구하며,
   이전 실행 파일 backup을 다음 업데이트까지 보존합니다.
+- **Fail-fast missing install**: If the installed executable is already
+  missing, the updater now fails before extraction or PowerShell candidate
+  validation and leaves any existing backup untouched.
+- **빠른 설치 누락 실패**: 설치된 실행 파일이 이미 없으면 updater는
+  압축 해제나 PowerShell 후보 검증 전에 실패하고 기존 backup을 그대로
+  보존합니다.
 
 ### Compatibility / 호환성
 

@@ -245,7 +245,11 @@ ScriptRunResult runInstallScript(const juce::String& installScript,
     if (!result.started)
         return result;
 
-    result.finished = process.waitForProcessToFinish(15000);
+    // A fresh GitHub Windows runner may spend tens of seconds on its first
+    // PowerShell/VersionInfo launch (including platform scanning). The CTest
+    // case has a 120-second ceiling; keep this helper below that while avoiding
+    // a false product failure from cold process startup.
+    result.finished = process.waitForProcessToFinish(60000);
     result.output = process.readAllProcessOutput();
     result.exitCode = process.getExitCode();
     return result;
@@ -328,6 +332,7 @@ TEST_F(UpdateScriptTest, MissingStandaloneUpdatePreservesOriginalExecutable)
 
 TEST_F(UpdateScriptTest, MissingCurrentExecutableKeepsExistingBackup)
 {
+    const auto currentExe = testDir_.getChildFile("DirectPipe.exe");
     const auto updateExe = testDir_.getChildFile("DirectPipe_update.exe");
     const auto backupExe = testDir_.getChildFile("DirectPipe_backup.exe");
     ASSERT_TRUE(copyVersionedTestExecutableTo(updateExe));
@@ -335,6 +340,15 @@ TEST_F(UpdateScriptTest, MissingCurrentExecutableKeepsExistingBackup)
 
     const auto script = directpipe::update_detail::buildWindowsUpdateInstallScript(
         makeSpec(false));
+    const auto missingCurrentCheck =
+        "if not exist \"" + windowsPath(currentExe) + "\" goto update_install_failed";
+    const auto missingCurrentOffset = script.indexOf(missingCurrentCheck);
+    const auto versionValidationOffset =
+        script.indexOf("powershell -NoProfile -Command");
+    ASSERT_GE(missingCurrentOffset, 0);
+    ASSERT_GE(versionValidationOffset, 0);
+    EXPECT_LT(missingCurrentOffset, versionValidationOffset);
+
     const auto result = runInstallScript(script, testDir_.getChildFile("install.bat"));
 
     ASSERT_TRUE(result.started);
