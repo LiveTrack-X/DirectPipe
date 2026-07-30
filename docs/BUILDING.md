@@ -1,15 +1,15 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Released version / 릴리즈 버전: 4.2.3**
+> **Released version / 릴리즈 버전: 4.2.4**
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.3 로컬 Windows Release CTest 492개를 실행해 490개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. The local v4.2.3 Windows Release run completed all 492 CTest registrations (490 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental without hardware verification for this update.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.4 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다. macOS 10.15+ universal은 베타, Linux x86_64는 실험적이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. The local v4.2.4 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS 10.15+ universal remains beta and Linux x86_64 experimental without hardware verification for this update.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Local v4.2.3 Release CTest: 490 passed, 2 environment-dependent skips, 0 failed; exact-tag CI required; no real-device check. |
+| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | Local v4.2.4 Release CTest: 498 passed, 2 environment-dependent skips, 0 failed; exact-tag CI required; no real-device check. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -200,9 +200,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). The v4.2.3 inventory contains **492 CTest registrations** (59 core + 431 host + 2 focused endpoint tests). The binaries contain 45 suites in total (6 core + 38 host + 1 endpoint). The local Windows Release run completed with 490 passed, 2 environment-dependent skips, and 0 failed; publication remains gated by the exact-tag CI run.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). The v4.2.4 inventory contains **500 CTest registrations** (59 core + 439 host + 2 focused endpoint tests). The binaries contain 46 suites in total (6 core + 39 host + 1 endpoint). The local Windows Release run completed with 498 passed, 2 environment-dependent skips, and 0 failed; publication remains gated by the exact-tag CI run.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.3 인벤토리는 **CTest 등록 492개**(코어 59 + 호스트 431 + endpoint 집중 테스트 2), 전체 45개 suite(코어 6 + 호스트 38 + endpoint 1)입니다. 로컬 Windows Release 실행은 490개 통과, 환경 의존 2개 skip, 실패 0개였으며 공개는 정확 태그 CI 통과를 조건으로 합니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.4 인벤토리는 **CTest 등록 500개**(코어 59 + 호스트 439 + endpoint 집중 테스트 2), 전체 46개 suite(코어 6 + 호스트 39 + endpoint 1)입니다. 로컬 Windows Release 실행은 498개 통과, 환경 의존 2개 skip, 실패 0개였으며 공개는 정확 태그 CI 통과를 조건으로 합니다.
 
 ### directpipe-tests (Core)
 
@@ -230,11 +230,11 @@ Three test executables are built: `directpipe-tests` (core, no JUCE dependency),
 | SettingsExporterTest | 27 | Settings/full-backup exact restore, strict optional-action schema, transactional rollback, structural slot rejection / 설정·전체 백업 정확 복원, optional action schema 엄격 검증, transaction rollback, 잘못된 slot 거부 |
 | SettingsAutosaverTest | 17 | Dirty/debounce auto-save, startup mute restore, partial-load guard / dirty·debounce auto-save, 시작 mute 복원, partial-load 보호 |
 | OutputRouterTest | 10 | Monitor output routing, mute state, inactive meter reset / 모니터 출력 라우팅, 뮤트 상태, 비활성 meter reset |
-| AudioEngineTest | 43 | Driver/device recovery, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun/SR-BS behavior / driver·장치 복구, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun·SR-BS 동작 |
+| AudioEngineTest | 47 | Driver/device recovery, bounded zero-active retry, exclusive-output monitor preflight, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun/SR-BS behavior / driver·장치 복구, 제한된 zero-active 재시도, 독점 출력 monitor 사전 중지, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun·SR-BS 동작 |
 | AudioRecorderTest | 7 | Recording lifecycle, output-path fallback, playback readiness, and invalid-state guards / 녹음 수명주기, 출력 경로 fallback, 재생 준비 상태, invalid-state 방어 |
 | AudioRingBufferTest | 8 | Lock-free audio ring buffer reset/discard and fractional interpolation behavior / 오디오 링 버퍼 reset/discard 및 fractional interpolation 동작 |
 | MonitorDriftPolicyTest | 10 | Adaptive monitor target, PLL ratio, and emergency trim policy / adaptive 모니터 target, PLL ratio, emergency trim 정책 |
-| MonitorOutputTest | 10 | RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
+| MonitorOutputTest | 13 | Selected-device-first open, bounded failed recovery, RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / 선택 장치 우선 open, 실패 복구 제한, RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
 | DeviceStateTest | 10 | Device state FSM and invalid-state guards / 장치 상태 FSM 및 invalid-state 방어 |
 | MidiHandlerTest | 11 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
@@ -244,6 +244,7 @@ Three test executables are built: `directpipe-tests` (core, no JUCE dependency),
 | BuiltinAutoGainTest | 8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
 | VSTChainTest | 16 | VST chain operations, active-path PDC/bypass, stable status snapshot, cached-swap partial-failure guard / VST chain 연산, 활성 경로 PDC, 안정된 snapshot |
 | PlatformTest | 8 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
+| PlatformAudioTest | 1 | Shared/exclusive Windows driver classification / Windows shared·exclusive 드라이버 분류 |
 | SharedMemWriterTest | 4 | Initialization failure cleanup and in-flight write drain before unmap / 초기화 실패 정리 및 unmap 전 진행 write drain |
 | EndpointChangeWatcherTest | 2 | Exact selected-endpoint filtering and signal coalescing / 선택 endpoint 정확 일치 및 signal coalescing |
 | UpdateChecker/UpdateScript tests | 16 | Finished-worker reap/retry, strict semver/PID wait, staging, rollback, ZIP and percent-path handling / 완료 worker reap·재시도, 엄격 semver·PID wait, staging·rollback·ZIP·percent path 처리 |

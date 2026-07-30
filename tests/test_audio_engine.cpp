@@ -26,6 +26,17 @@ juce::String initialiseWithDefaultDeviceFallbacks(
 juce::String forceReopenAudioDevice(
     juce::AudioDeviceManager& deviceManager,
     const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+bool monitorDeviceConflictsWithExclusiveMainOutput(
+    const juce::String& deviceType,
+    const juce::String& mainOutputDevice,
+    const juce::String& monitorDevice);
+bool endpointEventIsSuppressed(double nowMs, double suppressedUntilMs) noexcept;
+int reconnectCooldownAfterRecovery(bool recovered) noexcept;
+bool shouldSuspendMonitorBeforeExclusiveOpen(
+    const juce::String& deviceType,
+    const juce::String& targetOutputDevice,
+    const juce::String& monitorDevice,
+    bool suspendForAnyExclusiveTypeSwitch);
 }
 
 namespace {
@@ -316,6 +327,49 @@ TEST_F(AudioEngineTest, SameDeviceRecoveryActuallyRecreatesTheOpenDevice) {
     EXPECT_TRUE(audio_device_recovery_detail::forceReopenAudioDevice(manager, setup).isEmpty());
     EXPECT_EQ(stats->openAttempts.size(), opensBeforeRecovery + 1)
         << "re-applying an unchanged setup without closing is a JUCE no-op";
+}
+
+TEST_F(AudioEngineTest, ExclusiveMainOutputRejectsTheSameMonitorDevice) {
+    EXPECT_TRUE(audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
+        "Windows Audio (Exclusive Mode)", "Line(3- AG06/AG03)", "Line(3- AG06/AG03)"));
+    EXPECT_TRUE(audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
+        "ASIO", "TOPPING Pro USB Audio Device", "TOPPING Pro USB Audio Device"));
+    EXPECT_FALSE(audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
+        "Windows Audio", "Line(3- AG06/AG03)", "Line(3- AG06/AG03)"));
+    EXPECT_FALSE(audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
+        "Windows Audio (Exclusive Mode)", "CABLE Input", "Speakers"));
+}
+
+TEST_F(AudioEngineTest, SelfReopenEndpointEventsHaveABoundedSuppressionWindow) {
+    EXPECT_TRUE(audio_device_recovery_detail::endpointEventIsSuppressed(1000.0, 2000.0));
+    EXPECT_FALSE(audio_device_recovery_detail::endpointEventIsSuppressed(2000.0, 2000.0));
+    EXPECT_FALSE(audio_device_recovery_detail::endpointEventIsSuppressed(3000.0, 0.0));
+}
+
+TEST_F(AudioEngineTest, ExclusiveOpenSuspendsOnlyTheMonitorThatCanBlockIt) {
+    EXPECT_TRUE(audio_device_recovery_detail::shouldSuspendMonitorBeforeExclusiveOpen(
+        "ASIO", {}, "TOPPING Pro USB Audio Device", true));
+    EXPECT_TRUE(audio_device_recovery_detail::shouldSuspendMonitorBeforeExclusiveOpen(
+        "Windows Audio (Exclusive Mode)", "Speakers", "Speakers", false));
+    EXPECT_FALSE(audio_device_recovery_detail::shouldSuspendMonitorBeforeExclusiveOpen(
+        "Windows Audio (Exclusive Mode)", "Speakers", "Headphones", false));
+    EXPECT_FALSE(audio_device_recovery_detail::shouldSuspendMonitorBeforeExclusiveOpen(
+        "Windows Audio", "Speakers", "Speakers", true));
+}
+
+TEST_F(AudioEngineTest, FailedActiveChannelRecoveryRearmsThreeSecondCooldown) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    manager.closeAudioDevice();
+    stats->failEveryOpen = true;
+
+    engine_->forceReconnectCooldownForTest(0);
+    EXPECT_FALSE(engine_->recoverActiveChannelsWithDriverDefaultsForTest(
+        "test forced open failure"));
+    EXPECT_EQ(engine_->getReconnectCooldownForTest(), 90);
+    EXPECT_EQ(audio_device_recovery_detail::reconnectCooldownAfterRecovery(false), 90);
+    EXPECT_EQ(audio_device_recovery_detail::reconnectCooldownAfterRecovery(true), 0);
 }
 
 TEST_F(AudioEngineTest, DefaultDeviceRecoveryRetriesMonoInputThenMonoDuplex) {

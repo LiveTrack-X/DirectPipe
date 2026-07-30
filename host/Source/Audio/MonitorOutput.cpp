@@ -37,6 +37,7 @@ namespace directpipe {
 namespace {
 constexpr int kMonitorRingBufferFrames = 8192;
 constexpr int kDriftWarmupCallbacks = 50;
+constexpr int kReconnectCooldownTicks = 90;
 #if defined(_WIN32)
 constexpr int kMonitorMmcssPriority = 0; // AVRT_PRIORITY_NORMAL; monitor must not preempt main OUT.
 #endif
@@ -56,6 +57,26 @@ void useDefaultOutputChannels(juce::AudioDeviceManager::AudioDeviceSetup& setup)
     setup.useDefaultOutputChannels = true;
     setup.outputChannels.clear();
 }
+
+class SharedModeAudioDeviceManager final : public juce::AudioDeviceManager {
+public:
+    void createAudioDeviceTypes(juce::OwnedArray<juce::AudioIODeviceType>& types) override
+    {
+#if JUCE_WINDOWS
+        if (auto* type = juce::AudioIODeviceType::createAudioIODeviceType_WASAPI(
+                juce::WASAPIDeviceMode::shared))
+            types.add(type);
+#elif JUCE_MAC
+        if (auto* type = juce::AudioIODeviceType::createAudioIODeviceType_CoreAudio())
+            types.add(type);
+#elif JUCE_LINUX
+        if (auto* type = juce::AudioIODeviceType::createAudioIODeviceType_ALSA())
+            types.add(type);
+#else
+        juce::AudioDeviceManager::createAudioDeviceTypes(types);
+#endif
+    }
+};
 
 class InFlightMonitorWriteGuard {
 public:
@@ -79,6 +100,25 @@ static_assert(std::atomic<bool>::is_always_lock_free,
 static_assert(std::atomic<uint32_t>::is_always_lock_free,
               "MonitorOutput RT in-flight counter must be lock-free");
 }
+
+namespace monitor_output_detail {
+
+int reconnectCooldownAfterAttempt(bool reconnected,
+                                  VirtualCableStatus status) noexcept
+{
+    if (reconnected || status == VirtualCableStatus::SampleRateMismatch)
+        return 0;
+    return kReconnectCooldownTicks;
+}
+
+juce::String initialiseSelectedOutputDevice(
+    juce::AudioDeviceManager& deviceManager,
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    return deviceManager.initialise(0, 2, nullptr, false, {}, &setup);
+}
+
+} // namespace monitor_output_detail
 
 MonitorOutput::MonitorOutput() = default;
 
@@ -116,42 +156,26 @@ bool MonitorOutput::initialize(const juce::String& deviceName,
     adaptiveTargetState_ = {};
     monitor_drift::resetPll(pllState_);
 
-    deviceManager_ = std::make_unique<juce::AudioDeviceManager>();
+    deviceManager_ = std::make_unique<SharedModeAudioDeviceManager>();
 
-    // Force shared-mode device type (WASAPI on Windows, CoreAudio on macOS, ALSA on Linux).
-    deviceManager_->setCurrentAudioDeviceType(PlatformAudio::getDefaultSharedDeviceType(), true);
-
-    // Bootstrap the separate monitor manager. The selected monitor device below
-    // still opens stereo first, then falls back to driver defaults if needed.
-    auto result = deviceManager_->initialiseWithDefaultDevices(0, 2);
-    if (result.isNotEmpty()) {
-        Log::warn("MONITOR", "Init retry with single-output default after: " + result);
-        result = deviceManager_->initialiseWithDefaultDevices(0, 1);
-    }
-    if (result.isNotEmpty()) {
-        Log::error("MONITOR", "Init error (device='" + deviceName + "' SR=" + juce::String(sampleRate) + " BS=" + juce::String(bufferSize) + "): " + result);
-        monitorLost_.store(true, std::memory_order_relaxed);
-        status_.store(VirtualCableStatus::Error, std::memory_order_relaxed);
-        return false;
-    }
-
-    if (auto* type = deviceManager_->getCurrentDeviceTypeObject()) {
-        type->scanForDevices();
-        Log::info("MONITOR", "Available outputs: [" + type->getDeviceNames(false).joinIntoString(", ") + "]");
-    }
-
-    // Configure the selected monitor output. Start with stereo for normal
-    // headphone devices; on failure, retry with the driver's native default
-    // channel mask so mono outputs also work without down-grading stereo ones.
+    // Open the selected shared-mode output directly. Opening the Windows default
+    // endpoint first can fail when the main device owns that endpoint in ASIO or
+    // WASAPI exclusive mode, even if the selected monitor is a different device.
     juce::AudioDeviceManager::AudioDeviceSetup setup;
-    deviceManager_->getAudioDeviceSetup(setup);
     setup.outputDeviceName = deviceName;
     setup.sampleRate = sampleRate;
     setup.bufferSize = bufferSize;
     setup.useDefaultOutputChannels = false;
     setup.outputChannels.setRange(0, 2, true);
 
-    result = deviceManager_->setAudioDeviceSetup(setup, true);
+    auto result =
+        monitor_output_detail::initialiseSelectedOutputDevice(*deviceManager_, setup);
+    if (auto* type = deviceManager_->getCurrentDeviceTypeObject()) {
+        type->scanForDevices();
+        Log::info("MONITOR", "Available outputs: ["
+            + type->getDeviceNames(false).joinIntoString(", ") + "]");
+    }
+
     if (result.isNotEmpty()) {
         Log::warn("MONITOR", "Setup retry with driver default output channels after: " + result);
         useDefaultOutputChannels(setup);
@@ -495,6 +519,8 @@ bool MonitorOutput::recoverActiveOutputChannelsWithDriverDefaults(const juce::St
     auto finish = [this, alreadyPending](bool ok) {
         if (!alreadyPending)
             activeOutputRecoveryPending_.store(false, std::memory_order_release);
+        reconnectCooldown_ = monitor_output_detail::reconnectCooldownAfterAttempt(
+            ok, status_.load(std::memory_order_relaxed));
         return ok;
     };
 
@@ -551,9 +577,11 @@ void MonitorOutput::scheduleActiveOutputChannelRecovery(const juce::String& reas
         if (lifecycleGeneration != lifecycleGeneration_.load(std::memory_order_acquire))
             return;
 
-        recoverActiveOutputChannelsWithDriverDefaults(reason);
+        const bool recovered =
+            recoverActiveOutputChannelsWithDriverDefaults(reason);
         activeOutputRecoveryPending_.store(false, std::memory_order_release);
-        reconnectCooldown_ = 0;
+        reconnectCooldown_ = monitor_output_detail::reconnectCooldownAfterAttempt(
+            recovered, status_.load(std::memory_order_relaxed));
     });
 }
 
@@ -736,7 +764,7 @@ void MonitorOutput::checkReconnection()
         --reconnectCooldown_;
         return;
     }
-    reconnectCooldown_ = 90;  // ~3 seconds at 30Hz
+    reconnectCooldown_ = kReconnectCooldownTicks;  // ~3 seconds at 30Hz
 
     Log::info("MONITOR", "Reconnection attempt: " + deviceName_);
 
@@ -749,13 +777,18 @@ void MonitorOutput::checkReconnection()
         return;
     }
 
-    if (initialize(deviceName_, sampleRate_, bufferSize_)
-        && status_.load(std::memory_order_relaxed) == VirtualCableStatus::Active
-        && !isDeviceLost()) {
+    const bool initialized = initialize(deviceName_, sampleRate_, bufferSize_);
+    const auto status = status_.load(std::memory_order_relaxed);
+    const bool reconnected = initialized
+        && status == VirtualCableStatus::Active
+        && !isDeviceLost();
+    reconnectCooldown_ =
+        monitor_output_detail::reconnectCooldownAfterAttempt(reconnected, status);
+
+    if (reconnected) {
         // monitorLost_ cleared in audioDeviceAboutToStart
-        reconnectCooldown_ = 0;
         Log::info("MONITOR", "Device reconnected: " + deviceName_);
-    } else if (status_.load(std::memory_order_relaxed) == VirtualCableStatus::SampleRateMismatch) {
+    } else if (status == VirtualCableStatus::SampleRateMismatch) {
         Log::warn("MONITOR", "Reconnection paused: sample rate mismatch (device='" + deviceName_
             + "' expected SR=" + juce::String(sampleRate_)
             + " actual SR=" + juce::String(actualSampleRate_.load(std::memory_order_relaxed)) + ")");
@@ -773,9 +806,8 @@ juce::StringArray MonitorOutput::getAvailableOutputDevices() const
         if (auto* type = deviceManager_->getCurrentDeviceTypeObject())
             devices = type->getDeviceNames(false);
     } else {
-        juce::AudioDeviceManager temp;
-        temp.setCurrentAudioDeviceType(PlatformAudio::getDefaultSharedDeviceType(), true);
-        temp.initialiseWithDefaultDevices(0, 2);
+        SharedModeAudioDeviceManager temp;
+        temp.getAvailableDeviceTypes();
         if (auto* type = temp.getCurrentDeviceTypeObject())
             devices = type->getDeviceNames(false);
     }

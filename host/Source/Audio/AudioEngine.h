@@ -296,6 +296,11 @@ public:
     }
     void attemptImmediateReconnectionForTest() { attemptImmediateReconnectionFromMessageThread(); }
     int getReconnectCooldownForTest() const noexcept { return reconnectCooldown_; }
+    juce::AudioDeviceManager& getAudioDeviceManagerForTest() noexcept { return deviceManager_; }
+    bool recoverActiveChannelsWithDriverDefaultsForTest(const juce::String& reason)
+    {
+        return recoverActiveChannelsWithDriverDefaults(reason);
+    }
     void setDesiredInputDeviceForTest(const juce::String& desiredInputDevice);
     bool markInputEndpointRestartPendingForTest(const juce::AudioDeviceManager::AudioDeviceSetup& setup,
                                                 const juce::String& reason);
@@ -342,6 +347,23 @@ private:
                                        const juce::String& reason);
     bool recoverActiveChannelsWithDriverDefaults(const juce::String& reason);
     void scheduleActiveChannelRecovery(const juce::String& reason);
+    struct SuspendedMonitorState {
+        bool suspended = false;
+        juce::String deviceName;
+        double sampleRate = 0.0;
+        int bufferSize = 0;
+    };
+    SuspendedMonitorState suspendMonitorBeforeExclusiveOpen(
+        const juce::String& targetDeviceType,
+        const juce::String& targetOutputDevice,
+        bool suspendForAnyExclusiveTypeSwitch);
+    bool restoreSuspendedMonitor(const SuspendedMonitorState& state,
+                                 double sampleRate,
+                                 const juce::String& reason);
+    void resolveSuspendedMonitorAfterMainOpen(
+        const SuspendedMonitorState& state,
+        const juce::String& actualDeviceType,
+        const juce::String& actualOutputDevice);
     void logDeviceSetupSnapshot(const char* reason, juce::AudioIODevice* device = nullptr);
     void syncRuntimeRateFromActual(double sampleRate, int bufferSize,
                                    const char* reason, bool preserveExplicitSampleRate);
@@ -418,6 +440,7 @@ private:
     std::atomic<bool> externalDeviceRestartPending_{false}; // [Device write, Message read] External same-device restart needs a forced re-open before clearing loss
     std::atomic<bool> sameDeviceReopenPending_{false};  // [Device/Message write, Message read] Debounces Windows endpoint property-change re-open
     std::atomic<uint64_t> sameDeviceReopenGeneration_{0}; // [Message write/read] Invalidates stale delayed same-device reopen callbacks
+    double endpointEventSuppressedUntilMs_ = 0.0;       // [Message thread only] Ignores notifications emitted by DirectPipe's own forced reopen
     bool startupRestorePending_ = false;                // [Message thread only] Saved startup target is not active yet; keep retrying instead of accepting fallback
     int reconnectCooldown_ = 0;                         // [Message thread only] Ticks before next reconnect attempt (30Hz timer)
     int reconnectMissCount_ = 0;                        // [Message thread only] Consecutive failed reconnect attempts

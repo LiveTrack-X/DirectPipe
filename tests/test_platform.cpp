@@ -6,6 +6,7 @@
 #include "Platform/AutoStart.h"
 #include "Platform/ProcessPriority.h"
 #include "Platform/MultiInstanceLock.h"
+#include "Platform/PlatformAudio.h"
 #include "IPC/SharedMemWriter.h"
 #include "directpipe/Protocol.h"
 
@@ -168,6 +169,15 @@ TEST_F(PlatformTest, ProcessPriorityRestore) {
     Platform::setHighPriority();
     Platform::restoreNormalPriority();
     SUCCEED();
+}
+
+TEST(PlatformAudioTest, RecognizesNativeAndWasapiExclusiveDrivers) {
+    EXPECT_TRUE(PlatformAudio::isExclusiveDriverType("ASIO"));
+    EXPECT_TRUE(PlatformAudio::isExclusiveDriverType("Windows Audio (Exclusive Mode)"));
+    EXPECT_FALSE(PlatformAudio::isExclusiveDriverType("Windows Audio"));
+    EXPECT_FALSE(PlatformAudio::isExclusiveDriverType("Windows Audio (Low Latency)"));
+    EXPECT_FALSE(PlatformAudio::isSharedDeviceType("Windows Audio (Exclusive Mode)"));
+    EXPECT_TRUE(PlatformAudio::isSharedDeviceType("Windows Audio"));
 }
 
 TEST_F(PlatformTest, MultiInstanceAcquire) {

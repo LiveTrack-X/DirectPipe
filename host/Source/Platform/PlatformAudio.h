@@ -42,9 +42,10 @@ inline juce::String getDefaultSharedDeviceType()
 inline bool isSharedDeviceType(const juce::String& typeName)
 {
 #if JUCE_WINDOWS
-    return typeName.containsIgnoreCase("Windows Audio")
-        || typeName.containsIgnoreCase("DirectSound")
-        || typeName.containsIgnoreCase("WASAPI");
+    return !typeName.containsIgnoreCase("Exclusive Mode")
+        && (typeName.containsIgnoreCase("Windows Audio")
+            || typeName.containsIgnoreCase("DirectSound")
+            || typeName.containsIgnoreCase("WASAPI"));
 #elif JUCE_MAC
     return typeName.containsIgnoreCase("CoreAudio");
 #elif JUCE_LINUX
@@ -57,11 +58,16 @@ inline bool isSharedDeviceType(const juce::String& typeName)
 }
 
 /**
- * @brief Check if a device type name is an exclusive single-device driver (e.g. ASIO).
+ * @brief Check if a device type owns its endpoint exclusively.
+ *
+ * Windows exposes both native ASIO and JUCE's WASAPI exclusive-mode type.
+ * Neither is safe for endpoint-property reopen handling or a second shared
+ * monitor open on the same output endpoint.
  */
 inline bool isExclusiveDriverType(const juce::String& typeName)
 {
-    return typeName.containsIgnoreCase("ASIO");
+    return typeName.containsIgnoreCase("ASIO")
+        || typeName.containsIgnoreCase("Exclusive Mode");
 }
 
 /**

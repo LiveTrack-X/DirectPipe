@@ -56,10 +56,10 @@ LatencyMonitor.markCallbackEnd()
 
 | 파일 | 설명 |
 |------|------|
-| `AudioEngine.h/cpp` | 핵심 오디오 엔진. 디바이스 관리, RT 콜백, 입출력 채널 라우팅, 디바이스 재연결, XRun 추적 |
+| `AudioEngine.h/cpp` | 핵심 오디오 엔진. 디바이스 관리, RT 콜백, 입출력 채널 라우팅, 3초 제한 재연결, 독점 main open 전 monitor 사전 중지/복원, XRun 추적 |
 | `VSTChain.h/cpp` | VST2/VST3 플러그인 체인. AudioProcessorGraph 기반 직렬 체인, 비동기 로딩/취소, control-side graph lifecycle 직렬화, 에디터 창 관리 |
 | `OutputRouter.h/cpp` | 처리된 오디오를 모니터(헤드폰) 출력으로 라우팅. 볼륨/활성화 제어, RMS 레벨 측정 |
-| `MonitorOutput.h/cpp` | 별도 shared-mode 디바이스를 통한 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, low-watermark priming, adaptive PLL fractional playback, near-overflow emergency trim |
+| `MonitorOutput.h/cpp` | 선택한 별도 shared-mode 디바이스를 기본 장치 bootstrap 없이 직접 여는 헤드폰 모니터링 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA). AudioRingBuffer로 RT<->모니터 스레드 브릿징, low-watermark priming, adaptive PLL fractional playback, near-overflow emergency trim |
 | `AudioRingBuffer.h` | SPSC lock-free 링 버퍼 (header-only). 메인 RT 콜백(producer) <-> 모니터 장치 콜백(consumer), integer read/discard 및 fractional interpolated read 지원 |
 | `AudioRecorder.h/cpp` | WAV 파일 녹음. start/stop writer 상태를 SpinLock으로 선형화하고 RT write path는 try-lock/drop, ThreadedWriter FIFO로 BG 스레드에서 디스크 flush |
 | `LatencyMonitor.h/cpp` | 입력·출력 버퍼 주기 추정과 콜백 실행시간 측정, CPU 사용률 계산. 사용자용 총 추정 레이턴시는 StatusUpdater/HTTP가 활성 chain PDC를 추가 |
@@ -78,8 +78,8 @@ LatencyMonitor.markCallbackEnd()
 | 클래스 | 메서드/영역 | 스레드 | 비고 |
 |--------|-------------|--------|------|
 | AudioEngine | `audioDeviceIOCallbackWithContext` | `[RT thread]` | heap alloc 금지, mutex 금지. ScopedNoDenormals 사용 |
-| AudioEngine | `initialize`, `shutdown`, `set*Device` | `[Message thread]` | 디바이스 매니저 조작 |
-| AudioEngine | `checkReconnection`, `updateXRunTracking` | `[Message thread]` | 30Hz 타이머에서 호출 |
+| AudioEngine | `initialize`, `shutdown`, `set*Device` | `[Message thread]` | 디바이스 매니저 조작. 독점 main open 전 충돌 가능 monitor를 중지하고 rollback/비충돌 결과에서 복원 |
+| AudioEngine | `checkReconnection`, `updateXRunTracking` | `[Message thread]` | 30Hz 타이머에서 호출. 실패한 zero-active 복구는 90 tick(약 3초) 쿨다운 재적용 |
 | AudioEngine | `audioDeviceError`, `audioDeviceStopped` | `[Device thread]` | JUCE 디바이스 스레드에서 호출 |
 | AudioEngine | `popNotification` (read) | `[Message thread]` | lock-free queue에서 소비 |
 | AudioEngine | `pushNotification` (write) | `[Device thread]` / `[Message thread]` | MPSC-safe queue에 생산 (RT 콜백에서는 호출하지 않음) |
@@ -94,7 +94,7 @@ LatencyMonitor.markCallbackEnd()
 | MonitorOutput | `writeAudio` | `[RT thread]` | AudioRingBuffer producer. SC admission + in-flight counter only; no mutex, wait, or allocation |
 | MonitorOutput | `audioDeviceIOCallbackWithContext` | `[Monitor RT thread]` | AudioRingBuffer consumer. JUCE `audioCallbackLock` serializes it against `audioDeviceAboutToStart` and `removeAudioCallback` |
 | MonitorOutput | `audioDeviceAboutToStart` | `[Device lifecycle thread]` | Runs under JUCE `audioCallbackLock`; closes producer admission and drains an in-flight write before ring reset |
-| MonitorOutput | `initialize`, `shutdown`, `setDevice`, `checkReconnection` | `[Message thread]` | Close producer admission and drain the bounded in-flight write before ring reset/resize; lifecycle generations reject stale deferred device work; JUCE callback removal drains the consumer |
+| MonitorOutput | `initialize`, `shutdown`, `setDevice`, `checkReconnection` | `[Message thread]` | 선택 장치를 직접 open. Close producer admission and drain the bounded in-flight write before ring reset/resize; lifecycle generations reject stale deferred device work; 실패한 zero-active/reconnect는 약 3초 쿨다운 재적용; JUCE callback removal drains the consumer |
 | AudioRingBuffer | `write` (producer) | `[RT thread]` | SPSC. capacity는 power-of-2 필수 |
 | AudioRingBuffer | `read` / `readInterpolated` (consumer) | `[Monitor RT thread]` | SPSC 단일 소비자 |
 | AudioRecorder | `writeBlock` | `[RT thread]` | try-lock 후 ThreadedWriter FIFO에 push, lifecycle/FIFO 경합 시 drop counter 증가. 성공한 samples만 duration 반영 |
@@ -161,7 +161,7 @@ LatencyMonitor.markCallbackEnd()
 
 - `intentionalChange_` 플래그가 true이면 `audioDeviceStopped`에서 `deviceLost_`를 설정하지 않음
 - `ChangeListener` (즉시 감지) + 3초 타이머 폴링 (ChangeListener 누락 시 폴백)의 이중 메커니즘
-- MonitorOutput also uses independent reconnect state for retryable hotplug/device errors (`monitorLost_` + own cooldown); sample-rate mismatch is treated as a disabled configuration state, not a retry loop.
+- MonitorOutput also uses independent reconnect state for retryable hotplug/device errors (`monitorLost_` + own cooldown). Failed reconnect and zero-active recovery re-arm the full three-second cooldown; sample-rate mismatch is treated as a disabled configuration state, not a retry loop.
 
 ### Preset Loading Flow (replaceChainAsync)
 
@@ -224,7 +224,7 @@ LatencyMonitor.markCallbackEnd()
 
 7. **IPC 토글 race window**: `setIpcEnabled(false)` 후에도 RT 스레드가 `ipcEnabled_=true`를 읽을 수 있음. `interleaveBuffer_`를 `shutdown()`에서 해제하면 안 되는 이유.
 
-8. **MonitorOutput reconnection**: retryable device loss is set from `audioDeviceError`/external `audioDeviceStopped` and cleared by a successful `audioDeviceAboutToStart`. Intentional monitor teardown is ignored, JUCE auto-fallback devices are rejected, and sample-rate mismatch stays disabled until the main sample rate or selected monitor changes.
+8. **MonitorOutput reconnection**: retryable device loss is set from `audioDeviceError`/external `audioDeviceStopped` and cleared by a successful `audioDeviceAboutToStart`. Initialization targets the selected shared-mode output directly, failed recovery re-arms the three-second cooldown, intentional monitor teardown is ignored, JUCE auto-fallback devices are rejected, and sample-rate mismatch stays disabled until the main sample rate or selected monitor changes.
 
 9. **PluginPreloadCache `invalidateAll()`은 thread join 하지 않음**: COM STA 데드락 방지. `cancelPreload_` + `slotVersions_` bump로 non-blocking 무효화.
 

@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.2.3-4fc3f7?style=flat-square" alt="Latest">
+  <img src="https://img.shields.io/badge/latest-v4.2.4-4fc3f7?style=flat-square" alt="Latest">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest (최신)**: [v4.2.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
+- **Latest (최신)**: [v4.2.4 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. Release CI builds assets for all three desktop OSes.
 
-> **지원/검증 범위**: v4.2.3 로컬 Windows Release CTest 492개를 실행해 490개 통과, 환경 의존 2개 skip, 실패 0개를 확인했습니다. 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 통과해야 합니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
-> **Support/validation scope**: The local v4.2.3 Windows Release run completed all 492 CTest registrations: 490 passed, 2 environment-dependent tests skipped, and 0 failed. Exact-tag CI must pass cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
+> **지원/검증 범위**: v4.2.4 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했습니다(59 core + 439 host + 2 focused endpoint). 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 통과해야 합니다. 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다. macOS/Linux는 소스·CI 지원을 유지하는 베타/실험적 대상이며 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **Support/validation scope**: The local v4.2.4 Windows Release run completed all 500 CTest registrations: 498 passed, 2 environment-dependent tests skipped, and 0 failed (59 core + 439 host + 2 focused endpoint). Exact-tag CI must pass cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run. macOS/Linux remain source/CI-supported beta/experimental targets without hardware verification for this update.
 
 
 
@@ -184,7 +184,7 @@ External Control:
 
 - **WASAPI Shared + ASIO** (Windows), **CoreAudio** (macOS), **ALSA/JACK** (Linux) — 런타임 전환 가능 — Runtime driver switching
 - 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
-- **장치 자동 재연결** — USB 장치 분리 시 알림, 원하는 장치가 다시 연결될 때까지 무기한 대기 후 자동 복구 (SR/BS/채널 설정 보존, 다른 장치로 폴백하지 않음). 모니터 장치도 독립적으로 재연결 — Auto-reconnection on USB disconnect: waits indefinitely for desired device (no fallback), auto-recovers preserving SR/BS/channel settings. Monitor device reconnects independently
+- **장치 자동 재연결** — USB 장치 분리 시 알림, 원하는 장치가 다시 연결될 때까지 무기한 대기 후 자동 복구 (SR/BS/채널 설정 보존, 다른 장치로 폴백하지 않음). 메인·모니터의 실패한 zero-active 복구는 약 3초 간격으로 제한되며, 모니터는 기본 장치를 먼저 열지 않고 선택한 shared-mode 장치를 직접 엽니다 — Auto-reconnection waits indefinitely for the desired device and preserves SR/BS/channel settings. Failed zero-active main/monitor recovery is limited to about one attempt every three seconds, and Monitor opens the selected shared-mode device directly instead of bootstrapping the system default
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 오디오 장치로 헤드폰 모니터링) + VST Output (DirectPipe Receiver → OBS/DAW) — Three output paths: main, monitor headphones (via separate audio device), VST output to OBS/DAW
 - **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
@@ -766,6 +766,7 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 
 - **Output** 탭에서 헤드폰이 연결된 오디오 장치를 선택
 - Main Output과는 별도의 shared-mode 오디오 장치를 사용하므로 **독립적으로 동작** (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
+- ASIO 또는 Windows Audio Exclusive Mode에서는 메인 출력과 **다른 장치**를 선택. 같은 장치 충돌은 거부되거나 드라이버 전환 시 Monitor가 비활성화됨
 - **MON** 버튼으로 켜기/끄기
 
 > **지연(레이턴시) 참고**: 모니터 출력은 메인 오디오와 별도의 오디오 장치를 사용하므로, 장치/드라이버/버퍼 설정에 따라 보통 **추가 지연이 느껴질 수 있습니다**. DirectPipe는 adaptive PLL fractional playback으로 독립 장치 클록의 작은 drift를 흡수해, 정상 drift 상황에서 오래된 프레임을 버리지 않습니다. 부분 underrun 후에는 다시 prime하며, Windows 모니터 콜백은 main OUT 콜백보다 높은 우선순위로 실행되지 않습니다. 가장 낮은 모니터 지연이 필요하다면 **ASIO 드라이버 사용** (Windows, 입출력이 하나의 디바이스로 처리됨) 또는 오디오 인터페이스의 **하드웨어 다이렉트 모니터링** 기능을 권장합니다.
@@ -776,6 +777,7 @@ Example: Slot **A|Game** for gaming (noise removal only), Slot **B|Karaoke** for
 
 - Select your headphone device in the **Output** tab
 - Uses a separate shared-mode audio device from the Main Output, so it **works independently** (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA)
+- With ASIO or Windows Audio Exclusive Mode, select a **different device** from the main output. Same-device conflicts are rejected or disable Monitor during a driver transition
 - Toggle on/off with the **MON** button
 
 > **Latency note**: Monitor output uses a separate audio device, so you will usually hear some extra latency depending on the device, driver, and buffer settings. DirectPipe uses adaptive PLL fractional playback to absorb small independent-device clock drift without dropping frames during normal correction. Near-overflow trim remains only as a safety fallback, playback re-primes after partial underruns, and the monitor callback no longer runs above the main OUT callback priority. For the lowest monitor latency, use an **ASIO driver** (Windows only, single device handles both input and output) or your audio interface's **hardware direct monitoring** feature.
@@ -1189,7 +1191,7 @@ Monitor output uses a **separate audio device** from the main output, which can 
 
 **Solutions:**
 - Match sample rates between main and monitor devices (check in Audio tab)
-- If using ASIO, use a different output of the same interface as monitor (no extra device needed)
+- With ASIO or Windows Audio Exclusive Mode, select a different Windows shared endpoint for Monitor. For the lowest delay, prefer the ASIO main output or the interface's hardware direct monitoring
 - Monitor delay only affects self-monitoring; it doesn't affect broadcast/recording quality
 </details>
 

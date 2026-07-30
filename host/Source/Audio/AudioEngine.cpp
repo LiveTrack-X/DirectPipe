@@ -30,6 +30,8 @@
 namespace directpipe {
 namespace {
 
+constexpr int kReconnectCooldownTicks = 90;
+
 juce::String channelMaskToLogString(const juce::BigInteger& mask)
 {
     juce::StringArray bits;
@@ -130,6 +132,8 @@ bool audioDeviceNamesExactlyMatch(const juce::String& a, const juce::String& b)
 
 namespace audio_device_recovery_detail {
 
+constexpr double kEndpointEventReopenSuppressionMs = 1000.0;
+
 juce::String initialiseWithDefaultDeviceFallbacks(
     juce::AudioDeviceManager& deviceManager,
     const juce::String& logContext)
@@ -154,6 +158,39 @@ juce::String forceReopenAudioDevice(
     // External Windows endpoint changes need a real close/recreate cycle.
     deviceManager.closeAudioDevice();
     return deviceManager.setAudioDeviceSetup(setup, true);
+}
+
+bool monitorDeviceConflictsWithExclusiveMainOutput(
+    const juce::String& deviceType,
+    const juce::String& mainOutputDevice,
+    const juce::String& monitorDevice)
+{
+    return PlatformAudio::isExclusiveDriverType(deviceType)
+        && audioDeviceNamesExactlyMatch(mainOutputDevice, monitorDevice);
+}
+
+bool endpointEventIsSuppressed(double nowMs, double suppressedUntilMs) noexcept
+{
+    return suppressedUntilMs > 0.0 && nowMs < suppressedUntilMs;
+}
+
+int reconnectCooldownAfterRecovery(bool recovered) noexcept
+{
+    return recovered ? 0 : kReconnectCooldownTicks;
+}
+
+bool shouldSuspendMonitorBeforeExclusiveOpen(
+    const juce::String& deviceType,
+    const juce::String& targetOutputDevice,
+    const juce::String& monitorDevice,
+    bool suspendForAnyExclusiveTypeSwitch)
+{
+    if (!PlatformAudio::isExclusiveDriverType(deviceType)
+        || monitorDevice.isEmpty())
+        return false;
+
+    return suspendForAnyExclusiveTypeSwitch
+        || audioDeviceNamesExactlyMatch(targetOutputDevice, monitorDevice);
 }
 
 } // namespace audio_device_recovery_detail
@@ -451,7 +488,8 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
 
 ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
 {
-    if (getCurrentDeviceType().containsIgnoreCase("ASIO") && deviceName != "None") {
+    const auto currentType = getCurrentDeviceType();
+    if (currentType.containsIgnoreCase("ASIO") && deviceName != "None") {
         Log::warn("AUDIO", "ASIO output selection opens duplex device: " + deviceName);
         return setAsioDevice(deviceName);
     }
@@ -481,6 +519,9 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
         setup.outputChannels.setRange(0, 2, true);
     }
 
+    const auto suspendedMonitor = suspendMonitorBeforeExclusiveOpen(
+        currentType, deviceName, false);
+
     juce::String result;
     {
         AtomicGuard intentionalGuard(intentionalChange_);
@@ -493,6 +534,10 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
     }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set output device '" + deviceName + "': " + result;
+        if (!restoreSuspendedMonitor(
+                suspendedMonitor, currentSampleRate_.load(std::memory_order_relaxed),
+                "failed main-output change"))
+            msg += "; monitor restore failed";
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
@@ -500,6 +545,10 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
     clearLossAfterManualOutputSelection();
     Log::info("AUDIO", "Output device set: " + deviceName);
     Log::audit("AUDIO", "Output device change: '" + setup.outputDeviceName + "' SR=" + juce::String(setup.sampleRate) + " BS=" + juce::String(setup.bufferSize));
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    deviceManager_.getAudioDeviceSetup(appliedSetup);
+    resolveSuspendedMonitorAfterMainOpen(
+        suspendedMonitor, currentType, appliedSetup.outputDeviceName);
     return ActionResult::ok();
 }
 
@@ -562,6 +611,10 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
     if (setup.outputChannels.isZero())
         setup.outputChannels.setRange(0, 2, true);
 
+    const auto currentType = getCurrentDeviceType();
+    const auto suspendedMonitor = suspendMonitorBeforeExclusiveOpen(
+        currentType, deviceName, true);
+
     juce::String result;
     {
         AtomicGuard intentionalGuard(intentionalChange_);
@@ -574,6 +627,10 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
     }
     if (result.isNotEmpty()) {
         auto msg = "Failed to set ASIO device '" + deviceName + "': " + result;
+        if (!restoreSuspendedMonitor(
+                suspendedMonitor, currentSampleRate_.load(std::memory_order_relaxed),
+                "failed ASIO device change"))
+            msg += "; monitor restore failed";
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
@@ -587,11 +644,104 @@ ActionResult AudioEngine::setAsioDevice(const juce::String& deviceName)
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
     Log::info("AUDIO", "ASIO device set: " + deviceName);
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    deviceManager_.getAudioDeviceSetup(appliedSetup);
+    resolveSuspendedMonitorAfterMainOpen(
+        suspendedMonitor, currentType, appliedSetup.outputDeviceName);
     return ActionResult::ok();
+}
+
+AudioEngine::SuspendedMonitorState AudioEngine::suspendMonitorBeforeExclusiveOpen(
+    const juce::String& targetDeviceType,
+    const juce::String& targetOutputDevice,
+    bool suspendForAnyExclusiveTypeSwitch)
+{
+    SuspendedMonitorState state;
+    if (monitorOutput_.getStatus() == VirtualCableStatus::NotConfigured)
+        return state;
+
+    const auto monitorDevice = monitorOutput_.getDeviceName();
+    if (!audio_device_recovery_detail::shouldSuspendMonitorBeforeExclusiveOpen(
+            targetDeviceType, targetOutputDevice, monitorDevice,
+            suspendForAnyExclusiveTypeSwitch))
+        return state;
+
+    state.suspended = true;
+    state.deviceName = monitorDevice;
+    state.sampleRate = monitorOutput_.getActualSampleRate();
+    if (state.sampleRate <= 0.0)
+        state.sampleRate = currentSampleRate_.load(std::memory_order_relaxed);
+    if (state.sampleRate <= 0.0)
+        state.sampleRate = desiredSampleRate_;
+    state.bufferSize = monitorOutput_.getPreferredBufferSize();
+
+    monitorConfigurationGeneration_.fetch_add(1, std::memory_order_acq_rel);
+    monitorOutput_.shutdown();
+    Log::info("MONITOR", "Temporarily suspended before exclusive main-device open: '"
+        + state.deviceName + "'");
+    return state;
+}
+
+bool AudioEngine::restoreSuspendedMonitor(
+    const SuspendedMonitorState& state,
+    double sampleRate,
+    const juce::String& reason)
+{
+    if (!state.suspended)
+        return true;
+
+    auto restoreSampleRate = sampleRate > 0.0 ? sampleRate : state.sampleRate;
+    if (restoreSampleRate <= 0.0)
+        restoreSampleRate = 48000.0;
+    const int restoreBufferSize = state.bufferSize > 0 ? state.bufferSize : 128;
+    monitorConfigurationGeneration_.fetch_add(1, std::memory_order_acq_rel);
+    if (monitorOutput_.initialize(
+            state.deviceName, restoreSampleRate, restoreBufferSize)) {
+        Log::info("MONITOR", "Restored after " + reason + ": '" + state.deviceName + "'");
+        return true;
+    }
+
+    const auto message = "Monitor restore failed after " + reason + ": "
+        + state.deviceName;
+    Log::error("MONITOR", message);
+    pushNotification(message, NotificationLevel::Warning);
+    return false;
+}
+
+void AudioEngine::resolveSuspendedMonitorAfterMainOpen(
+    const SuspendedMonitorState& state,
+    const juce::String& actualDeviceType,
+    const juce::String& actualOutputDevice)
+{
+    if (!state.suspended)
+        return;
+
+    if (audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
+            actualDeviceType, actualOutputDevice, state.deviceName)) {
+        const juce::String message =
+            "Monitor disabled: it matches the exclusive main output";
+        Log::warn("MONITOR", message + " ('" + state.deviceName + "')");
+        pushNotification(message, NotificationLevel::Warning);
+        return;
+    }
+
+    restoreSuspendedMonitor(
+        state, currentSampleRate_.load(std::memory_order_relaxed),
+        "exclusive main-device switch");
 }
 
 ActionResult AudioEngine::setMonitorDevice(const juce::String& deviceName)
 {
+    juce::AudioDeviceManager::AudioDeviceSetup mainSetup;
+    deviceManager_.getAudioDeviceSetup(mainSetup);
+    if (audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
+            getCurrentDeviceType(), mainSetup.outputDeviceName, deviceName)) {
+        const auto message = "Monitor device cannot use the exclusive main output: "
+            + deviceName;
+        Log::warn("MONITOR", message);
+        return ActionResult::fail(message);
+    }
+
     monitorConfigurationGeneration_.fetch_add(1, std::memory_order_acq_rel);
     if (monitorOutput_.setDevice(deviceName))
         return ActionResult::ok();
@@ -890,6 +1040,14 @@ void AudioEngine::handleInputEndpointChanged(const juce::String& deviceName,
     if (!running_ || intentionalChange_.load(std::memory_order_acquire))
         return;
 
+    const auto nowMs = juce::Time::getMillisecondCounterHiRes();
+    if (audio_device_recovery_detail::endpointEventIsSuppressed(
+            nowMs, endpointEventSuppressedUntilMs_)) {
+        Log::audit("AUDIO", "Ignoring endpoint notification emitted during DirectPipe re-open: target='"
+            + deviceName + "' reason='" + reason + "'");
+        return;
+    }
+
     const auto currentType = getCurrentDeviceType();
     if (PlatformAudio::isExclusiveDriverType(currentType))
         return;
@@ -991,6 +1149,8 @@ bool AudioEngine::recoverActiveChannelsWithDriverDefaults(const juce::String& re
     auto finish = [this, alreadyPending](bool ok) {
         if (!alreadyPending)
             activeChannelRecoveryPending_.store(false, std::memory_order_release);
+        reconnectCooldown_ =
+            audio_device_recovery_detail::reconnectCooldownAfterRecovery(ok);
         return ok;
     };
 
@@ -1009,7 +1169,8 @@ bool AudioEngine::recoverActiveChannelsWithDriverDefaults(const juce::String& re
     if (result.isNotEmpty()) {
         Log::error("AUDIO", "Active-channel recovery failed: " + result);
         deviceLost_.store(true, std::memory_order_relaxed);
-        reconnectCooldown_ = 0;
+        reconnectCooldown_ =
+            audio_device_recovery_detail::reconnectCooldownAfterRecovery(false);
         return finish(false);
     }
 
@@ -1021,13 +1182,15 @@ bool AudioEngine::recoverActiveChannelsWithDriverDefaults(const juce::String& re
         Log::error("AUDIO", "Active-channel recovery reopened an invalid device");
         logDeviceSetupSnapshot("Active-channel recovery invalid device", device);
         deviceLost_.store(true, std::memory_order_relaxed);
-        reconnectCooldown_ = 0;
+        reconnectCooldown_ =
+            audio_device_recovery_detail::reconnectCooldownAfterRecovery(false);
         return finish(false);
     }
 
     if (markActiveChannelLossIfNeeded(appliedSetup, device, "Active-channel recovery invalid setup")) {
         deviceLost_.store(true, std::memory_order_relaxed);
-        reconnectCooldown_ = 0;
+        reconnectCooldown_ =
+            audio_device_recovery_detail::reconnectCooldownAfterRecovery(false);
         return finish(false);
     }
 
@@ -1057,9 +1220,11 @@ void AudioEngine::scheduleActiveChannelRecovery(const juce::String& reason)
         if (!aliveFlag->load())
             return;
 
-        recoverActiveChannelsWithDriverDefaults(reason);
+        const bool recovered =
+            recoverActiveChannelsWithDriverDefaults(reason);
         activeChannelRecoveryPending_.store(false, std::memory_order_release);
-        reconnectCooldown_ = 0;
+        reconnectCooldown_ =
+            audio_device_recovery_detail::reconnectCooldownAfterRecovery(recovered);
     });
 }
 
@@ -1572,6 +1737,13 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
             + (snap.outputNone ? " outputNone" : ""));
     }
 
+    // A driver-type change can open the target driver's default device inside
+    // JUCE before our later setup restore runs. Suspend any configured monitor
+    // before entering an exclusive driver, then restore it if the actual main
+    // output is different or the switch rolls back.
+    const auto suspendedMonitor = suspendMonitorBeforeExclusiveOpen(
+        typeName, {}, true);
+
     // Set intentional flag BEFORE removing callback, because removeAudioCallback
     // synchronously calls audioDeviceStopped() which checks intentionalChange_.
     intentionalChange_.store(true, std::memory_order_release);
@@ -1584,8 +1756,9 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     bool hasSnapshot = snapIt != driverSnapshots_.end();
 
     auto restorePreviousDriverAfterFailure =
-        [this, &currentType](const juce::String& failureMessage,
-                             const juce::String& notificationMessage) -> ActionResult {
+        [this, &currentType, &suspendedMonitor](
+            const juce::String& failureMessage,
+            const juce::String& notificationMessage) -> ActionResult {
             Log::error("AUDIO", failureMessage);
             deviceManager_.setCurrentAudioDeviceType(currentType, true);
             const auto fallbackError =
@@ -1598,6 +1771,11 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
             deviceManager_.addAudioCallback(this);
 
             auto finalMessage = failureMessage;
+            if (!restoreSuspendedMonitor(
+                    suspendedMonitor,
+                    currentSampleRate_.load(std::memory_order_relaxed),
+                    "driver-switch rollback"))
+                finalMessage += "; monitor restore failed";
             if (!fallbackReady) {
                 const auto reason = fallbackError.isNotEmpty()
                     ? fallbackError
@@ -1842,9 +2020,19 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     deviceManager_.addAudioCallback(this);
     if (!switchedDeviceReady) {
         auto msg = "Driver switch completed but audio device is not ready: " + typeName;
+        if (!restoreSuspendedMonitor(
+                suspendedMonitor,
+                currentSampleRate_.load(std::memory_order_relaxed),
+                "incomplete driver switch"))
+            msg += "; monitor restore failed";
         Log::error("AUDIO", msg);
         return ActionResult::fail(msg);
     }
+
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    deviceManager_.getAudioDeviceSetup(appliedSetup);
+    resolveSuspendedMonitorAfterMainOpen(
+        suspendedMonitor, typeName, appliedSetup.outputDeviceName);
 
     Log::info("AUDIO", "Driver switch: " + currentType + " -> " + typeName
         + " (SR=" + juce::String(currentSampleRate_) + " BS=" + juce::String(currentBufferSize_) + ")");
@@ -2596,6 +2784,19 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             if (!aliveFlag->load()) return;
             if (requestGeneration
                 != monitorConfigurationGeneration_.load(std::memory_order_acquire)) return;
+
+            juce::AudioDeviceManager::AudioDeviceSetup mainSetup;
+            deviceManager_.getAudioDeviceSetup(mainSetup);
+            if (audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
+                    getCurrentDeviceType(), mainSetup.outputDeviceName, devName)) {
+                monitorOutput_.shutdown();
+                const juce::String message =
+                    "Monitor disabled: it matches the exclusive main output";
+                Log::warn("MONITOR", message + " ('" + devName + "')");
+                pushNotification(message, NotificationLevel::Warning);
+                return;
+            }
+
             monitorOutput_.initialize(devName, sr, bs);
         });
     }
@@ -2770,6 +2971,9 @@ void AudioEngine::scheduleSameDeviceReopenAfterExternalRestart(
             juce::String result;
             {
                 AtomicGuard intentionalGuard(intentionalChange_);
+                endpointEventSuppressedUntilMs_ =
+                    juce::Time::getMillisecondCounterHiRes()
+                    + audio_device_recovery_detail::kEndpointEventReopenSuppressionMs;
                 Log::info("AUDIO", "Same-device restart is closing and recreating the current audio device");
                 result = audio_device_recovery_detail::forceReopenAudioDevice(
                     deviceManager_, reopenSetup);
@@ -2782,6 +2986,9 @@ void AudioEngine::scheduleSameDeviceReopenAfterExternalRestart(
                     result = audio_device_recovery_detail::forceReopenAudioDevice(
                         deviceManager_, reopenSetup);
                 }
+                endpointEventSuppressedUntilMs_ =
+                    juce::Time::getMillisecondCounterHiRes()
+                    + audio_device_recovery_detail::kEndpointEventReopenSuppressionMs;
             }
 
             if (result.isNotEmpty()) {
@@ -2858,7 +3065,7 @@ void AudioEngine::checkReconnection()
         } else if (reconnectCooldown_ > 0) {
             --reconnectCooldown_;
         } else {
-            reconnectCooldown_ = 90;  // ~3 seconds at 30Hz
+            reconnectCooldown_ = kReconnectCooldownTicks;  // ~3 seconds at 30Hz
             attemptReconnection();
         }
     }
@@ -3078,12 +3285,14 @@ void AudioEngine::attemptReconnection()
             Log::error("AUDIO", "Reconnection opened an invalid or zero-active device");
             logDeviceSetupSnapshot("Reconnection invalid setup", device);
             deviceLost_.store(true, std::memory_order_relaxed);
-            reconnectCooldown_ = 0;
+            reconnectCooldown_ =
+                audio_device_recovery_detail::reconnectCooldownAfterRecovery(false);
             return;
         }
 
         if (!clearDeviceLossAfterReady(appliedSetup)) {
-            reconnectCooldown_ = 0;
+            reconnectCooldown_ =
+                audio_device_recovery_detail::reconnectCooldownAfterRecovery(false);
             reconnectMissCount_ = 0;
             return;
         }

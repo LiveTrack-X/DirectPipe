@@ -4,16 +4,29 @@
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <thread>
+
+#if JUCE_WINDOWS
+#include <windows.h>
+#endif
 
 #define private public
 #include "Audio/MonitorOutput.h"
 #undef private
 
 using namespace directpipe;
+
+namespace directpipe::monitor_output_detail {
+int reconnectCooldownAfterAttempt(bool reconnected,
+                                  VirtualCableStatus status) noexcept;
+juce::String initialiseSelectedOutputDevice(
+    juce::AudioDeviceManager& deviceManager,
+    const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+}
 
 namespace {
 
@@ -80,6 +93,133 @@ private:
     juce::BigInteger activeOutput_;
     bool open_ = true;
     bool playing_ = false;
+};
+
+struct SelectedOutputStats {
+    std::vector<juce::String> createAttempts;
+    std::vector<juce::String> openAttempts;
+    bool failEveryOpen = false;
+};
+
+class SelectedOutputFakeDevice final : public juce::AudioIODevice {
+public:
+    SelectedOutputFakeDevice(const juce::String& name,
+                             std::shared_ptr<SelectedOutputStats> stats)
+        : juce::AudioIODevice(name, "Selected Output Test"),
+          stats_(std::move(stats))
+    {
+    }
+
+    juce::StringArray getOutputChannelNames() override { return { "Out L", "Out R" }; }
+    juce::StringArray getInputChannelNames() override { return {}; }
+    juce::Array<double> getAvailableSampleRates() override { return { 48000.0 }; }
+    juce::Array<int> getAvailableBufferSizes() override { return { 128, 256 }; }
+    int getDefaultBufferSize() override { return 128; }
+
+    juce::String open(const juce::BigInteger& inputChannels,
+                      const juce::BigInteger& outputChannels,
+                      double sampleRate,
+                      int bufferSizeSamples) override
+    {
+        stats_->openAttempts.push_back(getName());
+        if (stats_->failEveryOpen)
+            return "test open failure";
+
+        activeInput_ = inputChannels;
+        activeOutput_ = outputChannels;
+        sampleRate_ = sampleRate;
+        bufferSize_ = bufferSizeSamples;
+        open_ = true;
+        return {};
+    }
+
+    void close() override { open_ = false; }
+    bool isOpen() override { return open_; }
+    void start(juce::AudioIODeviceCallback* callback) override
+    {
+        callback_ = callback;
+        if (callback_)
+            callback_->audioDeviceAboutToStart(this);
+        playing_ = true;
+    }
+    void stop() override
+    {
+        if (playing_ && callback_)
+            callback_->audioDeviceStopped();
+        playing_ = false;
+    }
+    bool isPlaying() override { return playing_; }
+    juce::String getLastError() override { return {}; }
+    int getCurrentBufferSizeSamples() override { return bufferSize_; }
+    double getCurrentSampleRate() override { return sampleRate_; }
+    int getCurrentBitDepth() override { return 32; }
+    juce::BigInteger getActiveOutputChannels() const override { return activeOutput_; }
+    juce::BigInteger getActiveInputChannels() const override { return activeInput_; }
+    int getOutputLatencyInSamples() override { return 0; }
+    int getInputLatencyInSamples() override { return 0; }
+
+private:
+    std::shared_ptr<SelectedOutputStats> stats_;
+    juce::AudioIODeviceCallback* callback_ = nullptr;
+    juce::BigInteger activeInput_;
+    juce::BigInteger activeOutput_;
+    double sampleRate_ = 0.0;
+    int bufferSize_ = 0;
+    bool open_ = false;
+    bool playing_ = false;
+};
+
+class SelectedOutputFakeType final : public juce::AudioIODeviceType {
+public:
+    explicit SelectedOutputFakeType(std::shared_ptr<SelectedOutputStats> stats)
+        : juce::AudioIODeviceType("Selected Output Test"),
+          stats_(std::move(stats))
+    {
+    }
+
+    void scanForDevices() override {}
+    juce::StringArray getDeviceNames(bool isInput) const override
+    {
+        return isInput
+            ? juce::StringArray{}
+            : juce::StringArray{ "Default Monitor", "Selected Monitor" };
+    }
+    int getDefaultDeviceIndex(bool isInput) const override { return isInput ? -1 : 0; }
+    int getIndexOfDevice(juce::AudioIODevice* device, bool isInput) const override
+    {
+        if (isInput || !device)
+            return -1;
+        return getDeviceNames(false).indexOf(device->getName());
+    }
+    bool hasSeparateInputsAndOutputs() const override { return true; }
+    juce::AudioIODevice* createDevice(const juce::String& outputDeviceName,
+                                      const juce::String&) override
+    {
+        stats_->createAttempts.push_back(outputDeviceName);
+        if (getDeviceNames(false).contains(outputDeviceName))
+            return new SelectedOutputFakeDevice(outputDeviceName, stats_);
+        return nullptr;
+    }
+
+private:
+    std::shared_ptr<SelectedOutputStats> stats_;
+};
+
+class SelectedOutputDeviceManager final : public juce::AudioDeviceManager {
+public:
+    explicit SelectedOutputDeviceManager(std::shared_ptr<SelectedOutputStats> stats)
+        : stats_(std::move(stats))
+    {
+    }
+
+    void createAudioDeviceTypes(
+        juce::OwnedArray<juce::AudioIODeviceType>& types) override
+    {
+        types.add(new SelectedOutputFakeType(stats_));
+    }
+
+private:
+    std::shared_ptr<SelectedOutputStats> stats_;
 };
 
 void prepareActiveMonitor(MonitorOutput& monitor, int producerBlock, int consumerBlock)
@@ -151,6 +291,27 @@ bool spinWaitUntil(Predicate&& predicate, std::chrono::milliseconds timeout)
     return true;
 }
 
+#if JUCE_WINDOWS
+template <typename Predicate>
+bool pumpMessagesUntil(Predicate&& predicate,
+                       std::chrono::milliseconds timeout = std::chrono::seconds(2))
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!predicate() && std::chrono::steady_clock::now() < deadline) {
+        MSG message;
+        bool dispatched = false;
+        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessage(&message);
+            dispatched = true;
+        }
+        if (!dispatched)
+            std::this_thread::yield();
+    }
+    return predicate();
+}
+#endif
+
 } // namespace
 
 TEST(MonitorOutputTest, ShutdownWaitsForInFlightProducerBeforeReset)
@@ -211,6 +372,86 @@ TEST(MonitorOutputTest, ShutdownInvalidatesDeferredLifecycleWork)
     EXPECT_NE(previousGeneration,
               monitor.lifecycleGeneration_.load(std::memory_order_acquire));
     EXPECT_FALSE(monitor.activeOutputRecoveryPending_.load(std::memory_order_acquire));
+}
+
+TEST(MonitorOutputTest, FailedReconnectRearmsThreeSecondCooldown)
+{
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterAttempt(
+                  false, VirtualCableStatus::Error),
+              90);
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterAttempt(
+                  true, VirtualCableStatus::Active),
+              0);
+    EXPECT_EQ(monitor_output_detail::reconnectCooldownAfterAttempt(
+                  false, VirtualCableStatus::SampleRateMismatch),
+              0);
+}
+
+TEST(MonitorOutputTest, InitialOpenTargetsTheSelectedDeviceInsteadOfTheDefault)
+{
+    auto stats = std::make_shared<SelectedOutputStats>();
+    SelectedOutputDeviceManager manager(stats);
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.outputDeviceName = "Selected Monitor";
+    setup.sampleRate = 48000.0;
+    setup.bufferSize = 128;
+    setup.useDefaultOutputChannels = false;
+    setup.outputChannels.setRange(0, 2, true);
+
+    EXPECT_TRUE(monitor_output_detail::initialiseSelectedOutputDevice(
+                    manager, setup).isEmpty());
+    ASSERT_FALSE(stats->createAttempts.empty());
+    EXPECT_EQ(stats->createAttempts.front(), "Selected Monitor");
+    EXPECT_EQ(std::count(stats->createAttempts.begin(),
+                         stats->createAttempts.end(),
+                         juce::String("Default Monitor")),
+              0);
+    ASSERT_FALSE(stats->openAttempts.empty());
+    EXPECT_EQ(stats->openAttempts.front(), "Selected Monitor");
+}
+
+TEST(MonitorOutputTest, FailedActiveOutputRecoveryRearmsThreeSecondCooldown)
+{
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Message-thread callback pump is Windows-specific";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<SelectedOutputStats>();
+    auto manager = std::make_unique<SelectedOutputDeviceManager>(stats);
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.outputDeviceName = "Selected Monitor";
+    setup.sampleRate = 48000.0;
+    setup.bufferSize = 128;
+    setup.useDefaultOutputChannels = false;
+    setup.outputChannels.setRange(0, 2, true);
+    ASSERT_TRUE(monitor_output_detail::initialiseSelectedOutputDevice(
+                    *manager, setup).isEmpty());
+
+    manager->closeAudioDevice();
+    stats->failEveryOpen = true;
+
+    MonitorOutput monitor;
+    monitor.deviceManager_ = std::move(manager);
+    monitor.deviceName_ = "Selected Monitor";
+    monitor.sampleRate_ = 48000.0;
+    monitor.bufferSize_ = 128;
+    monitor.reconnectCooldown_ = 0;
+
+    juce::BigInteger noActiveOutputs;
+    FakeAudioIODevice zeroActiveDevice(
+        "Selected Monitor", 48000.0, 128, noActiveOutputs);
+    juce::AudioIODeviceCallback& callback = monitor;
+    callback.audioDeviceAboutToStart(&zeroActiveDevice);
+
+    ASSERT_TRUE(pumpMessagesUntil([&] {
+        return !monitor.activeOutputRecoveryPending_.load(std::memory_order_acquire);
+    }));
+    EXPECT_EQ(monitor.getStatus(), VirtualCableStatus::Error);
+    EXPECT_EQ(monitor.reconnectCooldown_, 90);
+#endif
 }
 
 TEST(MonitorOutputTest, DeviceRestartWaitsForInFlightProducerBeforeReset)

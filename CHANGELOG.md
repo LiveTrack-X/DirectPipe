@@ -8,6 +8,45 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.2.4] - 2026-07-30
+
+### Fixed
+
+- **Bounded zero-active recovery**: Failed main-engine and monitor-output
+  recovery now re-arm the full three-second cooldown instead of being retried
+  by every 30 Hz status tick.
+- **Selected monitor device startup**: The monitor manager now opens the
+  configured shared-mode output directly. An unavailable or exclusively held
+  system default can no longer prevent a different valid monitor device from
+  opening.
+- **Exclusive-output transition ordering**: DirectPipe now suspends a
+  potentially conflicting monitor before opening an exclusive main output,
+  restores it on rollback or when the resulting main endpoint differs, and
+  leaves it disabled with a notification only when both paths resolve to the
+  same endpoint.
+- **Windows endpoint-event feedback**: Endpoint events caused by DirectPipe's
+  own forced same-device reopen are suppressed for a bounded settle window.
+  Windows Audio Exclusive Mode is also classified consistently as exclusive
+  during monitor-conflict checks.
+
+### Changed
+
+- **Release synchronization**: Host, bundled Receiver, Stream Deck metadata,
+  current documentation, release notes, and test inventory are aligned to
+  v4.2.4. IPC protocol v1, the 192-byte shared-memory header, presets, Stream
+  Deck actions, and control payload schemas remain compatible.
+
+### Tests
+
+- Added regressions for failed main and monitor zero-active recovery, opening a
+  selected monitor without first opening the system default, exclusive-main
+  monitor preflight, Windows exclusive-driver classification, and endpoint
+  event suppression. Local Windows Release CTest completed all 500
+  registrations: 498 passed, 2 environment-dependent tests skipped, and 0
+  failed.
+
+---
+
 ## [4.2.3] - 2026-07-29
 
 ### Fixed

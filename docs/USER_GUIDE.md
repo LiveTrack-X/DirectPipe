@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Released Version 4.2.3** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
+> **Released Version 4.2.4** — [GitHub Releases](https://github.com/LiveTrack-X/DirectPipe/releases)
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.3 로컬 Windows Release CTest 492개를 실행해 490개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.4 로컬 Windows Release CTest 500개를 실행해 498개 통과, 환경 의존 2개 skip, 실패 0개를 확인했고 정확 태그 CI가 공개 전에 전체 플랫폼 빌드·등록 테스트·패키지 검증을 수행합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The local v4.2.3 Windows Release run completed all 492 CTest registrations (490 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
+> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The local v4.2.4 Windows Release run completed all 500 CTest registrations (498 passed, 2 environment-dependent skips, 0 failed), and exact-tag CI runs cross-platform builds, registered tests, and package validation before publication. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)
@@ -611,6 +611,8 @@ Monitor lets you hear your own processed voice through headphones in real-time.
 > 모니터는 메인 드라이버와 **독립된 별도 shared-mode 출력 장치**를 사용합니다. Windows에서는 WASAPI, macOS에서는 CoreAudio, Linux에서는 ALSA 장치를 사용합니다. ASIO 모드(Windows)에서도 정상 동작합니다.
 >
 > Monitor uses a **separate shared-mode output device**, independent from the main driver. On Windows it uses WASAPI; on macOS, CoreAudio; on Linux, ALSA. Works even with ASIO (Windows).
+>
+> 독점 모드(ASIO 또는 Windows Audio Exclusive Mode)에서 모니터 장치는 메인 출력과 **다른 장치**를 선택해야 합니다. 같은 장치 구성은 거부하며, 드라이버 또는 출력 변경으로 충돌이 생기면 DirectPipe가 모니터를 비활성화합니다. / With an exclusive main driver (ASIO or Windows Audio Exclusive Mode), select a **different device** for Monitor. The same-device configuration is rejected; if a driver or output change creates the conflict, DirectPipe disables Monitor.
 
 > **⚠️ 모니터 지연(레이턴시) 안내**: 모니터 출력은 별도 오디오 장치를 경유하기 때문에 장치·드라이버·버퍼 설정에 따라 메인 출력 대비 추가 지연이 발생할 수 있습니다. Output 탭의 모니터 레이턴시는 메인 경로 총 추정값에 활성 모니터 장치 버퍼 추정값을 더해 표시합니다. adaptive PLL fractional playback으로 작은 독립 장치 clock drift를 흡수하고, 정상 drift 상황에서는 프레임을 버리지 않습니다. 부분 underrun 후에는 다시 prime하며, Windows 모니터 콜백이 main OUT 콜백보다 높은 우선순위로 실행되지 않도록 유지합니다. 기본 장치/버퍼 지연이 거슬린다면 다음을 권장합니다:
 > - **ASIO 드라이버 사용 (Windows)** — 입력과 출력이 하나의 ASIO 디바이스에서 처리되어 별도 모니터 장치 없이 최소 지연으로 자기 목소리를 들을 수 있습니다
@@ -1251,6 +1253,9 @@ DirectPipe does not use physical microphone mute or normal silence as a recovery
 2. **Enable** 토글이 켜져 있는지 확인 / Verify **Enable** toggle is on
 3. **MON** 버튼이 초록색인지 확인 / Check **MON** button is green
 4. 모니터는 별도 shared-mode 오디오 장치를 사용 (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) — ASIO 모드(Windows)에서도 동작 / Monitor uses a separate shared-mode audio device (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) — works even with ASIO (Windows)
+5. 독점 모드에서는 메인 출력과 다른 모니터 장치를 선택 / In exclusive mode, select a monitor device different from the main output
+
+> 실패한 모니터 장치 재연결은 약 3초 간격으로 제한됩니다. 로그에 초당 여러 번 `Reconnection attempt`가 반복되면 정상 동작이 아닙니다. / Failed monitor reconnects are limited to about one attempt every 3 seconds. Multiple `Reconnection attempt` entries per second are not expected.
 
 #### 모니터 출력 무음 (SR 불일치) / Monitor Silent (Sample Rate Mismatch)
 
