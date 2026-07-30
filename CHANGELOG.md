@@ -4,7 +4,76 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
-## [4.2.6] - 2026-07-31
+## [4.2.7] - 2026-07-31
+
+### Fixed
+
+- **Per-candidate ASIO validation**: Automatic ASIO fallback now accepts a
+  device only after validating its identity, sample rate, buffer size, and
+  usable active duplex channels. An unusable first candidate no longer prevents
+  DirectPipe from trying the next available ASIO device.
+- **Input-front dual mono**: Mono keeps the selected physical input/output pair
+  active, averages the two inputs before the VST chain, duplicates the mono
+  signal to internal L/R, and routes the processed two-channel result to the
+  selected output pair. Genuine one-channel devices retain a bounded fallback.
+- **Mono mask migration**: A legacy v4.2.6 one-bit channel mask is expanded to
+  its two-channel pair during Mono restore. Temporarily unknown channel layouts
+  preserve bounded saved pair indices until device apply, while a real
+  one-channel input retains its native driver-default route during output
+  changes and failed explicit-pair restore.
+- **Recovery placeholder identity**: Disabled recovery rows are identified by
+  their dedicated item ID instead of a name suffix, so real device names ending
+  in `(Reconnect)` or `(Disconnected)` remain selectable.
+- **Stream Deck parameter synchronization**: Plug-in parameter dials initialize
+  and refresh from the host's actual value, reset to the plug-in-reported
+  default, and no longer reuse stale values after plug-in or preset changes.
+- **Independent dial throttling**: Plug-in and volume pending updates are keyed
+  by action and target, preventing simultaneous controls from overwriting one
+  another.
+- **Accurate Stream Deck capabilities**: Encoder manifests no longer advertise
+  unimplemented Push/Touch gestures. `npm run package` now delegates to the
+  official Stream Deck CLI instead of creating a custom ZIP.
+- **Queued HTTP semantics**: Asynchronously dispatched mutating routes return
+  `202 Accepted` with backward-compatible `ok: true` plus explicit
+  `accepted: true`; completed synchronous reads retain `200 OK`.
+- **Updater executable identity**: Windows ZIP staging requires exactly one
+  `DirectPipe.exe` whose FileVersion and ProductVersion match the requested
+  release before replacement.
+- **Retained update rollback**: Startup cleanup preserves the previous
+  executable backup until the next update rotation while still removing
+  transient update files.
+
+### Distribution
+
+- **v4.2.6 withdrawal**: The v4.2.6 tag and assets remain for provenance, but
+  the GitHub Release is marked withdrawn/prerelease and is not recommended.
+  v4.2.7 replaces it only after exact-tag CI and public artifact verification.
+- **Unsigned Windows package**: No trusted code-signing certificate is
+  configured. CI therefore requires every staged Windows binary to be
+  `NotSigned`; browser or SmartScreen reputation warnings may still occur.
+
+### Compatibility
+
+- IPC protocol v1 and its 192-byte shared-memory header, Receiver identity,
+  WebSocket action/state schemas, existing presets, and settings remain
+  compatible.
+- HTTP endpoint paths, request payloads, and the existing `ok: true` field are
+  unchanged. Queued mutations add `accepted: true` and change the misleading
+  `200 OK` status to `202 Accepted`.
+
+### Tests
+
+- Local Windows Release validation completed all 568 CTest registrations:
+  566 passed, 2 environment-dependent tests skipped, and 0 failed
+  (59 core + 507 host + 2 focused endpoint).
+- Stream Deck tests passed 22/22; lint, dependency audit, production bundle,
+  official validation, and official packaging also passed.
+- Real-device audio, third-party VST crash-containment, and macOS/Linux hardware
+  behavior remain outside this software-only evidence.
+
+---
+
+## [4.2.6] - 2026-07-31 (withdrawn)
 
 ### Fixed
 

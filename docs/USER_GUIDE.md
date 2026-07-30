@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Current Stable Version 4.2.6 / 현재 안정 버전 4.2.6** — [Download / 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest)
+> **Release Candidate Version 4.2.7 / 릴리즈 후보 버전 4.2.7** — v4.2.3 remains [the public stable download / 공개 안정 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) until exact-tag CI succeeds.
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(59 core + 485 host + 2 focused endpoint). 공개 자산은 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원을 검증한 뒤 생성합니다. 신뢰 인증서가 있으면 Authenticode를 검증하고, 없으면 Windows 패키지를 명시적으로 unsigned로 배포합니다. 실기기·제3자 VST crash-containment는 수행하지 않았으며 macOS/Linux는 이번 업데이트에서 하드웨어 검증하지 않았습니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정 대상), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.7은 전체 Windows Release 검증과 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원을 통과한 뒤에만 게시합니다. 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment와 macOS/Linux 하드웨어 동작은 별도 검증 범위입니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable), macOS 10.15+ universal (beta), Linux x86_64 (experimental). Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI creates public assets only after running cross-platform builds, registered tests, package checksums, and executable-version verification. Authenticode is verified when a trusted certificate is configured; otherwise Windows is explicitly unsigned. Real-device and third-party VST crash-containment checks were not run; macOS/Linux were not hardware-validated for this update.
+> **Platform Support**: Windows 10/11 x64 (stable target), macOS 10.15+ universal (beta), Linux x86_64 (experimental). v4.2.7 is published only after the complete Windows Release suite and exact-tag CI pass cross-platform builds, registered tests, package checksums, and executable-version verification. Without a certificate Windows is unsigned. Real-device, third-party VST crash-containment, and macOS/Linux hardware behavior remain separate evidence.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)
@@ -47,7 +47,7 @@ USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 �
 
 ### 1단계: 기본 설정 / Step 1: Basic Setup
 
-1. **DirectPipe 실행** — 현재 신뢰된 Windows 코드 서명 인증서가 없어 v4.2.6도 미서명일 수 있습니다. 공식 GitHub Release에서만 내려받고 ZIP을 `checksums.sha256`과 대조하세요. 서명이 있는 빌드는 서명 상태도 `Valid`여야 합니다:
+1. **DirectPipe 실행** — 현재 신뢰된 Windows 코드 서명 인증서가 없어 v4.2.7도 미서명입니다. 공식 GitHub Release에서만 내려받고 ZIP을 `checksums.sha256`과 대조하세요. 서명이 있는 빌드는 서명 상태도 `Valid`여야 합니다:
    - **Windows**: 공식 해시가 일치하고, 존재하는 서명이 유효한데도 SmartScreen 평판 경고가 남으면 "추가 정보" → "실행"을 선택할 수 있습니다
    - **macOS**: Gatekeeper → 시스템 설정 → 보안 및 개인 정보 → "확인 없이 열기"
    - **Linux**: `chmod +x DirectPipe` 후 실행
@@ -62,7 +62,7 @@ USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 �
 
 ---
 
-1. **Launch DirectPipe** — DirectPipe currently has no trusted Windows code-signing certificate, so v4.2.6 may be unsigned. Verify the official Release ZIP against `checksums.sha256`; if a signature is present, require it to be `Valid`:
+1. **Launch DirectPipe** — DirectPipe currently has no trusted Windows code-signing certificate, so v4.2.7 is unsigned. Verify the official Release ZIP against `checksums.sha256`; if a signature is present, require it to be `Valid`:
    - **Windows**: If the official hash matches and any present signature is valid but a SmartScreen reputation warning remains, you can choose "More info" → "Run anyway"
    - **macOS**: Gatekeeper → System Settings → Privacy & Security → "Open Anyway"
    - **Linux**: `chmod +x DirectPipe` then run
@@ -381,7 +381,7 @@ Mismatched sample rates between DirectPipe, OBS, and Discord can cause **pitch s
 ### 채널 모드 / Channel Mode
 
 - **Stereo** (기본값) — 입력 채널이 그대로 L/R로 통과 / Input channels pass through as-is
-- **Mono** — 모든 입력 채널을 합산하여 모노로 만든 뒤 양쪽(L/R)으로 출력. 이후 VST 체인·메인 출력·모니터·IPC·녹음 모두 스테레오로 처리됨. 마이크 1개만 사용하면 볼륨 손실 없음. 2개 이상 입력 시 합산 (클리핑 발생 시 입력 게인으로 조절) / Sums all input channels to mono, then outputs to both L/R. Everything downstream (VST chain, main output, monitor, IPC, recording) processes as stereo. No volume loss for single-mic input. Multiple inputs are summed at full gain (adjust input gain if clipping occurs)
+- **Mono** — 선택한 입력 쌍의 L/R을 VST 체인 전에 평균하여 하나의 모노 신호로 만들고, 같은 신호를 내부 L/R에 복제합니다. 이후 VST 체인·메인 출력·모니터·IPC·녹음은 이 2채널 dual-mono 신호를 처리하며, 선택한 출력 쌍에도 같은 처리 결과를 보냅니다. 실제 1채널 장치는 감쇠 없이 해당 채널을 내부 L/R에 복제합니다. / Averages the selected input pair before the VST chain, duplicates the mono signal to internal L/R, and processes that two-channel dual-mono signal through the VST chain, main output, monitor, IPC, and recording. The processed L/R is sent to the selected output pair. A genuine one-channel device duplicates its single channel without attenuation.
 
 > 채널 모드는 신호 처리 방식입니다. 장치 복원/재연결 실패 시 DirectPipe는 특정 1채널을 강제하지 않고 드라이버 기본 채널로 재시도하므로, 모노 장치와 스테레오 장치가 각각 자기 기본 레이아웃으로 열릴 수 있습니다. / Channel mode is a signal-processing mode. During device restore/reconnect fallback, DirectPipe retries driver default channels instead of forcing a specific single channel, so mono and stereo devices can open with their native layouts.
 

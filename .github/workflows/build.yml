@@ -98,7 +98,22 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Run Tests
-        run: cd build && ctest --output-on-failure -C Release --timeout 120
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/test-results | Out-Null
+          ctest --test-dir build --output-on-failure -C Release --timeout 120 `
+            --output-junit build/test-results/ctest.xml
+
+      - name: Upload Windows test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipe-windows-test-results
+          path: |
+            build/test-results/ctest.xml
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Package
         shell: bash
@@ -319,7 +334,21 @@ jobs:
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
       - name: Run Tests
-        run: cd build && ctest --output-on-failure --timeout 120
+        run: |
+          mkdir -p build/test-results
+          ctest --test-dir build --output-on-failure --timeout 120 \
+            --output-junit build/test-results/ctest.xml
+
+      - name: Upload macOS test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipe-macOS-test-results
+          path: |
+            build/test-results/ctest.xml
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Package
         env:
@@ -420,7 +449,21 @@ jobs:
         run: cmake --build build --config Release -j$(nproc)
 
       - name: Run Tests
-        run: cd build && ctest --output-on-failure --timeout 120
+        run: |
+          mkdir -p build/test-results
+          ctest --test-dir build --output-on-failure --timeout 120 \
+            --output-junit build/test-results/ctest.xml
+
+      - name: Upload Linux test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectPipe-linux-test-results
+          path: |
+            build/test-results/ctest.xml
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Package
         env:
@@ -494,7 +537,9 @@ jobs:
 
       - name: Run tests
         working-directory: com.directpipe.directpipe.sdPlugin
-        run: npm test
+        run: |
+          mkdir -p ../dist
+          npm test 2>&1 | tee ../dist/streamdeck-test.log
 
       - name: Build (Rollup bundle)
         working-directory: com.directpipe.directpipe.sdPlugin
@@ -519,6 +564,15 @@ jobs:
           name: StreamDeck-Plugin
           path: dist/com.directpipe.directpipe.streamDeckPlugin
           if-no-files-found: error
+
+      - name: Upload Stream Deck test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamDeck-test-results
+          path: dist/streamdeck-test.log
+          if-no-files-found: warn
+          retention-days: 30
 
   # ═══════════════════════════════════════════
   # Publish a GitHub Release only after every validation/build artifact exists.

@@ -426,6 +426,185 @@ TEST_F(PresetManagerTest, NonContiguousChannelMaskJsonRoundtrip) {
     EXPECT_EQ(static_cast<int>((*out)[1]), 3);
 }
 
+TEST_F(PresetManagerTest, LegacyMonoSingleChannelMaskExpandsOnlyWhenPairExists) {
+    juce::BigInteger firstPair;
+    firstPair.setBit(0);
+    firstPair = PresetManager::migrateLegacyMonoChannelMaskForTest(
+        firstPair, 2);
+    EXPECT_TRUE(firstPair[0]);
+    EXPECT_TRUE(firstPair[1]);
+    EXPECT_EQ(firstPair.countNumberOfSetBits(), 2);
+
+    juce::BigInteger laterPair;
+    laterPair.setBit(2);
+    laterPair = PresetManager::migrateLegacyMonoChannelMaskForTest(
+        laterPair, 4);
+    EXPECT_TRUE(laterPair[2]);
+    EXPECT_TRUE(laterPair[3]);
+    EXPECT_EQ(laterPair.countNumberOfSetBits(), 2);
+
+    juce::BigInteger singleChannelDevice;
+    singleChannelDevice.setBit(0);
+    singleChannelDevice =
+        PresetManager::migrateLegacyMonoChannelMaskForTest(
+            singleChannelDevice, 1);
+    EXPECT_TRUE(singleChannelDevice[0]);
+    EXPECT_EQ(singleChannelDevice.countNumberOfSetBits(), 1);
+
+    juce::BigInteger unknownDeviceLayout;
+    unknownDeviceLayout.setBit(0);
+    unknownDeviceLayout =
+        PresetManager::migrateLegacyMonoChannelMaskForTest(
+            unknownDeviceLayout, 0);
+    EXPECT_TRUE(unknownDeviceLayout[0]);
+    EXPECT_TRUE(unknownDeviceLayout[1]);
+    EXPECT_EQ(unknownDeviceLayout.countNumberOfSetBits(), 2);
+
+    juce::BigInteger oddTailWithoutPartner;
+    oddTailWithoutPartner.setBit(2);
+    oddTailWithoutPartner =
+        PresetManager::migrateLegacyMonoChannelMaskForTest(
+            oddTailWithoutPartner, 3);
+    EXPECT_TRUE(oddTailWithoutPartner[0]);
+    EXPECT_TRUE(oddTailWithoutPartner[1]);
+    EXPECT_FALSE(oddTailWithoutPartner[2]);
+    EXPECT_EQ(oddTailWithoutPartner.countNumberOfSetBits(), 2);
+
+    juce::BigInteger existingNonContiguousSelection;
+    existingNonContiguousSelection.setBit(0);
+    existingNonContiguousSelection.setBit(2);
+    const auto unchanged =
+        PresetManager::migrateLegacyMonoChannelMaskForTest(
+            existingNonContiguousSelection, 4);
+    EXPECT_EQ(unchanged, existingNonContiguousSelection);
+}
+
+TEST_F(PresetManagerTest, ImportMigratesBoundedLegacyMonoPairWhenChannelNamesAreUnavailable) {
+    AudioEngine targetEngine;
+    PresetManager targetManager(targetEngine);
+
+    juce::BigInteger currentInputChannels;
+    currentInputChannels.setBit(0);
+    currentInputChannels.setBit(1);
+    juce::BigInteger currentOutputChannels = currentInputChannels;
+
+    int applyCount = 0;
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    targetManager.configureChannelMaskRestoreForTest(
+        0,
+        0,
+        currentInputChannels,
+        currentOutputChannels,
+        [&](const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+            const juce::String&) {
+            ++applyCount;
+            appliedSetup = setup;
+            return ActionResult::ok();
+        });
+
+    const juce::String json = R"({
+        "version": 4,
+        "channelMode": 1,
+        "inputChannelMask": [2, 999],
+        "outputChannelMask": [2, 999]
+    })";
+
+    ASSERT_TRUE(targetManager.importFromJSON(json));
+    ASSERT_EQ(applyCount, 1);
+    EXPECT_FALSE(appliedSetup.useDefaultInputChannels);
+    EXPECT_FALSE(appliedSetup.useDefaultOutputChannels);
+    EXPECT_TRUE(appliedSetup.inputChannels[2]);
+    EXPECT_TRUE(appliedSetup.inputChannels[3]);
+    EXPECT_EQ(appliedSetup.inputChannels.countNumberOfSetBits(), 2);
+    EXPECT_TRUE(appliedSetup.outputChannels[2]);
+    EXPECT_TRUE(appliedSetup.outputChannels[3]);
+    EXPECT_EQ(appliedSetup.outputChannels.countNumberOfSetBits(), 2);
+}
+
+TEST_F(PresetManagerTest, ImportKeepsNativeInputForReportedSingleChannelDevice) {
+    AudioEngine targetEngine;
+    PresetManager targetManager(targetEngine);
+
+    juce::BigInteger currentInputChannels;
+    currentInputChannels.setBit(0);
+    juce::BigInteger currentOutputChannels;
+    currentOutputChannels.setBit(0);
+    currentOutputChannels.setBit(1);
+
+    int applyCount = 0;
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    targetManager.configureChannelMaskRestoreForTest(
+        1,
+        2,
+        currentInputChannels,
+        currentOutputChannels,
+        [&](const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+            const juce::String&) {
+            ++applyCount;
+            appliedSetup = setup;
+            return ActionResult::ok();
+        });
+
+    const juce::String json = R"({
+        "version": 4,
+        "channelMode": 1,
+        "inputChannelMask": [0],
+        "outputChannelMask": [0]
+    })";
+
+    ASSERT_TRUE(targetManager.importFromJSON(json));
+    ASSERT_EQ(applyCount, 1);
+    EXPECT_TRUE(appliedSetup.inputChannels[0]);
+    EXPECT_EQ(appliedSetup.inputChannels.countNumberOfSetBits(), 1);
+    EXPECT_TRUE(appliedSetup.outputChannels[0]);
+    EXPECT_TRUE(appliedSetup.outputChannels[1]);
+    EXPECT_EQ(appliedSetup.outputChannels.countNumberOfSetBits(), 2);
+}
+
+TEST_F(PresetManagerTest, ImportFallsBackToDriverDefaultsWhenUnknownInputIsActuallyMono) {
+    AudioEngine targetEngine;
+    PresetManager targetManager(targetEngine);
+
+    juce::BigInteger currentInputChannels;
+    currentInputChannels.setBit(0);
+    juce::BigInteger currentOutputChannels;
+    currentOutputChannels.setBit(0);
+    currentOutputChannels.setBit(1);
+
+    std::vector<juce::AudioDeviceManager::AudioDeviceSetup> attempts;
+    targetManager.configureChannelMaskRestoreForTest(
+        0,
+        2,
+        currentInputChannels,
+        currentOutputChannels,
+        [&](const juce::AudioDeviceManager::AudioDeviceSetup& setup,
+            const juce::String&) {
+            attempts.push_back(setup);
+            if (attempts.size() == 1)
+                return ActionResult::fail(
+                    "test one-channel device rejects expanded input pair");
+            return ActionResult::ok();
+        });
+
+    const juce::String json = R"({
+        "version": 4,
+        "channelMode": 1,
+        "inputChannelMask": [0],
+        "outputChannelMask": [0]
+    })";
+
+    ASSERT_TRUE(targetManager.importFromJSON(json));
+    ASSERT_EQ(attempts.size(), 2u);
+    EXPECT_FALSE(attempts[0].useDefaultInputChannels);
+    EXPECT_EQ(attempts[0].inputChannels.countNumberOfSetBits(), 2);
+    EXPECT_TRUE(attempts[0].inputChannels[0]);
+    EXPECT_TRUE(attempts[0].inputChannels[1]);
+    EXPECT_TRUE(attempts[1].useDefaultInputChannels);
+    EXPECT_TRUE(attempts[1].inputChannels.isZero());
+    EXPECT_TRUE(attempts[1].useDefaultOutputChannels);
+    EXPECT_TRUE(attempts[1].outputChannels.isZero());
+}
+
 TEST_F(PresetManagerTest, InvalidMaskJsonRequiresSafeFallbackPath) {
     juce::String json = R"({
         "version": 4,

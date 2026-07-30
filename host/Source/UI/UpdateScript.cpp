@@ -74,12 +74,21 @@ juce::String buildWindowsUpdateWaitScript(unsigned long processId)
 
 juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spec)
 {
+    std::array<int, 3> expectedVersionComponents{};
+    juce::String canonicalExpectedVersion;
+    if (!parseStrictReleaseVersion(spec.expectedVersion,
+                                   expectedVersionComponents,
+                                   canonicalExpectedVersion)) {
+        return {};
+    }
+
     const WindowsUpdateInstallSpec paths {
         escapeBatchPercent(spec.currentExePath),
         escapeBatchPercent(spec.downloadedFilePath),
         escapeBatchPercent(spec.stagedExePath),
         escapeBatchPercent(spec.backupExePath),
         escapeBatchPercent(spec.updateDirPath),
+        canonicalExpectedVersion,
         spec.isZip,
     };
 
@@ -103,11 +112,12 @@ juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spe
         script << "if exist \"" << paths.stagedExePath
                << "\" goto update_install_failed\r\n";
         script << "powershell -NoProfile -Command \"$ErrorActionPreference = 'Stop'; "
-               << "$f = Get-ChildItem -LiteralPath '"
+               << "$candidates = @(Get-ChildItem -LiteralPath '"
                << escapePowerShellQuote(paths.updateDirPath)
-               << "' -Recurse -Filter 'DirectPipe.exe' | Select-Object -First 1; "
-               << "if (-not $f) { throw 'DirectPipe.exe not found in update archive' }; "
-               << "Copy-Item -LiteralPath $f.FullName -Destination '"
+               << "' -Recurse -File -Filter 'DirectPipe.exe'); "
+               << "if ($candidates.Count -ne 1) { throw ('Expected exactly one "
+                  "DirectPipe.exe in update archive; found ' + $candidates.Count) }; "
+               << "Copy-Item -LiteralPath $candidates[0].FullName -Destination '"
                << escapePowerShellQuote(paths.stagedExePath) << "' -Force\"\r\n";
         script << "if errorlevel 1 goto update_install_failed\r\n";
         script << "if not exist \"" << paths.stagedExePath
@@ -118,6 +128,20 @@ juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spe
         script << "if not exist \"" << installSourcePath
                << "\" goto update_install_failed\r\n";
     }
+
+    // The archive checksum authenticates the package bytes. Independently bind
+    // the executable selected from that package to the release version before
+    // rotating the known-good binary.
+    script << "powershell -NoProfile -Command \"$ErrorActionPreference = 'Stop'; "
+           << "$f = Get-Item -LiteralPath '"
+           << escapePowerShellQuote(installSourcePath) << "'; "
+           << "$v = $f.VersionInfo; "
+           << "if (($v.FileVersion -ne '" << paths.expectedVersion
+           << "') -or ($v.ProductVersion -ne '" << paths.expectedVersion
+           << "')) { throw ('Update executable version mismatch: FileVersion=' "
+              "+ $v.FileVersion + ', ProductVersion=' + $v.ProductVersion "
+              "+ ', expected=" << paths.expectedVersion << "') }\"\r\n";
+    script << "if errorlevel 1 goto update_install_failed\r\n";
 
     // Rotate the known-good executable only after a replacement has been staged.
     script << "if not exist \"" << paths.currentExePath
@@ -140,8 +164,8 @@ juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spe
         script << "del /f /q \"" << paths.downloadedFilePath << "\"\r\n";
     }
 
-    // Keep the backup until the updated app starts; cleanupPreviousUpdate()
-    // removes it on the next successful startup.
+    // Keep the backup through subsequent startups. The next update rotation
+    // replaces it only after another candidate has passed identity validation.
     script << "goto update_install_complete\r\n";
     script << ":update_install_rollback\r\n";
     script << "if exist \"" << paths.currentExePath << "\" del /f /q \""

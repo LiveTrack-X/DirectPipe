@@ -1,5 +1,10 @@
 ## DirectPipe v4.2.6
 
+> [!WARNING]
+> **Withdrawn build:** v4.2.6 is retained for provenance but is no longer
+> recommended. Use v4.2.3 until the corrective v4.2.7 exact-tag release is
+> published.
+
 v4.2.6 replaces the withdrawn v4.2.5 release. It preserves the selected
 Windows input/output endpoints across failed driver changes and input-device
 loss, prevents a failed `CABLE Input` selection from leaving an unintended

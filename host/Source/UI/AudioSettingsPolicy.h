@@ -51,10 +51,28 @@ inline RecoverySelection makeRecoverySelection(
     return result;
 }
 
-inline bool isRecoveryPlaceholderText(const juce::String& text)
+inline bool isRecoveryPlaceholderSelection(int selectedId, int placeholderId) noexcept
 {
-    return text.endsWith("(Reconnect)")
-        || text.endsWith("(Disconnected)");
+    return placeholderId > 0 && selectedId == placeholderId;
+}
+
+inline int channelCountForSelectedPair(int firstChannel,
+                                       int availableChannels) noexcept
+{
+    if (firstChannel < 0)
+        return 0;
+
+    // Channel names can be briefly unavailable while a driver is reopening.
+    // Preserve the pair request in that case. Only a genuine one-channel
+    // device may use the bounded single-channel fallback; an odd tail on a
+    // multichannel device is not a selectable pair.
+    if (availableChannels <= 0)
+        return 2;
+
+    if (availableChannels == 1)
+        return firstChannel == 0 ? 1 : 0;
+
+    return firstChannel + 1 < availableChannels ? 2 : 0;
 }
 
 } // namespace directpipe::audio_settings_detail

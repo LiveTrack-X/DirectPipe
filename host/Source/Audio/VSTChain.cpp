@@ -840,6 +840,18 @@ float VSTChain::getPluginParameter(int pluginIndex, int paramIndex) const
     return params[paramIndex]->getValue();
 }
 
+float VSTChain::getPluginParameterDefault(int pluginIndex, int paramIndex) const
+{
+    const juce::ScopedLock sl(chainLock_);
+    if (pluginIndex < 0 || pluginIndex >= static_cast<int>(chain_.size()))
+        return 0.0f;
+    auto* proc = chain_[static_cast<size_t>(pluginIndex)].getProcessor();
+    if (!proc) return 0.0f;
+    auto& params = proc->getParameters();
+    if (paramIndex < 0 || paramIndex >= params.size()) return 0.0f;
+    return params[paramIndex]->getDefaultValue();
+}
+
 void VSTChain::openPluginEditor(int index, juce::Component* /*parentComponent*/)
 {
     juce::AudioProcessor* processorForEditor = nullptr;

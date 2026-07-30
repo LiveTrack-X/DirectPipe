@@ -1,15 +1,15 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current release version / 현재 릴리즈 버전: 4.2.6**
+> **Current release candidate / 현재 릴리즈 후보: 4.2.7**
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(59 core + 485 host + 2 focused endpoint). 공개 자산은 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지·checksum과 Windows 서명 상태를 검증한 뒤 생성합니다. 현재 인증서가 없으므로 Windows 패키지는 unsigned일 수 있습니다. 실기기·제3자 VST crash-containment는 수행하지 않았습니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI creates public assets only after validating cross-platform builds, tests, packages, checksums, and Windows signature state. With no configured certificate, the Windows package may be unsigned. Real-device and third-party VST crash-containment checks were not run.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.7은 전체 Windows Release 검증과 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지·checksum과 Windows 서명 상태를 통과한 뒤에만 게시합니다. 현재 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. v4.2.7 is published only after the complete Windows Release suite and exact-tag CI validate cross-platform builds, tests, packages, checksums, and Windows signature state. With no configured certificate, the Windows package is unsigned. Real-device and third-party VST crash-containment remain separate evidence.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable / 안정 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.6: local Release 544 passed + 2 environment-dependent skips + 0 failed out of 546 CTest registrations; public assets are exact-tag CI-built; unsigned unless trusted signing secrets are configured; no real-device check. |
+| Windows 10/11 x64 | Stable target / 안정 대상 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.7 candidate: complete local Release and exact-tag CI required; public assets are CI-built; unsigned unless trusted signing secrets are configured; no real-device claim. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -200,9 +200,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). Local Windows Release validation for v4.2.6 completed **546 CTest registrations** with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint tests). Public assets remain gated by exact-tag CI, package checksums, and executable-version identity; Authenticode is optional until a trusted certificate is configured.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). v4.2.7 public assets remain gated by the complete registered Release test suite, exact-tag CI, package checksums, and executable-version identity; Authenticode is optional until a trusted certificate is configured.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.6의 로컬 Windows Release 검증은 **CTest 등록 546개** 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(코어 59 + 호스트 485 + endpoint 집중 테스트 2). 공개 자산은 정확 태그 CI, 패키지 checksum, 실행 파일 버전 신원 검증을 조건으로 하며, 신뢰 인증서가 설정되기 전 Authenticode는 선택 사항입니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.7 공개 자산은 전체 등록 Release 테스트, 정확 태그 CI, 패키지 checksum, 실행 파일 버전 신원 검증을 조건으로 하며, 신뢰 인증서가 설정되기 전 Authenticode는 선택 사항입니다.
 
 ### directpipe-tests (Core)
 
@@ -222,19 +222,20 @@ Three test executables are built: `directpipe-tests` (core, no JUCE dependency),
 | WebSocket server/protocol | 39 | Shutdown/shared lifetime, handshake-ready ordering, idle sweep, listen and strict action-parameter validation / 종료·shared lifetime, handshake-ready 순서, idle sweep, listen 및 action parameter 엄격 검증 |
 | StateSerializationTest | 13 | State JSON fields, reproducibility, device-loss/recording/IPC fields / 상태 JSON 필드, 재현성, 장치 손실/녹음/IPC 필드 |
 | ActionDispatcherTest | 31 | Action dispatch, listener management, thread safety, ActionResult / 액션 디스패치, 리스너 관리, 스레드 안전, ActionResult |
-| HttpApiServerTest | 5 | Restart/socket lifetime, input/listen-port validation, PDC-inclusive performance latency / 재시작·검증·PDC 포함 성능 레이턴시 |
+| HttpApiServerTest | 7 | Restart/socket lifetime, input/listen-port validation, queued `202` compatibility, PDC-inclusive performance latency / 재시작·검증·queued `202` 호환·PDC 포함 성능 레이턴시 |
 | ActionResultTest | 12 | ActionResult data type: ok/fail factory methods, bool conversion, message propagation / ActionResult 데이터 타입 테스트 |
 | ControlMappingTest | 19 | Hotkey/MIDI/server roundtrip plus strict enum/range/type validation / 핫키·MIDI·서버 왕복 및 enum/range/type 검증 |
 | NotificationQueueTest | 10 | Lock-free SPSC notification queue: push/pop, FIFO, overflow, wrap-around, cross-thread / 락프리 SPSC 알림 큐 |
-| PresetManager + portable/constants | 53 | Slot save/load/copy, canonical Base64 validation, structural backup fallback even when repair-copy fails, cache/ASIO/import guards / slot 저장·로드·복사, canonical Base64 검증, repair-copy 실패 시에도 backup fallback, cache·ASIO·import 보호 |
+| PresetManager + portable/constants | 57 | Slot save/load/copy, canonical Base64 validation, structural backup fallback even when repair-copy fails, cache/ASIO/import/channel-mask guards / slot 저장·로드·복사, canonical Base64 검증, repair-copy 실패 시에도 backup fallback, cache·ASIO·import·채널 mask 보호 |
 | SettingsExporterTest | 27 | Settings/full-backup exact restore, strict optional-action schema, transactional rollback, structural slot rejection / 설정·전체 백업 정확 복원, optional action schema 엄격 검증, transaction rollback, 잘못된 slot 거부 |
 | SettingsAutosaverTest | 25 | Debounced save, transitional/partial-chain guard, preserved-chain merge, shutdown recovery sidecar, bounded retry, backup fallback, reset behavior, manual/automatic mute separation / debounce 저장, 전환·부분 chain 보호, 보존 chain 병합, 종료 복구 sidecar, 제한 재시도, backup fallback, reset 및 수동·자동 mute 분리 |
 | OutputRouterTest | 10 | Monitor output routing, mute state, inactive meter reset / 모니터 출력 라우팅, 뮤트 상태, 비활성 meter reset |
-| AudioEngineTest | 78 | Transactional driver/device/SR/BS/channel recovery, strict endpoint preflight, exact rollback/fail-closed behavior, same-device reconnect UI policy, exclusive-output monitor preflight, endpoint restart, separate manual/automatic mute ownership, directional state, ASIO/channel/XRun behavior / 트랜잭션 driver·장치·SR·BS·channel 복구, 엄격 endpoint 사전검사, 정확 rollback·fail-closed, 동일 장치 재연결 UI 정책, 독점 출력 monitor 사전 중지, endpoint restart, 수동·자동 mute ownership 분리, 방향 state, ASIO·channel·XRun 동작 |
+| LatencyMonitorTest | 2 | Device/PDC total-estimate behavior / 장치·PDC 총 추정 레이턴시 동작 |
+| AudioEngineTest | 90 | Transactional driver/device/SR/BS/channel recovery, per-candidate runtime validation, packed/sparse selected-pair routing, input-front dual mono, genuine-mono output switching, exact rollback/fail-closed behavior, endpoint restart, mute ownership, ASIO/channel/XRun behavior / 트랜잭션 driver·장치·SR·BS·channel 복구, 후보별 runtime 검증, packed/sparse 선택 pair 라우팅, 입력단 dual mono, 실제 1채널 출력 전환, 정확 rollback·fail-closed, endpoint restart, mute ownership, ASIO·channel·XRun 동작 |
 | AudioRecorderTest | 7 | Recording lifecycle, output-path fallback, playback readiness, and invalid-state guards / 녹음 수명주기, 출력 경로 fallback, 재생 준비 상태, invalid-state 방어 |
 | AudioRingBufferTest | 8 | Lock-free audio ring buffer reset/discard and fractional interpolation behavior / 오디오 링 버퍼 reset/discard 및 fractional interpolation 동작 |
 | MonitorDriftPolicyTest | 10 | Adaptive monitor target, PLL ratio, and emergency trim policy / adaptive 모니터 target, PLL ratio, emergency trim 정책 |
-| MonitorOutputTest | 15 | Selected-device-first open, bounded failed recovery, enumerated-open backoff, reconnect log cadence, RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / 선택 장치 우선 open, 실패 복구 제한, 열거 장치 open backoff, 재연결 로그 주기, RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
+| MonitorOutputTest | 17 | Selected-device-first open, bounded failed recovery, enumerated-open backoff, reconnect log cadence, RT drain, lifecycle generation, active/fallback, priming/re-prime and drift behavior / 선택 장치 우선 open, 실패 복구 제한, 열거 장치 open backoff, 재연결 로그 주기, RT drain, lifecycle generation, active·fallback, priming·re-prime 및 drift 동작 |
 | DeviceStateTest | 10 | Device state FSM and invalid-state guards / 장치 상태 FSM 및 invalid-state 방어 |
 | MidiHandlerTest | 11 | MIDI CC/Note mapping, learn mode / MIDI CC/노트 매핑, 학습 모드 |
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
@@ -247,7 +248,7 @@ Three test executables are built: `directpipe-tests` (core, no JUCE dependency),
 | PlatformAudioTest | 1 | Shared/exclusive Windows driver classification / Windows shared·exclusive 드라이버 분류 |
 | SharedMemWriterTest | 4 | Initialization failure cleanup and in-flight write drain before unmap / 초기화 실패 정리 및 unmap 전 진행 write drain |
 | EndpointChangeWatcherTest | 2 | Exact selected-endpoint filtering and signal coalescing / 선택 endpoint 정확 일치 및 signal coalescing |
-| UpdateChecker/UpdateScript tests | 16 | Finished-worker reap/retry, strict semver/PID wait, staging, rollback, ZIP and percent-path handling / 완료 worker reap·재시도, 엄격 semver·PID wait, staging·rollback·ZIP·percent path 처리 |
+| UpdateChecker/UpdateScript tests | 21 | Finished-worker reap/retry, strict semver/PID wait, checksum/identity validation, single-EXE staging, retained backup/rollback, ZIP and percent-path handling / 완료 worker reap·재시도, 엄격 semver·PID wait, checksum·신원 검증, 단일 EXE staging, backup 보존·rollback, ZIP·percent path 처리 |
 
 Host test source files additionally include HTTP/WebSocket shutdown, shared-memory writer, endpoint watcher, and updater-script coverage. `test_endpoint_change_watcher.cpp` is also built as the dedicated focused executable so the two endpoint cases can run independently of the full host binary.
 
@@ -255,9 +256,17 @@ Host test source files additionally include HTTP/WebSocket shutdown, shared-memo
 
 ### GTest JSON Output / GTest JSON 출력
 
-`tools/pre-release-test.sh` generates GTest JSON output files (`core-test-results.json`, `host-test-results.json`) that can be loaded into the pre-release dashboard for visual test result inspection.
+`tools/pre-release-test.sh` generates GTest JSON output files (`core-test-results.json`, `host-test-results.json`, and `endpoint-test-results.json`) that can be loaded into the pre-release dashboard or retained as validation evidence.
 
-`tools/pre-release-test.sh`는 GTest JSON 출력 파일을 생성하며, 프리릴리즈 대시보드에서 로드하여 시각적으로 테스트 결과를 확인할 수 있습니다.
+`tools/pre-release-test.sh`는 core, host, endpoint GTest JSON 출력 파일을 생성하며, 프리릴리즈 대시보드에서 로드하거나 검증 증거로 보존할 수 있습니다.
+
+Exact-tag CI uploads 30-day JUnit/CTest logs for Windows, macOS, and Linux plus
+the Stream Deck TAP log as separate evidence artifacts; these logs are not
+included in the public release payload or `checksums.sha256`.
+
+정확 태그 CI는 Windows·macOS·Linux JUnit/CTest 로그와 Stream Deck TAP
+로그를 별도 검증 artifact로 30일 보존합니다. 이 로그는 공개 릴리즈
+payload와 `checksums.sha256`에는 포함하지 않습니다.
 
 ```bash
 # Run all tests / 전체 테스트 실행

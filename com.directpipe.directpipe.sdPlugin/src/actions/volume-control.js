@@ -37,10 +37,10 @@ const LOCAL_OVERRIDE_MS = 300;
 class VolumeControlAction extends SingletonAction {
     manifestId = "com.directpipe.directpipe.volume-control";
 
-    /** @type {NodeJS.Timeout|null} */
-    _dialSendTimer = null;
-    /** @type {{target: string, value: number}|null} */
-    _pendingDialValue = null;
+    /** @type {Map<string, NodeJS.Timeout>} action.id + target -> throttle timer */
+    _dialSendTimers = new Map();
+    /** @type {Map<string, {target: string, value: number}>} */
+    _pendingDialValues = new Map();
     /** @type {Map<string, number>} target -> timestamp of last local override */
     _localOverrideUntil = new Map();
     /** @type {Map<string, object>} action.id -> cached settings (avoid async getSettings) */
@@ -101,16 +101,20 @@ class VolumeControlAction extends SingletonAction {
         this._applyLocal(ev.action, settings, target, newValue, true);
 
         // Throttled WebSocket send
-        this._pendingDialValue = { target, value: newValue };
-        if (!this._dialSendTimer) {
+        const sendKey = this._sendKey(ev.action.id, target);
+        if (!this._dialSendTimers.has(sendKey)) {
             dpClient.sendAction("set_volume", { target, value: newValue });
-            this._dialSendTimer = setTimeout(() => {
-                this._dialSendTimer = null;
-                if (this._pendingDialValue) {
-                    dpClient.sendAction("set_volume", this._pendingDialValue);
-                    this._pendingDialValue = null;
+            const timer = setTimeout(() => {
+                this._dialSendTimers.delete(sendKey);
+                const pending = this._pendingDialValues.get(sendKey);
+                if (pending) {
+                    dpClient.sendAction("set_volume", pending);
+                    this._pendingDialValues.delete(sendKey);
                 }
             }, DIAL_SEND_THROTTLE_MS);
+            this._dialSendTimers.set(sendKey, timer);
+        } else {
+            this._pendingDialValues.set(sendKey, { target, value: newValue });
         }
     }
 
@@ -148,6 +152,7 @@ class VolumeControlAction extends SingletonAction {
     }
 
     onDidReceiveSettings(ev) {
+        this._clearActionTimers(ev.action.id);
         this._settingsCache.set(ev.action.id, ev.payload.settings ?? {});
         const { getCurrentState } = require("../plugin");
         const state = getCurrentState();
@@ -155,6 +160,7 @@ class VolumeControlAction extends SingletonAction {
     }
 
     onWillDisappear(ev) {
+        this._clearActionTimers(ev.action.id);
         this._settingsCache.delete(ev.action.id);
         this._renderCache.delete(ev.action);
     }
@@ -186,7 +192,31 @@ class VolumeControlAction extends SingletonAction {
         }
     }
 
+    _sendKey(actionId, target) {
+        return `${actionId}:${target}`;
+    }
+
+    _clearActionTimers(actionId) {
+        const prefix = `${actionId}:`;
+        for (const [key, timer] of this._dialSendTimers) {
+            if (!key.startsWith(prefix)) continue;
+            clearTimeout(timer);
+            this._dialSendTimers.delete(key);
+            this._pendingDialValues.delete(key);
+        }
+    }
+
+    _clearAllTimers() {
+        for (const [key, timer] of this._dialSendTimers) {
+            clearTimeout(timer);
+            this._dialSendTimers.delete(key);
+            this._pendingDialValues.delete(key);
+        }
+    }
+
     setDisconnectedState() {
+        this._clearAllTimers();
+        this._localOverrideUntil.clear();
         this._renderCache.clear();
         for (const action of this.actions) {
             this._renderCache.apply(action, { title: "Disconnected", state: 0 });
@@ -194,6 +224,8 @@ class VolumeControlAction extends SingletonAction {
     }
 
     setConnectingState() {
+        this._clearAllTimers();
+        this._localOverrideUntil.clear();
         this._renderCache.clear();
         for (const action of this.actions) {
             this._renderCache.apply(action, { title: "Connecting..." });

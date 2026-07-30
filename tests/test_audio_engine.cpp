@@ -38,6 +38,8 @@ bool shouldSuspendMonitorBeforeExclusiveOpen(
     const juce::String& targetOutputDevice,
     const juce::String& monitorDevice,
     bool suspendForAnyExclusiveTypeSwitch);
+bool prepareOutputDeviceChangeChannels(
+    juce::AudioDeviceManager::AudioDeviceSetup& setup);
 bool seedCompatibleWindowsDriverSnapshot(
     const juce::String& currentType,
     const juce::String& targetType,
@@ -125,12 +127,17 @@ private:
 
 struct ManagedFakeDeviceStats {
     std::vector<std::pair<int, int>> openAttempts;
+    juce::StringArray openedDeviceNames;
     juce::StringArray openRequestLog;
     juce::String typeName { "Recovery Test" };
     juce::String deviceName { "Recovery Device" };
     juce::StringArray deviceNames;
     juce::String failDeviceName;
     juce::String noActiveChannelsDeviceName;
+    juce::String partialInputChannelsDeviceName;
+    juce::String partialOutputChannelsDeviceName;
+    juce::String zeroSampleRateDeviceName;
+    juce::String zeroBufferSizeDeviceName;
     bool failMultiChannelOpen = false;
     bool failEveryOpen = false;
     bool reportNoActiveChannels = false;
@@ -142,6 +149,8 @@ struct ManagedFakeDeviceStats {
     int reportedBufferSize = 0;
     int reportedInputLatency = 0;
     int reportedOutputLatency = 0;
+    int availableInputChannels = 2;
+    int availableOutputChannels = 2;
     bool separateInputsAndOutputs = false;
 };
 
@@ -159,8 +168,21 @@ public:
     {
     }
 
-    juce::StringArray getOutputChannelNames() override { return { "Out 1", "Out 2" }; }
-    juce::StringArray getInputChannelNames() override { return { "In 1", "In 2" }; }
+    juce::StringArray getOutputChannelNames() override
+    {
+        juce::StringArray names;
+        for (int i = 0; i < stats_->availableOutputChannels; ++i)
+            names.add("Out " + juce::String(i + 1));
+        return names;
+    }
+
+    juce::StringArray getInputChannelNames() override
+    {
+        juce::StringArray names;
+        for (int i = 0; i < stats_->availableInputChannels; ++i)
+            names.add("In " + juce::String(i + 1));
+        return names;
+    }
     juce::Array<double> getAvailableSampleRates() override { return { 44100.0, 48000.0 }; }
     juce::Array<int> getAvailableBufferSizes() override { return { 128, 256 }; }
     int getDefaultBufferSize() override { return 128; }
@@ -173,6 +195,8 @@ public:
         const auto inputCount = inputChannels.countNumberOfSetBits();
         const auto outputCount = outputChannels.countNumberOfSetBits();
         stats_->openAttempts.emplace_back(inputCount, outputCount);
+        stats_->openedDeviceNames.add(
+            outputDeviceName_.isNotEmpty() ? outputDeviceName_ : inputDeviceName_);
         stats_->openRequestLog.add(
             "inFirst=" + juce::String(inputChannels.findNextSetBit(0))
             + " outFirst=" + juce::String(outputChannels.findNextSetBit(0))
@@ -195,6 +219,10 @@ public:
         if (stats_->failOutputFirstChannel >= 0
             && outputChannels.findNextSetBit(0) == stats_->failOutputFirstChannel)
             return "test device refuses requested output channel";
+        if (inputChannels.getHighestBit() >= stats_->availableInputChannels)
+            return "test device input channel unavailable";
+        if (outputChannels.getHighestBit() >= stats_->availableOutputChannels)
+            return "test device output channel unavailable";
         if (stats_->failMultiChannelOpen && (inputCount > 1 || outputCount > 1))
             return "test device requires mono input/output";
 
@@ -204,10 +232,26 @@ public:
             || outputDeviceName_ == stats_->noActiveChannelsDeviceName;
         activeInput_ = reportNoActiveChannels ? juce::BigInteger() : inputChannels;
         activeOutput_ = reportNoActiveChannels ? juce::BigInteger() : outputChannels;
-        sampleRate_ = stats_->reportedSampleRate > 0.0
+        if (inputDeviceName_ == stats_->partialInputChannelsDeviceName
+            || outputDeviceName_ == stats_->partialInputChannelsDeviceName)
+            activeInput_.clearBit(1);
+        if (inputDeviceName_ == stats_->partialOutputChannelsDeviceName
+            || outputDeviceName_ == stats_->partialOutputChannelsDeviceName)
+            activeOutput_.clearBit(1);
+        const bool reportZeroSampleRate =
+            inputDeviceName_ == stats_->zeroSampleRateDeviceName
+            || outputDeviceName_ == stats_->zeroSampleRateDeviceName;
+        const bool reportZeroBufferSize =
+            inputDeviceName_ == stats_->zeroBufferSizeDeviceName
+            || outputDeviceName_ == stats_->zeroBufferSizeDeviceName;
+        sampleRate_ = reportZeroSampleRate
+            ? 0.0
+            : stats_->reportedSampleRate > 0.0
             ? stats_->reportedSampleRate
             : sampleRate;
-        bufferSize_ = stats_->reportedBufferSize > 0
+        bufferSize_ = reportZeroBufferSize
+            ? 0
+            : stats_->reportedBufferSize > 0
             ? stats_->reportedBufferSize
             : bufferSizeSamples;
         open_ = true;
@@ -487,6 +531,148 @@ TEST_F(AudioEngineTest, DeviceStartPublishesReportedLatencyToMonitor)
     EXPECT_NEAR(latency.getTotalLatencyVirtualMicMs(), 24.0, 0.0001);
 }
 
+TEST_F(AudioEngineTest, MonoCallbackAveragesSelectedPairAndDuplicatesToBothOutputs)
+{
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName, 48000.0, 128), true).isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+    engine_->setChannelMode(1);
+    engine_->getSafetyLimiter().setEnabled(false);
+    engine_->setSafetyHeadroomEnabled(false);
+
+    std::vector<float> left { 0.1f, 0.2f, 0.3f, 0.4f };
+    std::vector<float> right { 0.5f, 0.6f, 0.7f, 0.8f };
+    const float* inputs[] = { left.data(), right.data() };
+    std::vector<float> outputLeft(left.size(), 0.0f);
+    std::vector<float> outputRight(left.size(), 0.0f);
+    float* outputs[] = { outputLeft.data(), outputRight.data() };
+    juce::AudioIODeviceCallbackContext context;
+
+    std::thread audioThread([&] {
+        callback.audioDeviceIOCallbackWithContext(
+            inputs, 2, outputs, 2, static_cast<int>(left.size()), context);
+    });
+    audioThread.join();
+
+    for (size_t i = 0; i < left.size(); ++i) {
+        const float expected = (left[i] + right[i]) * 0.5f;
+        EXPECT_NEAR(outputLeft[i], expected, 0.000001f);
+        EXPECT_NEAR(outputRight[i], expected, 0.000001f);
+    }
+}
+
+TEST_F(AudioEngineTest, SparseSelectedPairMapsToInternalStereoAndBackToSelectedOutputs)
+{
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName, 48000.0, 128), true).isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+    engine_->setChannelMode(2);
+    engine_->getSafetyLimiter().setEnabled(false);
+    engine_->setSafetyHeadroomEnabled(false);
+
+    std::vector<float> left { 0.1f, 0.2f, 0.3f, 0.4f };
+    std::vector<float> right { 0.5f, 0.6f, 0.7f, 0.8f };
+    const float* inputs[] = { nullptr, nullptr, left.data(), right.data() };
+    std::vector<float> outputLeft(left.size(), 0.0f);
+    std::vector<float> outputRight(left.size(), 0.0f);
+    float* outputs[] = { nullptr, nullptr, outputLeft.data(), outputRight.data() };
+    juce::AudioIODeviceCallbackContext context;
+
+    std::thread audioThread([&] {
+        callback.audioDeviceIOCallbackWithContext(
+            inputs, 4, outputs, 4, static_cast<int>(left.size()), context);
+    });
+    audioThread.join();
+
+    EXPECT_EQ(outputLeft, left);
+    EXPECT_EQ(outputRight, right);
+}
+
+TEST_F(AudioEngineTest, SparseSelectedPairUsesInputFrontDualMono)
+{
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName, 48000.0, 128), true).isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+    engine_->setChannelMode(1);
+    engine_->getSafetyLimiter().setEnabled(false);
+    engine_->setSafetyHeadroomEnabled(false);
+
+    std::vector<float> left { 0.1f, 0.2f, 0.3f, 0.4f };
+    std::vector<float> right { 0.5f, 0.6f, 0.7f, 0.8f };
+    const float* inputs[] = { nullptr, nullptr, left.data(), right.data() };
+    std::vector<float> outputLeft(left.size(), 0.0f);
+    std::vector<float> outputRight(left.size(), 0.0f);
+    float* outputs[] = { nullptr, nullptr, outputLeft.data(), outputRight.data() };
+    juce::AudioIODeviceCallbackContext context;
+
+    std::thread audioThread([&] {
+        callback.audioDeviceIOCallbackWithContext(
+            inputs, 4, outputs, 4, static_cast<int>(left.size()), context);
+    });
+    audioThread.join();
+
+    for (size_t i = 0; i < left.size(); ++i) {
+        const float expected = (left[i] + right[i]) * 0.5f;
+        EXPECT_NEAR(outputLeft[i], expected, 0.000001f);
+        EXPECT_NEAR(outputRight[i], expected, 0.000001f);
+    }
+}
+
+TEST_F(AudioEngineTest, MonoCallbackIgnoresInputsBeyondSelectedPair)
+{
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName, 48000.0, 128), true).isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+    engine_->setChannelMode(1);
+    engine_->getSafetyLimiter().setEnabled(false);
+    engine_->setSafetyHeadroomEnabled(false);
+
+    std::vector<float> left { 0.1f, 0.2f, 0.3f, 0.4f };
+    std::vector<float> right { 0.5f, 0.6f, 0.7f, 0.8f };
+    std::vector<float> unrelated { 1.0f, 1.0f, 1.0f, 1.0f };
+    const float* inputs[] = { left.data(), right.data(), unrelated.data() };
+    std::vector<float> outputLeft(left.size(), 0.0f);
+    std::vector<float> outputRight(left.size(), 0.0f);
+    float* outputs[] = { outputLeft.data(), outputRight.data() };
+    juce::AudioIODeviceCallbackContext context;
+
+    std::thread audioThread([&] {
+        callback.audioDeviceIOCallbackWithContext(
+            inputs, 3, outputs, 2, static_cast<int>(left.size()), context);
+    });
+    audioThread.join();
+
+    for (size_t i = 0; i < left.size(); ++i) {
+        const float expected = (left[i] + right[i]) * 0.5f;
+        EXPECT_NEAR(outputLeft[i], expected, 0.000001f);
+        EXPECT_NEAR(outputRight[i], expected, 0.000001f);
+    }
+}
+
 TEST_F(AudioEngineTest, ExclusiveMainOutputRejectsTheSameMonitorDevice) {
     EXPECT_TRUE(audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
         "Windows Audio (Exclusive Mode)", "Line(3- AG06/AG03)", "Line(3- AG06/AG03)"));
@@ -496,6 +682,62 @@ TEST_F(AudioEngineTest, ExclusiveMainOutputRejectsTheSameMonitorDevice) {
         "Windows Audio", "Line(3- AG06/AG03)", "Line(3- AG06/AG03)"));
     EXPECT_FALSE(audio_device_recovery_detail::monitorDeviceConflictsWithExclusiveMainOutput(
         "Windows Audio (Exclusive Mode)", "CABLE Input", "Speakers"));
+}
+
+TEST_F(AudioEngineTest, OutputChangePreservesDriverDefaultInputPolicy)
+{
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Native Mono Input";
+    setup.outputDeviceName = "Replacement Output";
+    setup.useDefaultInputChannels = true;
+    setup.inputChannels.clear();
+    setup.useDefaultOutputChannels = true;
+    setup.outputChannels.clear();
+
+    const bool synthesizedInputPair =
+        audio_device_recovery_detail::prepareOutputDeviceChangeChannels(setup);
+
+    EXPECT_FALSE(synthesizedInputPair);
+    EXPECT_TRUE(setup.useDefaultInputChannels);
+    EXPECT_TRUE(setup.inputChannels.isZero());
+    EXPECT_FALSE(setup.useDefaultOutputChannels);
+    EXPECT_EQ(setup.outputChannels.countNumberOfSetBits(), 2);
+}
+
+TEST_F(AudioEngineTest, GenuineMonoInputSurvivesOutputDeviceChange)
+{
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = {
+        "Native Mono Input",
+        "Initial Output",
+        "Replacement Output",
+    };
+    stats->availableInputChannels = 1;
+    stats->availableOutputChannels = 2;
+
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(audio_device_recovery_detail::initialiseWithDefaultDeviceFallbacks(
+        manager, "test mono input").isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+
+    juce::AudioDeviceManager::AudioDeviceSetup before;
+    manager.getAudioDeviceSetup(before);
+    ASSERT_TRUE(before.useDefaultInputChannels);
+    ASSERT_EQ(before.inputChannels.countNumberOfSetBits(), 1);
+
+    const auto result = engine_->setOutputDevice("Replacement Output");
+
+    ASSERT_TRUE(result) << result.message.toStdString();
+    juce::AudioDeviceManager::AudioDeviceSetup after;
+    manager.getAudioDeviceSetup(after);
+    EXPECT_EQ(after.outputDeviceName, "Replacement Output");
+    EXPECT_TRUE(after.useDefaultInputChannels);
+    EXPECT_EQ(after.inputChannels.countNumberOfSetBits(), 1);
+    EXPECT_TRUE(after.inputChannels[0]);
+    ASSERT_FALSE(stats->openAttempts.empty());
+    EXPECT_EQ(stats->openAttempts.back(), std::make_pair(1, 2));
 }
 
 TEST_F(AudioEngineTest, SelfReopenEndpointEventsHaveABoundedSuppressionWindow) {
@@ -559,9 +801,36 @@ TEST_F(AudioEngineTest, MissingRecoveryDeviceUsesDisconnectedPlaceholder) {
     EXPECT_EQ(selection.desiredDeviceId, 0);
     EXPECT_EQ(selection.placeholderId, 3);
     EXPECT_EQ(selection.placeholderText, "Missing Device (Disconnected)");
-    EXPECT_TRUE(audio_settings_detail::isRecoveryPlaceholderText(
-        selection.placeholderText));
-    EXPECT_FALSE(audio_settings_detail::isRecoveryPlaceholderText("Speakers"));
+    EXPECT_TRUE(audio_settings_detail::isRecoveryPlaceholderSelection(
+        selection.placeholderId, selection.placeholderId));
+    EXPECT_FALSE(audio_settings_detail::isRecoveryPlaceholderSelection(
+        1, selection.placeholderId));
+}
+
+TEST_F(AudioEngineTest, RecoveryPlaceholderDetectionDoesNotRejectRealSuffixDeviceNames) {
+    const juce::StringArray devices {
+        "Studio Device (Reconnect)",
+        "Backup Device (Disconnected)"
+    };
+    const auto selection = audio_settings_detail::makeRecoverySelection(
+        devices[0], devices, 1);
+
+    ASSERT_TRUE(selection.desiredDeviceAvailable);
+    EXPECT_EQ(selection.desiredDeviceId, 1);
+    EXPECT_EQ(selection.placeholderId, 3);
+    EXPECT_FALSE(audio_settings_detail::isRecoveryPlaceholderSelection(
+        selection.desiredDeviceId, selection.placeholderId));
+    EXPECT_TRUE(audio_settings_detail::isRecoveryPlaceholderSelection(
+        selection.placeholderId, selection.placeholderId));
+}
+
+TEST_F(AudioEngineTest, SelectedChannelPairUsesDualMonoAndSingleChannelFallback) {
+    EXPECT_EQ(audio_settings_detail::channelCountForSelectedPair(0, 2), 2);
+    EXPECT_EQ(audio_settings_detail::channelCountForSelectedPair(2, 4), 2);
+    EXPECT_EQ(audio_settings_detail::channelCountForSelectedPair(0, 1), 1);
+    EXPECT_EQ(audio_settings_detail::channelCountForSelectedPair(2, 3), 0);
+    EXPECT_EQ(audio_settings_detail::channelCountForSelectedPair(4, 4), 0);
+    EXPECT_EQ(audio_settings_detail::channelCountForSelectedPair(0, 0), 2);
 }
 
 TEST_F(AudioEngineTest, AsioDuplexLossShowsRecoveryForBothDeviceCombos) {
@@ -800,6 +1069,97 @@ TEST_F(AudioEngineTest, UnusableDriverSwitchRestoresThePreviousDriverSnapshot) {
     EXPECT_FALSE(engine_->isDeviceLost());
     EXPECT_FALSE(engine_->isInputDeviceLost());
     EXPECT_FALSE(engine_->isOutputAutoMuted());
+}
+
+TEST_F(AudioEngineTest, AutomaticAsioSwitchSkipsUnusableCandidate) {
+    auto windowsStats = std::make_shared<ManagedFakeDeviceStats>();
+    windowsStats->typeName = "Automatic Candidate Windows";
+    windowsStats->deviceName = "Windows Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, windowsStats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(windowsStats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+
+    auto asioStats = std::make_shared<ManagedFakeDeviceStats>();
+    asioStats->typeName = "Automatic Candidate ASIO";
+    asioStats->deviceNames = { "Unusable ASIO", "Working ASIO" };
+    asioStats->noActiveChannelsDeviceName = "Unusable ASIO";
+    addManagedFakeDeviceType(manager, asioStats, false);
+
+    const auto result = engine_->setAudioDeviceType(asioStats->typeName);
+
+    ASSERT_TRUE(result) << result.message.toStdString();
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), "Working ASIO");
+    EXPECT_TRUE(asioStats->openedDeviceNames.contains("Unusable ASIO"));
+    EXPECT_TRUE(asioStats->openedDeviceNames.contains("Working ASIO"));
+    juce::AudioDeviceManager::AudioDeviceSetup applied;
+    manager.getAudioDeviceSetup(applied);
+    EXPECT_TRUE(engine_->hasUsableActiveChannelsForTest(
+        applied, manager.getCurrentAudioDevice()));
+}
+
+TEST_F(AudioEngineTest, AutomaticAsioSwitchSkipsPartialAndInvalidRuntimeCandidates) {
+    auto windowsStats = std::make_shared<ManagedFakeDeviceStats>();
+    windowsStats->typeName = "Automatic Runtime Candidate Windows";
+    windowsStats->deviceName = "Windows Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, windowsStats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(windowsStats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+
+    auto asioStats = std::make_shared<ManagedFakeDeviceStats>();
+    asioStats->typeName = "Automatic Runtime Candidate ASIO";
+    asioStats->deviceNames = {
+        "Partial Input ASIO",
+        "Partial Output ASIO",
+        "Zero Sample Rate ASIO",
+        "Zero Buffer Size ASIO",
+        "Working ASIO",
+    };
+    asioStats->partialInputChannelsDeviceName = "Partial Input ASIO";
+    asioStats->partialOutputChannelsDeviceName = "Partial Output ASIO";
+    asioStats->zeroSampleRateDeviceName = "Zero Sample Rate ASIO";
+    asioStats->zeroBufferSizeDeviceName = "Zero Buffer Size ASIO";
+    addManagedFakeDeviceType(manager, asioStats, false);
+
+    const auto result = engine_->setAudioDeviceType(asioStats->typeName);
+
+    ASSERT_TRUE(result) << result.message.toStdString();
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), "Working ASIO");
+    for (const auto& candidate : asioStats->deviceNames)
+        EXPECT_TRUE(asioStats->openedDeviceNames.contains(candidate))
+            << candidate.toStdString();
+}
+
+TEST_F(AudioEngineTest, UnusablePreferredAsioDoesNotOpenReplacementCandidate) {
+    auto windowsStats = std::make_shared<ManagedFakeDeviceStats>();
+    windowsStats->typeName = "Strict Candidate Windows";
+    windowsStats->deviceName = "Windows Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, windowsStats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(windowsStats->deviceName), true).isEmpty());
+    engine_->syncDesiredFromDevice();
+
+    auto asioStats = std::make_shared<ManagedFakeDeviceStats>();
+    asioStats->typeName = "Strict Candidate ASIO";
+    asioStats->deviceNames = { "Preferred ASIO", "Replacement ASIO" };
+    asioStats->noActiveChannelsDeviceName = "Preferred ASIO";
+    addManagedFakeDeviceType(manager, asioStats, false);
+
+    const auto result = engine_->setAudioDeviceType(
+        asioStats->typeName, "Preferred ASIO");
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(asioStats->openedDeviceNames.contains("Preferred ASIO"));
+    EXPECT_FALSE(asioStats->openedDeviceNames.contains("Replacement ASIO"));
+    EXPECT_EQ(engine_->getCurrentDeviceType(), windowsStats->typeName);
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_EQ(manager.getCurrentAudioDevice()->getName(), windowsStats->deviceName);
 }
 
 TEST_F(AudioEngineTest, UnavailableDriverTypeLeavesCurrentStreamUntouched) {
@@ -1701,7 +2061,7 @@ TEST_F(AudioEngineTest, RestoreReadyKeepsOutputMutedWhenOutputNoneSelected) {
     EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
 
-TEST_F(AudioEngineTest, ExplicitChannelMaskMustIntersectActiveChannels) {
+TEST_F(AudioEngineTest, ExplicitChannelMaskMustFullyMatchTheRequiredPair) {
     juce::BigInteger activeInput;
     activeInput.setBit(0);
     juce::BigInteger activeOutput;
@@ -1730,7 +2090,31 @@ TEST_F(AudioEngineTest, ExplicitChannelMaskMustIntersectActiveChannels) {
     setup.outputChannels.clear();
     setup.outputChannels.setBit(0);
 
-    EXPECT_TRUE(engine_->hasUsableActiveChannelsForTest(setup, &device));
+    EXPECT_FALSE(engine_->hasUsableActiveChannelsForTest(setup, &device));
+
+    setup.inputChannels.setBit(1);
+    setup.outputChannels.setBit(1);
+    juce::BigInteger activePair;
+    activePair.setBit(0);
+    activePair.setBit(1);
+    FakeAudioIODevice pairDevice(
+        "Fake Duplex", inputs, outputs, activePair, activePair);
+    EXPECT_TRUE(engine_->hasUsableActiveChannelsForTest(setup, &pairDevice));
+
+    juce::StringArray monoInputs { "Mic" };
+    juce::StringArray monoOutputs { "Speaker" };
+    juce::BigInteger monoActive;
+    monoActive.setBit(0);
+    juce::AudioDeviceManager::AudioDeviceSetup monoSetup;
+    monoSetup.inputDeviceName = "Fake Mono";
+    monoSetup.outputDeviceName = "Fake Mono";
+    monoSetup.useDefaultInputChannels = false;
+    monoSetup.useDefaultOutputChannels = false;
+    monoSetup.inputChannels = monoActive;
+    monoSetup.outputChannels = monoActive;
+    FakeAudioIODevice monoDevice(
+        "Fake Mono", monoInputs, monoOutputs, monoActive, monoActive);
+    EXPECT_TRUE(engine_->hasUsableActiveChannelsForTest(monoSetup, &monoDevice));
 }
 
 TEST_F(AudioEngineTest, XRunWindowRolling) {

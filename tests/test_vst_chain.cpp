@@ -43,6 +43,7 @@ protected:
 // Test 1: VSTChain starts with zero plugins
 TEST_F(VSTChainTest, InitialEmpty) {
     EXPECT_EQ(chain_->getPluginCount(), 0);
+    EXPECT_FLOAT_EQ(chain_->getPluginParameterDefault(0, 0), 0.0f);
 }
 
 // Test 2: addBuiltinProcessor adds a BuiltinFilter and count becomes 1

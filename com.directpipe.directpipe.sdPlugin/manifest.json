@@ -8,7 +8,7 @@
   "Name": "DirectPipe",
   "Icon": "images/directpipe",
   "URL": "https://github.com/LiveTrack-X/DirectPipe",
-  "Version": "4.2.6.0",
+  "Version": "4.2.7.0",
   "OS": [
     {
       "Platform": "windows",
@@ -82,9 +82,7 @@
         "layout": "$B1",
         "TriggerDescription": {
           "Rotate": "Adjust volume",
-          "Push": "Toggle mute",
-          "Touch": "Set volume",
-          "LongTouch": "Reset to 100%"
+          "Push": "Toggle mute"
         }
       }
     },
@@ -211,7 +209,10 @@
       "Name": "Performance Monitor",
       "Tooltip": "Display latency, CPU usage, XRun count, and audio format.",
       "Icon": "images/directpipe",
-      "Controllers": ["Keypad", "Encoder"],
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
       "States": [
         {
           "Image": "images/directpipe",
@@ -225,8 +226,7 @@
       "Encoder": {
         "layout": "$B1",
         "TriggerDescription": {
-          "Push": "Reset XRun count",
-          "Touch": "Show details"
+          "Push": "Reset XRun count"
         }
       }
     },
@@ -235,7 +235,9 @@
       "Name": "Plugin Parameter",
       "Tooltip": "Control a VST plugin parameter with the SD+ dial.",
       "Icon": "images/bypass",
-      "Controllers": ["Encoder"],
+      "Controllers": [
+        "Encoder"
+      ],
       "States": [
         {
           "Image": "images/bypass",
@@ -257,9 +259,11 @@
     {
       "UUID": "com.directpipe.directpipe.preset-bar",
       "Name": "Preset Bar (SD+)",
-      "Tooltip": "Touch to switch presets A-E. Shows current preset name on SD+ touchscreen.",
+      "Tooltip": "Rotate to cycle presets A-E. Shows the current preset name on the SD+ display.",
       "Icon": "images/preset",
-      "Controllers": ["Encoder"],
+      "Controllers": [
+        "Encoder"
+      ],
       "States": [
         {
           "Image": "images/preset-active",
@@ -272,9 +276,7 @@
       "Encoder": {
         "layout": "$B1",
         "TriggerDescription": {
-          "Rotate": "Cycle presets",
-          "Push": "Activate preset",
-          "Touch": "Select preset"
+          "Rotate": "Cycle presets"
         }
       }
     }

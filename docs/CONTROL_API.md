@@ -403,7 +403,7 @@ Base URL: `http://127.0.0.1:8766`
 |----------|-------------|
 | `GET /api/status` | Full state (same as WebSocket state object) / 전체 상태 |
 | `GET /api/bypass/:index/toggle` | Toggle plugin bypass (0-based index) / 플러그인 Bypass 토글 |
-| `GET /api/bypass/master` | Toggle master bypass / 마스터 Bypass 토글 |
+| `GET /api/bypass/master/toggle` | Toggle master bypass / 마스터 Bypass 토글 |
 | `GET /api/mute/toggle` | Toggle mute (all outputs) / 뮤트 토글 (전체) |
 | `GET /api/mute/panic` | Panic mute / 패닉 뮤트 |
 | `GET /api/volume/:target/:value` | Set volume (target: `input` [0.0-2.0], `monitor` [0.0-1.0], `output` [0.0-1.0]; validated) / 볼륨 설정 (범위 검증) |
@@ -416,7 +416,7 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/ipc/toggle` | Toggle IPC output (DirectPipe Receiver) on/off / IPC 출력 (DirectPipe Receiver) 토글 |
 | `GET /api/plugin/:pluginIndex/param/:paramIndex/:value` | Set plugin parameter (0.0-1.0) / 플러그인 파라미터 설정 |
 | `GET /api/plugins` | List loaded plugins: `[{index, name, bypassed, loaded, parameterCount, latencySamples}]` / 보고 레이턴시를 포함한 로드 플러그인 목록 |
-| `GET /api/plugin/:idx/params` | List plugin parameters: `[{index, name, value}]` / 플러그인 파라미터 목록 |
+| `GET /api/plugin/:idx/params` | List plugin parameters: `[{index, name, value, defaultValue}]`; values are normalized 0.0-1.0 / 플러그인 파라미터 목록 및 VST 보고 기본값 |
 | `GET /api/xrun/reset` | Reset XRun counter (bypasses ActionDispatcher, direct engine call) / XRun 카운터 리셋 (ActionDispatcher 우회, 엔진 직접 호출) |
 | `GET /api/perf` | Performance stats: `{latencyMs, cpuPercent, sampleRate, bufferSize, xrunCount}`. `latencyMs` uses the same PDC-inclusive total estimate as state `latency_ms`. / 상태 `latency_ms`와 동일한 PDC 포함 총 추정값 |
 | `GET /api/limiter/toggle` | Toggle global Safety Guard on/off (legacy endpoint name) / 전역 Safety Guard 토글 (레거시 엔드포인트 이름) |
@@ -425,9 +425,20 @@ Base URL: `http://127.0.0.1:8766`
 | `GET /api/midi/cc/:channel/:number/:value` | Inject MIDI CC for testing (ch 1-16, cc 0-127, val 0-127) / MIDI CC 테스트 주입 |
 | `GET /api/midi/note/:channel/:number/:velocity` | Inject MIDI Note for testing (ch 1-16, note 0-127, vel 0-127) / MIDI Note 테스트 주입 |
 
-**Action success response:** `{ "ok": true, "action": "..." }`
+**Queued mutation response (`202 Accepted`):**
+`{ "ok": true, "accepted": true, "action": "..." }`
 
-**Data query responses:** `/api/status` returns `{ "type": "state", "data": { ... } }`, `/api/perf` returns `{ "latencyMs": ..., ... }`, `/api/plugins` and `/api/plugin/:idx/params` return JSON arrays. `/api/status` `latency_ms` and `/api/perf` `latencyMs` share the same total-estimate formula.
+This response means that DirectPipe validated and queued the action; it does
+not claim that the message-thread handler completed successfully. The
+backward-compatible `ok: true` means request acceptance, while
+`accepted: true` makes the queued semantics explicit. Confirm the result
+through `/api/status`, the relevant read-only query, or the next WebSocket
+state broadcast. `/api/xrun/reset` remains a synchronous direct engine
+operation and returns `200 OK` with `{ "ok": true, ... }`.
+즉, `/api/xrun/reset`을 제외한 비동기 변경 요청의 `202`는 실행 성공이
+아니라 유효성 검사와 큐 등록 성공만 의미합니다.
+
+**Data query responses (`200 OK`):** `/api/status` returns `{ "type": "state", "data": { ... } }`, `/api/perf` returns `{ "latencyMs": ..., ... }`, `/api/plugins` and `/api/plugin/:idx/params` return JSON arrays. `/api/status` `latency_ms` and `/api/perf` `latencyMs` share the same total-estimate formula.
 
 **Error response:** `{ "error": "..." }`
 
@@ -450,12 +461,14 @@ Read timeout: 3 seconds. Only `GET` method is accepted for API calls (other meth
 | 볼륨 범위 밖 (0.0~1.0) / Volume out of range | 400 | `{"error": "value out of range"}` |
 | 리미터 ceiling 범위 밖 (-6.0~0.0) / Ceiling out of range | 400 | `{"error": "ceiling must be -6.0 to 0.0 dBFS"}` |
 | 존재하지 않는 플러그인 / Plugin not found | 404 | `{"error": "Plugin not found"}` |
-| 패닉 뮤트 중 차단된 액션 / Action blocked during panic mute | 200 | `{"ok": true}` (ActionHandler에서 무시됨 / silently ignored by ActionHandler) |
+| 패닉 뮤트 중 차단된 액션 / Action blocked during panic mute | 202 | `{"ok": true, "accepted": true}` (queue acceptance only; ActionHandler may ignore it) |
 | CORS preflight | 204 | Empty body + CORS headers |
 
-> **Note**: 패닉 뮤트 중 대부분의 액션은 HTTP 200을 반환하지만 ActionHandler 내부에서 `engine_.isMuted()` 체크에 의해 무시됩니다. 차단 여부를 확인하려면 WebSocket 상태 브로드캐스트의 `muted` 필드를 모니터링하세요.
+> **Note**: 패닉 뮤트 중에도 비동기 변경 요청은 HTTP `202 Accepted`를 반환할 수 있지만, 이는 큐 등록만 뜻하며 ActionHandler 내부의 `engine_.isMuted()` 검사로 무시될 수 있습니다. 실제 결과는 `/api/status` 또는 WebSocket 상태 브로드캐스트에서 확인하세요.
 >
-> Most actions return HTTP 200 during panic mute but are silently ignored by ActionHandler's `engine_.isMuted()` check. Monitor the `muted` field in WebSocket state broadcasts to detect if actions are being blocked.
+> During panic mute, an asynchronous mutation can return HTTP `202 Accepted`
+> and still be ignored by ActionHandler's `engine_.isMuted()` guard. Verify
+> execution through `/api/status` or the next WebSocket state broadcast.
 
 ### WebSocket 에러 응답 / WebSocket Error Responses
 

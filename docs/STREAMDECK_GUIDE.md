@@ -216,9 +216,9 @@ Supports both Keypad and SD+ Encoder (dial). / 키패드와 SD+ 인코더 (다�
 SD+ Encoder only — requires Stream Deck+ hardware. / SD+ 인코더 전용 — Stream Deck+ 하드웨어 필요.
 
 - **Dial rotate** — Adjust selected plugin parameter value (0-100%) / 다이얼 회전 -> 파라미터 값 조절 (0-100%)
-- **Dial press** — Reset parameter to 50% (center) / 다이얼 누름 -> 파라미터를 50%로 초기화
+- **Dial press** — Reset to the default reported by the VST parameter / 다이얼 누름 -> VST 파라미터가 보고한 기본값으로 초기화
 
-**Display (LCD):** Shows plugin name, parameter name, and current value. / 플러그인 이름, 파라미터 이름, 현재 값 표시.
+**Display (LCD):** Reads the current normalized value from DirectPipe when the action appears, its settings change, or a preset/chain state changes. If the value cannot be read, rotation is blocked instead of assuming 50%. / 액션 표시·설정 변경·프리셋/체인 상태 변경 시 DirectPipe에서 현재 정규화 값을 다시 읽습니다. 값을 읽지 못하면 50%를 가정하지 않고 회전을 차단합니다.
 
 **Settings (Property Inspector):**
 - `pluginIndex` — Plugin to control (dynamic dropdown, populated from DirectPipe) / 제어할 플러그인 (동적 드롭다운, DirectPipe에서 로드)
@@ -290,7 +290,7 @@ Dual-app setup with VB-Cable (Discord) + DirectPipe Receiver (OBS) + Monitor (he
 
 ### SDK Version / SDK 버전
 
-Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.2.6.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.2.6.0. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.2.7.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.2.7.0. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket 클라이언트 / WebSocket Client (`websocket-client.js`)
 

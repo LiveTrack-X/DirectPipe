@@ -106,8 +106,10 @@ private:
     // Device selection — always Input + Output
     juce::Label inputLabel_{"", "Input:"};
     juce::ComboBox inputCombo_;
+    int inputRecoveryPlaceholderId_ = 0;
     juce::Label outputLabel_{"", "Output:"};
     juce::ComboBox outputCombo_;
+    int outputRecoveryPlaceholderId_ = 0;
 
     // ASIO channel selection (visible only in ASIO mode)
     juce::Label inputChLabel_{"", "Input Ch:"};

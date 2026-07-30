@@ -387,7 +387,8 @@ void AudioSettings::onInputDeviceChanged()
 {
     auto selectedText = inputCombo_.getText();
     if (selectedText.isEmpty()
-        || audio_settings_detail::isRecoveryPlaceholderText(selectedText))
+        || audio_settings_detail::isRecoveryPlaceholderSelection(
+            inputCombo_.getSelectedId(), inputRecoveryPlaceholderId_))
         return;
 
     if (isAsioMode()) {
@@ -425,7 +426,8 @@ void AudioSettings::onOutputDeviceChanged()
 {
     auto selectedText = outputCombo_.getText();
     if (selectedText.isEmpty()
-        || audio_settings_detail::isRecoveryPlaceholderText(selectedText))
+        || audio_settings_detail::isRecoveryPlaceholderSelection(
+            outputCombo_.getSelectedId(), outputRecoveryPlaceholderId_))
         return;
 
     // "None" = mute main output (keep device open for input)
@@ -475,9 +477,10 @@ void AudioSettings::onInputChannelChanged()
     if (id < 1) return;
 
     int firstChannel = (id - 1) * 2;  // pairs: 0-1, 2-3, 4-5, ...
-    int numCh = stereoButton_.getToggleState() ? 2 : 1;
     int totalChannels = engine_.getInputChannelNames().size();
-    if (totalChannels > 0 && firstChannel + numCh > totalChannels)
+    int numCh = audio_settings_detail::channelCountForSelectedPair(
+        firstChannel, totalChannels);
+    if (numCh <= 0)
         return;
     auto r = engine_.setActiveInputChannels(firstChannel, numCh);
     if (!r) {
@@ -495,9 +498,10 @@ void AudioSettings::onOutputChannelChanged()
     if (id < 1) return;
 
     int firstChannel = (id - 1) * 2;
-    int numCh = stereoButton_.getToggleState() ? 2 : 1;
     int totalChannels = engine_.getOutputChannelNames().size();
-    if (totalChannels > 0 && firstChannel + numCh > totalChannels)
+    int numCh = audio_settings_detail::channelCountForSelectedPair(
+        firstChannel, totalChannels);
+    if (numCh <= 0)
         return;
     auto r = engine_.setActiveOutputChannels(firstChannel, numCh);
     if (!r) {
@@ -574,6 +578,9 @@ bool AudioSettings::isAsioMode() const
 
 void AudioSettings::rebuildDeviceLists()
 {
+    inputRecoveryPlaceholderId_ = 0;
+    outputRecoveryPlaceholderId_ = 0;
+
     // Input devices (from current driver type)
     inputCombo_.clear(juce::dontSendNotification);
     auto inputs = engine_.getAvailableInputDevices();
@@ -606,6 +613,7 @@ void AudioSettings::rebuildDeviceLists()
         const auto recovery = audio_settings_detail::makeRecoverySelection(
             desired, inputs, 1);
         if (recovery.placeholderId > 0) {
+            inputRecoveryPlaceholderId_ = recovery.placeholderId;
             inputCombo_.addItem(
                 recovery.placeholderText, recovery.placeholderId);
             inputCombo_.setItemEnabled(recovery.placeholderId, false);
@@ -639,6 +647,7 @@ void AudioSettings::rebuildDeviceLists()
         const auto recovery = audio_settings_detail::makeRecoverySelection(
             desired, outputs, outputIdOffset);
         if (recovery.placeholderId > 0) {
+            outputRecoveryPlaceholderId_ = recovery.placeholderId;
             outputCombo_.addItem(
                 recovery.placeholderText, recovery.placeholderId);
             outputCombo_.setItemEnabled(recovery.placeholderId, false);
@@ -671,8 +680,7 @@ void AudioSettings::rebuildChannelLists()
     // Input channels (stereo pairs)
     inputChCombo_.clear(juce::dontSendNotification);
     auto inNames = engine_.getInputChannelNames();
-    int inPairs = inNames.size() / 2;
-    if (inNames.size() % 2 != 0) inPairs++;  // odd channel count
+    const int inPairs = inNames.size() == 1 ? 1 : inNames.size() / 2;
 
     for (int i = 0; i < inPairs; ++i) {
         int ch1 = i * 2;
@@ -691,16 +699,16 @@ void AudioSettings::rebuildChannelLists()
 
     // Select current input channel offset
     int inOffset = engine_.getActiveInputChannelOffset();
-    if (inOffset >= 0)
-        inputChCombo_.setSelectedId((inOffset / 2) + 1, juce::dontSendNotification);
+    const int desiredInputId = inOffset >= 0 ? (inOffset / 2) + 1 : 0;
+    if (desiredInputId > 0 && desiredInputId <= inputChCombo_.getNumItems())
+        inputChCombo_.setSelectedId(desiredInputId, juce::dontSendNotification);
     else if (inputChCombo_.getNumItems() > 0)
         inputChCombo_.setSelectedId(1, juce::dontSendNotification);
 
     // Output channels (stereo pairs)
     outputChCombo_.clear(juce::dontSendNotification);
     auto outNames = engine_.getOutputChannelNames();
-    int outPairs = outNames.size() / 2;
-    if (outNames.size() % 2 != 0) outPairs++;
+    const int outPairs = outNames.size() == 1 ? 1 : outNames.size() / 2;
 
     for (int i = 0; i < outPairs; ++i) {
         int ch1 = i * 2;
@@ -718,8 +726,9 @@ void AudioSettings::rebuildChannelLists()
 
     // Select current output channel offset
     int outOffset = engine_.getActiveOutputChannelOffset();
-    if (outOffset >= 0)
-        outputChCombo_.setSelectedId((outOffset / 2) + 1, juce::dontSendNotification);
+    const int desiredOutputId = outOffset >= 0 ? (outOffset / 2) + 1 : 0;
+    if (desiredOutputId > 0 && desiredOutputId <= outputChCombo_.getNumItems())
+        outputChCombo_.setSelectedId(desiredOutputId, juce::dontSendNotification);
     else if (outputChCombo_.getNumItems() > 0)
         outputChCombo_.setSelectedId(1, juce::dontSendNotification);
 }

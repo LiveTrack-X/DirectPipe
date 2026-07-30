@@ -262,6 +262,9 @@ public:
     /** @brief Get a plugin parameter value (0.0-1.0 normalized). */
     float getPluginParameter(int pluginIndex, int paramIndex) const;
 
+    /** @brief Get a plugin parameter default value (0.0-1.0 normalized). */
+    float getPluginParameterDefault(int pluginIndex, int paramIndex) const;
+
     /**
      * @brief Get the list of known (scanned) plugin descriptions.
      */

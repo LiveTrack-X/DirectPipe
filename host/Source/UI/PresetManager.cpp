@@ -30,6 +30,8 @@
 
 namespace directpipe {
 namespace {
+constexpr int kUnknownChannelLayoutValidationLimit = 256;
+
 juce::Array<juce::var> bigIntToIndexArray(const juce::BigInteger& mask)
 {
     juce::Array<juce::var> out;
@@ -59,6 +61,34 @@ void applySafeDefaultMask(juce::BigInteger& mask, int maxChannels)
         for (int i = 0; i < juce::jmin(2, maxChannels); ++i)
             mask.setBit(i);
     }
+}
+
+void migrateLegacyMonoChannelMask(juce::BigInteger& mask, int maxChannels)
+{
+    if (mask.countNumberOfSetBits() != 1)
+        return;
+
+    const int selectedChannel = mask.findNextSetBit(0);
+    if (maxChannels == 1 && selectedChannel == 0)
+        return;
+
+    const int pairStart = (selectedChannel / 2) * 2;
+    const int partnerChannel = pairStart + 1;
+    if (maxChannels > 1 && partnerChannel >= maxChannels) {
+        // A legacy singleton on an odd multichannel tail is not a usable
+        // two-channel selection. Fall back to the first complete pair.
+        mask.clear();
+        mask.setBit(0);
+        mask.setBit(1);
+        return;
+    }
+
+    // When channel names are temporarily unavailable, prefer the requested
+    // pair. If this is actually a one-channel device, applyAudioDeviceSetup()
+    // rejects it and the existing driver-default fallback opens the native
+    // mono layout.
+    mask.setBit(pairStart);
+    mask.setBit(partnerChannel);
 }
 
 int fallbackChannelCount(int reportedCount, const juce::BigInteger& currentMask)
@@ -677,6 +707,9 @@ bool PresetManager::importFromJSON(const juce::String& json)
         }
     }
 
+    const bool restoresMonoChannelMode = root->hasProperty("channelMode")
+        && juce::jlimit(1, 2, static_cast<int>(
+            root->getProperty("channelMode"))) == 1;
     const bool canRestoreChannelMasks = !restoreDevicesAsAsio || restoredAsioDeviceIsActive();
     if (canRestoreChannelMasks && (root->hasProperty("inputChannelMask") || root->hasProperty("outputChannelMask"))) {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -689,23 +722,57 @@ bool PresetManager::importFromJSON(const juce::String& json)
             inChCount = dev->getInputChannelNames().size();
             outChCount = dev->getOutputChannelNames().size();
         }
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+        if (channelMaskRestoreOverrideEnabledForTest_) {
+            inChCount = reportedInputChannelsForTest_;
+            outChCount = reportedOutputChannelsForTest_;
+            setup.inputChannels = currentInputChannelsForTest_;
+            setup.outputChannels = currentOutputChannelsForTest_;
+        }
+#endif
+        const int reportedInChCount = inChCount;
+        const int reportedOutChCount = outChCount;
         inChCount = fallbackChannelCount(inChCount, setup.inputChannels);
         outChCount = fallbackChannelCount(outChCount, setup.outputChannels);
+        const int inputMaskValidationLimit = reportedInChCount > 0
+            ? reportedInChCount
+            : kUnknownChannelLayoutValidationLimit;
+        const int outputMaskValidationLimit = reportedOutChCount > 0
+            ? reportedOutChCount
+            : kUnknownChannelLayoutValidationLimit;
 
         if (root->hasProperty("inputChannelMask")) {
-            auto inMask = readMaskWithValidation(root->getProperty("inputChannelMask"), inChCount);
+            auto inMask = readMaskWithValidation(
+                root->getProperty("inputChannelMask"),
+                inputMaskValidationLimit);
             applySafeDefaultMask(inMask, inChCount);
+            if (restoresMonoChannelMode)
+                migrateLegacyMonoChannelMask(inMask, reportedInChCount);
             setup.useDefaultInputChannels = false;
             setup.inputChannels = inMask;
         }
         if (root->hasProperty("outputChannelMask")) {
-            auto outMask = readMaskWithValidation(root->getProperty("outputChannelMask"), outChCount);
+            auto outMask = readMaskWithValidation(
+                root->getProperty("outputChannelMask"),
+                outputMaskValidationLimit);
             applySafeDefaultMask(outMask, outChCount);
+            if (restoresMonoChannelMode)
+                migrateLegacyMonoChannelMask(outMask, reportedOutChCount);
             setup.useDefaultOutputChannels = false;
             setup.outputChannels = outMask;
         }
 
-        auto maskResult = engine_.applyAudioDeviceSetup(setup, "Channel mask restore");
+        const auto applySetup = [this](
+            const juce::AudioDeviceManager::AudioDeviceSetup& candidate,
+            const juce::String& context) -> ActionResult {
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+            if (applyChannelMaskSetupForTest_)
+                return applyChannelMaskSetupForTest_(candidate, context);
+#endif
+            return engine_.applyAudioDeviceSetup(candidate, context);
+        };
+
+        auto maskResult = applySetup(setup, "Channel mask restore");
         if (!maskResult) {
             reportRestoreFailure(maskResult.message);
             // Retry with driver defaults so stereo devices stay stereo and mono
@@ -724,7 +791,8 @@ bool PresetManager::importFromJSON(const juce::String& json)
             }
 
             if (hasExplicitMask) {
-                auto defaultResult = engine_.applyAudioDeviceSetup(defaultSetup, "Channel mask default fallback");
+                auto defaultResult = applySetup(
+                    defaultSetup, "Channel mask default fallback");
                 if (!defaultResult)
                     reportRestoreFailure(defaultResult.message);
             }
@@ -1038,6 +1106,30 @@ bool PresetManager::isAsioRestoreDeviceActiveForTest(
     const juce::AudioDeviceManager::AudioDeviceSetup& setup)
 {
     return isAsioRestoreDeviceActive(restoredAsioDevice, setup);
+}
+
+juce::BigInteger PresetManager::migrateLegacyMonoChannelMaskForTest(
+    juce::BigInteger mask, int maxChannels)
+{
+    migrateLegacyMonoChannelMask(mask, maxChannels);
+    return mask;
+}
+
+void PresetManager::configureChannelMaskRestoreForTest(
+    int reportedInputChannels,
+    int reportedOutputChannels,
+    const juce::BigInteger& currentInputChannels,
+    const juce::BigInteger& currentOutputChannels,
+    std::function<ActionResult(
+        const juce::AudioDeviceManager::AudioDeviceSetup&,
+        const juce::String&)> applySetup)
+{
+    channelMaskRestoreOverrideEnabledForTest_ = true;
+    reportedInputChannelsForTest_ = reportedInputChannels;
+    reportedOutputChannelsForTest_ = reportedOutputChannels;
+    currentInputChannelsForTest_ = currentInputChannels;
+    currentOutputChannelsForTest_ = currentOutputChannels;
+    applyChannelMaskSetupForTest_ = applySetup;
 }
 #endif
 

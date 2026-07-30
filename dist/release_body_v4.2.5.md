@@ -2,12 +2,13 @@
 
 > **Withdrawn / 회수됨**: The v4.2.5 GitHub Release and assets were removed
 > after browser reputation warnings and unresolved stability investigation.
-> Its source tag remains for provenance. Use v4.2.3 until v4.2.6 completes its
-> release gates.
+> Its source tag remains for provenance. Use v4.2.3 until v4.2.7 completes its
+> release gates; v4.2.6 was also withdrawn.
 >
 > 브라우저 평판 경고와 미해결 안정성 조사로 v4.2.5 GitHub Release와
-> 자산을 회수했습니다. 출처 추적용 소스 태그만 유지합니다. v4.2.6이
-> 릴리즈 게이트를 통과하기 전에는 v4.2.3을 사용하세요.
+> 자산을 회수했습니다. 출처 추적용 소스 태그만 유지합니다. v4.2.7이
+> 릴리즈 게이트를 통과하기 전에는 v4.2.3을 사용하세요. v4.2.6도 추가
+> 차단 결함으로 회수했습니다.
 
 v4.2.5 hardens audio-device recovery. Failed main and monitor recovery is
 rate-limited correctly, the configured monitor output is opened directly, and

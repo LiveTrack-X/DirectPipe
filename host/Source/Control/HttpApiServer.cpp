@@ -333,7 +333,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     // GET /api/limiter/toggle — legacy endpoint name, controls global Safety Guard
     if (action == "limiter" && segments.size() >= 3 && segments[2] == "toggle") {
         dispatcher_.dispatch({Action::SafetyLimiterToggle});
-        return {200, R"({"ok": true, "action": "safety_limiter_toggle"})"};
+        return {202, R"({"ok": true, "accepted": true, "action": "safety_limiter_toggle"})"};
     }
 
     // GET /api/limiter/ceiling/:value — legacy endpoint name, sets Safety Guard ceiling (-6.0 ~ 0.0 dBFS)
@@ -344,14 +344,14 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (value < -6.0f || value > 0.0f)
             return {400, R"({"error": "ceiling must be -6.0 to 0.0 dBFS"})"};
         dispatcher_.dispatch({Action::SetSafetyLimiterCeiling, 0, value});
-        return {200, R"({"ok": true, "action": "set_safety_limiter_ceiling", "value": )" +
+        return {202, R"({"ok": true, "accepted": true, "action": "set_safety_limiter_ceiling", "value": )" +
                std::to_string(static_cast<double>(value)) + "}"};
     }
 
     // GET /api/auto/add -- add Filter+NoiseRemoval+AutoGain processors
     if (action == "auto" && segments.size() >= 3 && segments[2] == "add") {
         dispatcher_.dispatch({Action::AutoProcessorsAdd});
-        return {200, R"({"ok": true, "action": "auto_processors_add"})"};
+        return {202, R"({"ok": true, "accepted": true, "action": "auto_processors_add"})"};
     }
 
     // GET /api/bypass/:index/toggle
@@ -360,7 +360,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
             return {404, R"({"error": "Not found"})"};
         if (segments[2] == "master") {
             dispatcher_.masterBypass();
-            return {200, R"({"ok": true, "action": "master_bypass"})"};
+            return {202, R"({"ok": true, "accepted": true, "action": "master_bypass"})"};
         }
         if (segments[2].find_first_not_of("0123456789") != std::string::npos)
             return {400, R"({"error": "Invalid index"})"};
@@ -370,7 +370,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (index >= engine_.getVSTChain().getPluginCount())
             return {404, R"({"error": "Plugin not found"})"};
         dispatcher_.pluginBypass(index);
-        return {200, R"({"ok": true, "action": "plugin_bypass", "index": )" +
+        return {202, R"({"ok": true, "accepted": true, "action": "plugin_bypass", "index": )" +
                std::to_string(index) + "}"};
     }
 
@@ -378,11 +378,11 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
     if (action == "mute" && segments.size() >= 3) {
         if (segments[2] == "panic") {
             dispatcher_.panicMute();
-            return {200, R"({"ok": true, "action": "panic_mute"})"};
+            return {202, R"({"ok": true, "accepted": true, "action": "panic_mute"})"};
         }
         if (segments[2] == "toggle") {
             dispatcher_.toggleMute("all");
-            return {200, R"({"ok": true, "action": "toggle_mute"})"};
+            return {202, R"({"ok": true, "accepted": true, "action": "toggle_mute"})"};
         }
     }
 
@@ -400,7 +400,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (value < 0.0f || value > maxValue)
             return {400, R"({"error": "value out of range"})"};
         dispatcher_.setVolume(target, value);
-        return {200, R"({"ok": true, "action": "set_volume", "target": ")" +
+        return {202, R"({"ok": true, "accepted": true, "action": "set_volume", "target": ")" +
                escapeJsonString(target) + R"(", "value": )" +
                floatToString(value) + "}"};
     }
@@ -413,7 +413,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (index < 0 || index > 4)
             return {400, "{\"error\": \"Preset index out of range 0-4 (A-E); use /api/auto/add for Auto\"}"};
         dispatcher_.loadPreset(index);
-        return {200, R"({"ok": true, "action": "load_preset", "index": )" +
+        return {202, R"({"ok": true, "accepted": true, "action": "load_preset", "index": )" +
                std::to_string(index) + "}"};
     }
 
@@ -428,7 +428,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         if (delta < -2.0f || delta > 2.0f)
             return {400, "{\"error\": \"delta out of range (-2.0 to 2.0)\"}"};
         dispatcher_.inputGainAdjust(delta * 10.0f);
-        return {200, R"({"ok": true, "action": "input_gain", "delta": )" +
+        return {202, R"({"ok": true, "accepted": true, "action": "input_gain", "delta": )" +
                floatToString(delta) + "}"};
     }
 
@@ -443,14 +443,14 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         event.action = Action::SwitchPresetSlot;
         event.intParam = index;
         dispatcher_.dispatch(event);
-        return {200, R"({"ok": true, "action": "switch_preset_slot", "slot": )" +
+        return {202, R"({"ok": true, "accepted": true, "action": "switch_preset_slot", "slot": )" +
                std::to_string(index) + "}"};
     }
 
     // GET /api/input-mute/toggle
     if (action == "input-mute" && segments.size() >= 3 && segments[2] == "toggle") {
         dispatcher_.inputMuteToggle();
-        return {200, R"({"ok": true, "action": "input_mute_toggle"})"};
+        return {202, R"({"ok": true, "accepted": true, "action": "input_mute_toggle"})"};
     }
 
     // GET /api/monitor/toggle
@@ -458,7 +458,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         ActionEvent event;
         event.action = Action::MonitorToggle;
         dispatcher_.dispatch(event);
-        return {200, R"({"ok": true, "action": "monitor_toggle"})"};
+        return {202, R"({"ok": true, "accepted": true, "action": "monitor_toggle"})"};
     }
 
     // GET /api/plugins — list loaded plugins with metadata
@@ -493,6 +493,8 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
             obj->setProperty("index", p);
             obj->setProperty("name", chain.getPluginParameterName(pluginIndex, p));
             obj->setProperty("value", static_cast<double>(chain.getPluginParameter(pluginIndex, p)));
+            obj->setProperty("defaultValue",
+                             static_cast<double>(chain.getPluginParameterDefault(pluginIndex, p)));
             arr.add(juce::var(obj));
         }
         return {200, juce::JSON::toString(juce::var(arr), true).toStdString()};
@@ -521,7 +523,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         event.intParam2 = paramIndex;
         event.floatParam = value;
         dispatcher_.dispatch(event);
-        return {200, R"({"ok": true, "action": "set_plugin_parameter"})"};
+        return {202, R"({"ok": true, "accepted": true, "action": "set_plugin_parameter"})"};
     }
 
     // GET /api/ipc/toggle
@@ -529,7 +531,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         ActionEvent event;
         event.action = Action::IpcToggle;
         dispatcher_.dispatch(event);
-        return {200, R"({"ok": true, "action": "ipc_toggle"})"};
+        return {202, R"({"ok": true, "accepted": true, "action": "ipc_toggle"})"};
     }
 
     // GET /api/recording/toggle
@@ -537,7 +539,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
         ActionEvent event;
         event.action = Action::RecordingToggle;
         dispatcher_.dispatch(event);
-        return {200, R"({"ok": true, "action": "recording_toggle"})"};
+        return {202, R"({"ok": true, "accepted": true, "action": "recording_toggle"})"};
     }
 
     // GET /api/midi/cc/:channel/:number/:value — inject test CC message
@@ -558,7 +560,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                 return {400, R"({"error": "value 0-127"})"};
             auto msg = juce::MidiMessage::controllerEvent(ch, num, val);
             midiHandler_->injectTestMessage(msg);
-            return {200, R"({"ok": true, "action": "midi_cc", "cc": )" + std::to_string(num) +
+            return {202, R"({"ok": true, "accepted": true, "action": "midi_cc", "cc": )" + std::to_string(num) +
                    ", \"ch\": " + std::to_string(ch) + ", \"value\": " + std::to_string(val) + "}"};
         }
         if (msgType == "note") {
@@ -567,7 +569,7 @@ std::pair<int, std::string> HttpApiServer::processRequest(const std::string& met
                 return {400, R"({"error": "velocity 0-127"})"};
             auto msg = juce::MidiMessage::noteOn(ch, num, static_cast<juce::uint8>(vel));
             midiHandler_->injectTestMessage(msg);
-            return {200, R"({"ok": true, "action": "midi_note", "note": )" + std::to_string(num) +
+            return {202, R"({"ok": true, "accepted": true, "action": "midi_note", "note": )" + std::to_string(num) +
                    ", \"ch\": " + std::to_string(ch) + ", \"velocity\": " + std::to_string(vel) + "}"};
         }
         return {400, R"({"error": "Use /api/midi/cc/:ch/:num/:val or /api/midi/note/:ch/:num/:vel"})"};
@@ -591,6 +593,7 @@ std::string HttpApiServer::makeResponse(int statusCode, const std::string& body)
     std::string status;
     switch (statusCode) {
         case 200: status = "200 OK"; break;
+        case 202: status = "202 Accepted"; break;
         case 400: status = "400 Bad Request"; break;
         case 404: status = "404 Not Found"; break;
         case 405: status = "405 Method Not Allowed"; break;

@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.2.6 릴리즈 구현을 기준으로 작성
+> 역기획서 — v4.2.7 릴리즈 후보 구현을 기준으로 작성
 >
-> Reverse spec — based on the v4.2.6 release implementation
+> Reverse spec — based on the v4.2.7 release-candidate implementation
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.2.6
+4.2.7
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI gates public assets with cross-platform builds, registered tests, package checksums, and executable-version identity. Authenticode is verified when a trusted certificate is configured; otherwise Windows is explicitly unsigned. Real-device and third-party VST crash-containment checks were not run. macOS/Linux retain source/CI support without hardware verification for this update.
-- v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개다(59 core + 485 host + 2 focused endpoint). 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원으로 공개 자산을 게이트한다. 신뢰 인증서가 있으면 Authenticode를 검증하고, 없으면 Windows 패키지를 명시적으로 unsigned로 배포한다. 실기기 및 제3자 VST crash-containment는 수행하지 않았다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
+- v4.2.7 remains a release candidate until the complete Windows Release suite and exact-tag CI pass. Cross-platform builds, registered tests, package checksums, and executable-version identity gate public assets. Authenticode is verified when a trusted certificate is configured; otherwise Windows is explicitly unsigned. Real-device and third-party VST crash-containment are not claimed. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.2.7은 전체 Windows Release 검증과 정확 태그 CI가 통과할 때까지 릴리즈 후보다. 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원이 공개 자산을 게이트한다. 신뢰 인증서가 있으면 Authenticode를 검증하고, 없으면 Windows 패키지를 명시적으로 unsigned로 배포한다. 실기기 및 제3자 VST crash-containment는 주장하지 않는다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -111,7 +111,7 @@ Mic Input  → VST Plugin Chain   → Output
 ```
 1. ScopedNoDenormals 적용 (비정규 부동소수점 방지) / Apply ScopedNoDenormals (prevent denormal floats)
 2. 입력 → 사전 할당된 8채널 workBuffer에 복사 (힙 할당 없음) / Input → copy to pre-allocated 8-ch workBuffer (no heap alloc)
-3. Mono 모드: 모든 입력을 채널 0에 합산 → 채널 1에 복제 / Mono mode: sum all inputs to ch0 → duplicate to ch1
+3. Mono 모드: 선택한 입력 쌍 L/R을 VST 전단에서 평균 → 내부 채널 0/1에 복제 → VST 처리 → 선택한 출력 쌍에 전달. 실제 1채널 장치만 단일 채널 fallback / Mono mode: average the selected input pair before VST → duplicate to internal ch0/ch1 → process through VST → route to the selected output pair. Only a genuine one-channel device uses the single-channel fallback.
    Stereo 모드: 그대로 복사 / Stereo mode: copy as-is
 4. 입력 게인 적용 (변경 시에만) / Apply input gain (only when changed)
 5. RMS 레벨 계산 (4회 콜백마다 1회 = ~23Hz @48kHz/512) / RMS level calculation (every 4th callback = ~23Hz @48kHz/512)
@@ -547,7 +547,9 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 
 **응답 형식 / Response Format:**
 ```json
-// 성공 / Success
+// 비동기 변경 수락 / Queued mutation accepted (202)
+{"ok": true, "accepted": true, "action": "..."}
+// 동기 조회 또는 완료 / Synchronous query or completed operation (200)
 {"ok": true, "action": "...", /* 액션별 추가 필드 / additional fields per action */}
 // 실패 / Failure
 {"error": "설명 / description"}
@@ -954,7 +956,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.2.6" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.2.7" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1090,7 +1092,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.2.6",
+  "appVersion": "4.2.7",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1113,7 +1115,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.2.6",
+  "appVersion": "4.2.7",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */
@@ -1178,7 +1180,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
 | 비교 / Comparison | 엄격한 `MAJOR.MINOR.PATCH` Semver 비교 / Strict `MAJOR.MINOR.PATCH` semver comparison |
 | 표시 / Display | Credit 라벨에 "NEW vX.Y.Z" (주황색) / "NEW vX.Y.Z" (orange) in credit label |
 | 다이얼로그 / Dialog | [Update Now] (Windows only) / [View on GitHub] / [Later] |
-| 업데이트 / Update | Windows in-app: v4.2.0+ asset은 exact-name `checksums.sha256` entry와 일치 SHA-256을 필수 확인한 뒤 ZIP staging → 정확한 PID 종료 대기 → known-good exe 교체/rollback → 재시작. 브라우저 수동 다운로드는 이 검사 밖이다 / Windows in-app: v4.2.0+ assets require an exact readable checksum entry and matching SHA-256 before staging, exact-PID wait, replacement/rollback, and restart; manual browser downloads are outside this enforcement. macOS/Linux는 release page를 연다 / macOS/Linux open the release page. |
+| 업데이트 / Update | Windows in-app: v4.2.0+ asset은 exact-name `checksums.sha256` entry와 일치 SHA-256을 필수 확인하고, ZIP 내부에 정확히 하나의 `DirectPipe.exe`가 있으며 FileVersion/ProductVersion이 예상 릴리즈와 일치해야 한다. 검증 후 staging → 정확한 PID 종료 대기 → known-good exe 교체/rollback → 재시작하며, 이전 exe backup은 다음 업데이트 회전까지 보존하고 시작 시 임시 updater 파일만 정리한다. 브라우저 수동 다운로드는 이 검사 밖이다 / Windows in-app: v4.2.0+ assets require an exact readable checksum entry and matching SHA-256, exactly one `DirectPipe.exe` in the ZIP, and FileVersion/ProductVersion matching the expected release. After validation: staging, exact-PID wait, replacement/rollback, and restart; the prior EXE backup remains until the next update rotation while startup removes only transient updater files. Manual browser downloads are outside this enforcement. macOS/Linux는 release page를 연다 / macOS/Linux open the release page. |
 | 완료 확인 / Completion Verification | `_updated.flag` 파일 → 다음 시작 시 "Updated successfully" 알림 / `_updated.flag` file → "Updated successfully" notification on next startup |
 | 스레드 안전 / Thread Safety | running/finished atomic과 lifecycle mutex로 download worker 회수/재시도/종료를 직렬화하고, `checkForUpdate` `callAsync`는 `alive_` 플래그로 보호 / Running/finished atomics plus a lifecycle mutex serialize download-worker reap/retry/destruction; `alive_` guards `checkForUpdate` `callAsync` |
 
@@ -1296,7 +1298,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.6.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.7.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

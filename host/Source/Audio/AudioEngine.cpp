@@ -87,32 +87,45 @@ bool sampleRatesDiffer(double a, double b)
     return a > 0.0 && b > 0.0 && std::abs(a - b) > 1.0;
 }
 
-bool explicitMaskIntersectsActiveChannels(const juce::BigInteger& requested,
-                                          const juce::BigInteger& active)
+bool explicitMaskIsActive(const juce::BigInteger& requested,
+                          const juce::BigInteger& active)
 {
     if (requested.isZero())
         return active.countNumberOfSetBits() > 0;
 
     for (int bit = requested.findNextSetBit(0); bit >= 0; bit = requested.findNextSetBit(bit + 1)) {
-        if (active[bit])
-            return true;
+        if (!active[bit])
+            return false;
     }
 
-    return false;
+    return true;
 }
 
 bool channelSelectionReady(bool configured,
                            bool useDefaultChannels,
                            const juce::BigInteger& requested,
-                           const juce::BigInteger& active)
+                           const juce::BigInteger& active,
+                           int availableChannels)
 {
     if (!configured)
         return true;
 
+    const int activeCount = active.countNumberOfSetBits();
+    const int requiredCount = availableChannels == 1 ? 1 : 2;
     if (useDefaultChannels)
-        return active.countNumberOfSetBits() > 0;
+        return activeCount >= requiredCount;
 
-    return explicitMaskIntersectsActiveChannels(requested, active);
+    if (!explicitMaskIsActive(requested, active))
+        return false;
+
+    if (availableChannels == 1)
+        return requested.countNumberOfSetBits() == 1;
+    if (availableChannels > 1)
+        return requested.countNumberOfSetBits() >= 2;
+
+    // An unknown layout cannot prove that a singleton is a genuine mono
+    // device. Explicit pair requests remain verifiable from the active mask.
+    return requested.countNumberOfSetBits() >= 2;
 }
 
 juce::String normalizeAudioDeviceName(juce::String name)
@@ -191,6 +204,29 @@ bool shouldSuspendMonitorBeforeExclusiveOpen(
 
     return suspendForAnyExclusiveTypeSwitch
         || audioDeviceNamesExactlyMatch(targetOutputDevice, monitorDevice);
+}
+
+bool prepareOutputDeviceChangeChannels(
+    juce::AudioDeviceManager::AudioDeviceSetup& setup)
+{
+    bool synthesizedInputPair = false;
+
+    // A zero mask is meaningful while useDefaultInputChannels is true. Keep
+    // that policy intact so JUCE can reopen a genuine one-channel input with
+    // the manager's existing input-channel requirement.
+    if (setup.inputDeviceName.isNotEmpty()
+        && setup.inputChannels.isZero()
+        && !setup.useDefaultInputChannels) {
+        setup.inputChannels.setRange(0, 2, true);
+        synthesizedInputPair = true;
+    }
+
+    if (setup.outputChannels.isZero()) {
+        setup.useDefaultOutputChannels = false;
+        setup.outputChannels.setRange(0, 2, true);
+    }
+
+    return synthesizedInputPair;
 }
 
 bool seedCompatibleWindowsDriverSnapshot(
@@ -537,8 +573,9 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
     // Ensure input channels are active (JUCE may clear them after output device change)
     if (setup.inputChannels.isZero()) {
         setup.useDefaultInputChannels = false;
-        int numCh = channelMode_.load(std::memory_order_relaxed) == 1 ? 1 : 2;
-        setup.inputChannels.setRange(0, numCh, true);
+        // Physical routing stays a stereo pair in both processing modes.
+        // Mono is produced from that pair at the start of the audio callback.
+        setup.inputChannels.setRange(0, 2, true);
     }
 
     juce::String result;
@@ -617,17 +654,8 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
 
     setup.outputDeviceName = deviceName;
 
-    // Preserve input channel routing when changing output device
-    if (setup.inputChannels.isZero() && setup.inputDeviceName.isNotEmpty()) {
-        setup.useDefaultInputChannels = false;
-        int numCh = channelMode_.load(std::memory_order_relaxed) == 1 ? 1 : 2;
-        setup.inputChannels.setRange(0, numCh, true);
-    }
-    // Ensure output channels are active
-    if (setup.outputChannels.isZero()) {
-        setup.useDefaultOutputChannels = false;
-        setup.outputChannels.setRange(0, 2, true);
-    }
+    const bool synthesizedInputPair =
+        audio_device_recovery_detail::prepareOutputDeviceChangeChannels(setup);
 
     const auto suspendedMonitor = suspendMonitorBeforeExclusiveOpen(
         currentType, deviceName, false);
@@ -638,7 +666,7 @@ ActionResult AudioEngine::setOutputDevice(const juce::String& deviceName)
         result = deviceManager_.setAudioDeviceSetup(setup, true);
         if (result.isNotEmpty()) {
             Log::warn("AUDIO", "Output setup retry with driver default channels after: " + result);
-            useDefaultConfiguredChannels(setup, false, true);
+            useDefaultConfiguredChannels(setup, synthesizedInputPair, true);
             result = deviceManager_.setAudioDeviceSetup(setup, true);
         }
     }
@@ -1022,11 +1050,13 @@ bool AudioEngine::hasUsableActiveChannels(const juce::AudioDeviceManager::AudioD
     const bool inputReady = channelSelectionReady(inputConfigured,
                                                   setup.useDefaultInputChannels,
                                                   setup.inputChannels,
-                                                  device->getActiveInputChannels());
+                                                  device->getActiveInputChannels(),
+                                                  device->getInputChannelNames().size());
     const bool outputReady = channelSelectionReady(outputConfigured,
                                                    setup.useDefaultOutputChannels,
                                                    setup.outputChannels,
-                                                   device->getActiveOutputChannels());
+                                                   device->getActiveOutputChannels(),
+                                                   device->getOutputChannelNames().size());
 
     return inputReady && outputReady;
 }
@@ -1272,11 +1302,13 @@ bool AudioEngine::markActiveChannelLossIfNeeded(const juce::AudioDeviceManager::
     const bool inputReady = device && channelSelectionReady(inputConfigured,
                                                             setup.useDefaultInputChannels,
                                                             setup.inputChannels,
-                                                            device->getActiveInputChannels());
+                                                            device->getActiveInputChannels(),
+                                                            device->getInputChannelNames().size());
     const bool outputReady = device && channelSelectionReady(outputConfigured,
                                                              setup.useDefaultOutputChannels,
                                                              setup.outputChannels,
-                                                             device->getActiveOutputChannels());
+                                                             device->getActiveOutputChannels(),
+                                                             device->getOutputChannelNames().size());
 
     if (inputConfigured && !inputReady)
         inputDeviceLost_.store(true, std::memory_order_relaxed);
@@ -1603,8 +1635,7 @@ ActionResult AudioEngine::ensureAudioDeviceReady()
 
     if (setup.inputChannels.isZero() && setup.inputDeviceName.isNotEmpty()) {
         setup.useDefaultInputChannels = false;
-        int numCh = channelMode_.load(std::memory_order_relaxed) == 1 ? 1 : 2;
-        setup.inputChannels.setRange(0, numCh, true);
+        setup.inputChannels.setRange(0, 2, true);
     }
     if (setup.outputChannels.isZero() && setup.outputDeviceName.isNotEmpty()) {
         setup.useDefaultOutputChannels = false;
@@ -2370,13 +2401,38 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
                     continue;  // try next device
                 }
             }
-            if (auto* opened = deviceManager_.getCurrentAudioDevice()) {
-                const auto actualSR = opened->getCurrentSampleRate();
-                if (sampleRatesDiffer(sr, actualSR)) {
-                    Log::warn("AUDIO", "ASIO opened at unexpected sample rate (device='"
-                        + deviceToUse + "' requested SR=" + juce::String(static_cast<int>(sr))
-                        + " actual SR=" + juce::String(static_cast<int>(actualSR)) + ")");
-                }
+            juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+            deviceManager_.getAudioDeviceSetup(appliedSetup);
+            auto* opened = deviceManager_.getCurrentAudioDevice();
+            const auto actualSR = opened ? opened->getCurrentSampleRate() : 0.0;
+            const auto actualBS = opened ? opened->getCurrentBufferSizeSamples() : 0;
+            const auto activeInput = opened
+                ? opened->getActiveInputChannels()
+                : juce::BigInteger {};
+            const auto activeOutput = opened
+                ? opened->getActiveOutputChannels()
+                : juce::BigInteger {};
+            const bool candidateReady = opened
+                && opened->isOpen()
+                && opened->getName() == deviceToUse
+                && actualSR > 0.0
+                && actualBS > 0
+                && hasUsableActiveChannels(appliedSetup, opened, false);
+            if (!candidateReady) {
+                Log::warn("AUDIO", "ASIO candidate opened without a usable duplex stream "
+                    "(requested='" + deviceToUse
+                    + "' actual='" + (opened ? opened->getName() : juce::String("none"))
+                    + "' SR=" + juce::String(actualSR)
+                    + " BS=" + juce::String(actualBS)
+                    + " activeIn=[" + channelMaskToLogString(activeInput)
+                    + "] activeOut=[" + channelMaskToLogString(activeOutput)
+                    + "]); trying next candidate");
+                continue;
+            }
+            if (sampleRatesDiffer(sr, actualSR)) {
+                Log::warn("AUDIO", "ASIO opened at unexpected sample rate (device='"
+                    + deviceToUse + "' requested SR=" + juce::String(static_cast<int>(sr))
+                    + " actual SR=" + juce::String(static_cast<int>(actualSR)) + ")");
             }
             asioOpened = true;
             break;
@@ -2925,12 +2981,13 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // Work buffer already cleared above, so just skip the copy.
     if (!inputDeviceLost_.load(std::memory_order_relaxed)) {
         if (chMode == 1) {
-            // Mono mode: average all input channels to channel 0.
-            // Single input channel: direct copy (no division needed).
-            // Multiple valid input channels: sum then divide by valid count to prevent
-            // +3dB boost when stereo mic sends identical signal on both channels.
+            // Mono mode: average only the first two enabled device inputs into
+            // internal channel 0 before the VST chain. A genuine one-channel
+            // device is copied directly. Limiting the fold-down to the selected
+            // pair prevents unrelated active driver channels from entering the
+            // signal and avoids a +3 dB boost for identical L/R input.
             int validInputChannels = 0;
-            for (int ch = 0; ch < numInputChannels; ++ch) {
+            for (int ch = 0; ch < numInputChannels && validInputChannels < 2; ++ch) {
                 if (inputChannelData[ch] != nullptr) {
                     if (validInputChannels == 0)
                         buffer.copyFrom(0, 0, inputChannelData[ch], numSamples);
@@ -2946,10 +3003,17 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
             if (buffer.getNumChannels() > 1)
                 buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
         } else {
-            // Stereo mode: copy channels as-is
-            for (int ch = 0; ch < numInputChannels && ch < workChannels; ++ch) {
+            // Stereo mode: compact the first two enabled device channels to
+            // internal L/R. JUCE backends normally supply packed active
+            // pointers, but the callback contract also permits null entries
+            // for disabled physical channels.
+            int internalChannel = 0;
+            for (int ch = 0;
+                 ch < numInputChannels && internalChannel < juce::jmin(2, workChannels);
+                 ++ch) {
                 if (inputChannelData[ch] != nullptr) {
-                    buffer.copyFrom(ch, 0, inputChannelData[ch], numSamples);
+                    buffer.copyFrom(internalChannel, 0, inputChannelData[ch], numSamples);
+                    ++internalChannel;
                 }
             }
         }
@@ -3023,16 +3087,17 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 
     // 4. Apply output volume & copy to main output (AudioSettings Output device)
     float outVol = outputRouter_.getVolume(OutputRouter::Output::Main);
+    int internalOutputChannel = 0;
     for (int ch = 0; ch < numOutputChannels; ++ch) {
         if (!outputChannelData[ch]) continue;
-        if (ch < buffer.getNumChannels() && !outputMuted) {
+        if (internalOutputChannel < juce::jmin(2, buffer.getNumChannels()) && !outputMuted) {
             if (std::abs(outVol - 1.0f) < 0.001f) {
                 // Unity gain direct copy (most common path)
-                std::memcpy(outputChannelData[ch], buffer.getReadPointer(ch),
+                std::memcpy(outputChannelData[ch], buffer.getReadPointer(internalOutputChannel),
                             sizeof(float) * static_cast<size_t>(numSamples));
             } else if (outVol > 0.001f) {
                 // Apply gain
-                const float* src = buffer.getReadPointer(ch);
+                const float* src = buffer.getReadPointer(internalOutputChannel);
                 for (int i = 0; i < numSamples; ++i)
                     outputChannelData[ch][i] = src[i] * outVol;
             } else {
@@ -3044,6 +3109,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
             std::memset(outputChannelData[ch], 0,
                         sizeof(float) * static_cast<size_t>(numSamples));
         }
+        ++internalOutputChannel;
     }
     clearOutputRange(numSamples, callbackSamples - numSamples);
 

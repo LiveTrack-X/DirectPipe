@@ -15,6 +15,7 @@ struct WindowsUpdateInstallSpec {
     juce::String stagedExePath;
     juce::String backupExePath;
     juce::String updateDirPath;
+    juce::String expectedVersion;
     bool isZip = false;
 };
 
@@ -26,7 +27,10 @@ bool parseStrictReleaseVersion(const juce::String& value,
 /** Wait only for the DirectPipe process that launched the updater. */
 juce::String buildWindowsUpdateWaitScript(unsigned long processId);
 
-/** Builds the install-only portion of the Windows updater batch script. */
+/**
+ * Builds the install-only portion of the Windows updater batch script.
+ * Returns an empty string when expectedVersion is not strict MAJOR.MINOR.PATCH.
+ */
 juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spec);
 
 /** Builds the post-install flag and relaunch portion of the Windows updater script. */

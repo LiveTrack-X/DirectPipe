@@ -41,6 +41,10 @@ bool releaseRequiresChecksum(const juce::String& version);
 bool parseExpectedSha256(const juce::String& checksumContent,
                          const juce::String& assetName,
                          juce::String& expectedHash);
+#if JUCE_WINDOWS
+/** Remove transient updater files while preserving the known-good backup executable. */
+void cleanupTransientUpdateFiles(const juce::File& executableDirectory);
+#endif
 } // namespace update_detail
 
 enum class UpdateCheckStatus {
@@ -61,7 +65,8 @@ public:
     /** Check GitHub for a newer release (runs on background thread). */
     void checkForUpdate();
 
-    /** Clean up leftover update files from a previous update and detect post-update flag.
+    /** Clean up transient update files and detect the post-update flag.
+     *  The known-good backup executable remains until the next update rotation.
      *  Call once during startup. If a flag is found, onPostUpdateNotification is called. */
     void cleanupPreviousUpdate();
 

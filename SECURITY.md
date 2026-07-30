@@ -23,8 +23,9 @@ If you discover a security vulnerability in DirectPipe, **please do NOT report i
 
 | Version | Supported |
 |---|---|
-| v4.2.6 (current public stable) | ✅ |
-| v4.2.3 | ⚠️ Critical fixes only / 치명적 버그만 |
+| v4.2.7 (release candidate) | ✅ |
+| v4.2.3 (current public stable) | ✅ |
+| v4.2.6 (withdrawn) | ❌ |
 | v4.1.x | ⚠️ Critical fixes only / 치명적 버그만 |
 | v3.10.x (legacy) | ⚠️ Critical fixes only / 치명적 버그만 |
 | < v3.10 | ❌ |

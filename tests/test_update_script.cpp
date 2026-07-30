@@ -205,6 +205,21 @@ TEST(UpdateScriptValidationTest, CompletionScriptRejectsUnsafeVersion)
         "4.2.0&whoami", "C:\\flag", "C:\\DirectPipe.exe").isEmpty());
 }
 
+TEST(UpdateScriptValidationTest, InstallScriptRejectsUnsafeExpectedVersion)
+{
+    directpipe::update_detail::WindowsUpdateInstallSpec spec {
+        "C:\\DirectPipe.exe",
+        "C:\\DirectPipe_update.zip",
+        "C:\\DirectPipe_update.exe",
+        "C:\\DirectPipe_backup.exe",
+        "C:\\_update",
+        "4.2.7&whoami",
+        true,
+    };
+    EXPECT_TRUE(
+        directpipe::update_detail::buildWindowsUpdateInstallScript(spec).isEmpty());
+}
+
 juce::String windowsPath(const juce::File& file)
 {
     return file.getFullPathName().replace("/", "\\");
@@ -259,8 +274,37 @@ protected:
             windowsPath(testDir_.getChildFile("DirectPipe_staged.exe")),
             windowsPath(testDir_.getChildFile("DirectPipe_backup.exe")),
             windowsPath(testDir_.getChildFile("_update")),
+            expectedReleaseVersion(),
             isZip,
         };
+    }
+
+    juce::File versionedTestExecutable() const
+    {
+        return juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    }
+
+    juce::String expectedReleaseVersion() const
+    {
+        // juce::File::getVersion() exposes the four-part numeric resource
+        // (for example, 4.2.7.0), while PowerShell's FileVersion and
+        // ProductVersion properties expose the release identity (4.2.7).
+        const auto resourceVersion = versionedTestExecutable().getVersion();
+        juce::StringArray components;
+        components.addTokens(resourceVersion, ".", "");
+        EXPECT_GE(components.size(), 3);
+        if (components.size() < 3)
+            return {};
+
+        return components[0] + "." + components[1] + "." + components[2];
+    }
+
+    bool copyVersionedTestExecutableTo(const juce::File& destination) const
+    {
+        const auto source = versionedTestExecutable();
+        EXPECT_TRUE(source.existsAsFile());
+        EXPECT_FALSE(source.getVersion().isEmpty());
+        return source.copyFileTo(destination);
     }
 
     juce::File testDir_;
@@ -286,7 +330,7 @@ TEST_F(UpdateScriptTest, MissingCurrentExecutableKeepsExistingBackup)
 {
     const auto updateExe = testDir_.getChildFile("DirectPipe_update.exe");
     const auto backupExe = testDir_.getChildFile("DirectPipe_backup.exe");
-    ASSERT_TRUE(updateExe.replaceWithText("new executable"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(updateExe));
     ASSERT_TRUE(backupExe.replaceWithText("previous known-good executable"));
 
     const auto script = directpipe::update_detail::buildWindowsUpdateInstallScript(
@@ -300,13 +344,14 @@ TEST_F(UpdateScriptTest, MissingCurrentExecutableKeepsExistingBackup)
     EXPECT_EQ(backupExe.loadFileAsString(), "previous known-good executable");
 }
 
-TEST_F(UpdateScriptTest, SuccessfulStandaloneUpdateKeepsBackupUntilNextStartup)
+TEST_F(UpdateScriptTest, SuccessfulStandaloneUpdateKeepsBackupForNextRotation)
 {
     const auto currentExe = testDir_.getChildFile("DirectPipe.exe");
     const auto updateExe = testDir_.getChildFile("DirectPipe_update.exe");
     const auto backupExe = testDir_.getChildFile("DirectPipe_backup.exe");
     ASSERT_TRUE(currentExe.replaceWithText("known-good executable"));
-    ASSERT_TRUE(updateExe.replaceWithText("new executable"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(updateExe));
+    const auto expectedVersion = updateExe.getVersion();
 
     const auto script = directpipe::update_detail::buildWindowsUpdateInstallScript(
         makeSpec(false));
@@ -316,7 +361,7 @@ TEST_F(UpdateScriptTest, SuccessfulStandaloneUpdateKeepsBackupUntilNextStartup)
     ASSERT_TRUE(result.finished) << result.output;
     EXPECT_EQ(result.exitCode, 0) << result.output;
     ASSERT_TRUE(currentExe.existsAsFile()) << result.output;
-    EXPECT_EQ(currentExe.loadFileAsString(), "new executable");
+    EXPECT_TRUE(currentExe.getVersion().startsWith(expectedVersion));
     ASSERT_TRUE(backupExe.existsAsFile()) << result.output;
     EXPECT_EQ(backupExe.loadFileAsString(), "known-good executable");
 }
@@ -331,7 +376,8 @@ TEST_F(UpdateScriptTest, LiteralPercentInInstallPathIsNotEnvironmentExpanded)
     const auto updateExe = literalDir.getChildFile("DirectPipe_update.exe");
     const auto backupExe = literalDir.getChildFile("DirectPipe_backup.exe");
     ASSERT_TRUE(currentExe.replaceWithText("known-good executable"));
-    ASSERT_TRUE(updateExe.replaceWithText("new executable"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(updateExe));
+    const auto expectedVersion = expectedReleaseVersion();
 
     const directpipe::update_detail::WindowsUpdateInstallSpec spec {
         windowsPath(currentExe),
@@ -339,6 +385,7 @@ TEST_F(UpdateScriptTest, LiteralPercentInInstallPathIsNotEnvironmentExpanded)
         windowsPath(literalDir.getChildFile("DirectPipe_staged.exe")),
         windowsPath(backupExe),
         windowsPath(literalDir.getChildFile("_update")),
+        expectedVersion,
         false,
     };
     const auto script = directpipe::update_detail::buildWindowsUpdateInstallScript(spec);
@@ -348,7 +395,7 @@ TEST_F(UpdateScriptTest, LiteralPercentInInstallPathIsNotEnvironmentExpanded)
     ASSERT_TRUE(result.started);
     ASSERT_TRUE(result.finished) << result.output;
     EXPECT_EQ(result.exitCode, 0) << result.output;
-    EXPECT_EQ(currentExe.loadFileAsString(), "new executable");
+    EXPECT_TRUE(currentExe.getVersion().startsWith(expectedVersion));
     EXPECT_EQ(backupExe.loadFileAsString(), "known-good executable");
 
     const auto harmlessExe = juce::File(
@@ -376,7 +423,7 @@ TEST_F(UpdateScriptTest, FailedReplacementMoveRollsBackOriginalExecutable)
     const auto currentExe = testDir_.getChildFile("DirectPipe.exe");
     const auto updateExe = testDir_.getChildFile("DirectPipe_update.exe");
     ASSERT_TRUE(currentExe.replaceWithText("known-good executable"));
-    ASSERT_TRUE(updateExe.replaceWithText("new executable"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(updateExe));
 
     const auto lockedUpdate = CreateFileW(
         updateExe.getFullPathName().toWideCharPointer(),
@@ -466,7 +513,8 @@ TEST_F(UpdateScriptTest, SuccessfulZipUpdateStagesBeforeReplacingExecutable)
     const auto updateZip = testDir_.getChildFile("DirectPipe_update.zip");
     const auto backupExe = testDir_.getChildFile("DirectPipe_backup.exe");
     ASSERT_TRUE(currentExe.replaceWithText("known-good executable"));
-    ASSERT_TRUE(sourceExe.replaceWithText("new executable from zip"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(sourceExe));
+    const auto expectedVersion = sourceExe.getVersion();
 
     {
         juce::ZipFile::Builder zipBuilder;
@@ -485,9 +533,125 @@ TEST_F(UpdateScriptTest, SuccessfulZipUpdateStagesBeforeReplacingExecutable)
     ASSERT_TRUE(result.finished) << result.output;
     EXPECT_EQ(result.exitCode, 0) << result.output;
     ASSERT_TRUE(currentExe.existsAsFile()) << result.output;
-    EXPECT_EQ(currentExe.loadFileAsString(), "new executable from zip");
+    EXPECT_TRUE(currentExe.getVersion().startsWith(expectedVersion));
     ASSERT_TRUE(backupExe.existsAsFile()) << result.output;
     EXPECT_EQ(backupExe.loadFileAsString(), "known-good executable");
+}
+
+TEST_F(UpdateScriptTest, ZipWithoutExecutablePreservesOriginalExecutable)
+{
+    const auto currentExe = testDir_.getChildFile("DirectPipe.exe");
+    const auto sourceText = testDir_.getChildFile("readme.txt");
+    const auto updateZip = testDir_.getChildFile("DirectPipe_update.zip");
+    ASSERT_TRUE(currentExe.replaceWithText("known-good executable"));
+    ASSERT_TRUE(sourceText.replaceWithText("no executable in this archive"));
+
+    {
+        juce::ZipFile::Builder zipBuilder;
+        zipBuilder.addFile(sourceText, 9, "readme.txt");
+        juce::FileOutputStream zipOutput(updateZip);
+        ASSERT_TRUE(zipOutput.openedOk());
+        ASSERT_TRUE(zipBuilder.writeToStream(zipOutput, nullptr));
+        zipOutput.flush();
+    }
+
+    const auto script = directpipe::update_detail::buildWindowsUpdateInstallScript(
+        makeSpec(true));
+    const auto result = runInstallScript(script, testDir_.getChildFile("install.bat"));
+
+    ASSERT_TRUE(result.started);
+    ASSERT_TRUE(result.finished) << result.output;
+    EXPECT_NE(result.exitCode, 0) << result.output;
+    EXPECT_EQ(currentExe.loadFileAsString(), "known-good executable");
+    EXPECT_FALSE(testDir_.getChildFile("DirectPipe_backup.exe").existsAsFile());
+}
+
+TEST_F(UpdateScriptTest, ZipWithMultipleExecutablesPreservesOriginalExecutable)
+{
+    const auto currentExe = testDir_.getChildFile("DirectPipe.exe");
+    const auto sourceExe = testDir_.getChildFile("source.exe");
+    const auto updateZip = testDir_.getChildFile("DirectPipe_update.zip");
+    ASSERT_TRUE(currentExe.replaceWithText("known-good executable"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(sourceExe));
+
+    {
+        juce::ZipFile::Builder zipBuilder;
+        zipBuilder.addFile(sourceExe, 9, "first/DirectPipe.exe");
+        zipBuilder.addFile(sourceExe, 9, "second/DirectPipe.exe");
+        juce::FileOutputStream zipOutput(updateZip);
+        ASSERT_TRUE(zipOutput.openedOk());
+        ASSERT_TRUE(zipBuilder.writeToStream(zipOutput, nullptr));
+        zipOutput.flush();
+    }
+
+    const auto script = directpipe::update_detail::buildWindowsUpdateInstallScript(
+        makeSpec(true));
+    const auto result = runInstallScript(script, testDir_.getChildFile("install.bat"));
+
+    ASSERT_TRUE(result.started);
+    ASSERT_TRUE(result.finished) << result.output;
+    EXPECT_NE(result.exitCode, 0) << result.output;
+    EXPECT_EQ(currentExe.loadFileAsString(), "known-good executable");
+    EXPECT_FALSE(testDir_.getChildFile("DirectPipe_backup.exe").existsAsFile());
+}
+
+TEST_F(UpdateScriptTest, ZipWithWrongExecutableVersionPreservesOriginalExecutable)
+{
+    const auto currentExe = testDir_.getChildFile("DirectPipe.exe");
+    const auto sourceExe = testDir_.getChildFile("source.exe");
+    const auto updateZip = testDir_.getChildFile("DirectPipe_update.zip");
+    ASSERT_TRUE(currentExe.replaceWithText("known-good executable"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(sourceExe));
+
+    {
+        juce::ZipFile::Builder zipBuilder;
+        zipBuilder.addFile(sourceExe, 9, "DirectPipe.exe");
+        juce::FileOutputStream zipOutput(updateZip);
+        ASSERT_TRUE(zipOutput.openedOk());
+        ASSERT_TRUE(zipBuilder.writeToStream(zipOutput, nullptr));
+        zipOutput.flush();
+    }
+
+    auto spec = makeSpec(true);
+    spec.expectedVersion = "0.0.0";
+    ASSERT_NE(sourceExe.getVersion(), spec.expectedVersion);
+    const auto script =
+        directpipe::update_detail::buildWindowsUpdateInstallScript(spec);
+    const auto result = runInstallScript(script, testDir_.getChildFile("install.bat"));
+
+    ASSERT_TRUE(result.started);
+    ASSERT_TRUE(result.finished) << result.output;
+    EXPECT_NE(result.exitCode, 0) << result.output;
+    EXPECT_EQ(currentExe.loadFileAsString(), "known-good executable");
+    EXPECT_FALSE(testDir_.getChildFile("DirectPipe_backup.exe").existsAsFile());
+}
+
+TEST_F(UpdateScriptTest, StartupCleanupPreservesBackupAndRemovesTransientFiles)
+{
+    const auto batch = testDir_.getChildFile("_update.bat");
+    const auto updateDir = testDir_.getChildFile("_update");
+    const auto zip = testDir_.getChildFile("DirectPipe_update.zip");
+    const auto staged = testDir_.getChildFile("DirectPipe_update.exe");
+    const auto backup = testDir_.getChildFile("DirectPipe_backup.exe");
+    const auto flag = testDir_.getChildFile("_updated.flag");
+
+    ASSERT_TRUE(batch.replaceWithText("temporary"));
+    ASSERT_TRUE(updateDir.createDirectory());
+    ASSERT_TRUE(updateDir.getChildFile("stale.tmp").replaceWithText("temporary"));
+    ASSERT_TRUE(zip.replaceWithText("temporary"));
+    ASSERT_TRUE(staged.replaceWithText("temporary"));
+    ASSERT_TRUE(backup.replaceWithText("known-good executable"));
+    ASSERT_TRUE(flag.replaceWithText("4.2.7"));
+
+    directpipe::update_detail::cleanupTransientUpdateFiles(testDir_);
+
+    EXPECT_FALSE(batch.exists());
+    EXPECT_FALSE(updateDir.exists());
+    EXPECT_FALSE(zip.exists());
+    EXPECT_FALSE(staged.exists());
+    EXPECT_TRUE(backup.existsAsFile());
+    EXPECT_EQ(backup.loadFileAsString(), "known-good executable");
+    EXPECT_TRUE(flag.existsAsFile());
 }
 
 #else

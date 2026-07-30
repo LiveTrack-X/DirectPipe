@@ -2,7 +2,123 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
-## DirectPipe v4.2.6
+## DirectPipe v4.2.7
+
+v4.2.7 replaces the withdrawn v4.2.6 build. It validates automatic ASIO
+candidates before accepting them, restores the intended input-front dual-mono
+route, synchronizes Stream Deck plug-in controls with actual values and
+defaults, and strengthens queued HTTP plus Windows updater behavior.
+
+v4.2.7은 회수된 v4.2.6 빌드를 대체합니다. 자동 ASIO 후보를 수락하기
+전에 검증하고, 의도한 입력단 dual-mono 경로를 복원하며, Stream Deck
+플러그인 제어를 실제 값·기본값과 동기화하고 비동기 HTTP와 Windows
+updater 동작을 강화합니다.
+
+The v4.2.6 source tag and assets remain available for provenance, but its
+GitHub Release is marked withdrawn/prerelease and is not recommended. v4.2.3
+remains the public stable version until exact-tag v4.2.7 CI succeeds.
+
+v4.2.6 소스 태그와 자산은 출처 추적용으로 유지하지만 GitHub Release는
+withdrawn/prerelease로 표시하며 설치를 권장하지 않습니다. 정확 태그
+v4.2.7 CI가 성공하기 전까지 공개 안정판은 v4.2.3입니다.
+
+### Highlights / 주요 변경
+
+- **Validated ASIO fallback**: Each automatic candidate must expose a valid
+  device, rate, buffer, and active duplex channels. An unusable candidate is
+  skipped so the next device can be tried.
+- **검증된 ASIO fallback**: 자동 후보마다 유효한 장치, rate, buffer,
+  활성 duplex 채널을 확인하며 잘못 열린 후보는 건너뛰고 다음 장치를
+  시도합니다.
+- **Input-front dual mono**: Mono opens the selected input pair, averages L+R
+  before the VST chain, duplicates the mono signal to internal L/R, and sends
+  the processed two-channel result to the selected output pair.
+- **입력단 dual mono**: Mono는 선택한 입력 L/R을 VST 체인 전에 평균 합산하고
+  같은 신호를 내부 L/R로 복제한 뒤 처리된 2채널 결과를 선택한 출력 쌍에
+  보냅니다.
+- **Legacy mask repair**: A v4.2.6 one-channel Mono mask expands to its pair on
+  restore. Unknown channel-name layouts retain bounded saved indices until
+  apply, while genuine one-channel input remains on its driver-default route.
+- **기존 mask 복구**: v4.2.6의 1채널 Mono mask는 복원 과정에서 2채널
+  쌍으로 확장합니다. 채널 이름을 일시적으로 알 수 없어도 저장된 범위
+  내 인덱스를 적용 시점까지 보존하고, 실제 1채널 입력은 드라이버 기본
+  경로를 유지합니다.
+- **Reliable Stream Deck dials**: Plug-in values initialize and refresh from
+  DirectPipe, Push resets to the plug-in-reported default, and simultaneous
+  plug-in/volume controls keep independent throttle state.
+- **신뢰 가능한 Stream Deck 다이얼**: 파라미터 값은 DirectPipe에서
+  초기화·갱신하며 Push는 플러그인이 보고한 기본값으로 reset되고, 동시
+  플러그인·볼륨 조작은 독립된 throttle 상태를 사용합니다.
+- **Honest control contracts**: Queued HTTP mutations return `202 Accepted`
+  with backward-compatible `ok: true` plus explicit `accepted: true`;
+  synchronous reads retain `200 OK`, manifests omit unimplemented gestures,
+  and local Stream Deck packaging uses the official CLI.
+- **정확한 제어 계약**: 비동기 HTTP 변경은 `202 Accepted`, 동기 조회는
+  `200 OK`를 사용하며 manifest는 미구현 제스처를 빼고 로컬 Stream Deck
+  패키징은 공식 CLI를 사용합니다.
+- **Verified updater payload**: Windows updates require exactly one
+  `DirectPipe.exe` with matching FileVersion/ProductVersion and retain the
+  previous executable backup until the next update.
+- **검증된 updater payload**: Windows 업데이트는 정확히 하나의
+  `DirectPipe.exe`와 일치하는 FileVersion/ProductVersion을 요구하며,
+  이전 실행 파일 backup을 다음 업데이트까지 보존합니다.
+
+### Compatibility / 호환성
+
+- IPC protocol v1 and the 192-byte shared-memory header are unchanged.
+- IPC protocol v1과 192-byte shared-memory header는 변경되지 않았습니다.
+- Receiver identity, WebSocket action/state schemas, presets, and settings
+  remain compatible.
+- Receiver 신원, WebSocket action/state schema, preset과 settings는
+  호환됩니다.
+- HTTP endpoint paths, request payloads, and `ok: true` remain compatible;
+  queued mutation responses add `accepted: true` and intentionally use `202`.
+- HTTP endpoint 경로와 요청 payload는 유지하며 비동기 변경 응답만
+  의도적으로 `202`를 사용합니다.
+
+### Validation / 검증
+
+- Local Windows Release validation completed all 568 CTest registrations:
+  566 passed, 2 environment-dependent tests skipped, and 0 failed
+  (59 core + 507 host + 2 focused endpoint). Stream Deck tests passed 22/22;
+  lint, dependency audit, production bundle, official validation, and official
+  packaging also passed.
+- 로컬 Windows Release 검증은 CTest 568개 중 566개 통과, 환경 의존
+  2개 건너뜀, 실패 0개로 완료했습니다(59 core + 507 host + 2 focused
+  endpoint). Stream Deck 테스트 22/22과 lint, dependency audit, production
+  bundle, 공식 validation·packaging도 통과했습니다.
+- v4.2.7 is published only after exact-tag cross-platform builds, all registered
+  tests, Stream Deck audit/build/validation/official packaging, Windows
+  executable identity and signature-state checks, and checksum generation pass.
+- v4.2.7은 정확 태그의 전체 플랫폼 빌드, 등록 테스트, Stream Deck
+  audit/build/검증/공식 패키징, Windows 실행 파일 신원·서명 상태,
+  checksum 생성이 모두 통과한 경우에만 게시합니다.
+- No trusted Windows code-signing certificate is configured, so the Windows
+  package is explicitly unsigned and may still trigger browser/SmartScreen
+  reputation warnings. Verify `checksums.sha256`.
+- 신뢰된 Windows 코드 서명 인증서가 없어 Windows 패키지는 명시적으로
+  unsigned이며 브라우저/SmartScreen 평판 경고가 나타날 수 있습니다.
+  `checksums.sha256`으로 검증하세요.
+- Real-device audio, third-party VST crash containment, and macOS/Linux hardware
+  behavior were not verified.
+- 실기기 오디오, 제3자 VST crash containment, macOS/Linux 하드웨어 동작은
+  검증하지 않았습니다.
+
+### Planned downloads / 예정 다운로드
+
+- `DirectPipe-v4.2.7-Windows.zip`
+- `DirectPipe-v4.2.7-macOS.dmg`
+- `DirectPipe-v4.2.7-Linux.tar.gz`
+- `com.directpipe.directpipe.streamDeckPlugin`
+- `checksums.sha256`
+
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.7
+
+**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.3...v4.2.7
+
+---
+
+## DirectPipe v4.2.6 (withdrawn)
 
 v4.2.6 is the replacement for the withdrawn v4.2.5 release. It
 prevents failed driver or endpoint changes from silently switching to arbitrary
@@ -17,13 +133,14 @@ v4.2.6은 회수된 v4.2.5를 대체합니다. 드라이버·endpoint 전환 실
 
 The v4.2.5 GitHub Release was removed after Chrome/Brave reputation warnings
 were reported. Local Microsoft Defender scans found no threat, but the package
-was unsigned. Its immutable source tag remains for provenance; v4.2.6 is the
-current public stable release.
+was unsigned. Its immutable source tag remains for provenance. v4.2.6 was also
+withdrawn after the v4.2.7 hotfix audit found additional release blockers.
 
 Chrome/Brave 신뢰 경고 제보 뒤 v4.2.5 GitHub Release를 내렸습니다. 로컬
 Microsoft Defender 검사에서는 위협이 발견되지 않았지만 패키지가
-미서명 상태였습니다. 출처 추적을 위해 불변 소스 태그는 유지하며, 현재
-공개 안정판은 v4.2.6입니다.
+미서명 상태였습니다. 출처 추적을 위해 불변 소스 태그는 유지합니다.
+v4.2.7 핫픽스 점검에서 추가 릴리스 차단 결함이 확인되어 v4.2.6도
+회수했습니다.
 
 ### Highlights / 주요 변경
 

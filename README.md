@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/latest-v4.2.6-4fc3f7?style=flat-square" alt="Latest stable">
+  <img src="https://img.shields.io/badge/candidate-v4.2.7-f0ad4e?style=flat-square" alt="Release candidate">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest stable (최신 안정판)**: [v4.2.6 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. v4.2.5는 브라우저 신뢰 경고와 추가 오디오 복구 결함 조사 때문에 공개 릴리즈에서 회수했습니다.
+- **Latest stable (최신 안정판)**: [v4.2.3 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental. v4.2.6은 추가 릴리스 차단 결함 때문에 withdrawn/prerelease로 전환했으며 v4.2.7 수정판은 정확 태그 CI 통과 후에만 안정판으로 게시합니다.
 
-> **지원/검증 범위**: v4.2.6의 로컬 Windows Release 검증은 CTest 546개 중 544개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다(59 core + 485 host + 2 focused endpoint). 공개 자산은 정확 태그 CI가 전체 플랫폼 빌드·등록 테스트·패키지·checksum과 Windows 서명 상태를 검증한 뒤 생성합니다. 인증서가 없으면 unsigned임을 명시하며, 실기기 및 제3자 VST crash-containment 검증은 수행하지 않았습니다.
-> **Support/validation scope**: Local Windows Release validation for v4.2.6 completed 546 CTest registrations with 544 passed, 2 environment-dependent skips, and 0 failures (59 core + 485 host + 2 focused endpoint). Exact-tag CI creates the public assets only after validating cross-platform builds, registered tests, packages, checksums, and Windows signature state. Without a configured certificate the Windows package is explicitly unsigned. Real-device and third-party VST crash-containment checks were not run.
+> **지원/검증 범위**: v4.2.7은 ASIO 후보 검증, 입력단 dual-mono, Stream Deck, HTTP, updater 회귀를 포함한 전체 Windows Release 검증과 정확 태그 CI를 모두 통과한 경우에만 게시합니다. 인증서가 없으므로 Windows 패키지는 unsigned이며, 실기기 및 제3자 VST crash-containment는 별도 검증 범위입니다.
+> **Support/validation scope**: v4.2.7 is published only after the complete Windows Release suite and exact-tag CI cover the ASIO candidate, input-front dual-mono, Stream Deck, HTTP, and updater regressions. Without a certificate the Windows package is unsigned. Real-device and third-party VST crash-containment remain outside this software-only evidence.
 
 
 
@@ -186,7 +186,7 @@ External Control:
 - 비독점 마이크 접근 — Non-exclusive mic access, other apps can use the mic simultaneously
 - **장치 자동 재연결** — USB 장치 분리 시 알림, 원하는 장치가 다시 연결될 때까지 무기한 대기 후 자동 복구 (SR/BS/채널 설정 보존, 다른 장치로 폴백하지 않음). 복구가 필요하면 선택 상자에 비활성 `장치명 (Reconnect)` 상태를 표시하고 실제 장치 항목을 한 번 클릭해 같은 장치를 다시 열 수 있습니다. 메인·모니터의 실패한 zero-active 복구는 약 3초 간격으로 제한되며, 열거되지만 열리지 않는 모니터는 3→10→20→30초로 재시도 간격을 늘립니다. 모니터는 기본 장치를 먼저 열지 않고 선택한 shared-mode 장치를 직접 엽니다 — Auto-reconnection waits indefinitely for the desired device and preserves SR/BS/channel settings. A disabled `Device (Reconnect)` placeholder keeps the real device item selectable for an explicit same-device reopen. Failed zero-active main/monitor recovery is limited to about one attempt every three seconds, while an enumerated monitor that repeatedly fails to open backs off 3→10→20→30 seconds. Monitor opens the selected shared-mode device directly instead of bootstrapping the system default
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 오디오 장치로 헤드폰 모니터링) + VST Output (DirectPipe Receiver → OBS/DAW) — Three output paths: main, monitor headphones (via separate audio device), VST output to OBS/DAW
-- **Mono / Stereo** 채널 모드 — 모노 모드: 입력단에서 전체 채널을 합산 후 양쪽 스테레오로 출력. 단일 마이크 사용 시 볼륨 손실 없음 — Mono mode: sums all input channels at the input stage and outputs to both L/R. No volume loss for single-mic use
+- **Mono / Stereo** 채널 모드 — Mono는 선택한 2개 입력을 VST 체인 전에 평균하여 하나의 신호로 만든 뒤 내부 L/R에 복제하고, 처리된 L/R을 선택한 2개 출력으로 보냅니다. 실제 1채널 장치는 해당 채널을 그대로 내부 L/R에 복제합니다. — Mono averages the selected two inputs before the VST chain, duplicates that signal to internal L/R, and sends the processed L/R to the selected two outputs. A genuine one-channel device duplicates its single channel without attenuation.
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
 - **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
 - **Safety Guard** — VST 체인 이후 전역 샘플-피크 가드(legacy API/action name: SafetyLimiter). zero-latency runtime, instant attack + smooth release + hard clamp, 기본 ceiling -0.3 dBFS — Global sample-peak guard after VST chain (legacy API/action name: SafetyLimiter). Zero-latency runtime with instant attack + smooth release + hard clamp, default ceiling -0.3 dBFS
@@ -457,7 +457,7 @@ Windows hides tray icons in the overflow area (▲ arrow) by default. To keep th
 <summary><b>처음 실행할 때 보안 경고가 떠요 / Security warning on first run</b></summary>
 
 보안 경고만으로 악성 파일 여부가 판정되는 것은 아닙니다. 현재 신뢰된
-Windows 코드 서명 인증서가 없어 v4.2.6도 unsigned로 배포될 수 있으며,
+Windows 코드 서명 인증서가 없어 v4.2.7도 unsigned로 배포될 수 있으며,
 Chrome/Brave/SmartScreen 경고를 코드만으로 없앨 수는 없습니다. 반드시
 공식 GitHub Release에서 받고 `checksums.sha256`이 ZIP과 정확히 일치하는지
 확인하세요. 디지털 서명이 표시되는 빌드라면 상태가 `Valid`인지도
@@ -477,7 +477,7 @@ Chrome/Brave/SmartScreen 경고를 코드만으로 없앨 수는 없습니다. �
 ---
 
 A security warning by itself is not a malware verdict. DirectPipe currently has
-no trusted Windows code-signing certificate, so v4.2.6 may also be distributed
+no trusted Windows code-signing certificate, so v4.2.7 may also be distributed
 unsigned; code changes alone cannot remove Chrome, Brave, or SmartScreen
 reputation warnings. Download only from the official GitHub Release and verify
 the ZIP against `checksums.sha256`. If a build does carry a digital signature,

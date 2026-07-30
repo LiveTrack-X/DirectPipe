@@ -296,8 +296,9 @@ echo "[Step 3] Core Unit Tests"
 echo "─────────────────────────────────────"
 CORE_TEST_EXE="$BUILD_DIR/bin/Release/directpipe-tests.exe"
 CORE_JSON="$BUILD_DIR/tests/core-test-results.json"
+CORE_JSON_ARG="build/tests/core-test-results.json"
 if [[ -f "$CORE_TEST_EXE" ]]; then
-  if "$CORE_TEST_EXE" --gtest_output=json:"$CORE_JSON" 2>&1 | tail -3; then
+  if "$CORE_TEST_EXE" "--gtest_output=json:$CORE_JSON_ARG" 2>&1 | tail -3; then
     pass "Core tests"
     add_result "Core Tests|PASS"
   else
@@ -318,8 +319,9 @@ echo "[Step 4] Host Unit Tests"
 echo "─────────────────────────────────────"
 HOST_TEST_EXE="$BUILD_DIR/tests/directpipe-host-tests_artefacts/Release/directpipe-host-tests.exe"
 HOST_JSON="$BUILD_DIR/tests/host-test-results.json"
+HOST_JSON_ARG="build/tests/host-test-results.json"
 if [[ -f "$HOST_TEST_EXE" ]]; then
-  if "$HOST_TEST_EXE" --gtest_output=json:"$HOST_JSON" 2>&1 | tail -3; then
+  if "$HOST_TEST_EXE" "--gtest_output=json:$HOST_JSON_ARG" 2>&1 | tail -3; then
     pass "Host tests"
     add_result "Host Tests|PASS"
   else
@@ -339,14 +341,17 @@ echo ""
 echo "[Step 5] Focused Endpoint Tests"
 echo "─────────────────────────────────────"
 ENDPOINT_TEST_EXE="$BUILD_DIR/tests/directpipe-endpoint-watcher-tests_artefacts/Release/directpipe-endpoint-watcher-tests.exe"
+ENDPOINT_JSON="$BUILD_DIR/tests/endpoint-test-results.json"
+ENDPOINT_JSON_ARG="build/tests/endpoint-test-results.json"
 if [[ -f "$ENDPOINT_TEST_EXE" ]]; then
-  if "$ENDPOINT_TEST_EXE" 2>&1 | tail -3; then
+  if "$ENDPOINT_TEST_EXE" "--gtest_output=json:$ENDPOINT_JSON_ARG" 2>&1 | tail -3; then
     pass "Endpoint watcher tests"
     add_result "Endpoint Tests|PASS"
   else
     fail "Endpoint watcher tests"
     add_result "Endpoint Tests|FAIL"
   fi
+  [[ -f "$ENDPOINT_JSON" ]] && info "JSON report: $ENDPOINT_JSON"
 else
   fail "Endpoint test exe not found ($ENDPOINT_TEST_EXE)"
   add_result "Endpoint Tests|FAIL"

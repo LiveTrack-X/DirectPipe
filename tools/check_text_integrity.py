@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Fail the build if tracked text files are not valid UTF-8 or contain U+FFFD.
+Fail the build if repository text files are not valid UTF-8 or contain U+FFFD.
 
+Tracked and untracked non-ignored worktree files are checked. Paths deleted in
+the current worktree are skipped because they have no content to validate.
 This protects against accidental mojibake/encoding corruption in docs and source.
 """
 
@@ -60,9 +62,19 @@ SKIP_PREFIXES = (
 
 def git_ls_files(repo_root: Path) -> list[str]:
     raw = subprocess.check_output(
-        ["git", "-C", str(repo_root), "ls-files", "-z"], stderr=subprocess.PIPE
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ],
+        stderr=subprocess.PIPE,
     )
-    return [p for p in raw.decode("utf-8").split("\0") if p]
+    return list(dict.fromkeys(p for p in raw.decode("utf-8").split("\0") if p))
 
 
 def is_target_text_file(rel_path: str) -> bool:
@@ -104,6 +116,8 @@ def main() -> int:
             continue
 
         path = repo_root / rel
+        if not path.is_file():
+            continue
         data = path.read_bytes()
 
         if b"\x00" in data:

@@ -610,6 +610,71 @@ TEST(HttpApiServerTest, RejectsMissingPluginBypassTarget)
     EXPECT_EQ(status, 404);
 }
 
+TEST(HttpApiServerTest, QueuedMutationsReturnAcceptedWhileQueriesRemainOk)
+{
+    ActionDispatcher dispatcher;
+    StateBroadcaster broadcaster;
+    AudioEngine engine;
+    MidiHandler midi(dispatcher);
+    ASSERT_TRUE(engine.getVSTChain().addBuiltinProcessor(
+        PluginSlot::Type::BuiltinNoiseRemoval));
+    HttpApiServer server(dispatcher, broadcaster, engine, &midi);
+
+    const std::vector<std::string> queuedMutationPaths {
+        "/api/limiter/toggle",
+        "/api/limiter/ceiling/-0.3",
+        "/api/auto/add",
+        "/api/bypass/master/toggle",
+        "/api/bypass/0/toggle",
+        "/api/mute/panic",
+        "/api/mute/toggle",
+        "/api/volume/monitor/0.5",
+        "/api/preset/0",
+        "/api/gain/0.1",
+        "/api/slot/0",
+        "/api/input-mute/toggle",
+        "/api/monitor/toggle",
+        "/api/plugin/0/param/0/0.5",
+        "/api/ipc/toggle",
+        "/api/recording/toggle",
+        "/api/midi/cc/1/7/127",
+        "/api/midi/note/1/60/127",
+    };
+
+    for (const auto& path : queuedMutationPaths) {
+        const auto [status, body] = server.processRequestForTest("GET", path);
+        EXPECT_EQ(status, 202) << path;
+
+        const auto parsed = juce::JSON::parse(juce::String(body));
+        ASSERT_TRUE(parsed.isObject()) << path;
+        EXPECT_TRUE(static_cast<bool>(
+            parsed.getDynamicObject()->getProperty("accepted"))) << path;
+        EXPECT_TRUE(static_cast<bool>(
+            parsed.getDynamicObject()->getProperty("ok"))) << path;
+    }
+
+    EXPECT_EQ(server.processRequestForTest("GET", "/api").first, 200);
+    EXPECT_EQ(server.processRequestForTest("GET", "/api/status").first, 200);
+    EXPECT_EQ(server.processRequestForTest("GET", "/api/perf").first, 200);
+    EXPECT_EQ(server.processRequestForTest("GET", "/api/plugins").first, 200);
+    EXPECT_EQ(server.processRequestForTest("GET", "/api/plugin/0/params").first, 200);
+    EXPECT_EQ(server.processRequestForTest("GET", "/api/xrun/reset").first, 200);
+}
+
+TEST(HttpApiServerTest, QueuedMutationUsesAcceptedHttpStatusLine)
+{
+    ActionDispatcher dispatcher;
+    StateBroadcaster broadcaster;
+    AudioEngine engine;
+    HttpApiServer server(dispatcher, broadcaster, engine);
+
+    ASSERT_TRUE(server.start(48767));
+    const auto response = sendHttpGet(server, "/api/recording/toggle");
+    EXPECT_NE(response.find("HTTP/1.1 202 Accepted"), std::string::npos);
+    EXPECT_NE(response.find(R"({"ok": true, "accepted": true)"), std::string::npos);
+    server.stop();
+}
+
 TEST(HttpApiServerTest, PerformanceLatencyIncludesActiveChainPDC)
 {
     ActionDispatcher dispatcher;

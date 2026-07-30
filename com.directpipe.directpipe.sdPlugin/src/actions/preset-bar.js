@@ -35,15 +35,6 @@ class PresetBarAction extends SingletonAction {
         else if (ticks < 0) dpClient.sendAction("previous_preset");
     }
 
-    onDialDown(ev) {
-        // No-op — dial press does nothing for preset bar
-    }
-
-    onTouchTap(ev) {
-        const { dpClient } = require("../plugin");
-        dpClient.sendAction("next_preset");
-    }
-
     updateAllFromState(state) {
         if (!state?.data) return;
         const slotNames = state.data.slot_names || [];

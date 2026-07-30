@@ -6,7 +6,9 @@ scripts/
 package-lock.json
 rollup.config.mjs
 package.json
+eslint.config.mjs
 .sdignore
 src/actions/
 src/plugin.js
 src/websocket-client.js
+src/*.test.js

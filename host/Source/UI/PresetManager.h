@@ -275,6 +275,16 @@ public:
     static bool isAsioRestoreDeviceActiveForTest(
         const juce::String& restoredAsioDevice,
         const juce::AudioDeviceManager::AudioDeviceSetup& setup);
+    static juce::BigInteger migrateLegacyMonoChannelMaskForTest(
+        juce::BigInteger mask, int maxChannels);
+    void configureChannelMaskRestoreForTest(
+        int reportedInputChannels,
+        int reportedOutputChannels,
+        const juce::BigInteger& currentInputChannels,
+        const juce::BigInteger& currentOutputChannels,
+        std::function<ActionResult(
+            const juce::AudioDeviceManager::AudioDeviceSetup&,
+            const juce::String&)> applySetup);
 #endif
 
 private:
@@ -321,6 +331,17 @@ private:
     AudioEngine& engine_;
     int activeSlot_ = -1;
     void setActiveSlotInternal(int slotIndex, const char* reason);
+
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    bool channelMaskRestoreOverrideEnabledForTest_ = false;
+    int reportedInputChannelsForTest_ = 0;
+    int reportedOutputChannelsForTest_ = 0;
+    juce::BigInteger currentInputChannelsForTest_;
+    juce::BigInteger currentOutputChannelsForTest_;
+    std::function<ActionResult(
+        const juce::AudioDeviceManager::AudioDeviceSetup&,
+        const juce::String&)> applyChannelMaskSetupForTest_;
+#endif
 
     // Cached slot occupancy (avoids filesystem queries in hot paths like NextPreset)
     std::array<bool, kNumSlots> slotOccupiedCache_{};

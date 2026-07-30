@@ -75,6 +75,16 @@ bool update_detail::parseExpectedSha256(const juce::String& checksumContent,
     return false;
 }
 
+#if JUCE_WINDOWS
+void update_detail::cleanupTransientUpdateFiles(const juce::File& executableDirectory)
+{
+    executableDirectory.getChildFile(kUpdateBatchFile).deleteFile();
+    executableDirectory.getChildFile(kUpdateDir).deleteRecursively();
+    executableDirectory.getChildFile(kUpdateZip).deleteFile();
+    executableDirectory.getChildFile(kUpdateExe).deleteFile();
+}
+#endif
+
 UpdateChecker::UpdateChecker() = default;
 
 UpdateChecker::~UpdateChecker()
@@ -249,11 +259,7 @@ void UpdateChecker::cleanupPreviousUpdate()
 #if JUCE_WINDOWS
     auto exeDir = juce::File::getSpecialLocation(
         juce::File::currentExecutableFile).getParentDirectory();
-    exeDir.getChildFile(kUpdateBatchFile).deleteFile();
-    exeDir.getChildFile(kUpdateDir).deleteRecursively();
-    exeDir.getChildFile(kUpdateZip).deleteFile();
-    exeDir.getChildFile(kUpdateExe).deleteFile();
-    exeDir.getChildFile(kBackupExe).deleteFile();
+    update_detail::cleanupTransientUpdateFiles(exeDir);
 
     auto flagFile = exeDir.getChildFile(kUpdatedFlag);
     if (flagFile.existsAsFile()) {
@@ -651,14 +657,32 @@ void UpdateChecker::performUpdate()
 
         auto stagedPath = currentExe.getSiblingFile(kUpdateExe)
                               .getFullPathName().replace("/", "\\");
-        script << update_detail::buildWindowsUpdateInstallScript({
+        const auto installScript = update_detail::buildWindowsUpdateInstallScript({
             currentPath,
             downloadPath,
             stagedPath,
             backupPath,
             updateDirPath,
+            version,
             isZip,
         });
+        if (installScript.isEmpty()) {
+            juce::Logger::writeToLog(
+                "[APP] Refusing to build updater script for an invalid expected version");
+            juce::MessageManager::callAsync([alive, progressDlg]() {
+                if (!alive->load()) return;
+                if (*progressDlg)
+                    (*progressDlg)->exitModalState(0);
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::WarningIcon,
+                    "Update Failed",
+                    "The update executable identity could not be validated. "
+                    "DirectPipe was not changed.",
+                    "OK");
+            });
+            return;
+        }
+        script << installScript;
 
         script << update_detail::buildWindowsUpdateCompletionScript(
             version, flagPath, currentPath);
