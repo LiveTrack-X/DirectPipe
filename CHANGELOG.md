@@ -40,9 +40,12 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
   (59 core + 521 host + 2 focused endpoint).
 - Added 14 startup, fallback, one-direction recovery, stale-callback,
   `Output: None`, invalid-runtime, and driver-identity regression tests.
-- Exact-tag cross-platform CI, package checksums, and public artifact
-  verification remain the publication gate. Real-device audio and third-party
-  VST crash containment were not verified for this release.
+- Exact-tag CI run `30640495424` passed every Windows, macOS, Linux,
+  Stream Deck, integrity, and publication job. The five public assets, all four
+  payload hashes, and Windows 4.2.8 executable identity/unsigned state were
+  independently verified after publication.
+- Real-device audio and third-party VST crash containment were not verified for
+  this release.
 
 ---
 

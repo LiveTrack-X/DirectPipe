@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Release Candidate Version 4.2.8 / 릴리즈 후보 버전 4.2.8** — [Exact-tag release page / 정확 태그 릴리즈 페이지](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.8). Until publication completes, use [v4.2.7](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.7).
+> **Current Release 4.2.8 / 현재 릴리즈 4.2.8** — [Download the public release / 공개 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.8).
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정 대상), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.8 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개이며 정확 태그 전체 플랫폼 CI와 공개 자산 검증은 게시 게이트입니다. 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment와 macOS/Linux 하드웨어 동작은 별도 검증 범위입니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정 대상), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.8은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개로 완료하고 정확 태그 CI run `30640495424`, 공개 자산 5개와 checksum·Windows 실행 파일 신원을 확인했습니다. 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment와 macOS/Linux 하드웨어 동작은 별도 검증 범위입니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable target), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The v4.2.8 candidate completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures; exact-tag cross-platform CI and public artifact verification remain publication gates. Without a certificate Windows is unsigned. Real-device, third-party VST crash-containment, and macOS/Linux hardware behavior remain separate evidence.
+> **Platform Support**: Windows 10/11 x64 (stable target), macOS 10.15+ universal (beta), Linux x86_64 (experimental). v4.2.8 completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures, then passed exact-tag CI run `30640495424`; all five public assets, checksums, and Windows executable identity were verified. Without a certificate Windows is unsigned. Real-device, third-party VST crash-containment, and macOS/Linux hardware behavior remain separate evidence.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)

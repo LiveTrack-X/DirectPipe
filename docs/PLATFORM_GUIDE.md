@@ -10,13 +10,13 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 
 | 플랫폼 / Platform | 릴리즈 상태 / Release status | 빌드/배포 상태 / Build & distribution | 검증 메모 / Validation notes |
 |---|---|---|---|
-| **Windows 10/11 x64** | 안정 대상 / Stable target | 로컬 Release 및 CI `windows-latest` ZIP | v4.2.8 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다. 정확 태그 CI, 패키지 checksum, 실행 파일 버전 신원, 공개 자산 검증은 게시 게이트입니다. 신뢰 인증서가 없어 unsigned 상태를 명시합니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
+| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release 및 CI `windows-latest` ZIP | v4.2.8은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개로 완료하고 정확 태그 CI run `30640495424`, 패키지 checksum, 실행 파일 버전 신원, 공개 자산 검증을 통과했습니다. 신뢰 인증서가 없어 unsigned 상태를 명시합니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
 | **macOS 10.15+ universal** | 베타 / Beta | CI `macos-14` DMG | CMake/CI 빌드 경로와 CoreAudio 구현은 유지. 실기기 오디오 검증 범위는 제한적. |
 | **Linux x86_64** | 실험적 / Experimental | CI `ubuntu-24.04` tar.gz | ALSA/JACK 경로는 유지. 배포판/데스크톱/오디오 서버 조합별 편차가 있을 수 있음. |
 | **Stream Deck plugin** | 별도 크로스 플랫폼 패키지 / Separate cross-platform package | CI `ubuntu-latest` `.streamDeckPlugin` | Manifest 기준 Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
 
-> 현재 v4.2.8 후보 문서의 "지원"은 소스/CI 빌드 경로와 플랫폼 구현 존재를 의미합니다. 안정도와 실기기 검증 수준은 위 표의 상태를 따릅니다.
-> In the current v4.2.8 candidate documentation, "supported" means the source/CI path and platform implementation exist. Release maturity and hardware validation follow the table above.
+> 현재 v4.2.8 문서의 "지원"은 소스/CI 빌드 경로와 플랫폼 구현 존재를 의미합니다. 안정도와 실기기 검증 수준은 위 표의 상태를 따릅니다.
+> In the current v4.2.8 documentation, "supported" means the source/CI path and platform implementation exist. Release maturity and hardware validation follow the table above.
 
 > **Windows 시작 복원**: 마지막으로 저장한 드라이버·입력·출력이 권위값입니다. 재부팅 후 목록 첫 장치나 시스템 기본 장치가 오류 없이 열려도 새 선택으로 채택하지 않고 저장 대상 복구를 계속하며, `CABLE Input`을 포함한 특정 장치명을 고정하지 않습니다. / **Windows startup restore**: the last saved driver, input, and output remain authoritative. An errorless first-enumerated or system-default endpoint is not adopted after reboot; recovery continues toward the saved targets, with no hard-coded device name including `CABLE Input`.
 

@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.2.8 릴리즈 후보 구현을 기준으로 작성
+> 역기획서 — 공개된 v4.2.8 구현을 기준으로 작성
 >
-> Reverse spec — based on the v4.2.8 release-candidate implementation
+> Reverse spec — based on the published v4.2.8 implementation
 
 ---
 
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- The v4.2.8 candidate completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures. Exact-tag cross-platform builds, package checksums, and executable-version identity remain publication gates. No trusted Authenticode certificate is configured, so Windows is explicitly unsigned. Real-device and third-party VST crash-containment are not claimed. macOS/Linux retain source/CI support without hardware verification for this update.
-- v4.2.8 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개다. 정확 태그의 전체 플랫폼 빌드·패키지 checksum·실행 파일 버전 신원은 게시 게이트다. 신뢰된 Authenticode 인증서가 없어 Windows 패키지는 명시적으로 unsigned다. 실기기 및 제3자 VST crash-containment는 주장하지 않는다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
+- v4.2.8 completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures, then passed exact-tag CI run `30640495424`. Cross-platform builds, package checksums, executable-version identity, and all five public assets were verified. No trusted Authenticode certificate is configured, so Windows is explicitly unsigned. Real-device and third-party VST crash-containment are not claimed. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.2.8은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개로 완료한 뒤 정확 태그 CI run `30640495424`를 통과했다. 전체 플랫폼 빌드, 패키지 checksum, 실행 파일 버전 신원, 공개 자산 5개를 확인했다. 신뢰된 Authenticode 인증서가 없어 Windows 패키지는 명시적으로 unsigned다. 실기기 및 제3자 VST crash-containment는 주장하지 않는다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)

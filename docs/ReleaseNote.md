@@ -14,11 +14,11 @@ v4.2.8은 Windows 장치 복원 신뢰성에 집중한 업데이트입니다. �
 시스템 기본 장치를 새 설정으로 수용하지 않고 마지막으로 저장한 드라이버,
 입력, 출력을 복원합니다.
 
-v4.2.7 remains the public stable release until the exact v4.2.8 tag completes
-all release gates.
+v4.2.8 is the current public stable release after exact-tag CI run
+`30640495424` completed successfully.
 
-정확한 v4.2.8 태그가 모든 릴리즈 게이트를 통과하기 전까지 공개 안정판은
-v4.2.7입니다.
+v4.2.8은 정확 태그 CI run `30640495424`를 통과한 현재 공개
+안정판입니다.
 
 ### Highlights / 주요 변경
 
@@ -57,10 +57,12 @@ v4.2.7입니다.
 - 로컬 Windows Release 검증은 CTest 582개 중 580개 통과, 환경 의존 2개
   건너뜀, 실패 0개로 완료했습니다(59 core + 521 host + 2 focused
   endpoint).
-- Publication requires the exact `v4.2.8` tag to pass the Windows, macOS,
-  Linux, Stream Deck, executable-identity, unsigned-state, and checksum gates.
-- 정확한 `v4.2.8` 태그가 Windows, macOS, Linux, Stream Deck, 실행 파일
-  신원, unsigned 상태, checksum 게이트를 통과한 경우에만 게시합니다.
+- Exact-tag CI run `30640495424` passed Windows, macOS, Linux, Stream Deck,
+  executable-identity, unsigned-state, checksum, and publication jobs. All five
+  public assets and four payload hashes were independently verified.
+- 정확 태그 CI run `30640495424`는 Windows, macOS, Linux, Stream Deck,
+  실행 파일 신원, unsigned 상태, checksum, 게시 작업을 통과했습니다.
+  공개 자산 5개와 payload 해시 4개도 독립 확인했습니다.
 - No trusted Windows code-signing certificate is configured. The Windows
   package is unsigned and may trigger browser/SmartScreen reputation warnings;
   verify the official ZIP with `checksums.sha256`.
@@ -72,7 +74,7 @@ v4.2.7입니다.
 - 실기기 오디오, 제3자 VST crash containment, macOS/Linux 하드웨어 동작은
   이번 릴리즈에서 검증하지 않았습니다.
 
-### Planned downloads / 예정 다운로드
+### Downloads / 다운로드
 
 - `DirectPipe-v4.2.8-Windows.zip`
 - `DirectPipe-v4.2.8-macOS.dmg`
@@ -83,6 +85,10 @@ v4.2.7입니다.
 **Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.7...v4.2.8
 
 **전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.7...v4.2.8
+
+**Release**: https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.8
+
+**Release commit**: `0d3f35edde118ffb4c3d7440694e1e930d5e8330`
 
 ---
 
