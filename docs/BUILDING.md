@@ -1,15 +1,15 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current release / 현재 릴리즈: 4.2.7**
+> **Release candidate / 릴리즈 후보: 4.2.8**
 
-> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.7은 전체 Windows Release 검증과 정확 태그 CI run `30571612012`의 전체 플랫폼 빌드·등록 테스트·패키지·checksum·Windows 서명 상태 검증을 통과했습니다. 현재 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
-> **Platform support**: Windows 10/11 x64 is the stable release target. v4.2.7 passed the complete Windows Release suite and exact-tag CI run `30571612012`, including cross-platform builds, tests, packages, checksums, and Windows signature-state validation. With no configured certificate, the Windows package is unsigned. Real-device and third-party VST crash-containment remain separate evidence.
+> **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.2.8 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개입니다. 정확 태그의 전체 플랫폼 빌드·패키지·checksum·Windows 서명 상태 검증은 게시 게이트입니다. 현재 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
+> **Platform support**: Windows 10/11 x64 is the stable release target. The v4.2.8 candidate completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures. Exact-tag cross-platform builds, packages, checksums, and Windows signature-state validation remain the publication gate. With no configured certificate, the Windows package is unsigned. Real-device and third-party VST crash-containment remain separate evidence.
 
 ## Support Status / 지원 상태
 
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
-| Windows 10/11 x64 | Stable release / 안정 릴리즈 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.7 passed local Release and exact-tag CI; public assets are CI-built and unsigned because no trusted signing secrets are configured; no real-device claim. |
+| Windows 10/11 x64 | Stable release target / 안정 릴리즈 대상 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.2.8 passed the local Release suite; exact-tag CI and public assets are pending. CI requires unsigned binaries because no trusted signing secrets are configured; no real-device claim. |
 | macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -200,9 +200,9 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). v4.2.7 public assets passed the complete registered Release test suite, exact-tag CI, package checksums, and executable-version identity gates; Authenticode remains optional until a trusted certificate is configured.
+Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). The v4.2.8 candidate passed all 582 local Windows Release registrations (580 passed, 2 environment-dependent skips, 0 failed); exact-tag CI, package checksums, and executable-version identity remain publication gates. Authenticode remains optional until a trusted certificate is configured.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.7 공개 자산은 전체 등록 Release 테스트, 정확 태그 CI, 패키지 checksum, 실행 파일 버전 신원 검증을 통과했으며, 신뢰 인증서가 설정되기 전 Authenticode는 선택 사항입니다.
+세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.2.8 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개이며 정확 태그 CI, 패키지 checksum, 실행 파일 버전 신원은 게시 게이트입니다. 신뢰 인증서가 설정되기 전 Authenticode는 선택 사항입니다.
 
 ### directpipe-tests (Core)
 

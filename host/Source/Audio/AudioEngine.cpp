@@ -192,6 +192,27 @@ int reconnectCooldownAfterRecovery(bool recovered) noexcept
     return recovered ? 0 : kReconnectCooldownTicks;
 }
 
+bool savedTargetMismatchesActualDevice(const juce::String& desiredDevice,
+                                       const juce::String& actualDevice,
+                                       bool targetDisabled) noexcept
+{
+    return !targetDisabled
+        && desiredDevice.isNotEmpty()
+        && desiredDevice != actualDevice;
+}
+
+bool restoredDeviceTargetsMatch(const juce::String& actualInput,
+                                const juce::String& actualOutput,
+                                const juce::String& desiredInput,
+                                const juce::String& desiredOutput,
+                                bool outputDisabled) noexcept
+{
+    return !savedTargetMismatchesActualDevice(
+               desiredInput, actualInput, false)
+        && !savedTargetMismatchesActualDevice(
+               desiredOutput, actualOutput, outputDisabled);
+}
+
 bool shouldSuspendMonitorBeforeExclusiveOpen(
     const juce::String& deviceType,
     const juce::String& targetOutputDevice,
@@ -1127,9 +1148,6 @@ bool AudioEngine::markInputEndpointRestartPendingForTest(
 bool AudioEngine::restoredDeviceTargetsSatisfied(
     const juce::AudioDeviceManager::AudioDeviceSetup& setup) const
 {
-    if (!startupRestorePending_)
-        return true;
-
     juce::String desiredType;
     juce::String desiredInput;
     juce::String desiredOutput;
@@ -1152,19 +1170,59 @@ bool AudioEngine::restoredDeviceTargetsSatisfied(
 bool AudioEngine::clearDeviceLossAfterReady(
     const juce::AudioDeviceManager::AudioDeviceSetup& setup)
 {
-    if (!restoredDeviceTargetsSatisfied(setup)) {
-        deviceLost_.store(true, std::memory_order_relaxed);
-        Log::warn("AUDIO", "Audio device is open, but startup restore target is still pending: current in='"
-            + setup.inputDeviceName + "' out='" + setup.outputDeviceName + "'");
-        return false;
+    juce::String desiredType;
+    juce::String desiredInput;
+    juce::String desiredOutput;
+    {
+        const juce::SpinLock::ScopedLockType lock(desiredDeviceLock_);
+        desiredType = desiredDeviceType_;
+        desiredInput = desiredInputDevice_;
+        desiredOutput = desiredOutputDevice_;
     }
 
-    deviceLost_.store(false, std::memory_order_relaxed);
-    inputDeviceLost_.store(false, std::memory_order_relaxed);
-    startupRestorePending_ = false;
-    releaseAutomaticOutputMute();
+    const bool inputMismatch = desiredInput.isNotEmpty()
+        && setup.inputDeviceName != desiredInput;
+    const bool outputDisabled = outputNone_.load(std::memory_order_relaxed);
+    const bool outputMismatch = !outputDisabled
+        && desiredOutput.isNotEmpty()
+        && setup.outputDeviceName != desiredOutput;
+    const bool typeMismatch = desiredType.isNotEmpty()
+        && getCurrentDeviceType() != desiredType;
+    const bool inputPending = inputMismatch
+        || (typeMismatch && desiredInput.isNotEmpty());
+    const bool outputPending = outputMismatch
+        || (typeMismatch && !outputDisabled && desiredOutput.isNotEmpty());
 
-    return true;
+    // Reconcile both directions after every successful open. JUCE can change
+    // the opposite endpoint while reopening one side, and stop/error callbacks
+    // conservatively mark both directions lost before the new setup is known.
+    if (inputPending)
+        inputDeviceLost_.store(true, std::memory_order_release);
+    else
+        inputDeviceLost_.store(false, std::memory_order_release);
+
+    if (outputPending)
+        autoMuteOutputForDeviceLoss();
+    else
+        releaseAutomaticOutputMute();
+
+    const bool pending = inputPending || outputPending || typeMismatch;
+    deviceLost_.store(pending, std::memory_order_release);
+
+    if (!pending) {
+        startupRestorePending_ = false;
+        return true;
+    }
+
+    if (typeMismatch)
+        startupRestorePending_ = true;
+    Log::warn("AUDIO", "Audio device is open, but an explicit target is still pending: current type='"
+        + getCurrentDeviceType() + "' in='" + setup.inputDeviceName
+        + "' out='" + setup.outputDeviceName + "' desired type='"
+        + desiredType + "' in='" + desiredInput + "' out='"
+        + desiredOutput + "'");
+
+    return false;
 }
 
 void AudioEngine::enterDeviceRecoveryAfterRestoreFailure()
@@ -1698,9 +1756,6 @@ void AudioEngine::rememberRestoredDeviceTargets(const juce::String& deviceType,
 {
     jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
 
-    if (deviceType.isNotEmpty())
-        desiredDeviceType_ = deviceType;
-
     juce::String inputTarget = inputDevice;
     juce::String outputTarget = outputDevice;
     if (deviceType.containsIgnoreCase("ASIO")) {
@@ -1723,6 +1778,8 @@ void AudioEngine::rememberRestoredDeviceTargets(const juce::String& deviceType,
 
     {
         const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+        if (deviceType.isNotEmpty())
+            desiredDeviceType_ = deviceType;
         if (hasInputTarget)
             desiredInputDevice_ = inputTarget;
         if (hasOutputTarget)
@@ -1754,12 +1811,13 @@ void AudioEngine::rememberRestoredDeviceTargets(const juce::String& deviceType,
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
 
-    if (inputNeedsRestore)
+    if (inputNeedsRestore || (typeNeedsRestore && hasInputTarget))
         publishInputDeviceLoss();
     else
         deviceLost_.store(true, std::memory_order_release);
 
-    if (outputNeedsRestore && !outputNone_.load(std::memory_order_relaxed)) {
+    if ((outputNeedsRestore || (typeNeedsRestore && hasOutputTarget))
+        && !outputNone_.load(std::memory_order_relaxed)) {
         autoMuteOutputForDeviceLoss();
     }
 
@@ -2095,11 +2153,15 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     }
 
     if (!running_ && deviceManager_.getCurrentAudioDevice() == nullptr) {
+        const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
         desiredDeviceType_ = typeName;
         return ActionResult::ok();
     }
     if (currentType == typeName && isCurrentAudioDeviceReady()) {
-        desiredDeviceType_ = typeName;
+        {
+            const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+            desiredDeviceType_ = typeName;
+        }
         // Already on ASIO but possibly wrong device switch to preferred
         if (typeName.containsIgnoreCase("ASIO") && preferredAsioDevice.isNotEmpty()) {
             juce::AudioDeviceManager::AudioDeviceSetup cur;
@@ -2142,8 +2204,14 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     // During cross-driver recovery, desired names belong to the missing target
     // and must never contaminate the actual fallback driver's snapshot.
     if (currentType.isNotEmpty()) {
+        juce::String desiredTypeForSnapshot;
+        {
+            const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+            desiredTypeForSnapshot = desiredDeviceType_;
+        }
         const bool desiredTargetsBelongToCurrentType =
-            desiredDeviceType_.isEmpty() || desiredDeviceType_ == currentType;
+            desiredTypeForSnapshot.isEmpty()
+            || desiredTypeForSnapshot == currentType;
         if (desiredTargetsBelongToCurrentType) {
             auto snap = previousRuntimeSnapshot;
             {
@@ -2161,7 +2229,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         } else {
             Log::audit("AUDIO", "Preserving " + currentType
                 + " preference snapshot while recovering desired driver "
-                + desiredDeviceType_);
+                + desiredTypeForSnapshot);
         }
     }
 
@@ -2539,8 +2607,27 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
             deviceManager_.getAudioDeviceSetup(switchedSetup);
             const bool targetOutputNone =
                 restoreSnapshot && restoreSnapshot->outputNone;
-            switchedDeviceReady = hasUsableActiveChannels(
-                switchedSetup, device, targetOutputNone);
+            const bool restoredEndpointsMatch =
+                typeName.containsIgnoreCase("ASIO")
+                || !restoreSnapshot
+                || audio_device_recovery_detail::restoredDeviceTargetsMatch(
+                    switchedSetup.inputDeviceName,
+                    switchedSetup.outputDeviceName,
+                    restoreSnapshot->inputDevice,
+                    restoreSnapshot->outputDevice,
+                    restoreSnapshot->outputNone);
+            switchedDeviceReady = restoredEndpointsMatch
+                && hasUsableActiveChannels(
+                    switchedSetup, device, targetOutputNone);
+            if (!restoredEndpointsMatch) {
+                Log::warn("AUDIO", "Driver switch opened different endpoints than the saved target: actual in='"
+                    + switchedSetup.inputDeviceName + "' out='"
+                    + switchedSetup.outputDeviceName + "' desired in='"
+                    + (restoreSnapshot ? restoreSnapshot->inputDevice : juce::String())
+                    + "' out='"
+                    + (restoreSnapshot ? restoreSnapshot->outputDevice : juce::String())
+                    + "'");
+            }
             if (!switchedDeviceReady)
                 Log::warn("AUDIO", "Driver switch opened without usable active channels: "
                     + typeName);
@@ -2575,8 +2662,6 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
     }
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
-    desiredDeviceType_ = typeName;
-
     // Update desired device names to new driver's actual devices
     {
         juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -2584,6 +2669,7 @@ ActionResult AudioEngine::setAudioDeviceType(const juce::String& typeName, const
         auto appliedInput = setup.inputDeviceName;
         {
             const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+            desiredDeviceType_ = typeName;
             if (setup.inputDeviceName.isNotEmpty())
                 desiredInputDevice_ = setup.inputDeviceName;
             if (setup.outputDeviceName.isNotEmpty())
@@ -3135,6 +3221,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     if (!device) return;
     const bool intentionalRestart =
         intentionalChange_.load(std::memory_order_acquire);
+    const auto deviceSnapshotGeneration =
+        deferredDeviceSnapshotGeneration_.fetch_add(
+            1, std::memory_order_acq_rel) + 1;
+    const auto startedDeviceType = device->getTypeName();
 
 #if defined(_WIN32)
     if (!avSetMmThreadChar_) {
@@ -3185,8 +3275,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     const int reportedBufferSize = device->getCurrentBufferSizeSamples();
 
     if (reportedSampleRate <= 0.0 || reportedBufferSize <= 0) {
-        if (!intentionalChange_.load(std::memory_order_acquire))
-            deviceLost_.store(true, std::memory_order_relaxed);
+        if (!intentionalRestart) {
+            publishInputDeviceLoss();
+            autoMuteOutputForDeviceLoss();
+        }
         Log::warn("AUDIO", "Device reported invalid SR=" + juce::String(reportedSampleRate)
                   + " BS=" + juce::String(reportedBufferSize)
                   + " - preserving previous runtime state and skipping prepare");
@@ -3194,9 +3286,9 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     }
 
     // Detect JUCE auto-fallback by comparing actual vs desired device names.
-    // Two modes:
-    //   - deviceLost_ already true (after audioDeviceError): keep it true, don't overwrite desired
-    //   - deviceLost_ false (startup / external restart): update desired from actual
+    // Explicit user/settings targets remain authoritative even when Windows
+    // restarts directly on another endpoint without an error callback. Actual
+    // device snapshots only seed directions that have no saved target yet.
     // Intentional transactions commit desired/loss state only after their
     // message-thread setter verifies that the opened stream is usable.
     {
@@ -3204,19 +3296,23 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         deviceManager_.getAudioDeviceSetup(setup);
 
         // Capture desired device names under lock (read from device thread)
-        juce::String desiredIn, desiredOut;
+        juce::String desiredType, desiredIn, desiredOut;
         {
             const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+            desiredType = desiredDeviceType_;
             desiredIn = desiredInputDevice_;
             desiredOut = desiredOutputDevice_;
         }
 
-        bool inputMismatch = desiredIn.isNotEmpty()
-                             && setup.inputDeviceName.isNotEmpty()
-                             && setup.inputDeviceName != desiredIn;
-        bool outputMismatch = desiredOut.isNotEmpty()
-                              && setup.outputDeviceName.isNotEmpty()
-                              && setup.outputDeviceName != desiredOut;
+        bool inputMismatch =
+            audio_device_recovery_detail::savedTargetMismatchesActualDevice(
+                desiredIn, setup.inputDeviceName, false);
+        bool outputMismatch =
+            audio_device_recovery_detail::savedTargetMismatchesActualDevice(
+                desiredOut, setup.outputDeviceName,
+                outputNone_.load(std::memory_order_relaxed));
+        const bool typeMismatch = desiredType.isNotEmpty()
+            && startedDeviceType != desiredType;
 
         bool wasLost = deviceLost_.load(std::memory_order_relaxed);
         const bool externalRestart = intentionalRestart
@@ -3230,64 +3326,231 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             && !outputMismatch;
 
         if (!intentionalRestart
-            && (inputMismatch || outputMismatch) && wasLost) {
-            // Real fallback after device error keep deviceLost_ true,
-            // don't overwrite desired names so checkReconnection restores them
-            Log::warn("AUDIO", "Fallback detected: in='" + setup.inputDeviceName
+            && (typeMismatch || inputMismatch || outputMismatch)) {
+            // Preserve explicit targets for both error callbacks and silent
+            // Windows/JUCE fallback starts, including an empty actual endpoint
+            // or a different driver exposing the same endpoint display name.
+            Log::warn("AUDIO", "Fallback detected: type='" + startedDeviceType
+                       + "' in='" + setup.inputDeviceName
                        + "' out='" + setup.outputDeviceName
-                       + "' (desired: in='" + desiredIn
-                       + "' out='" + desiredOut + "')");
+                       + "' (desired: type='" + desiredType
+                       + "' in='" + desiredIn + "' out='" + desiredOut + "')");
 
             // Per-direction loss tracking:
             // Input lost silence input in audio callback (don't use fallback mic)
-            inputDeviceLost_.store(inputMismatch, std::memory_order_relaxed);
+            if (inputMismatch || (typeMismatch && desiredIn.isNotEmpty()))
+                inputDeviceLost_.store(true, std::memory_order_release);
             // Output lost auto-mute output (VST chain + monitor unaffected)
-            if (outputMismatch)
+            if (outputMismatch || (typeMismatch && desiredOut.isNotEmpty()))
                 autoMuteOutputForDeviceLoss();
+            // Publish the aggregate gate last. This preserves the directional-
+            // first contract used by concurrent output-None/manual clears.
+            const bool anyDirectionPending =
+                inputDeviceLost_.load(std::memory_order_acquire)
+                || outputAutoMuted_.load(std::memory_order_acquire);
+            deviceLost_.store(
+                typeMismatch || anyDirectionPending,
+                std::memory_order_release);
+            // If Output None cleared the output loss after the snapshot above,
+            // do not let this older publication leave a phantom aggregate
+            // loss. Directional publishers write their flag before the
+            // aggregate, so the final recheck also preserves a new loss.
+            if (!typeMismatch && anyDirectionPending
+                && !inputDeviceLost_.load(std::memory_order_acquire)
+                && !outputAutoMuted_.load(std::memory_order_acquire)) {
+                deviceLost_.store(false, std::memory_order_release);
+                if (inputDeviceLost_.load(std::memory_order_acquire)
+                    || outputAutoMuted_.load(std::memory_order_acquire))
+                    deviceLost_.store(true, std::memory_order_release);
+            }
 
             // Restore any device that JUCE changed but is still available.
             // e.g. output unplugged JUCE fallback changes both restore input + BS/SR.
             juce::MessageManager::callAsync([this, alive = alive_,
-                desiredIn, desiredOut,
-                desiredSR = desiredSampleRate_, desiredBS = desiredBufferSize_] {
+                desiredIn, desiredOut, inputMismatch, outputMismatch,
+                startedDeviceType] {
                 if (!alive->load()) return;
+                if (getCurrentDeviceType() != startedDeviceType) return;
+
+                juce::AudioDeviceManager::AudioDeviceSetup queuedSetup;
+                deviceManager_.getAudioDeviceSetup(queuedSetup);
+                auto* queuedDevice = deviceManager_.getCurrentAudioDevice();
+                const bool queuedStreamReady = queuedDevice
+                    && queuedDevice->getCurrentSampleRate() > 0.0
+                    && queuedDevice->getCurrentBufferSizeSamples() > 0
+                    && hasUsableActiveChannels(queuedSetup, queuedDevice);
+                if (queuedStreamReady)
+                    clearDeviceLossAfterReady(queuedSetup);
+
+                bool inputTargetStillCurrent = false;
+                bool outputTargetStillCurrent = false;
+                {
+                    const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+                    inputTargetStillCurrent = inputMismatch
+                        && desiredInputDevice_ == desiredIn;
+                    outputTargetStillCurrent = outputMismatch
+                        && desiredOutputDevice_ == desiredOut
+                        && !outputNone_.load(std::memory_order_relaxed);
+                }
+                if (!inputTargetStillCurrent && !outputTargetStillCurrent) return;
+
+                const bool inputAlreadyRestored = inputTargetStillCurrent
+                    && queuedStreamReady
+                    && queuedSetup.inputDeviceName == desiredIn;
+                const bool outputAlreadyRestored = outputTargetStillCurrent
+                    && queuedStreamReady
+                    && queuedSetup.outputDeviceName == desiredOut;
+                const bool restoreInput = inputTargetStillCurrent
+                    && !inputAlreadyRestored;
+                const bool restoreOutput = outputTargetStillCurrent
+                    && !outputAlreadyRestored;
+
                 auto* type = deviceManager_.getCurrentDeviceTypeObject();
                 if (!type) return;
                 type->scanForDevices();
-                bool inAvail = type->getDeviceNames(true).contains(desiredIn);
-                bool outAvail = type->getDeviceNames(false).contains(desiredOut);
-                if (!inAvail && !outAvail) return;  // both lost, wait for checkReconnection
+                bool inAvail = restoreInput
+                    && type->getDeviceNames(true).contains(desiredIn);
+                bool outAvail = restoreOutput
+                    && type->getDeviceNames(false).contains(desiredOut);
+                if (!inAvail && !outAvail
+                    && !inputAlreadyRestored && !outputAlreadyRestored)
+                    return;  // targets still unavailable; wait for checkReconnection
+
+                // These fields are message-thread-only. Read them here rather
+                // than from the device callback thread, and use the latest
+                // explicit SR/BS request if one changed while work was queued.
+                const auto desiredSR = desiredSampleRate_;
+                const auto desiredBS = desiredBufferSize_;
 
                 juce::String restoreError;
-                {
+                if (inAvail || outAvail) {
                     AtomicGuard intentionalGuard(intentionalChange_);
                     juce::AudioDeviceManager::AudioDeviceSetup s;
                     deviceManager_.getAudioDeviceSetup(s);
                     if (inAvail) s.inputDeviceName = desiredIn;
                     if (outAvail) s.outputDeviceName = desiredOut;
+                    if (inAvail && s.inputChannels.isZero()) {
+                        s.useDefaultInputChannels = false;
+                        s.inputChannels.setRange(0, 2, true);
+                    }
+                    if (outAvail && s.outputChannels.isZero()) {
+                        s.useDefaultOutputChannels = false;
+                        s.outputChannels.setRange(0, 2, true);
+                    }
                     s.sampleRate = desiredSR;
                     s.bufferSize = desiredBS;
                     restoreError = deviceManager_.setAudioDeviceSetup(s, true);
                     if (restoreError.isNotEmpty()) {
                         Log::warn("AUDIO", "Fallback restore retry with driver default channels after: " + restoreError);
-                        useDefaultConfiguredChannels(s, inAvail, outAvail && !outputNone_.load(std::memory_order_relaxed));
+                        useDefaultConfiguredChannels(s, inAvail, outAvail);
                         restoreError = deviceManager_.setAudioDeviceSetup(s, true);
                     }
                 }
 
+                auto* restoredDevice = deviceManager_.getCurrentAudioDevice();
+                juce::AudioDeviceManager::AudioDeviceSetup restoredSetup;
+                deviceManager_.getAudioDeviceSetup(restoredSetup);
+                const bool restoredStreamReady = restoredDevice
+                    && restoredDevice->getCurrentSampleRate() > 0.0
+                    && restoredDevice->getCurrentBufferSizeSamples() > 0
+                    && hasUsableActiveChannels(restoredSetup, restoredDevice);
+                // A failed or partial reopen can still leave JUCE running a
+                // different input and/or output. Reconcile the complete saved
+                // selection before any return so an unexpected fallback mic
+                // can never pass audio merely because output restoration was
+                // the operation that triggered this attempt.
+                bool fullyRestored = false;
+                if (restoredStreamReady) {
+                    fullyRestored = clearDeviceLossAfterReady(restoredSetup);
+                } else {
+                    juce::String latestDesiredType;
+                    juce::String latestDesiredInput;
+                    juce::String latestDesiredOutput;
+                    {
+                        const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+                        latestDesiredType = desiredDeviceType_;
+                        latestDesiredInput = desiredInputDevice_;
+                        latestDesiredOutput = desiredOutputDevice_;
+                    }
+
+                    const bool inputNameMismatch =
+                        audio_device_recovery_detail::savedTargetMismatchesActualDevice(
+                            latestDesiredInput, restoredSetup.inputDeviceName, false);
+                    const bool outputNameMismatch =
+                        audio_device_recovery_detail::savedTargetMismatchesActualDevice(
+                            latestDesiredOutput, restoredSetup.outputDeviceName,
+                            outputNone_.load(std::memory_order_relaxed));
+                    const bool typeMismatch = latestDesiredType.isNotEmpty()
+                        && getCurrentDeviceType() != latestDesiredType;
+
+                    if (inputNameMismatch)
+                        inputDeviceLost_.store(true, std::memory_order_release);
+                    if (outputNameMismatch)
+                        autoMuteOutputForDeviceLoss();
+                    markActiveChannelLossIfNeeded(
+                        restoredSetup, restoredDevice,
+                        "Fallback restore incomplete setup");
+
+                    const bool runtimeInvalid = !restoredDevice
+                        || restoredDevice->getCurrentSampleRate() <= 0.0
+                        || restoredDevice->getCurrentBufferSizeSamples() <= 0;
+                    if (runtimeInvalid) {
+                        if (latestDesiredInput.isNotEmpty())
+                            inputDeviceLost_.store(true, std::memory_order_release);
+                        if (latestDesiredOutput.isNotEmpty()
+                            && !outputNone_.load(std::memory_order_relaxed))
+                            autoMuteOutputForDeviceLoss();
+                    }
+
+                    const bool anyTargetPending = runtimeInvalid || typeMismatch
+                        || inputDeviceLost_.load(std::memory_order_acquire)
+                        || outputAutoMuted_.load(std::memory_order_acquire);
+                    deviceLost_.store(anyTargetPending, std::memory_order_release);
+                    if (typeMismatch)
+                        startupRestorePending_ = true;
+                }
+                const bool inputRestored = inputTargetStillCurrent
+                    && restoredStreamReady
+                    && restoredSetup.inputDeviceName == desiredIn;
+                const bool outputRestored = outputTargetStillCurrent
+                    && restoredStreamReady
+                    && restoredSetup.outputDeviceName == desiredOut;
+
                 if (restoreError.isNotEmpty()) {
                     Log::warn("AUDIO", "Fallback restore failed (in='" + desiredIn
-                        + "' out='" + desiredOut + "' BS=" + juce::String(desiredBS)
-                        + " SR=" + juce::String(desiredSR) + "): " + restoreError);
+                        + "' out='" + desiredOut + "' actual in='"
+                        + restoredSetup.inputDeviceName + "' out='"
+                        + restoredSetup.outputDeviceName + "' BS="
+                        + juce::String(desiredBS) + " SR=" + juce::String(desiredSR)
+                        + "): " + restoreError);
                     return;
                 }
 
+                if (!restoredStreamReady || (!inputRestored && !outputRestored)) {
+                    Log::warn("AUDIO", "Fallback restore returned without a ready target stream (in='"
+                        + restoredSetup.inputDeviceName + "' out='"
+                        + restoredSetup.outputDeviceName + "')");
+                    return;
+                }
+
+                const auto actualSampleRate = restoredDevice->getCurrentSampleRate();
+                const auto actualBufferSize =
+                    restoredDevice->getCurrentBufferSizeSamples();
+                syncRuntimeRateFromActual(
+                    actualSampleRate,
+                    actualBufferSize,
+                    "Fallback restore actual rate",
+                    getCurrentDeviceType().containsIgnoreCase("ASIO"));
+
                 juce::String restored;
-                if (inAvail && !outAvail) restored = "Input";
-                else if (!inAvail && outAvail) restored = "Output";
+                if (inputRestored && !outputRestored) restored = "Input";
+                else if (!inputRestored && outputRestored) restored = "Output";
                 else restored = "Both devices";
                 Log::info("AUDIO", restored + " restored after fallback (BS="
-                    + juce::String(desiredBS) + " SR=" + juce::String(desiredSR) + ")");
+                    + juce::String(actualBufferSize) + " SR="
+                    + juce::String(actualSampleRate) + ")");
+                if (fullyRestored && onDeviceReconnected)
+                    onDeviceReconnected();
             });
         } else if (!intentionalRestart && sameDeviceExternalRestart) {
             Log::warn("AUDIO", "External same-device restart detected, forcing device re-open before clearing loss: in='"
@@ -3297,10 +3560,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             scheduleSameDeviceReopenAfterExternalRestart(setup);
         } else if (!intentionalRestart) {
             // Atomics safe from any thread
-            deviceLost_.store(false, std::memory_order_relaxed);
-            inputDeviceLost_.store(false, std::memory_order_relaxed);
+            inputDeviceLost_.store(false, std::memory_order_release);
             // Auto-unmute output if it was auto-muted due to device loss
             releaseAutomaticOutputMute();
+            deviceLost_.store(false, std::memory_order_release);
             // Non-atomic [Message thread only] variables must write on
             // message thread to avoid data race with device thread.
             auto aliveFlag = alive_;
@@ -3308,19 +3571,48 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             auto outName = setup.outputDeviceName;
             auto sr = reportedSampleRate;
             auto bs = reportedBufferSize;
-            bool isAsio = device->getTypeName().containsIgnoreCase("ASIO");
-            juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs, isAsio] {
+            const auto typeName = startedDeviceType;
+            bool isAsio = typeName.containsIgnoreCase("ASIO");
+            juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs,
+                                              typeName, isAsio, deviceSnapshotGeneration] {
                 if (!aliveFlag->load()) return;
-                reconnectMissCount_ = 0;
+
+                juce::AudioDeviceManager::AudioDeviceSetup currentSetup;
+                deviceManager_.getAudioDeviceSetup(currentSetup);
+                const bool sameType = getCurrentDeviceType() == typeName;
+                const bool sameInput = inName.isEmpty()
+                    || currentSetup.inputDeviceName == inName;
+                const bool sameOutput = outName.isEmpty()
+                    || currentSetup.outputDeviceName == outName;
+
+                bool adoptedInput = false;
                 {
                     const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
-                    if (inName.isNotEmpty())
+                    if (sameType && sameInput
+                        && desiredInputDevice_.isEmpty() && inName.isNotEmpty()) {
                         desiredInputDevice_ = inName;
-                    if (outName.isNotEmpty())
+                        adoptedInput = true;
+                    }
+                    if (sameType && sameOutput
+                        && !outputNone_.load(std::memory_order_relaxed)
+                        && desiredOutputDevice_.isEmpty() && outName.isNotEmpty()) {
                         desiredOutputDevice_ = outName;
+                    }
                 }
-                if (inName.isNotEmpty())
+                if (adoptedInput)
                     updateInputEndpointWatcherTarget(inName);
+
+                // A different endpoint may have become active while this work
+                // was queued. Directional first-launch seeding above is safe,
+                // even after an intentional restart when that direction stayed
+                // unchanged. Runtime SR/BS, however, must come only from the
+                // newest coherent device-start snapshot.
+                if (deviceSnapshotGeneration
+                        != deferredDeviceSnapshotGeneration_.load(std::memory_order_acquire)
+                    || !sameType || !sameInput || !sameOutput)
+                    return;
+
+                reconnectMissCount_ = 0;
                 if (isAsio) {
                     // ASIO may report a global SR owned by the driver. Keep the
                     // actual runtime values, but do not let an accidental 44.1k
@@ -3785,9 +4077,7 @@ void AudioEngine::attemptReconnection()
         + " - desired type='" + desiredType + "' in='" + desiredIn + "' out='" + desiredOut + "'");
 
     const auto currentType = getCurrentDeviceType();
-    if (desiredType.isNotEmpty()
-        && currentType != desiredType
-        && desiredType.containsIgnoreCase("ASIO")) {
+    if (desiredType.isNotEmpty() && currentType != desiredType) {
         auto* desiredTypeObj = findDeviceType(deviceManager_, desiredType);
         if (!desiredTypeObj) {
             Log::warn("AUDIO", "Reconnection: desired driver type not available: " + desiredType);
@@ -3796,17 +4086,67 @@ void AudioEngine::attemptReconnection()
         }
 
         desiredTypeObj->scanForDevices();
-        const auto asioDevices = desiredTypeObj->getDeviceNames(false);
-        const auto preferredAsioDevice = selectAsioDuplexDevice(desiredIn, desiredOut);
-        Log::audit("AUDIO", "Reconnection ASIO scan: devices=["
-            + asioDevices.joinIntoString(", ") + "] preferred='" + preferredAsioDevice + "'");
+        juce::String preferredAsioDevice;
+        if (desiredType.containsIgnoreCase("ASIO")) {
+            const auto asioDevices = desiredTypeObj->getDeviceNames(false);
+            preferredAsioDevice = selectAsioDuplexDevice(desiredIn, desiredOut);
+            Log::audit("AUDIO", "Reconnection ASIO scan: devices=["
+                + asioDevices.joinIntoString(", ") + "] preferred='"
+                + preferredAsioDevice + "'");
 
-        if (preferredAsioDevice.isEmpty() || !asioDevices.contains(preferredAsioDevice)) {
-            ++reconnectMissCount_;
-            if (reconnectMissCount_ >= kMaxReconnectMisses)
-                reconnectMissCount_ = 0;
-            Log::info("AUDIO", "Reconnection: waiting for ASIO device '" + preferredAsioDevice + "'");
-            return;
+            if (preferredAsioDevice.isEmpty()
+                || !asioDevices.contains(preferredAsioDevice)) {
+                ++reconnectMissCount_;
+                if (reconnectMissCount_ >= kMaxReconnectMisses)
+                    reconnectMissCount_ = 0;
+                Log::info("AUDIO", "Reconnection: waiting for ASIO device '"
+                    + preferredAsioDevice + "'");
+                return;
+            }
+        } else {
+            const auto targetInputs = desiredTypeObj->getDeviceNames(true);
+            const auto targetOutputs = desiredTypeObj->getDeviceNames(false);
+            const bool inputAvailable = desiredIn.isEmpty()
+                || targetInputs.contains(desiredIn);
+            const bool outputDisabled =
+                outputNone_.load(std::memory_order_relaxed);
+            const bool outputAvailable = outputDisabled || desiredOut.isEmpty()
+                || targetOutputs.contains(desiredOut);
+
+            Log::audit("AUDIO", "Reconnection driver scan: type='" + desiredType
+                + "' inputs=[" + targetInputs.joinIntoString(", ")
+                + "] outputs=[" + targetOutputs.joinIntoString(", ")
+                + "] desired in='" + desiredIn + "' out='" + desiredOut + "'");
+
+            if (!inputAvailable || !outputAvailable) {
+                ++reconnectMissCount_;
+                if (reconnectMissCount_ >= kMaxReconnectMisses)
+                    reconnectMissCount_ = 0;
+                Log::info("AUDIO", "Reconnection: waiting for saved endpoints on driver '"
+                    + desiredType + "'");
+                return;
+            }
+
+            // Settings restore owns these explicit targets. Seed or refresh the
+            // desired driver's snapshot before switching so setAudioDeviceType
+            // cannot accept that driver's first enumerated default instead.
+            if (desiredIn.isNotEmpty() || desiredOut.isNotEmpty() || outputDisabled) {
+                auto& recoverySnapshot = driverSnapshots_[desiredType];
+                if (desiredIn.isNotEmpty())
+                    recoverySnapshot.inputDevice = desiredIn;
+                if (desiredOut.isNotEmpty())
+                    recoverySnapshot.outputDevice = desiredOut;
+                recoverySnapshot.sampleRate = desiredSampleRate_;
+                recoverySnapshot.bufferSize = desiredBufferSize_;
+                recoverySnapshot.outputNone = outputDisabled;
+
+                juce::AudioDeviceManager::AudioDeviceSetup currentSetup;
+                deviceManager_.getAudioDeviceSetup(currentSetup);
+                if (recoverySnapshot.inputChannels.isZero())
+                    recoverySnapshot.inputChannels = currentSetup.inputChannels;
+                if (recoverySnapshot.outputChannels.isZero())
+                    recoverySnapshot.outputChannels = currentSetup.outputChannels;
+            }
         }
 
         auto result = setAudioDeviceType(desiredType, preferredAsioDevice);
@@ -3815,7 +4155,7 @@ void AudioEngine::attemptReconnection()
             // checkReconnection() armed the normal ~3s cooldown before this
             // attempt. Preserve it on failure so an unavailable/busy ASIO
             // driver is not reopened again on every 30 Hz timer tick.
-            Log::warn("AUDIO", "Reconnection ASIO switch failed: " + result.message);
+            Log::warn("AUDIO", "Reconnection driver switch failed: " + result.message);
             return;
         }
 

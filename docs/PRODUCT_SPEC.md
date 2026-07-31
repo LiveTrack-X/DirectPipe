@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 공개된 v4.2.7 구현을 기준으로 작성
+> 역기획서 — v4.2.8 릴리즈 후보 구현을 기준으로 작성
 >
-> Reverse spec — based on the published v4.2.7 implementation
+> Reverse spec — based on the v4.2.8 release-candidate implementation
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.2.7
+4.2.8
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- v4.2.7 passed the complete Windows Release suite and exact-tag CI run `30571612012`. Cross-platform builds, registered tests, package checksums, and executable-version identity gated the public assets. No trusted Authenticode certificate is configured, so Windows is explicitly unsigned. Real-device and third-party VST crash-containment are not claimed. macOS/Linux retain source/CI support without hardware verification for this update.
-- v4.2.7은 전체 Windows Release 검증과 정확 태그 CI run `30571612012`를 통과했다. 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원이 공개 자산을 게이트했다. 신뢰된 Authenticode 인증서가 없어 Windows 패키지는 명시적으로 unsigned다. 실기기 및 제3자 VST crash-containment는 주장하지 않는다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
+- The v4.2.8 candidate completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures. Exact-tag cross-platform builds, package checksums, and executable-version identity remain publication gates. No trusted Authenticode certificate is configured, so Windows is explicitly unsigned. Real-device and third-party VST crash-containment are not claimed. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.2.8 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개다. 정확 태그의 전체 플랫폼 빌드·패키지 checksum·실행 파일 버전 신원은 게시 게이트다. 신뢰된 Authenticode 인증서가 없어 Windows 패키지는 명시적으로 unsigned다. 실기기 및 제3자 VST crash-containment는 주장하지 않는다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)
@@ -159,8 +159,8 @@ All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 감지 방식 / Detection Method | 이중 메커니즘: (1) `ChangeListener` 즉시 감지(장치 목록 변경 시 쿨다운 우회) + (2) 3초 타이머 폴링 (`checkReconnection`) / Dual mechanism: (1) `ChangeListener` immediate detection (bypasses cooldown on device-list changes) + (2) 3s timer polling (`checkReconnection`) |
-| 의도 추적 / Intent Tracking | `desiredInputDevice_` / `desiredOutputDevice_` (SpinLock 보호 / SpinLock protected) / `desiredDeviceType_` / `desiredSampleRate_` / `desiredBufferSize_` 저장 / saved |
-| 폴백 보호 / Fallback Protection | `intentionalChange_` 플래그: JUCE 자동 폴백을 성공적 재연결로 오인하는 것 방지 / `intentionalChange_` flag: prevents mistaking JUCE auto-fallback as successful reconnection |
+| 의도 추적 / Intent Tracking | `desiredDeviceType_` / `desiredInputDevice_` / `desiredOutputDevice_`를 같은 SpinLock으로 보호하고 독립 권위 target으로 저장. 재부팅/시작 시 이 세 값을 복원하며 특정 장치명은 고정하지 않음 / protects driver/input/output targets with the same SpinLock and restores them independently; no device name is hard-coded |
+| 폴백 보호 / Fallback Protection | `intentionalChange_`와 deferred generation을 사용해 JUCE 자동 폴백 또는 이전 start callback을 새 사용자 선택으로 오인하지 않음. 오류 없이 열린 목록 첫/기본 endpoint도 저장 target과 다르면 복구 상태를 유지 / `intentionalChange_` plus deferred generations prevent automatic fallback or stale start callbacks from becoming a new preference; an errorless first/default endpoint remains pending when it differs from the saved target |
 | 재연결 로직 / Reconnection Logic | `attemptReconnection()`: 장치 재스캔 → 가용성 확인 → desired 설정(SR/BS/채널) 복원. 같은 장치 외부 재시작(예: Windows 마이크 향상 기능 토글)은 짧게 안정화 후 같은 설정을 강제 재오픈. 명시 채널 마스크가 현재 장치에서 거부되면 driver default 채널로 재시도하여 스테레오 장치를 모노로 강제하지 않고, 모노 장치도 기본 레이아웃으로 열 수 있게 한다 / device rescan → availability check → restore desired settings (SR/BS/channels). Same-device external restarts (for example Windows microphone enhancement toggles) force a same-setup re-open after a short settle delay. If an explicit channel mask is rejected, reconnect retries driver default channels so stereo devices are not forced mono and mono devices can still open with their native layout. `attemptingReconnection_` 재진입 가드 / re-entrancy guard |
 | 쿨다운 / Cooldown | `reconnectCooldown_` (30Hz 타이머 틱 / 30Hz timer ticks) |
 | 알림 / Notification | 연결 끊김 시 경고(주황), 재연결 시 정보(보라) NotificationBar 표시 / Warning (orange) on disconnect, Info (purple) on reconnect in NotificationBar |
@@ -956,7 +956,7 @@ Automatically compensates buffer drift caused by slight differences between the 
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.2.7" (우하단 / bottom-right, 10pt) |
+| 버전 / Version | "v4.2.8" (우하단 / bottom-right, 10pt) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
@@ -1092,7 +1092,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.2.7",
+  "appVersion": "4.2.8",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1115,7 +1115,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.2.7",
+  "appVersion": "4.2.8",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */
@@ -1298,7 +1298,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.7.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.2.8.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

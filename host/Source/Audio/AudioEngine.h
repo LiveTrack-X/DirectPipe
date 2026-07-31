@@ -97,7 +97,14 @@ public:
     [[nodiscard]] ActionResult setAsioDevice(const juce::String& deviceName);    // [Message thread only]
 
     /** @brief Get the desired device type (survives fallback, unlike getCurrentDeviceType). */
-    juce::String getDesiredDeviceType() const { return desiredDeviceType_.isEmpty() ? getCurrentDeviceType() : desiredDeviceType_; }
+    juce::String getDesiredDeviceType() const {
+        juce::String desiredType;
+        {
+            const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
+            desiredType = desiredDeviceType_;
+        }
+        return desiredType.isEmpty() ? getCurrentDeviceType() : desiredType;
+    }
     /** @brief Get the desired input/output device names (survive fallback). */
     juce::String getDesiredInputDevice() const { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); return desiredInputDevice_; }
     juce::String getDesiredOutputDevice() const { const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_); return desiredOutputDevice_; }
@@ -450,10 +457,10 @@ private:
     double lastXRunWarningTime_ = 0.0;                  // [Message thread only] throttles normal-mode diagnostics
 
     // Device reconnection tracking (Message thread only, except atomics)
-    mutable juce::SpinLock desiredDeviceLock_;           // Protects desiredInputDevice_ / desiredOutputDevice_
+    mutable juce::SpinLock desiredDeviceLock_;           // Protects all desired device type/name strings
     juce::String desiredInputDevice_;                   // [Protected by desiredDeviceLock_]
     juce::String desiredOutputDevice_;                  // [Protected by desiredDeviceLock_]
-    juce::String desiredDeviceType_;                    // [Message thread only] Tracks intended driver type across fallbacks
+    juce::String desiredDeviceType_;                    // [Protected by desiredDeviceLock_] Tracks intended driver type across fallbacks
     juce::String lastAsioDevice_;                       // [Message thread only] Remembers last used ASIO device for type switches
     std::map<juce::String, DriverTypeSnapshot> driverSnapshots_;  // [Message thread only] Per-driver-type settings for restore on switch
     bool desiredSRBSSet_ = false;                       // [Message thread only] true after user/settings explicitly set SR/BS
@@ -462,6 +469,7 @@ private:
     std::atomic<bool> deviceLost_{false};               // [RT/Device write, Message read]
     std::atomic<bool> inputDeviceLost_{false};          // [RT/Device write, Message read] Input specifically lost: zero input in audio callback
     std::atomic<bool> outputAutoMuted_{false};          // [RT/Device write, Message read] Output auto-muted due to device loss
+    std::atomic<uint64_t> deferredDeviceSnapshotGeneration_{0}; // [Device write, Message read] Latest start owns deferred runtime synchronization
     std::atomic<uint64_t> monitorConfigurationGeneration_{0}; // [Device/Message write, Message read] Invalidates stale deferred monitor reopens
     bool attemptingReconnection_ = false;               // [Message thread only] Re-entrancy guard
     std::atomic<bool> intentionalChange_{false};        // [Message write, Device thread read] Guards audioDeviceStopped from setting deviceLost_ during intentional changes

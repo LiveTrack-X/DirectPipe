@@ -20,8 +20,8 @@
 | macOS (beta) | `.dmg` → `DirectPipe.app`을 Applications로 드래그 | Drag `.app` to Applications |
 | Linux (experimental) | `.tar.gz` → 압축 해제 → `DirectPipe` 바이너리 | Extract → Run `./DirectPipe` |
 
-> **Windows**: 현재 신뢰된 코드 서명 인증서가 없어 v4.2.7은 unsigned이며 SmartScreen/브라우저 평판 경고가 나타날 수 있습니다. 공식 GitHub Release에서만 받고 ZIP을 `checksums.sha256`과 대조하세요. 디지털 서명이 있는 빌드는 상태가 `Valid`인지도 확인하고, 손상되거나 유효하지 않은 서명은 실행하지 마세요.
-> DirectPipe currently has no trusted Windows code-signing certificate, so v4.2.7 is unsigned and may trigger browser/SmartScreen reputation warnings. Download only from the official GitHub Release and verify the ZIP against `checksums.sha256`. If a signature is present, also require it to be `Valid`.
+> **Windows**: 현재 신뢰된 코드 서명 인증서가 없어 Windows 패키지는 unsigned이며 SmartScreen/브라우저 평판 경고가 나타날 수 있습니다. 공식 GitHub Release에서만 받고 ZIP을 `checksums.sha256`과 대조하세요. 디지털 서명이 있는 빌드는 상태가 `Valid`인지도 확인하고, 손상되거나 유효하지 않은 서명은 실행하지 마세요.
+> DirectPipe currently has no trusted Windows code-signing certificate, so Windows packages are unsigned and may trigger browser/SmartScreen reputation warnings. Download only from the official GitHub Release and verify the ZIP against `checksums.sha256`. If a signature is present, also require it to be `Valid`.
 >
 > **macOS**: Gatekeeper 경고 시 Finder에서 DirectPipe.app **우클릭** → **열기** → **열기** 클릭. 또는: 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 열기". / If Gatekeeper blocks, **right-click** DirectPipe.app → **Open** → **Open**. Or: System Settings → Privacy & Security → "Open Anyway".
 >

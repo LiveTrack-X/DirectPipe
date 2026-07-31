@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Current Release 4.2.7 / 현재 릴리즈 4.2.7** — [Download the public release / 공개 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.7).
+> **Release Candidate Version 4.2.8 / 릴리즈 후보 버전 4.2.8** — [Exact-tag release page / 정확 태그 릴리즈 페이지](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.8). Until publication completes, use [v4.2.7](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.2.7).
 
 ## 시작하기 / Getting Started
 
@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정 대상), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.7은 전체 Windows Release 검증과 정확 태그 CI run `30571612012`의 전체 플랫폼 빌드·등록 테스트·패키지 checksum·실행 파일 버전 신원을 통과해 게시됐습니다. 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment와 macOS/Linux 하드웨어 동작은 별도 검증 범위입니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정 대상), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.2.8 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개이며 정확 태그 전체 플랫폼 CI와 공개 자산 검증은 게시 게이트입니다. 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment와 macOS/Linux 하드웨어 동작은 별도 검증 범위입니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable target), macOS 10.15+ universal (beta), Linux x86_64 (experimental). v4.2.7 was published after the complete Windows Release suite and exact-tag CI run `30571612012` passed cross-platform builds, registered tests, package checksums, and executable-version verification. Without a certificate Windows is unsigned. Real-device, third-party VST crash-containment, and macOS/Linux hardware behavior remain separate evidence.
+> **Platform Support**: Windows 10/11 x64 (stable target), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The v4.2.8 candidate completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures; exact-tag cross-platform CI and public artifact verification remain publication gates. Without a certificate Windows is unsigned. Real-device, third-party VST crash-containment, and macOS/Linux hardware behavior remain separate evidence.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)
@@ -47,7 +47,7 @@ USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 �
 
 ### 1단계: 기본 설정 / Step 1: Basic Setup
 
-1. **DirectPipe 실행** — 현재 신뢰된 Windows 코드 서명 인증서가 없어 v4.2.7도 미서명입니다. 공식 GitHub Release에서만 내려받고 ZIP을 `checksums.sha256`과 대조하세요. 서명이 있는 빌드는 서명 상태도 `Valid`여야 합니다:
+1. **DirectPipe 실행** — 현재 신뢰된 Windows 코드 서명 인증서가 없어 Windows 패키지는 미서명입니다. 공식 GitHub Release에서만 내려받고 ZIP을 `checksums.sha256`과 대조하세요. 서명이 있는 빌드는 서명 상태도 `Valid`여야 합니다:
    - **Windows**: 공식 해시가 일치하고, 존재하는 서명이 유효한데도 SmartScreen 평판 경고가 남으면 "추가 정보" → "실행"을 선택할 수 있습니다
    - **macOS**: Gatekeeper → 시스템 설정 → 보안 및 개인 정보 → "확인 없이 열기"
    - **Linux**: `chmod +x DirectPipe` 후 실행
@@ -62,7 +62,7 @@ USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 �
 
 ---
 
-1. **Launch DirectPipe** — DirectPipe currently has no trusted Windows code-signing certificate, so v4.2.7 is unsigned. Verify the official Release ZIP against `checksums.sha256`; if a signature is present, require it to be `Valid`:
+1. **Launch DirectPipe** — DirectPipe currently has no trusted Windows code-signing certificate, so Windows packages are unsigned. Verify the official Release ZIP against `checksums.sha256`; if a signature is present, require it to be `Valid`:
    - **Windows**: If the official hash matches and any present signature is valid but a SmartScreen reputation warning remains, you can choose "More info" → "Run anyway"
    - **macOS**: Gatekeeper → System Settings → Privacy & Security → "Open Anyway"
    - **Linux**: `chmod +x DirectPipe` then run
@@ -1233,7 +1233,10 @@ DirectPipe는 USB 오디오 장치가 분리되면 **자동 재연결**을 시�
 - **분리 시** → 하단 상태 바에 **주황색 경고** 표시 / Orange warning on disconnect
 - **재연결 시** → 원하는 장치가 다시 나타나면 자동 재연결 + **보라색 알림** (무기한 대기, 다른 장치로 폴백하지 않음) / Auto-reconnects when desired device reappears + purple notification (waits indefinitely, no fallback)
 - **설정 보존** → 샘플레이트, 버퍼 크기, 채널 라우팅 유지 / SR, buffer size, and channel routing preserved
+- **재부팅/시작 복원** → 마지막으로 저장한 드라이버·입력·출력을 각각 권위값으로 사용하며, 오류 없이 열린 목록 첫 장치나 시스템 기본 장치를 새 선택으로 저장하지 않음 / On reboot/startup, the last saved driver, input, and output remain authoritative; an errorless first-enumerated or system-default fallback is not adopted as a new preference
 - **모니터 장치** → 메인 장치와 독립적으로 자동 재연결 / Monitor device reconnects independently
+
+> 장치 복원은 저장된 사용자 선택을 기준으로 하며 `CABLE Input` 또는 다른 특정 하드웨어 이름을 고정하지 않습니다. / Restoration follows the user's saved selection; `CABLE Input` and all other hardware names are not hard-coded.
 
 > **Tip**: 재연결이 필요하면 콤보박스에는 비활성 `장치명 (Reconnect)` 상태가 선택됩니다. 목록을 열고 별도로 남아 있는 실제 `장치명` 항목을 한 번 클릭하면 같은 장치를 명시적으로 다시 엽니다. 다른 장치를 골랐다 돌아올 필요는 없습니다. Windows Audio는 유실된 입력/출력만, ASIO는 duplex 양쪽에 이 상태를 표시합니다. / When recovery is required, the combo selects a disabled `Device (Reconnect)` status. Open the list and click the separate real `Device` item once to explicitly reopen the same device; selecting another device first is unnecessary. Windows Audio shows this only for the lost direction, while ASIO shows it on both sides of the duplex device.
 

@@ -4,6 +4,48 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.2.8] - 2026-07-31
+
+### Fixed
+
+- **Last-selected device restoration**: Startup and Windows endpoint restarts
+  preserve the saved driver, input, and output instead of accepting the first
+  enumerated or system-default endpoint when JUCE opens a fallback without an
+  error.
+- **Direction-aware recovery**: Input-only and output-only loss now reconcile
+  both saved endpoint identities while clearing only the recovery flags that
+  were actually resolved. Selecting `Output: None` remains an intentional
+  choice.
+- **Stale callback protection**: Deferred device-start snapshots are
+  generation-gated, so an earlier callback cannot overwrite restored settings
+  or a newer manual device selection.
+- **Fail-closed device starts**: A stream with an invalid sample rate, buffer
+  size, driver identity, or saved endpoint identity remains muted and pending
+  recovery rather than being adopted as the new preference.
+- **Driver restoration**: A silent cross-driver fallback now switches back to
+  the saved driver and endpoints. ASIO candidate recovery retains its validated
+  candidate path and last-selected-device preference.
+
+### Compatibility
+
+- Device restoration is based only on the user's last saved driver and
+  endpoint identities. No hardware name, including VB-Cable, is hard-coded.
+- IPC protocol v1, the 192-byte shared-memory header, Receiver identity,
+  Stream Deck actions, presets, and settings schema are unchanged.
+
+### Tests
+
+- Local Windows Release validation completed all 582 CTest registrations:
+  580 passed, 2 environment-dependent tests skipped, and 0 failed
+  (59 core + 521 host + 2 focused endpoint).
+- Added 14 startup, fallback, one-direction recovery, stale-callback,
+  `Output: None`, invalid-runtime, and driver-identity regression tests.
+- Exact-tag cross-platform CI, package checksums, and public artifact
+  verification remain the publication gate. Real-device audio and third-party
+  VST crash containment were not verified for this release.
+
+---
+
 ## [4.2.7] - 2026-07-31
 
 ### Fixed

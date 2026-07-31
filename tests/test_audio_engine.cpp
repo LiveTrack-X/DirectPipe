@@ -33,6 +33,14 @@ bool monitorDeviceConflictsWithExclusiveMainOutput(
     const juce::String& monitorDevice);
 bool endpointEventIsSuppressed(double nowMs, double suppressedUntilMs) noexcept;
 int reconnectCooldownAfterRecovery(bool recovered) noexcept;
+bool savedTargetMismatchesActualDevice(const juce::String& desiredDevice,
+                                       const juce::String& actualDevice,
+                                       bool targetDisabled) noexcept;
+bool restoredDeviceTargetsMatch(const juce::String& actualInput,
+                                const juce::String& actualOutput,
+                                const juce::String& desiredInput,
+                                const juce::String& desiredOutput,
+                                bool outputDisabled) noexcept;
 bool shouldSuspendMonitorBeforeExclusiveOpen(
     const juce::String& deviceType,
     const juce::String& targetOutputDevice,
@@ -2006,6 +2014,477 @@ TEST_F(AudioEngineTest, FallbackProtection) {
     EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
 
+TEST_F(AudioEngineTest, DeferredInitialDeviceSnapshotCannotOverwriteLastSelectedDevices) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->deviceName = "System Default";
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = {
+        "System Default", "User Selected Input", "User Selected Output"
+    };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+
+    // AudioDeviceManager::addAudioCallback performs this callback before the
+    // application's saved settings are restored. The device callback defers
+    // its desired-device update to the message queue.
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    // Simulate settings restore in the same message turn, before the deferred
+    // default-device snapshot is allowed to run.
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "User Selected Input", "User Selected Output");
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "User Selected Input");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "User Selected Output");
+    EXPECT_TRUE(engine_->isStartupRestorePendingForTest());
+#endif
+}
+
+TEST_F(AudioEngineTest, FirstLaunchDeferredSnapshotSeedsCurrentDevices) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->deviceName = "System Default";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "System Default");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "System Default");
+#endif
+}
+
+TEST_F(AudioEngineTest, SilentDeviceTypeFallbackRestoresSavedDriverAndEndpoints) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto actualStats = std::make_shared<ManagedFakeDeviceStats>();
+    actualStats->typeName = "Unexpected Driver";
+    actualStats->deviceName = "Shared Endpoint Name";
+    auto desiredStats = std::make_shared<ManagedFakeDeviceStats>();
+    desiredStats->typeName = "Saved Driver";
+    desiredStats->deviceName = "Shared Endpoint Name";
+    desiredStats->deviceNames = { "First Enumerated Default", "Shared Endpoint Name" };
+
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, actualStats);
+    addManagedFakeDeviceType(manager, desiredStats, false);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup("Shared Endpoint Name"), true).isEmpty());
+
+    engine_->rememberRestoredDeviceTargets(
+        desiredStats->typeName,
+        "Shared Endpoint Name",
+        "Shared Endpoint Name");
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+
+    // The endpoint display names happen to match, but the active driver does
+    // not. This must remain a pending restore rather than being accepted as a
+    // new preference merely because Windows opened it without an error.
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    EXPECT_EQ(engine_->getCurrentDeviceType(), "Unexpected Driver");
+    EXPECT_EQ(engine_->getDesiredDeviceType(), "Saved Driver");
+    EXPECT_TRUE(engine_->isStartupRestorePendingForTest());
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+
+    engine_->attemptImmediateReconnectionForTest();
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(engine_->getCurrentDeviceType(), "Saved Driver");
+    EXPECT_EQ(engine_->getDesiredDeviceType(), "Saved Driver");
+    EXPECT_EQ(restored.inputDeviceName, "Shared Endpoint Name");
+    EXPECT_EQ(restored.outputDeviceName, "Shared Endpoint Name");
+    EXPECT_FALSE(engine_->isStartupRestorePendingForTest());
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+#endif
+}
+
+TEST_F(AudioEngineTest, ErrorlessOutputFallbackPreservesLastSelectedOutput) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "System Default", "User Selected Output" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto selected = managedDuplexSetup("System Default");
+    selected.outputDeviceName = "User Selected Output";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(selected, true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "System Default", "User Selected Output");
+    ASSERT_FALSE(engine_->isDeviceLost());
+
+    auto fallback = selected;
+    fallback.outputDeviceName = "System Default";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(fallback, true).isEmpty());
+
+    // Some Windows/JUCE restarts report the fallback start without first
+    // delivering an error callback. A different actual output must still be
+    // treated as fallback, not as a new user preference.
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "System Default");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "User Selected Output");
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+    EXPECT_FALSE(engine_->isStartupRestorePendingForTest());
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.outputDeviceName, "User Selected Output");
+#endif
+}
+
+TEST_F(AudioEngineTest, DirectInvalidDeviceStartFailsClosedInBothDirections) {
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->deviceName = "Invalid Runtime Device";
+    stats->zeroSampleRateDeviceName = stats->deviceName;
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+    ASSERT_NE(manager.getCurrentAudioDevice(), nullptr);
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+    EXPECT_TRUE(engine_->isOutputMuted());
+}
+
+TEST_F(AudioEngineTest, InvalidRuntimeAfterFallbackRestoreRemainsPending) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "System Default", "Saved Output" };
+    stats->zeroSampleRateDeviceName = "Saved Output";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup("System Default"), true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "System Default", "Saved Output");
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "Saved Output");
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+#endif
+}
+
+TEST_F(AudioEngineTest, StoppedOutputFallbackClearsStaleInputLossAfterRestore) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "System Default", "Saved Output" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto selected = managedDuplexSetup("System Default");
+    selected.outputDeviceName = "Saved Output";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(selected, true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "System Default", "Saved Output");
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceStopped();
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+
+    auto fallback = selected;
+    fallback.outputDeviceName = "System Default";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(fallback, true).isEmpty());
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.outputDeviceName, "Saved Output");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "Saved Output");
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+#endif
+}
+
+TEST_F(AudioEngineTest, StoppedInputFallbackClearsStaleOutputMuteAfterRestore) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = { "System Default", "Saved Input" };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto selected = managedDuplexSetup("System Default");
+    selected.inputDeviceName = "Saved Input";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(selected, true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "Saved Input", "System Default");
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceStopped();
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+
+    auto fallback = selected;
+    fallback.inputDeviceName = "System Default";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(fallback, true).isEmpty());
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    juce::AudioDeviceManager::AudioDeviceSetup restored;
+    manager.getAudioDeviceSetup(restored);
+    EXPECT_EQ(restored.inputDeviceName, "Saved Input");
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "Saved Input");
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+#endif
+}
+
+TEST_F(AudioEngineTest, QueuedFallbackRestoreCannotOverrideNewManualOutput) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->separateInputsAndOutputs = true;
+    stats->deviceNames = {
+        "System Default", "Saved Output", "New Manual Output"
+    };
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+
+    auto selected = managedDuplexSetup("System Default");
+    selected.outputDeviceName = "Saved Output";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(selected, true).isEmpty());
+    engine_->rememberRestoredDeviceTargets(
+        stats->typeName, "System Default", "Saved Output");
+
+    auto fallback = selected;
+    fallback.outputDeviceName = "System Default";
+    ASSERT_TRUE(manager.setAudioDeviceSetup(fallback, true).isEmpty());
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+
+    // The fallback restore is queued for Saved Output. A later successful
+    // manual choice must invalidate it even though both devices are available.
+    const auto selection = engine_->setOutputDevice("New Manual Output");
+
+    std::atomic<bool> queueDrained{false};
+    const bool markerPosted = juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    });
+    const bool drained = markerPosted && pumpMessagesUntil(queueDrained);
+
+    ASSERT_TRUE(selection);
+    ASSERT_TRUE(markerPosted);
+    ASSERT_TRUE(drained);
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "New Manual Output");
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+
+    juce::AudioDeviceManager::AudioDeviceSetup actual;
+    manager.getAudioDeviceSetup(actual);
+    EXPECT_EQ(actual.outputDeviceName, "New Manual Output");
+#endif
+}
+
+TEST(AudioDeviceRecoveryPolicyTest, EmptyActualDeviceMismatchesSavedTarget) {
+    using directpipe::audio_device_recovery_detail::savedTargetMismatchesActualDevice;
+
+    EXPECT_TRUE(savedTargetMismatchesActualDevice(
+        "User Selected Output", {}, false));
+    EXPECT_TRUE(savedTargetMismatchesActualDevice(
+        "User Selected Output", "System Default", false));
+    EXPECT_FALSE(savedTargetMismatchesActualDevice(
+        "User Selected Output", "User Selected Output", false));
+    EXPECT_FALSE(savedTargetMismatchesActualDevice(
+        {}, "System Default", false));
+    EXPECT_FALSE(savedTargetMismatchesActualDevice(
+        "User Selected Output", {}, true));
+}
+
+TEST(AudioDeviceRecoveryPolicyTest, RestoredEndpointIdentityMustMatchSavedTargets) {
+    using directpipe::audio_device_recovery_detail::restoredDeviceTargetsMatch;
+
+    EXPECT_TRUE(restoredDeviceTargetsMatch(
+        "Saved Input", "Saved Output",
+        "Saved Input", "Saved Output", false));
+    EXPECT_FALSE(restoredDeviceTargetsMatch(
+        "First Default", "Saved Output",
+        "Saved Input", "Saved Output", false));
+    EXPECT_FALSE(restoredDeviceTargetsMatch(
+        "Saved Input", "First Default",
+        "Saved Input", "Saved Output", false));
+    EXPECT_TRUE(restoredDeviceTargetsMatch(
+        "Saved Input", "First Default",
+        "Saved Input", "Saved Output", true));
+    EXPECT_TRUE(restoredDeviceTargetsMatch(
+        "Any Input", "Any Output", {}, {}, false));
+}
+
+TEST_F(AudioEngineTest, OutputNoneRejectsQueuedOutputSnapshot) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->deviceName = "System Default";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName), true).isEmpty());
+
+    juce::AudioIODeviceCallback& callback = *engine_;
+    callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
+    engine_->setOutputNone(true);
+
+    std::atomic<bool> queueDrained{false};
+    ASSERT_TRUE(juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    }));
+    ASSERT_TRUE(pumpMessagesUntil(queueDrained));
+
+    EXPECT_TRUE(engine_->isOutputNone());
+    EXPECT_TRUE(engine_->getDesiredOutputDevice().isEmpty());
+    EXPECT_EQ(engine_->getDesiredInputDevice(), "System Default");
+#endif
+}
+
+TEST_F(AudioEngineTest, IntentionalAsioRestartInvalidatesQueuedRuntimeSnapshot) {
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    ASSERT_NE(juce::MessageManager::getInstance(), nullptr);
+
+    auto stats = std::make_shared<ManagedFakeDeviceStats>();
+    stats->typeName = "ASIO Test";
+    stats->deviceName = "ASIO Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, stats);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(stats->deviceName, 48000.0, 128), true).isEmpty());
+
+    // addAudioCallback queues the 128-sample non-intentional snapshot. The
+    // setter then performs an intentional restart of the same ASIO endpoint.
+    manager.addAudioCallback(engine_.get());
+    const auto bufferResult = engine_->setBufferSize(256);
+
+    std::atomic<bool> queueDrained{false};
+    const bool markerPosted = juce::MessageManager::callAsync([&queueDrained] {
+        queueDrained.store(true, std::memory_order_release);
+    });
+    const bool drained = markerPosted && pumpMessagesUntil(queueDrained);
+
+    const auto actualBuffer = manager.getCurrentAudioDevice()
+        ? manager.getCurrentAudioDevice()->getCurrentBufferSizeSamples()
+        : 0;
+    const auto runtimeBuffer = engine_->getCurrentBufferSizeForTest();
+    const auto desiredBuffer = engine_->getDesiredBufferSize();
+    manager.removeAudioCallback(engine_.get());
+
+    ASSERT_TRUE(bufferResult);
+    ASSERT_TRUE(markerPosted);
+    ASSERT_TRUE(drained);
+    EXPECT_EQ(actualBuffer, 256);
+    EXPECT_EQ(runtimeBuffer, 256);
+    EXPECT_EQ(desiredBuffer, 256);
+#endif
+}
+
 TEST_F(AudioEngineTest, RememberRestoreTargetsArmsStartupRetryWhenDeviceUnavailable) {
     engine_->rememberRestoredDeviceTargets("Windows Audio", "Boot Mic", "Boot Speakers");
 
@@ -2044,6 +2523,35 @@ TEST_F(AudioEngineTest, StartupRestorePendingRequiresSavedTargets) {
     EXPECT_TRUE(engine_->isStartupRestorePendingForTest());
     EXPECT_FALSE(engine_->restoredDeviceTargetsSatisfiedForTest(fallback));
     EXPECT_TRUE(engine_->restoredDeviceTargetsSatisfiedForTest(target));
+}
+
+TEST_F(AudioEngineTest, ReadyFallbackReconcilesBothSavedDeviceDirections) {
+    engine_->rememberRestoredDeviceTargets(
+        {}, "Saved Input", "Saved Output");
+
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    setup.inputDeviceName = "Unexpected Input";
+    setup.outputDeviceName = "Saved Output";
+
+    EXPECT_FALSE(engine_->clearDeviceLossAfterReadyForTest(setup));
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_TRUE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
+
+    setup.inputDeviceName = "Saved Input";
+    setup.outputDeviceName = "Unexpected Output";
+
+    EXPECT_FALSE(engine_->clearDeviceLossAfterReadyForTest(setup));
+    EXPECT_TRUE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_TRUE(engine_->isOutputAutoMuted());
+
+    setup.outputDeviceName = "Saved Output";
+
+    EXPECT_TRUE(engine_->clearDeviceLossAfterReadyForTest(setup));
+    EXPECT_FALSE(engine_->isDeviceLost());
+    EXPECT_FALSE(engine_->isInputDeviceLost());
+    EXPECT_FALSE(engine_->isOutputAutoMuted());
 }
 
 TEST_F(AudioEngineTest, RestoreReadyKeepsOutputMutedWhenOutputNoneSelected) {
