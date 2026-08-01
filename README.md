@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest stable (최신 안정판)**: [v4.3.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 마지막으로 저장한 드라이버·입력·출력 복원을 강화했습니다. Windows stable, macOS beta, Linux experimental.
+- **Latest stable (최신 안정판)**: [v4.3.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — v4.2.0의 정상 시작 기본 장치 라우팅을 복원했습니다. Windows stable, macOS beta, Linux experimental.
 
-> **지원/검증 범위**: v4.3.0 후보는 로컬 Windows Release CTest 582개(580 통과, 환경 의존 2개 건너뜀, 실패 0)를 통과했습니다. 공개 배포는 정확 태그 CI, 패키지 신원, checksum 검증 통과가 조건입니다. 실기기 및 제3자 VST crash-containment는 별도 검증 범위입니다.
-> **Support/validation scope**: The v4.3.0 candidate passed 582 local Windows Release registrations (580 passed, 2 environment-dependent skips, 0 failed). Publication is conditional on exact-tag CI, package identity, and checksum verification. Real-device and third-party VST crash-containment remain outside this software-only evidence.
+> **지원/검증 범위**: v4.3.0은 로컬 Windows Release CTest 582개(580 통과, 환경 의존 2개 건너뜀, 실패 0)와 정확 태그 CI run `30701998763`을 통과했습니다. 공개 자산 5개, 네 payload checksum, Windows host·VST2·VST3의 4.3.0/unsigned 신원을 확인했습니다. 실기기 및 제3자 VST crash-containment는 별도 검증 범위입니다.
+> **Support/validation scope**: v4.3.0 passed 582 local Windows Release registrations (580 passed, 2 environment-dependent skips, 0 failed) and exact-tag CI run `30701998763`. The five public assets, all four payload checksums, and the Windows host/VST2/VST3 4.3.0/unsigned identities were verified. Real-device and third-party VST crash-containment remain outside this software-only evidence.
 
 
 

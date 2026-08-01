@@ -54,10 +54,17 @@ v4.3.0은 v4.2.0의 기본 장치 라우팅 규칙을 복원합니다. Windows�
   report file/product version 4.3.0 and are explicitly unsigned.
 - 로컬 Windows host, VST2 Receiver, 내부 VST3 Receiver는 모두
   file/product version 4.3.0이며 명시적으로 unsigned 상태입니다.
-- Publication requires the exact `v4.3.0` tag to pass Windows, macOS, Linux,
-  Stream Deck, executable-identity, signature-state, and checksum gates.
-- 정확한 `v4.3.0` 태그가 Windows, macOS, Linux, Stream Deck, 실행 파일
-  신원, 서명 상태, checksum 게이트를 통과한 경우에만 게시합니다.
+- Exact-tag CI run `30701998763` passed every required Windows, macOS, Linux,
+  Stream Deck, and publication job and published the non-draft,
+  non-prerelease v4.3.0 Release.
+- 정확 태그 CI run `30701998763`은 Windows, macOS, Linux, Stream Deck,
+  게시 job을 모두 통과해 draft/prerelease가 아닌 v4.3.0을 게시했습니다.
+- Independent downloads confirmed the expected five assets and all four
+  payload hashes in `checksums.sha256`. The packaged Windows host, VST2, and
+  inner VST3 binaries report 4.3.0 and `NotSigned`.
+- 독립 다운로드에서 예상된 자산 5개와 `checksums.sha256`의 네 payload
+  hash를 모두 확인했습니다. Windows host, VST2, 내부 VST3 바이너리는
+  4.3.0과 `NotSigned`를 보고합니다.
 - No trusted Windows code-signing certificate is configured. The Windows
   package is expected to be unsigned and may trigger reputation warnings.
 - 신뢰된 Windows 코드 서명 인증서가 없어 Windows 패키지는 unsigned로

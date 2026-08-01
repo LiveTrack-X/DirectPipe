@@ -41,8 +41,8 @@ GPL v3 (오픈소스 / open source)
 - **macOS** 10.15+ (Apple Silicon & Intel universal binary) — beta / 베타 (빌드 최소 10.15, 권장 13+ / build min 10.15, recommended 13+)
 - **Linux** (Ubuntu 22.04+ or compatible x86_64) — experimental / 실험적
 - **Stream Deck plugin** — separate cross-platform package targeting Windows 10+, macOS 10.15+, and Stream Deck 6.9+ / 별도 크로스 플랫폼 패키지
-- The v4.3.0 candidate completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures. Exact-tag CI must still verify cross-platform builds, package checksums, executable-version identity, and the five-asset release set before publication. No trusted Authenticode certificate is configured, so Windows is explicitly unsigned. Real-device and third-party VST crash-containment are not claimed. macOS/Linux retain source/CI support without hardware verification for this update.
-- v4.3.0 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개로 완료했다. 공개 전 정확 태그 CI가 전체 플랫폼 빌드, 패키지 checksum, 실행 파일 버전 신원, 공개 자산 5개 구성을 검증해야 한다. 신뢰된 Authenticode 인증서가 없어 Windows 패키지는 명시적으로 unsigned다. 실기기 및 제3자 VST crash-containment는 주장하지 않는다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
+- v4.3.0 completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures. Exact-tag CI run `30701998763` verified cross-platform builds, and independent release verification confirmed package checksums, executable-version identity, and the five-asset release set. No trusted Authenticode certificate is configured, so Windows is explicitly unsigned. Real-device and third-party VST crash-containment are not claimed. macOS/Linux retain source/CI support without hardware verification for this update.
+- v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개로 완료했다. 정확 태그 CI run `30701998763`이 전체 플랫폼 빌드를 검증했고, 독립 릴리스 검증에서 패키지 checksum, 실행 파일 버전 신원, 공개 자산 5개 구성을 확인했다. 신뢰된 Authenticode 인증서가 없어 Windows 패키지는 명시적으로 unsigned다. 실기기 및 제3자 VST crash-containment는 주장하지 않는다. macOS/Linux는 소스·CI 지원을 유지하되 이번 업데이트에서 하드웨어 검증하지 않았다.
 
 ### 배포 형태 / Distribution
 - `DirectPipe.exe` — 메인 호스트 (단일 실행 파일) / Main host (single executable)

@@ -10,7 +10,7 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 
 | 플랫폼 / Platform | 릴리즈 상태 / Release status | 빌드/배포 상태 / Build & distribution | 검증 메모 / Validation notes |
 |---|---|---|---|
-| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release 및 CI `windows-latest` ZIP | v4.3.0 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개로 완료했습니다. 정확 태그 CI, 패키지 checksum, 실행 파일 버전 신원, 공개 자산 검증은 공개 전 게이트입니다. 신뢰 인증서가 없어 unsigned 상태를 명시합니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
+| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release 및 CI `windows-latest` ZIP | v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 공개 자산 5개, 네 payload checksum, 실행 파일 4.3.0/unsigned 신원을 확인했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
 | **macOS 10.15+ universal** | 베타 / Beta | CI `macos-14` DMG | CMake/CI 빌드 경로와 CoreAudio 구현은 유지. 실기기 오디오 검증 범위는 제한적. |
 | **Linux x86_64** | 실험적 / Experimental | CI `ubuntu-24.04` tar.gz | ALSA/JACK 경로는 유지. 배포판/데스크톱/오디오 서버 조합별 편차가 있을 수 있음. |
 | **Stream Deck plugin** | 별도 크로스 플랫폼 패키지 / Separate cross-platform package | CI `ubuntu-latest` `.streamDeckPlugin` | Manifest 기준 Windows 10+, macOS 10.15+, Stream Deck 6.9+. |

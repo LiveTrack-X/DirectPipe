@@ -26,11 +26,11 @@ If you're new, start with the [Quick Start guide](QUICKSTART.md). 3 steps:
 
 DirectPipe는 실시간 VST2/VST3 호스트입니다. USB 마이크 입력에 노이즈 제거, EQ, 컴프레서 등 VST 플러그인을 걸어 실시간으로 처리한 뒤, Discord·Zoom·OBS 등 다른 앱에서 사용할 수 있도록 출력합니다. 시스템 트레이(macOS: 메뉴 바)에 상주하며, 키보드 단축키·MIDI·Stream Deck·HTTP API로 원격 제어할 수 있습니다.
 
-> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정 대상), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.3.0 후보는 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개로 완료했습니다. 정확 태그 CI와 공개 자산·checksum·Windows 실행 파일 신원 검증은 공개 전 게이트입니다. 인증서가 없으므로 Windows 패키지는 unsigned입니다. 실기기·제3자 VST crash-containment와 macOS/Linux 하드웨어 동작은 별도 검증 범위입니다.
+> **플랫폼 지원 / Platform Support**: Windows 10/11 x64 (정식/안정 대상), macOS 10.15+ universal (베타), Linux x86_64 (실험적). v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 공개 자산 5개, 네 payload checksum, Windows 실행 파일 4.3.0/unsigned 신원을 확인했습니다. 실기기·제3자 VST crash-containment와 macOS/Linux 하드웨어 동작은 별도 검증 범위입니다.
 
 DirectPipe is a real-time VST2/VST3 host. It processes your USB microphone input through VST plugins (noise removal, EQ, compressor, etc.) and routes the output to other apps like Discord, Zoom, or OBS. It runs in the system tray (macOS: menu bar) and can be remotely controlled via hotkeys, MIDI, Stream Deck, or HTTP API.
 
-> **Platform Support**: Windows 10/11 x64 (stable target), macOS 10.15+ universal (beta), Linux x86_64 (experimental). The v4.3.0 candidate completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures. Exact-tag CI and public asset, checksum, and Windows executable-identity verification remain publication gates. Without a certificate Windows is unsigned. Real-device, third-party VST crash-containment, and macOS/Linux hardware behavior remain separate evidence.
+> **Platform Support**: Windows 10/11 x64 (stable target), macOS 10.15+ universal (beta), Linux x86_64 (experimental). v4.3.0 completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures, plus exact-tag CI run `30701998763`. The five public assets, all four payload checksums, and Windows executable 4.3.0/unsigned identities were verified. Real-device, third-party VST crash-containment, and macOS/Linux hardware behavior remain separate evidence.
 
 ```
 USB 마이크 → DirectPipe (VST 플러그인 체인) → Main Output (가상 케이블 → Discord/Zoom)

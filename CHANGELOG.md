@@ -29,7 +29,9 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
   scenarios pass. The local Windows Release gate registered 582 tests: 580
   passed, 2 environment-dependent tests were skipped, and 0 failed. The Stream
   Deck suite passed 22/22 tests and produced a validated v4.3.0.0 package.
-  Exact-tag CI and public-asset verification remain publication gates.
+  Exact-tag CI run `30701998763` passed every required job and published five
+  assets. Independent downloads matched all four payload checksums, and the
+  Windows host, VST2, and VST3 binaries reported 4.3.0 and `NotSigned`.
 
 ---
 
