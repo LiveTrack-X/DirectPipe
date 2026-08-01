@@ -2144,7 +2144,7 @@ TEST_F(AudioEngineTest, SilentDeviceTypeFallbackRestoresSavedDriverAndEndpoints)
 #endif
 }
 
-TEST_F(AudioEngineTest, ErrorlessOutputFallbackPreservesLastSelectedOutput) {
+TEST_F(AudioEngineTest, ErrorlessDefaultDeviceStartAdoptsActualOutput) {
 #if !JUCE_WINDOWS
     GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
 #else
@@ -2167,9 +2167,9 @@ TEST_F(AudioEngineTest, ErrorlessOutputFallbackPreservesLastSelectedOutput) {
     fallback.outputDeviceName = "System Default";
     ASSERT_TRUE(manager.setAudioDeviceSetup(fallback, true).isEmpty());
 
-    // Some Windows/JUCE restarts report the fallback start without first
-    // delivering an error callback. A different actual output must still be
-    // treated as fallback, not as a new user preference.
+    // v4.2.0 routing treats a valid start with no preceding device-loss event
+    // as the platform's current default route. An old desired snapshot must
+    // not force a second reopen in that case.
     juce::AudioIODeviceCallback& callback = *engine_;
     callback.audioDeviceAboutToStart(manager.getCurrentAudioDevice());
 
@@ -2180,14 +2180,14 @@ TEST_F(AudioEngineTest, ErrorlessOutputFallbackPreservesLastSelectedOutput) {
     ASSERT_TRUE(pumpMessagesUntil(queueDrained));
 
     EXPECT_EQ(engine_->getDesiredInputDevice(), "System Default");
-    EXPECT_EQ(engine_->getDesiredOutputDevice(), "User Selected Output");
+    EXPECT_EQ(engine_->getDesiredOutputDevice(), "System Default");
     EXPECT_FALSE(engine_->isDeviceLost());
     EXPECT_FALSE(engine_->isOutputAutoMuted());
     EXPECT_FALSE(engine_->isStartupRestorePendingForTest());
 
     juce::AudioDeviceManager::AudioDeviceSetup restored;
     manager.getAudioDeviceSetup(restored);
-    EXPECT_EQ(restored.outputDeviceName, "User Selected Output");
+    EXPECT_EQ(restored.outputDeviceName, "System Default");
 #endif
 }
 

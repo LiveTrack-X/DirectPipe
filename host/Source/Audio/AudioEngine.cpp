@@ -3286,9 +3286,9 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     }
 
     // Detect JUCE auto-fallback by comparing actual vs desired device names.
-    // Explicit user/settings targets remain authoritative even when Windows
-    // restarts directly on another endpoint without an error callback. Actual
-    // device snapshots only seed directions that have no saved target yet.
+    // Match the v4.2.0 authority rule: a valid start with no published loss
+    // adopts the platform's actual default route. Explicit targets remain
+    // authoritative only after a real loss has already been observed.
     // Intentional transactions commit desired/loss state only after their
     // message-thread setter verifies that the opened stream is usable.
     {
@@ -3325,11 +3325,11 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             && !inputMismatch
             && !outputMismatch;
 
-        if (!intentionalRestart
+        if (!intentionalRestart && wasLost
             && (typeMismatch || inputMismatch || outputMismatch)) {
-            // Preserve explicit targets for both error callbacks and silent
-            // Windows/JUCE fallback starts, including an empty actual endpoint
-            // or a different driver exposing the same endpoint display name.
+            // Preserve explicit targets after a published device loss,
+            // including an empty actual endpoint or a different driver exposing
+            // the same endpoint display name.
             Log::warn("AUDIO", "Fallback detected: type='" + startedDeviceType
                        + "' in='" + setup.inputDeviceName
                        + "' out='" + setup.outputDeviceName
@@ -3574,7 +3574,8 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             const auto typeName = startedDeviceType;
             bool isAsio = typeName.containsIgnoreCase("ASIO");
             juce::MessageManager::callAsync([this, aliveFlag, inName, outName, sr, bs,
-                                              typeName, isAsio, deviceSnapshotGeneration] {
+                                              typeName, isAsio, deviceSnapshotGeneration,
+                                              desiredType, desiredIn, desiredOut] {
                 if (!aliveFlag->load()) return;
 
                 juce::AudioDeviceManager::AudioDeviceSetup currentSetup;
@@ -3586,21 +3587,32 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                     || currentSetup.outputDeviceName == outName;
 
                 bool adoptedInput = false;
+                bool snapshotStillCurrent = false;
                 {
                     const juce::SpinLock::ScopedLockType sl(desiredDeviceLock_);
-                    if (sameType && sameInput
-                        && desiredInputDevice_.isEmpty() && inName.isNotEmpty()) {
+                    const bool typeTargetUnchanged = desiredDeviceType_ == desiredType;
+                    const bool inputTargetUnchanged = desiredInputDevice_ == desiredIn;
+                    const bool outputTargetUnchanged = desiredOutputDevice_ == desiredOut;
+                    snapshotStillCurrent = typeTargetUnchanged
+                        && inputTargetUnchanged && outputTargetUnchanged;
+
+                    if (sameType && typeTargetUnchanged)
+                        desiredDeviceType_ = typeName;
+                    if (sameType && sameInput && inputTargetUnchanged
+                        && inName.isNotEmpty()) {
+                        adoptedInput = desiredInputDevice_ != inName;
                         desiredInputDevice_ = inName;
-                        adoptedInput = true;
                     }
                     if (sameType && sameOutput
                         && !outputNone_.load(std::memory_order_relaxed)
-                        && desiredOutputDevice_.isEmpty() && outName.isNotEmpty()) {
+                        && outputTargetUnchanged && outName.isNotEmpty()) {
                         desiredOutputDevice_ = outName;
                     }
                 }
                 if (adoptedInput)
                     updateInputEndpointWatcherTarget(inName);
+                if (snapshotStillCurrent)
+                    startupRestorePending_ = false;
 
                 // A different endpoint may have become active while this work
                 // was queued. Directional first-launch seeding above is safe,

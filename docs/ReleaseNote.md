@@ -2,6 +2,74 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## DirectPipe v4.3.0
+
+v4.3.0 restores the v4.2.0 default-device routing rule. A valid Windows device
+start with no preceding loss now keeps the platform-selected driver, input,
+and output instead of reopening an older saved endpoint.
+
+v4.3.0은 v4.2.0의 기본 장치 라우팅 규칙을 복원합니다. 선행 장치 손실이
+없는 유효한 Windows 장치 시작은 이전 저장 endpoint를 다시 여는 대신
+플랫폼이 선택한 드라이버·입력·출력을 유지합니다.
+
+### Highlights / 주요 변경
+
+- Clean, error-free default starts adopt the actual route.
+- 정상적이고 오류 없는 기본 장치 시작은 실제 경로를 채택합니다.
+- Real disconnect/error recovery still restores the selected targets and keeps
+  per-direction input silence/output auto-mute protection.
+- 실제 분리·오류 복구는 저장 장치를 계속 복원하며 방향별 입력 silence와
+  출력 auto-mute 보호를 유지합니다.
+- Deferred callbacks cannot overwrite a later settings restore, manual device
+  selection, or `Output: None`.
+- 지연 callback은 이후의 설정 복원, 수동 장치 선택, `Output: None`을
+  덮어쓰지 못합니다.
+- Later transactional rollback, channel recovery, monitor backoff, ASIO, and
+  updater fixes remain in place.
+- 이후의 transactional rollback, channel 복구, monitor backoff, ASIO,
+  updater 수정은 유지됩니다.
+
+### Validation / 검증
+
+- The new regression failed against v4.2.8 behavior and the focused five-case
+  routing/recovery set passes with this fix.
+- 새 회귀 테스트는 v4.2.8 동작에서 실패했고 수정 뒤 5개 집중
+  routing/recovery 시나리오가 통과했습니다.
+- The local Windows Release gate registered 582 tests: 580 passed, 2
+  environment-dependent tests were skipped, and 0 failed. The Stream Deck
+  suite passed 22/22 tests and produced a validated v4.3.0.0 package.
+- 로컬 Windows Release 게이트는 582개 테스트를 등록해 580개 통과,
+  환경 의존 2개 건너뜀, 실패 0개를 기록했습니다. Stream Deck은 22/22
+  테스트와 v4.3.0.0 패키지 검증을 통과했습니다.
+- The locally built Windows host, VST2 Receiver, and inner VST3 Receiver all
+  report file/product version 4.3.0 and are explicitly unsigned.
+- 로컬 Windows host, VST2 Receiver, 내부 VST3 Receiver는 모두
+  file/product version 4.3.0이며 명시적으로 unsigned 상태입니다.
+- The public release is created only after the exact v4.3.0 tag passes the
+  complete cross-platform, package, identity, and checksum gates.
+- 공개 릴리스는 정확한 v4.3.0 태그가 전체 플랫폼·패키지·신원·checksum
+  게이트를 통과한 뒤에만 생성합니다.
+- Real-device audio, third-party VST crash containment, and macOS/Linux hardware
+  behavior remain outside this software-only evidence.
+- 실기기 오디오, 제3자 VST crash containment, macOS/Linux 하드웨어 동작은
+  이번 software-only 증거 범위에 포함하지 않습니다.
+
+### Downloads / 다운로드
+
+- `DirectPipe-v4.3.0-Windows.zip`
+- `DirectPipe-v4.3.0-macOS.dmg`
+- `DirectPipe-v4.3.0-Linux.tar.gz`
+- `com.directpipe.directpipe.streamDeckPlugin`
+- `checksums.sha256`
+
+**Full Changelog**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.8...v4.3.0
+
+**전체 변경 비교**: https://github.com/LiveTrack-X/DirectPipe/compare/v4.2.8...v4.3.0
+
+**Release**: https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.3.0
+
+---
+
 ## DirectPipe v4.2.8
 
 v4.2.8 is a focused Windows device-restoration reliability update. It keeps

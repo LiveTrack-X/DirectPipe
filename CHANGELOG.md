@@ -4,6 +4,35 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.3.0] - 2026-08-01
+
+### Fixed
+
+- **v4.2.0 default-device authority restored**: A valid device start with no
+  preceding loss now adopts the platform's actual driver/input/output instead
+  of reopening an older desired endpoint. Actual disconnect/error recovery
+  continues to preserve and restore the selected targets.
+- **Deferred adoption remains ordered**: A queued clean-start snapshot updates
+  the default route only if the desired targets are unchanged, so a later
+  settings restore, manual selection, or `Output: None` still wins.
+
+### Compatibility
+
+- Transactional device rollback, zero-active-channel recovery, monitor
+  backoff, ASIO validation, updater hardening, IPC v1, Receiver identity,
+  control schemas, presets, and settings remain unchanged.
+
+### Tests
+
+- The new default-route regression failed against v4.2.8 behavior and passes
+  with the fix. Five focused default-route, real-loss, and stale-callback
+  scenarios pass. The local Windows Release gate registered 582 tests: 580
+  passed, 2 environment-dependent tests were skipped, and 0 failed. The Stream
+  Deck suite passed 22/22 tests and produced a validated v4.3.0.0 package.
+  Exact-tag CI and public-asset verification remain publication gates.
+
+---
+
 ## [4.2.8] - 2026-07-31
 
 ### Fixed

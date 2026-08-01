@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/release-v4.2.8-brightgreen?style=flat-square" alt="Latest release">
+  <img src="https://img.shields.io/badge/release-v4.3.0-brightgreen?style=flat-square" alt="Latest release">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -24,10 +24,10 @@
 
 ## 다운로드 / Download
 
-- **Latest stable (최신 안정판)**: [v4.2.8 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 마지막으로 저장한 드라이버·입력·출력 복원을 강화했습니다. Windows stable, macOS beta, Linux experimental.
+- **Latest stable (최신 안정판)**: [v4.3.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — 마지막으로 저장한 드라이버·입력·출력 복원을 강화했습니다. Windows stable, macOS beta, Linux experimental.
 
-> **지원/검증 범위**: v4.2.8은 로컬 Windows Release CTest 582개(580 통과, 환경 의존 2개 건너뜀, 실패 0)와 [정확 태그 CI](https://github.com/LiveTrack-X/DirectPipe/actions/runs/30640495424)를 통과했습니다. 공개 자산 5개, payload checksum, Windows 실행 파일 신원도 독립 확인했습니다. 실기기 및 제3자 VST crash-containment는 별도 검증 범위입니다.
-> **Support/validation scope**: v4.2.8 passed 582 local Windows Release registrations (580 passed, 2 environment-dependent skips, 0 failed) and [exact-tag CI](https://github.com/LiveTrack-X/DirectPipe/actions/runs/30640495424). The five public assets, payload checksums, and Windows executable identity were independently verified. Real-device and third-party VST crash-containment remain outside this software-only evidence.
+> **지원/검증 범위**: v4.3.0 후보는 로컬 Windows Release CTest 582개(580 통과, 환경 의존 2개 건너뜀, 실패 0)를 통과했습니다. 공개 배포는 정확 태그 CI, 패키지 신원, checksum 검증 통과가 조건입니다. 실기기 및 제3자 VST crash-containment는 별도 검증 범위입니다.
+> **Support/validation scope**: The v4.3.0 candidate passed 582 local Windows Release registrations (580 passed, 2 environment-dependent skips, 0 failed). Publication is conditional on exact-tag CI, package identity, and checksum verification. Real-device and third-party VST crash-containment remain outside this software-only evidence.
 
 
 
