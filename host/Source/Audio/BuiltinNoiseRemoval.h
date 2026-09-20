@@ -68,8 +68,8 @@ namespace directpipe {
  *
  * Thread Ownership:
  *   processBlock()    -- [RT audio thread]
- *   prepareToPlay()   -- [Message thread]
- *   releaseResources()-- [Message thread]
+ *   prepareToPlay()   -- [Non-RT control/device lifecycle, rendering excluded]
+ *   releaseResources()-- [Non-RT control/device lifecycle, rendering excluded]
  *   setters/getters   -- [Any thread] (atomic)
  *
  */

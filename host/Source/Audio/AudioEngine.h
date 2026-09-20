@@ -67,7 +67,7 @@ struct DriverTypeSnapshot {
  *
  * Coordinates:
  * 1. Audio input (WASAPI/ASIO on Windows, CoreAudio on macOS, ALSA/JACK on Linux)
- * 2. VST plugin chain processing with atomic bypass flags
+ * 2. VST chain processing with guarded state/lifecycle changes and routed bypass
  * 3. Output routing to monitor (headphones via separate shared-mode device)
  * 4. Mono/Stereo channel mode selection
  */
@@ -507,12 +507,12 @@ private:
     std::atomic<DWORD> mmcssThreadId_{0};                 // [RT thread write, Device callback read] Creator thread for same-thread revert
 #endif
 
-    // Lock-free notification queue (RT write Message read)
+    // MPSC notification queue (Device/Message producers, Message consumer; not audio RT)
     static constexpr int kNotifQueueSize = 8;
     PendingNotification notifQueue_[kNotifQueueSize];
-    std::atomic<bool> notifReady_[kNotifQueueSize]{};   // [RT write, Message read] per-slot ready flag
-    std::atomic<uint32_t> notifWriteIdx_{0};            // [RT write]
-    std::atomic<uint32_t> notifReadIdx_{0};             // [Message read]
+    std::atomic<bool> notifReady_[kNotifQueueSize]{};   // [Device/Message producer publish, Message consumer clear]
+    std::atomic<uint32_t> notifWriteIdx_{0};            // [Device/Message producers]
+    std::atomic<uint32_t> notifReadIdx_{0};             // [Message consumer write, producers read]
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioEngine)
 };

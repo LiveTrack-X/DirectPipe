@@ -20,8 +20,8 @@
  * @file Constants.h
  * @brief Shared constants for DirectPipe IPC
  *
- * Constants used by both the host application and OBS plugin
- * for shared memory naming, default audio parameters, etc.
+ * Constants shared by the host and Receiver audio plugin (including use in OBS).
+ * Legacy endpoint names live here; the independent transport is in FanOut.h.
  */
 #pragma once
 
@@ -30,15 +30,15 @@
 namespace directpipe {
 
 // ─── Shared Memory Names ────────────────────────────────────────
-/// Name of the shared memory region (Windows Local namespace)
+/// Legacy v1 shared memory name: one shared read cursor, one supported Receiver.
 constexpr const char* SHM_NAME = "Local\\DirectPipeAudio";
 
-/// Name of the Named Event for data-ready signaling
+/// Legacy v1 data-ready event. FanOut uses no named event.
 constexpr const char* EVENT_NAME = "Local\\DirectPipeDataReady";
 
 // ─── Default Audio Parameters ───────────────────────────────────
-/// Default ring buffer size in frames (must be power of 2)
-/// 16384 frames = ~341ms @48kHz — enough headroom for clock drift
+/// Capacity of the legacy queue and of each FanOut queue (power of 2).
+/// 16384 frames = ~341ms @48kHz of storage, not the selected Receiver latency.
 constexpr uint32_t DEFAULT_BUFFER_FRAMES = 16384;
 
 /// Default audio sample rate in Hz
@@ -51,10 +51,10 @@ constexpr uint32_t DEFAULT_CHANNELS = 2;
 constexpr uint32_t DEFAULT_AUDIO_BUFFER_SIZE = 128;
 
 // ─── Timing Constants ───────────────────────────────────────────
-/// Timeout in milliseconds for waiting on the data event
+/// Legacy event-wait default; the current Receiver callback does not wait on it.
 constexpr uint32_t EVENT_TIMEOUT_MS = 500;
 
-/// Reconnection attempt interval in milliseconds
+/// Legacy reconnect default; the current Receiver worker has its own ~100ms loop.
 constexpr uint32_t RECONNECT_INTERVAL_MS = 1000;
 
 // ─── Validation Helpers ─────────────────────────────────────────

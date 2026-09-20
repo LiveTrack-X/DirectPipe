@@ -2,6 +2,72 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## DirectPipe v4.4.0
+
+Up to **eight independent Receivers** receive the same processed microphone
+stream, alongside one separate legacy connection for an older Receiver. Existing
+**A–E/Auto slots**, plugin identities and saved OBS settings stay compatible.
+Muting, pausing or reconnecting one Receiver does not consume another's data.
+
+**최대 8개의 독립 Receiver**가 같은 처리 음성을 받으며, 구형 Receiver 1개를
+위한 별도 호환 연결도 유지합니다. **A–E/Auto 슬롯**과 OBS 저장 설정은 그대로
+사용하며 한 Receiver의 뮤트·정지·재연결이 다른 수신 데이터를 소비하지 않습니다.
+
+**Upgrade from 4.3.0:** its updater replaces only the host. Launch 4.4.0, then
+open **Settings > Update Receiver...** to update existing Receiver installations.
+Review the paths; use **Choose Folder...** for custom folders. Close OBS or another
+using app yourself before **Retry**, or defer with **Later**. Both host and Receiver
+need 4.4.0 for independent reception; sample rates still must match.
+
+**4.3.0에서 갱신:** 기존 업데이터는 본체만 교체합니다. 4.4.0 실행 후
+**Settings > Update Receiver...**에서 Receiver도 갱신하세요. 경로를 확인하고
+사용자 지정 폴더는 **Choose Folder...**로 선택합니다. 사용 중인 OBS 등은 직접
+종료한 뒤 **Retry**하거나 **Later**로 미룰 수 있습니다. 독립 수신에는 양쪽 모두
+4.4.0이 필요하며 샘플레이트는 맞춰야 합니다.
+
+Also includes callback-size and mute-freshness fixes, bounded recovery fades,
+preset state-change protection and verified Windows Receiver upkeep with backups
+and rollback. Preset changes may still include a short silence interval.
+/ 큰 콜백·뮤트 후 이전 음성 재생 수정, 복구 fade, 프리셋 상태 변경 보호,
+파일 검증·백업·복구를 갖춘 Windows Receiver 갱신도 포함합니다. 프리셋 전환 중
+짧은 무음 가능성은 남습니다.
+
+Windows update preparation uses short temporary/rotated-backup names and checks
+all planned paths before host shutdown. Unsupported long paths are reported
+before closing DirectPipe. / Windows 갱신은 짧은 임시·이전 백업 이름을 사용하고
+모든 예정 경로를 먼저 검사하여 지원하지 않는 긴 경로를 본체 종료 전에 알립니다.
+
+See [4.4.0 changes and validation](MULTI_RECEIVER_4_4_0.md) for automated and
+isolated runtime results. Actual DLL and OBS filter-engine checks are distinct
+from OBS frontend, physical-device, listening and interactive UAC acceptance.
+
+## DirectPipe v4.3.1 — historical development checkpoint
+
+**Not separately published; incorporated into 4.4.0.** The published baseline
+at this checkpoint was v4.3.0. / 별도로 공개하지 않고 4.4.0에 포함한 개발 이력이며
+당시 공개 기준판은 v4.3.0이었습니다.
+
+- **Preset safety / 프리셋 보호**: State restore and graph changes exclude audio
+  processing during mutation. Existing preloading remains; a silence interval
+  is possible and no gap-free timing guarantee is made. / 상태 복원·그래프 변경과
+  오디오 처리가 겹치지 않도록 보호하며 기존 프리로드를 유지합니다. 무중단 보장은 아닙니다.
+- **Receiver audio / Receiver 오디오**: Preserve available callback data, handle
+  larger callbacks, drain muted speech, and join underrun/recovery transitions
+  to the last output sample. / 충분한 데이터를 잘라 읽는 문제, 큰 callback 잘림,
+  뮤트 해제 후 이전 음성 재생과 underrun·복구 경계 처리를 수정했습니다.
+- **Windows upkeep / Windows 유지보수**: **Settings > Update Receiver...** finds
+  existing copies, supports **Choose Folder...**, and previews exact paths.
+  Close OBS manually before **Retry**, or choose **Later**. Receiver-only updates
+  keep DirectPipe running, preserve newer versions and add no startup alerts.
+  / 설치 경로를 먼저 확인하고 사용 중인 OBS는 직접 종료합니다. Receiver만 갱신할 때
+  DirectPipe는 계속 실행되며 더 최신 설치본과 조용한 시작 정책을 유지합니다.
+
+Preset/parameter formats, five user slots plus Auto, buffer presets, IPC v1 and
+same-rate operation are unchanged. Real OBS/device/UAC checks remain separate
+from automated validation. See [candidate scope and evidence](RECEIVER_RELIABILITY_UPDATE.md)
+for current results and remaining checks. / 프리셋·파라미터·슬롯·버퍼·IPC 형식은 유지되며
+실제 OBS·장치·UAC 확인은 자동 테스트와 별도입니다.
+
 ## DirectPipe v4.3.0
 
 v4.3.0 restores the v4.2.0 default-device routing rule. A valid Windows device

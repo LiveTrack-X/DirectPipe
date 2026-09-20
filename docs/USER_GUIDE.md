@@ -1,6 +1,7 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Current Release 4.3.0 / 현재 릴리즈 4.3.0** — [Download the public release / 공개 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.3.0).
+> **Guide Version 4.4.0 / 가이드 4.4.0** — [Download releases / 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases).
+> 4.3.0 자동 갱신은 본체만 교체합니다. 4.4.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. / The 4.3.0 updater replaces only the host; after launching 4.4.0, update existing Receivers from **Settings > Update Receiver...** too.
 
 ## 시작하기 / Getting Started
 
@@ -142,7 +143,7 @@ OBS [DirectPipe Receiver 필터 / filter] → 방송/녹화 / stream/record
 | **대상 앱 / Target apps** | Discord, Zoom, Teams 등 **마이크 입력을 선택하는 앱** / Apps that **select mic input** | OBS 등 **VST 필터를 지원하는 앱** / Apps that **support VST filters** |
 | **설치 / Setup** | 가상 케이블 드라이버 설치 필요 (Windows: VB-Cable, macOS: BlackHole, Linux: PipeWire) / Install virtual cable driver | 플러그인 파일 복사만 하면 됨 (Windows: .dll, macOS: .vst/.component, Linux: .so). OBS는 VST2만 지원 / Just copy the plugin file. OBS only supports VST2 |
 | **원리 / How it works** | DirectPipe → 가상 케이블 → 앱이 "마이크"로 인식 / App recognizes as "mic" | DirectPipe → 공유 메모리 IPC → 앱 내 Receiver 플러그인이 수신 / Receiver plugin receives via shared memory |
-| **지연 / Latency** | 가상 케이블 버퍼 + 오디오 버퍼에 따라 다름 / Depends on virtual cable + audio buffers | 공유 메모리 IPC, 버퍼 설정에 따라 5~85ms / Shared memory IPC, 5~85ms depending on buffer |
+| **지연 / Latency** | 가상 케이블 버퍼 + 오디오 버퍼에 따라 다름 / Depends on virtual cable + audio buffers | Receiver 보고 버퍼 분량은 48kHz에서 약 5~85ms. 전체 경로의 실측값은 아님 / Reported Receiver buffering is about 5–85ms at 48kHz, not measured end-to-end latency |
 | **장점 / Pros** | 어떤 앱이든 "마이크"로 인식 가능 / Any app can use it as "mic" | 가상 케이블 설치 불필요, 시스템 깔끔 / No virtual cable needed, clean system |
 | **제한 / Cons** | 가상 오디오 드라이버 설치 필요 / Requires virtual audio driver | VST 필터 지원 앱에서만 사용 가능. OBS는 모든 플랫폼에서 VST2만 지원 / Only in apps supporting VST filters. OBS supports VST2 only on all platforms |
 
@@ -157,6 +158,8 @@ OBS [DirectPipe Receiver 필터 / filter] → 방송/녹화 / stream/record
 Receiver 플러그인 파일을 아래 VST2 폴더 **중 하나**에 복사합니다.
 
 Copy the Receiver plugin file to **one** of these VST2 folders:
+
+기존 파일을 교체할 때는 먼저 Receiver를 불러온 앱을 종료하세요. Windows 기존 설치본은 **Settings > Update Receiver...**에서 경로를 확인하고 갱신할 수도 있습니다. / Before replacing an existing file, close apps that have loaded it. On Windows, **Settings > Update Receiver...** can locate and update an existing installation.
 
 **Windows** (`DirectPipe Receiver.dll`):
 
@@ -181,23 +184,25 @@ Copy the Receiver plugin file to **one** of these VST2 folders:
 
 > Receiver 플러그인은 GitHub 릴리즈에 DirectPipe와 함께 포함되어 있습니다. / The Receiver plugin is included in the GitHub release alongside DirectPipe.
 
+OBS의 **기본 VST 2.x 필터**에는 VST2 파일을 사용하며 VST3 bundle이나 AU를 선택하지 않습니다. Linux에서 `VST_PATH`를 설정했다면 그 경로가 기본 검색 경로를 대신합니다. / Use the VST2 file for OBS's **built-in VST 2.x filter**, not the VST3 bundle or AU. On Linux, an explicit `VST_PATH` overrides the default search folders. [OBS 공식 설치 경로 / Official OBS search paths](https://obsproject.com/kb/vst-2-x-plugin-filter).
+
 #### 2단계: OBS 설정 / Step 2: Configure OBS
 
-1. OBS에서 **오디오 소스** 추가 (마이크 캡처 또는 오디오 입력 캡처) — 어떤 장치를 선택해도 상관없음 (Receiver가 무시함)
+1. OBS에서 실제로 오디오 처리가 실행되는 **활성 오디오 소스**를 추가하거나 선택합니다 (예: 오디오 입력 캡처)
 2. 해당 소스 → **필터** 클릭
 3. **"+"** → **"VST 2.x 플러그인"** 선택
 4. 플러그인 목록에서 **"DirectPipe Receiver"** 선택
 5. **"플러그인 인터페이스 열기"** 클릭
 
-1. Add an **audio source** in OBS (mic capture or audio input) — any device works (Receiver ignores it)
+1. Add or select an **active audio source** in OBS that receives audio processing callbacks (for example, Audio Input Capture)
 2. Click **Filters** on that source
 3. Click **"+"** → **"VST 2.x Plugin"**
 4. Select **"DirectPipe Receiver"** from the dropdown
 5. Click **"Open Plugin Interface"**
 
-> **중요**: DirectPipe Receiver는 **입력 버스가 없는 출력 전용 플러그인**입니다. OBS 오디오 소스의 마이크 선택은 의미가 없습니다 — Receiver는 소스의 오디오를 무시하고, DirectPipe에서 IPC로 전송된 오디오만 출력합니다.
+> **중요**: DirectPipe Receiver는 **입력 버스가 없는 출력 전용 플러그인**으로 소스의 샘플을 DirectPipe 음성으로 대체합니다. 다만 OBS가 해당 소스의 처리를 멈추면 Receiver도 호출되지 않으므로, 존재하지 않거나 작동하지 않는 입력 장치를 사용해도 된다는 뜻은 아닙니다.
 >
-> **Important**: DirectPipe Receiver is an **output-only plugin with no input bus**. The OBS source's device selection doesn't matter — Receiver ignores source audio and only outputs what DirectPipe sends via IPC.
+> **Important**: DirectPipe Receiver is an **output-only plugin with no input bus**: it replaces the source's samples with DirectPipe audio. It still needs the host to call its processor, so a missing or inactive source/device is not interchangeable with a working one. [OBS audio-filter behavior](https://github.com/obsproject/obs-studio/blob/master/plugins/obs-vst/obs-vst.cpp).
 
 #### 3단계: DirectPipe에서 IPC 켜기 / Step 3: Enable IPC in DirectPipe
 
@@ -213,16 +218,26 @@ Check the Receiver plugin GUI for:
 
 | 표시 / Indicator | 의미 / Meaning |
 |---|---|
-| 🟢 **Connected** | DirectPipe와 정상 연결 / Connected to DirectPipe |
+| 🟢 **Connected** | 4.4.0 독립 큐에 연결 / Connected to a 4.4.0 independent queue |
+| 🟢 **Connected (v1)** | 구형 단일 수신 경로. 해당 경로에는 Receiver 하나만 사용 / Legacy path; use one Receiver on that path |
+| 🔴 **Connecting...** | 독립 슬롯을 확보하고 본체의 첫 오디오 처리를 기다림 / Slot claimed; waiting for the producer's first processing call |
+| 🔴 **Receiver limit** | 독립 슬롯 8개 사용 중. 사용하지 않는 필터를 언로드하거나 해당 호스트 종료 / All eight slots are in use; unload an unused filter or close its host |
+| 🔴 **Update needed** | 지원하지 않거나 유효하지 않은 연결 형식. 본체·Receiver 버전 확인 / Unsupported or invalid transport; check host and Receiver versions |
 | 🔴 **Disconnected** | DirectPipe 미실행 또는 IPC 꺼짐 / DirectPipe not running or IPC disabled |
 | **48000Hz 2ch** | 수신 중인 오디오 포맷 / Receiving audio format |
 | **SR mismatch: 48000 vs 44100** | 샘플레이트 불일치 경고 (아래 참조) / Sample rate mismatch warning (see below) |
+
+**4.4.0 연결 범위:** 새 Receiver 최대 8개와 별도 호환 경로의 구형 Receiver 1개가 같은 처리 음성을 받을 수 있습니다. 각 Receiver의 Mute·Buffer는 독립이며 본체 **VST** 버튼은 전체 송신을 켜고 끕니다. 슬롯은 플러그인 인스턴스가 보유하므로 편집 창만 닫아서는 해제되지 않습니다. 여러 Receiver 출력을 같은 OBS 믹스에 합치면 같은 음성이 중복될 수 있습니다.
+
+**4.4.0 connection scope:** Up to eight new Receivers plus one legacy Receiver on the separate compatibility path can receive the same processed audio. Local Mute/Buffer are independent; the host **VST** button controls all transmission. Slots belong to plugin instances, not editor windows. Mixing multiple Receiver outputs into the same OBS mix can duplicate the audio.
 
 #### 5단계: 버퍼 크기 선택 / Step 5: Choose Buffer Size
 
 Receiver 플러그인 GUI의 **Buffer** 드롭다운에서 지연과 안정성의 균형을 선택합니다.
 
 Select the balance between latency and stability in the Receiver plugin GUI **Buffer** dropdown.
+
+아래는 48kHz 기준 **보고 버퍼 지연**입니다. 마이크·드라이버·플러그인·OBS의 추가 지연은 포함하지 않습니다. / These are **reported buffering values at 48kHz**; microphone, driver, plugin and OBS delays are additional.
 
 | 프리셋 / Preset | 샘플 / Samples | @48kHz | 권장 용도 / Recommended Use |
 |---|---|---|---|
@@ -295,16 +310,16 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 
 | | Windows Audio | Low Latency | Exclusive Mode | ASIO |
 |---|---|---|---|---|
-| **지연** / Latency | **3-10ms** | 1-3ms (지원 시) | 10-20ms | **2-5ms** |
+| **지연** / Latency | 장치·설정 의존 / Device/settings-dependent | 드라이버 주기 의존 / Driver-period-dependent | 장치·설정 의존 / Device/settings-dependent | 장치·설정 의존 / Device/settings-dependent |
 | **설치** / Setup | 없음 / None | 없음 / None | 없음 / None | 드라이버 필요 / Driver required |
 | **마이크 공유** / Shared | O | O | X | 장치에 따라 다름 / Depends on device |
 | **추천** / Best for | **대부분의 사용자 / Most users** | 제한적 / Limited | 녹음 전용 / Recording only | 전문가 / Professionals |
 
-- **DirectSound** — 레거시 API. 사용하지 마세요. / Legacy API, don't use.
+- **DirectSound** — 레거시 호환용. 일반 사용은 Windows Audio부터 시작 / Legacy compatibility; start with Windows Audio for normal use.
 - **Windows Audio** (추천) — WASAPI 공유 모드. 대부분의 사용자에게 가장 안정적 / WASAPI Shared mode, most reliable for most users
-- **Windows Audio (Low Latency)** — IAudioClient3 기반. **많은 USB 마이크가 제대로 지원하지 않아** 일반 Windows Audio보다 오히려 버퍼가 크게 나올 수 있음 / IAudioClient3-based. Many USB mics don't properly support it — may have higher buffers than standard mode
+- **Windows Audio (Low Latency)** — IAudioClient3 기반. 지원 주기가 드라이버에 따라 달라 이름만으로 더 작은 버퍼를 보장하지 않음 / IAudioClient3-based; driver-reported periods determine the available buffer sizes, so the name alone does not guarantee a smaller buffer
 - **Windows Audio (Exclusive Mode)** — 독점 모드. 다른 앱이 해당 장치를 사용할 수 없음 / Exclusive mode, no other apps can use the device
-- **ASIO** — 오디오 인터페이스의 네이티브 ASIO 드라이버 필요. 최저 지연 / Requires native ASIO driver, lowest latency
+- **ASIO** — 오디오 인터페이스의 네이티브 드라이버 필요. 적용 버퍼와 입출력 지연을 확인 / Requires the interface's native driver; check the applied buffer and reported I/O latency
 
 #### macOS 드라이버 / macOS Drivers (Beta)
 
@@ -322,7 +337,7 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 | 상황 / Situation | 권장 드라이버 / Recommended | 이유 / Why |
 |---|---|---|
 | USB 마이크만 사용 / USB mic only | **Windows Audio** | 별도 드라이버 불필요, 안정적 / No extra driver needed, stable |
-| 오디오 인터페이스 보유 (Focusrite, MOTU 등) / Audio interface (Focusrite, MOTU, etc.) | **ASIO** | 최저 지연 (~2ms), 인터페이스 네이티브 드라이버 활용 / Lowest latency (~2ms), native driver |
+| 오디오 인터페이스 보유 (Focusrite, MOTU 등) / Audio interface (Focusrite, MOTU, etc.) | **ASIO** | 제조사 드라이버로 버퍼·채널 제어. 전체 지연은 장치·플러그인에 따라 다름 / Native-driver buffer/channel control; total latency depends on the device and plugins |
 | 자기 목소리 모니터링 필요 (최소 지연) / Self-monitoring with minimum latency | **ASIO** | 입출력이 하나의 장치에서 처리되어 별도 모니터 장치 불필요 / I/O on one device, no separate monitor needed |
 | 다른 앱과 마이크 공유 필요 / Need to share mic with other apps | **Windows Audio** | WASAPI Shared = 비독점 접근 / WASAPI Shared = non-exclusive access |
 | USB 마이크 + 최소 지연 원함 / USB mic + want lowest latency | **Windows Audio** | Low Latency 모드는 USB 마이크에서 제대로 지원 안 되는 경우 많음 / Low Latency mode often unsupported by USB mics |
@@ -331,9 +346,9 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 
 **Linux:** USB 마이크는 ALSA, 오디오 인터페이스는 JACK (또는 PipeWire JACK) 권장. / ALSA for USB mics, JACK (or PipeWire JACK) for audio interfaces.
 
-> **ASIO 모니터링 장점 (Windows)**: ASIO 드라이버를 사용하면 입력(마이크)과 출력(헤드폰)이 하나의 ASIO 장치에서 처리됩니다. Output 탭의 별도 shared-mode Monitor 경로를 쓰지 않고도 자기 목소리를 최소 지연(~2ms)으로 들을 수 있습니다. 이 경우 Output 탭의 Monitor 설정은 불필요합니다.
+> **ASIO 모니터링 (Windows)**: 같은 ASIO 장치의 헤드폰 채널을 메인 출력으로 선택하면 별도 Monitor 경로 없이 처리된 목소리를 들을 수 있습니다. 실제 지연은 장치, 적용된 버퍼 크기, 플러그인에 따라 달라집니다. 다른 장치로도 듣고 싶을 때 Output 탭의 Monitor를 설정하세요.
 >
-> **ASIO monitoring advantage (Windows)**: With an ASIO driver, input (mic) and output (headphones) share a single ASIO device. You can hear yourself with minimal latency (~2ms) without using the Output tab's separate shared-mode Monitor path. In that case, the Output tab Monitor setup is unnecessary.
+> **ASIO monitoring (Windows)**: Select the headphone channels of the same ASIO device as the main output to hear your processed voice without the separate Monitor path. Actual latency depends on the device, applied buffer size, and plugins. Configure Monitor in the Output tab when you also want to listen through another device.
 
 > **ASIO 복원 동작 (Windows)**: ASIO 입력/출력은 하나의 duplex ASIO 장치로 복원됩니다. 저장된 ASIO 장치가 시작 시 보이지 않으면 DirectPipe는 FL Studio ASIO, Realtek ASIO 같은 다른 ASIO 드라이버를 대신 열지 않고 저장된 장치가 다시 보일 때까지 대기합니다.
 >
@@ -473,11 +488,11 @@ Out-of-process scanner — crashes won't affect DirectPipe. Blacklists problemat
 
 ## 퀵 프리셋 슬롯 (A~E) / Quick Preset Slots
 
-5개의 VST 체인 구성을 빠르게 저장하고 전환할 수 있습니다. / Save and switch between 5 VST chain configurations instantly.
+5개의 VST 체인 구성을 저장하고 전환할 수 있습니다. / Save and switch between five VST chain configurations.
 
 - **슬롯 클릭** → 비어있으면 현재 체인 저장, 차있으면 해당 슬롯 로드 / **Click slot** → saves current chain if empty, loads slot if occupied
-- **같은 플러그인** → 파라미터만 변경되어 **즉시 전환** / **Same plugins** → only parameters change for **instant switch**
-- **다른 플러그인** → 백그라운드 **비동기 로딩** (Keep-Old-Until-Ready: 로딩 중 이전 체인이 오디오 처리를 유지하여 **끊김 없이** 전환) — Async loading with Keep-Old-Until-Ready: old chain keeps processing audio during loading for **seamless** transition
+- **같은 플러그인** → 기존 인스턴스의 상태를 복원하며 재생성은 생략. 복원 중 무음 구간은 생길 수 있음 / **Same plugins** → restore existing instances without reconstruction; state restore can still create a silence interval
+- **다른 플러그인** → 백그라운드 **비동기 로딩** 중 기존 처리를 유지하고 준비 후 교체. 실제 교체 시간은 플러그인·시스템에 따라 다름 / **Different plugins** → Keep-Old-Until-Ready retains the old chain during background loading; commit duration depends on the plugins and system
 - **활성 슬롯**: 보라색 / Active slot: purple — **사용 중**: 밝은색 / In use: bright — **빈 슬롯**: 어두운색 / Empty slot: dark
 - **Save Preset / Load Preset** → `.dppreset` 파일로 내보내기/불러오기 / Export/import as `.dppreset` file
 - **슬롯 우클릭 → 이름 변경** — "Rename" 메뉴로 슬롯에 이름 부여 (예: "게임", "토크"). 버튼에 `A|게임` 형식으로 표시. 최대 8자, 초과 시 ".." 생략. Clear로 이름 제거 — Right-click slot → "Rename" to set a custom name (e.g., "Game", "Talk"). Displayed as `A|Game` on the button. Max 8 chars, truncated with "..". Clear to remove name
@@ -688,7 +703,7 @@ For installation and setup, see the [detailed Receiver VST2 guide](#receiver-vst
 
 Receiver 플러그인 GUI에서 Buffer 드롭다운으로 선택합니다. / Select in Receiver plugin GUI.
 
-| 프리셋 / Preset | 지연 / Latency | 권장 / Recommended |
+| 프리셋 / Preset | 보고 버퍼 지연 @48kHz / Reported buffering @48kHz | 권장 / Recommended |
 |---|---|---|
 | **Ultra Low** | ~5ms | 최소 지연 (끊김 가능성) / Minimum latency (may crackle) |
 | **Low** (기본 / default) | ~10ms | 대부분의 상황 / Most situations |
@@ -698,6 +713,8 @@ Receiver 플러그인 GUI에서 Buffer 드롭다운으로 선택합니다. / Sel
 
 > DirectPipe와 OBS의 **샘플레이트를 동일하게** 맞추세요 (예: 둘 다 48000Hz).
 > Match the **sample rates** of DirectPipe and OBS (e.g., both 48000Hz).
+
+자동 리샘플링은 없으며 이 값은 전체 경로의 실측 지연이 아닙니다. / There is no automatic resampling; these values are not measured end-to-end latency.
 
 ---
 
@@ -924,14 +941,14 @@ Press **Ctrl+Shift+M** once to instantly kill all outputs when unexpected noise,
 
 #### 시나리오 4: 볼륨 개별 조절 / Independent Volume Control
 
-각 출력의 볼륨을 **독립적으로** 설정할 수 있습니다. 통화는 작게, 방송은 크게 — 또는 반대로.
+OUT과 MON의 볼륨은 각각 조절할 수 있습니다. VST 출력은 Safety Guard와 Safety Volume을 거친 최종 신호를 전달하며 DirectPipe에 별도 Receiver 볼륨은 없습니다. 방송별 음량은 OBS 등 수신 앱에서 조절하세요.
 
-Set each output's volume **independently**. Lower for voice chat, louder for stream — or vice versa.
+OUT and MON have separate volume controls. VST output carries the final signal after Safety Guard and Safety Volume; DirectPipe has no separate Receiver volume control. Adjust each stream's level in the receiving app, such as OBS.
 
 | 출력 / Output | 조절 위치 / Where | 예시 / Example |
 |---|---|---|
 | **OUT** (Discord) | Audio 탭 (AudioSettings) → Output Volume | 70% — 통화 상대에게 적당한 볼륨 / Comfortable volume for chat partner |
-| **VST** (OBS) | IPC는 체인 출력 그대로 전달 / IPC passes chain output as-is | 100% — 방송은 풀 볼륨 / Full volume for stream |
+| **VST** (OBS) | IPC는 최종 신호 전달, 수신 앱에서 볼륨 조절 / IPC carries the final signal; adjust volume in the receiving app | OBS 믹서로 방송 음량 조절 / Use the OBS mixer for stream level |
 | **MON** (헤드폰 / Headphones) | Output 탭 → Monitor Volume | 30% — 자기 목소리는 작게 / Keep self-monitoring quiet |
 | **INPUT** (입력 게인 / Input gain) | 왼쪽 게인 슬라이더 / Left gain slider | 1.2x — 마이크가 작을 때 부스트 / Boost when mic is too quiet |
 
@@ -960,7 +977,7 @@ Save activity-specific VST chains in Quick Slots (A-E) and **switch effects with
 - MIDI 매핑 / MIDI mapping
 - HTTP API: `curl http://localhost:8766/api/preset/0` (슬롯 A / Slot A)
 
-> **끊김 없는 전환**: 같은 플러그인 구성이면 파라미터만 변경되어 즉시 전환됩니다. 다른 플러그인이면 **Keep-Old-Until-Ready** — 로딩 중 이전 체인이 오디오를 계속 처리하여 무음 구간 없이 전환됩니다. / **Seamless switching**: Same plugin layout = instant parameter swap. Different plugins = Keep-Old-Until-Ready (old chain keeps processing during background load, no audio gap).
+> **전환 동작**: 같은 플러그인은 인스턴스를 재사용하고 다른 체인은 **Keep-Old-Until-Ready**로 준비합니다. 상태 복원·실제 교체 중에는 callback 처리를 잠시 중지하므로 무음 구간이 생길 수 있습니다. / **Switching behavior**: Matching plugins reuse instances; other chains use **Keep-Old-Until-Ready** during preparation. Processing pauses for state restore/commit, so a silence interval remains possible.
 
 ---
 
@@ -1165,26 +1182,56 @@ View all app events (audio engine, plugins, WebSocket, HTTP, etc.) in real-time.
 | **Full Restore** | `.dpfullbackup` 파일에서 전체 복원. **같은 OS끼리만 가능** (Windows 백업은 Windows에서만, macOS 백업은 macOS에서만 복원). slot 파일 clear/write가 실패하면 건드린 quick-slot 파일은 이전 상태로 롤백됨 / Restore from `.dpfullbackup`. **Same OS only** (Windows backup → Windows, macOS → macOS). If slot clear/write fails, touched quick-slot files roll back to their previous state |
 | **Clear Plugin Cache** | 스캔된 플러그인 목록 삭제 (다음 Scan 시 재스캔) / Delete scanned plugin list (re-scan on next Scan) |
 | **Clear All Presets** | 퀵 슬롯 A~E + Auto 슬롯 + 사용자 프리셋 전체 삭제, 현재 체인/슬롯 이름/프리로드 캐시도 클리어 / Delete all quick slots (A-E + Auto) + user presets, clears active chain, slot names, and preload cache |
+| **Update Receiver...** (Windows) | 기존 설치 경로·버전 확인 후 공개판으로 갱신. 사용자 폴더 선택, 사용 중이면 Retry/Later / Review installed paths/versions and update from a public release; custom folder selection and Retry/Later for files in use |
 | **Factory Reset** | 공장 초기화 — 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 플러그인 캐시, 녹음 설정) 및 `.bak`/`.backup`/`.tmp` 잔재 정리 / Factory reset — deletes all data (settings, controls, presets (A-E + Auto), plugin cache, recording config) and stale `.bak`/`.backup`/`.tmp` files |
 
 ---
 
 ## 인앱 업데이트 / In-App Update
 
-DirectPipe는 실행 시 자동으로 GitHub에서 최신 버전을 확인합니다. / Checks for updates on startup.
+> The Receiver workflow below requires host 4.4.0. Earlier version-specific validation remains historical; see [4.4.0 changes and validation](MULTI_RECEIVER_4_4_0.md). / 아래 Receiver 갱신 절차에는 본체 4.4.0이 필요하며, 앞의 과거 버전 검증 이력과 구분합니다.
+
+DirectPipe는 실행 시 백그라운드에서 최신 공개 버전을 확인합니다. 설치 host가 같거나 더 최신이면 조용히 유지하며 downgrade하지 않습니다. / Checks the latest public release in the background on startup; stays quiet when the host is current/ahead and never downgrades.
+
+업데이트 버튼은 **공개 릴리즈**를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로 4.4.0을 실행한 다음 아래 **Settings > Update Receiver...** 절차로 기존 Receiver도 갱신하세요. 본체와 Receiver가 모두 4.4.0이어야 독립 다중 수신을 사용할 수 있습니다. / The updater uses **published releases**. **The 4.3.0 updater replaces only the host**; launch 4.4.0 and then update existing Receivers using **Settings > Update Receiver...** below. Independent reception requires both sides to be 4.4.0.
 
 1. **새 버전 발견** → 하단 credit 라벨에 **"NEW vX.Y.Z"** 주황색 표시 / **New version found** → orange **"NEW vX.Y.Z"** on credit label
 2. **라벨 클릭** → 업데이트 다이얼로그 / **Click label** → update dialog:
-   - **Update Now** — Windows 인앱 업데이트. v4.2.0 이후 릴리즈는 정확히 일치하는 `checksums.sha256` 항목과 SHA-256을 필수 확인한 뒤 다운로드·교체·재시작하며, checksum을 읽을 수 없거나 불일치하면 중단 / Windows in-app update. Releases v4.2.0+ require an exact readable `checksums.sha256` entry and matching SHA-256 before download, replacement, and restart; unreadable or mismatched metadata fails closed
+   - **Update Now** — Windows 인앱 업데이트. 다운로드한 ZIP의 SHA-256을 정확히 일치하는 `checksums.sha256` 항목과 대조한 뒤 교체·재시작하며, checksum을 읽을 수 없거나 불일치하면 중단 / Windows in-app update. After downloading the ZIP, requires an exact readable `checksums.sha256` entry and matching SHA-256 before replacement and restart; unreadable or mismatched metadata fails closed
    - **View on GitHub** — 브라우저에서 릴리즈 페이지 열기 / Open release page in browser
    - **Later** — 닫기 (다음 실행 시 다시 알림) / Dismiss (reminds again on next launch)
 
 브라우저 수동 다운로드는 인앱 checksum 검사 밖이며, macOS/Linux는 릴리즈 페이지를 엽니다. / Manual browser downloads are outside the in-app checksum check; macOS/Linux open the release page.
+SHA-256과 제품·버전 검사는 파일 일치 여부를 확인하며 코드 서명이나 게시자 인증을 대신하지 않습니다. 인앱 helper가 Authenticode 서명을 검증하는 기능은 아닙니다. / SHA-256 and product/version checks verify artifact identity; they do not replace code signing or publisher authentication. The in-app helper does not perform Authenticode verification.
 3. **업데이트 완료** → 재시작 후 **"Updated to vX.Y.Z successfully!"** 알림 (보라색) / **Update complete** → purple **"Updated to vX.Y.Z successfully!"** notification after restart
 
-> **인터넷 미연결 시**: 오류 없이 기존 버전이 정상 동작합니다.
+> **인터넷 미연결 시**: 시작 시 자동 확인은 조용히 종료되며 기존 버전을 계속 사용할 수 있습니다. 사용자가 직접 시작한 Receiver 확인·다운로드는 실패 안내를 표시할 수 있습니다.
 >
-> **Offline**: No error, app works normally with current version.
+> **Offline**: The automatic startup check stays quiet and the existing version remains usable. Explicit Receiver checks/downloads may report a connection failure.
+
+### Windows Receiver 업데이트 / Update an installed Receiver
+
+1. **Settings > Update Receiver...**를 엽니다. 일반·등록 VST2/VST3 경로에서 설치본을 확인합니다. 사용자 경로는 **Choose Folder...**로 지정합니다. / Open the maintenance action; use **Choose Folder...** for a custom plugin folder.
+2. 표시된 **정확한 설치 경로와 현재 → 공개 버전**을 확인합니다. 같은 버전과 더 최신 설치본은 유지됩니다. / Review the exact paths and installed-to-release versions; same/newer copies are preserved.
+3. **Update**를 누릅니다. OBS 또는 다른 앱이 사용 중이면 **직접 종료**한 뒤 **Retry**를 누르거나 **Later**로 미룹니다. 실행 중인 다른 앱을 강제 종료하지 않습니다. / If a target is in use, close the indicated app yourself and choose **Retry**, or **Later** to defer. No other app is killed.
+4. 보호된 폴더는 Windows 관리자 권한 승인이 필요할 수 있습니다. **Receiver만 갱신하면 DirectPipe는 계속 실행**됩니다. host 동반 갱신에는 기존 재시작 절차가 적용됩니다. / Protected folders may need UAC; Receiver-only upkeep keeps DirectPipe running, while combined host updates restart it.
+5. 완료 후 OBS 등을 다시 열어 Receiver 버전과 소리를 확인합니다. **파일 설치 성공과 실제 오디오 확인은 별도**입니다. / Reopen the plugin host and verify the loaded Receiver version and audio; successful file installation does not prove live audio acceptance.
+
+갱신에 필요한 임시·백업·bundle 내부 경로는 본체를 종료하기 전에 검사합니다.
+Windows 파일 사용 확인이 지원하지 않는 긴 경로라면 먼저 오류를 안내합니다.
+안내에 따라 더 짧은 설치 위치를 사용하세요. / Temporary, backup and bundle-child
+paths are checked before host shutdown. Paths beyond the supported Windows
+file-use inspection limit are rejected first; follow the prompt to use a shorter
+installation location.
+
+자동 검색은 일반 VST2/VST3 위치와 등록된 VST 경로를 제한된 깊이로 확인합니다. 모든 디스크를 검색하거나 새 설치 경로를 만들지 않으므로 누락된 설치는 **Choose Folder...**로 지정하세요. 개발·패키지 출력은 설치본으로
+자동 선택하지 않으며, 파일 이름이나 제품 신원을 확인할 수 없는 복사본은 임의로
+덮어쓰지 않습니다. 본체 갱신 중에도 동반 Receiver 갱신을 제안하며, Settings에서
+Receiver만 확인할 수도 있습니다. Receiver 전용 시작 알림은 추가하지 않습니다.
+
+Discovery scans common and registered VST locations to a bounded depth, not every disk. It updates existing installations rather than creating a new install location; use **Choose Folder...** when a path is missing. Build/package outputs
+are excluded from automatic selection, and unknown or renamed copies may need
+manual maintenance. Host updates also offer companion Receiver upkeep; the Settings action checks Receivers independently, without adding Receiver-only startup alerts.
 
 ---
 
@@ -1224,7 +1271,7 @@ DirectPipe는 실행 시 자동으로 GitHub에서 최신 버전을 확인합니
 3. 오디오 인터페이스가 있다면 **ASIO** (Windows) 또는 **JACK** (Linux) 드라이버 사용 / Use **ASIO** (Windows) or **JACK** (Linux) driver if you have an audio interface
 4. 하단 상태 바 **CPU %** 및 **XRun** 수치 확인 — CPU 60% 이상이면 과부하, XRun은 60초간 버퍼 언더런 횟수 / Check **CPU %** and **XRun** in status bar — CPU above 60% means overload, XRun counts buffer underruns over 60s
 5. XRun이 빠르게 증가하면 로그의 `XRun increased` 항목에서 장치명, SR, BS, active channel 정보를 확인 / If XRun rises quickly, check `XRun increased` log entries for device, SR, BS, and active-channel details
-6. **Windows Audio (Low Latency)** 에서 끊기면 → **Windows Audio**로 변경 시도 (LL 모드가 제대로 지원되지 않는 장치가 많음, Windows 전용) / If crackling on **Low Latency** → try **Windows Audio** (many devices don't properly support LL mode, Windows only)
+6. **Windows Audio (Low Latency)** 에서 끊기면 → **Windows Audio**로 변경하고 실제 적용 버퍼 비교 (Windows 전용) / If crackling on **Low Latency**, try **Windows Audio** and compare the applied buffer (Windows only)
 
 ### 오디오 장치가 갑자기 끊겼어요 / Audio device disconnected
 
@@ -1295,6 +1342,17 @@ If the main audio device and monitor device have different sample rates, monitor
 
 ### DirectPipe Receiver에서 끊김 / Receiver audio crackling
 
+4.4.0 본체와 Receiver는 최대 8개를 독립 연결합니다. 기존 필터·프리셋·Buffer
+설정은 유지됩니다. `Connected (v1)`은 구형 방식이므로 Receiver 하나만 사용하세요.
+`Receiver limit`이면 사용하지 않는 Receiver 필터를 제거·언로드하거나 해당 호스트 앱을 종료하면 자동으로 다시 연결합니다. 편집 창만 닫아서는 슬롯이 해제되지 않습니다.
+`Connecting...`은 본체의 첫 오디오 처리를 기다리는 상태일 수 있습니다(패닉 뮤트 포함).
+한 수신기의 정지·복귀는 다른 수신기를 막지 않으며, 넘친 큐는 복귀할 때 비웁니다.
+
+New 4.4.0 host/Receiver pairs support eight independent connections. `Connected
+(v1)` retains the old single-reader restriction. At `Receiver limit`, unload an
+unused Receiver filter or close its host app; closing only the editor does not release a slot. The waiting connection retries automatically. `Connecting...`
+can mean waiting for the host's first audio block, including while panic-muted.
+
 1. Receiver 플러그인 GUI에서 **Buffer** 한 단계 올리기 / Increase **Buffer** one step in Receiver plugin GUI
 2. DirectPipe와 OBS **샘플레이트 동일하게** 맞추기 (48000Hz 권장) / Match DirectPipe and OBS **sample rates** (48000Hz recommended)
 3. CPU 사용량 확인 / Check CPU usage
@@ -1354,7 +1412,7 @@ Playing monitor output through speakers creates an **echo/feedback loop** as the
 | 출력 / Output | DirectPipe 종료 시 / When DirectPipe closes | 복구 방법 / Recovery |
 |---|---|---|
 | **Main OUT** (가상 케이블 → Discord) | Discord 마이크 즉시 무음 (가상 케이블에 오디오 전송 중단) / Discord mic goes silent immediately (audio to virtual cable stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
-| **VST** (IPC → OBS Receiver) | DirectPipe Receiver가 연결 해제 감지 → **부드러운 페이드아웃** (~20 샘플) → 무음 → "Disconnected" 표시 / Receiver detects disconnect → **smooth fadeout** (~20 samples) → silence → "Disconnected" | DirectPipe 재시작 + IPC 켜기 → 자동 재연결 / Restart DirectPipe + enable IPC → auto-reconnect |
+| **VST** (IPC → OBS Receiver) | DirectPipe Receiver가 연결 해제 감지 → **부드러운 페이드아웃** (64 샘플) → 무음 → "Disconnected" 표시 / Receiver detects disconnect → **smooth fadeout** (64 samples) → silence → "Disconnected" | DirectPipe 재시작 + IPC 켜기 → 자동 재연결 / Restart DirectPipe + enable IPC → auto-reconnect |
 | **MON** (모니터 → 헤드폰 / Monitor → Headphones) | 즉시 무음 (오디오 콜백 중단) / Immediate silence (audio callback stops) | DirectPipe 재시작 → 자동 복구 / Restart DirectPipe → auto-recovery |
 | **REC** (WAV 녹음 / WAV Recording) | 녹음 파일 자동 마무리 (FIFO 플러시 후 파일 닫기). 녹음 중이었다면 중단 시점까지 저장됨 / Recording file auto-finalized (FIFO flushed, file closed). Saved up to the point of closure | 재시작 후 수동 녹음 시작 / Manually start recording after restart |
 

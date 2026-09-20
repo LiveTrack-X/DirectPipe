@@ -18,7 +18,7 @@
 
 /**
  * @file RingBuffer.cpp
- * @brief SPSC lock-free ring buffer implementation
+ * @brief Legacy v1 SPSC implementation; multi-Receiver queues are in FanOut.cpp
  */
 
 #include "directpipe/RingBuffer.h"
@@ -135,22 +135,22 @@ bool RingBuffer::attachAsConsumer(void* memory, size_t mappedSizeBytes)
     mask_ = header_->buffer_frames - 1;
     attachedGeneration_ = header_->producer_generation.load(std::memory_order_acquire);
 
-    // Check if another consumer is already reading this buffer (SPSC violation).
-    // We still connect (audio will likely be corrupted), but flag it for UI warning.
-    // Claim the single-consumer slot atomically. A load followed by a store lets
+    // Detect an already-set legacy attachment flag (possible SPSC violation).
+    // Compatibility still permits attachment; this flag is not an exclusive lock.
+    // Exchange the flag atomically. A load followed by a store lets
     // two simultaneous Receiver instances both observe false and suppress the
     // warning, even though both will advance the same read position.
     const bool consumerWasActive =
         header_->consumer_active.exchange(true, std::memory_order_acq_rel);
     if (consumerWasActive) {
-        // Check if previous consumer is actually reading — if read_pos is far behind
-        // write_pos, assume the previous consumer crashed (stale flag)
+        // Historical warning heuristic: a nearly full queue may mean the old
+        // flag is stale. It cannot establish process death or exclusive ownership.
         const uint64_t wp = header_->write_pos.load(std::memory_order_relaxed);
         const uint64_t rp = header_->read_pos.load(std::memory_order_relaxed);
         const uint64_t behind = wp - rp;  // unsigned diff, handles 64-bit wrap
         if (behind > (header_->buffer_frames * 80ULL) / 100ULL) {
-            // Previous consumer is stale (not reading) — suppress the warning
-            // while retaining this connection's atomic claim.
+            // Suppress only the warning. The queue remains single-consumer;
+            // independent slots and verified-dead-owner reclaim are FanOut features.
             anotherConsumerWasActive_ = false;
         } else {
             anotherConsumerWasActive_ = true;

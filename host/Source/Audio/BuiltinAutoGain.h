@@ -64,7 +64,7 @@ namespace directpipe {
  *
  * Thread Ownership:
  *   processBlock()    -- [RT audio thread]
- *   prepareToPlay()   -- [Message thread]
+ *   prepareToPlay()   -- [Non-RT control/device lifecycle, rendering excluded]
  *   setters/getters   -- [Any thread] (atomic)
  */
 class BuiltinAutoGain : public juce::AudioProcessor {

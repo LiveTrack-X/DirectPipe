@@ -2969,7 +2969,7 @@ int AudioEngine::getActiveOutputChannelOffset() const
 }
 
 // ============================================================================
-// Real-time audio callback NO allocations, NO locks, NO I/O
+// Real-time audio callback: preallocated processing, no blocking control locks
 // ============================================================================
 
 void AudioEngine::audioDeviceIOCallbackWithContext(
@@ -2981,9 +2981,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     const juce::AudioIODeviceCallbackContext& /*context*/)
 {
     // RT audio callback rules:
-    // RULES: no allocation | no mutex | no writeToLog | no throw
-    // Pre-allocated: workBuffer_, emptyMidi_ | Atomics: relaxed ordering
-    // Keep this path deterministic and lock-free.
+    // Host hot-path rules: no allocation, blocking mutex, logging or file I/O.
+    // workBuffer_ and chain MIDI storage are prepared off RT. Lifecycle gates
+    // use acquire/SC ordering; recorder contention drops instead of waiting.
+    // Existing OS exceptions are one-time MMCSS setup and legacy IPC signaling.
+    // These rules do not constrain the internals of third-party plug-ins.
 
     // RT thread only must NOT be called from the message thread
     jassert(!juce::MessageManager::getInstanceWithoutCreating()
@@ -3125,8 +3127,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         inputLevel_.store(rms, std::memory_order_relaxed);
     }
 
-    // 2. Process through VST plugin chain (inline, zero additional latency)
-    // Each plugin's bypass flag is atomic can be toggled from any thread
+    // 2. Process the VST chain inline (active plug-in latency still contributes PDC).
+    // Bypass changes are message-thread graph operations. State/lifecycle changes
+    // close VSTChain admission; rejected callbacks emit silence without RT waiting.
     //
     // Windows: __try/__except catches SEH exceptions (access violations) that
     //          try/catch(...) silently misses. The helper is extracted into a
@@ -3160,10 +3163,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     if (safetyHeadroomEnabled && safetyHeadroomGain < 0.9999f)
         buffer.applyGain(safetyHeadroomGain);
 
-    // 2.5. Write processed audio to recorder (lock-free)
+    // 2.5. Recorder: nonblocking writer try-lock, then ThreadedWriter FIFO.
     recorder_.writeBlock(buffer, numSamples);
 
-    // 2.6. Write to shared memory for Receiver VST (if IPC enabled)
+    // 2.6. Feed legacy IPC and the separate eight-reader fan-out transport from
+    // one interleaved block. Panic/chain-crash early returns above skip both.
     if (ipcEnabled_.load(std::memory_order_acquire)) {
         sharedMemWriter_.writeAudio(buffer, numSamples);
     }

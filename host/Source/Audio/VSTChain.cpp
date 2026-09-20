@@ -108,7 +108,7 @@ VSTChain::~VSTChain()
         loadThread_->join();
 
     {
-        const juce::ScopedLock controlLock(graphControlLock_);
+        const ScopedProcessingSuspension suspension(*this);
         const juce::ScopedLock chainLock(chainLock_);
         for (auto& slot : chain_)
             removeProcessorListener(slot.getProcessor());
@@ -126,7 +126,7 @@ void VSTChain::prepareToPlay(double sampleRate, int blockSize)
     {
         // Device lifecycle and message-thread graph mutations share this
         // boundary. The RT render path deliberately does not acquire it.
-        const juce::ScopedLock controlLock(graphControlLock_);
+        const ScopedProcessingSuspension suspension(*this);
 
         prepared_.store(false, std::memory_order_release);
         currentSampleRate_ = sampleRate;
@@ -137,8 +137,6 @@ void VSTChain::prepareToPlay(double sampleRate, int blockSize)
 
         {
             const juce::ScopedLock chainLock(chainLock_);
-
-            graph_->suspendProcessing(true);
 
             // Remove old I/O nodes to prevent accumulation on repeated prepare calls.
             if (inputNodeId_.uid != 0)
@@ -172,7 +170,7 @@ void VSTChain::prepareToPlay(double sampleRate, int blockSize)
 
 void VSTChain::releaseResources()
 {
-    const juce::ScopedLock controlLock(graphControlLock_);
+    const ScopedProcessingSuspension suspension(*this);
     prepared_.store(false, std::memory_order_release);
     graph_->releaseResources();
 }
@@ -180,24 +178,79 @@ void VSTChain::releaseResources()
 void VSTChain::suspendProcessing(bool suspend)
 {
     const juce::ScopedLock controlLock(graphControlLock_);
-    graph_->suspendProcessing(suspend);
+    manuallySuspended_ = suspend;
+    if (suspend)
+        closeProcessingAdmissionAndDrain();
+    else if (scopedSuspensionDepth_ == 0)
+        processingAdmission_.store(true, std::memory_order_seq_cst);
+}
+
+VSTChain::ScopedProcessingSuspension::ScopedProcessingSuspension(VSTChain& chain, bool suspend)
+    : chain_(chain), controlLock_(chain.graphControlLock_), suspended_(suspend)
+{
+    if (suspended_) {
+        ++chain_.scopedSuspensionDepth_;
+        chain_.closeProcessingAdmissionAndDrain();
+    }
+}
+
+VSTChain::ScopedProcessingSuspension::~ScopedProcessingSuspension()
+{
+    if (suspended_ && --chain_.scopedSuspensionDepth_ == 0 && !chain_.manuallySuspended_)
+        chain_.processingAdmission_.store(true, std::memory_order_seq_cst);
+}
+
+void VSTChain::closeProcessingAdmissionAndDrain()
+{
+    processingAdmission_.store(false, std::memory_order_seq_cst);
+    // Only the non-RT control/lifecycle thread waits. The plug-in currently
+    // rendering must finish before its state/resources can be changed safely.
+    while (processingInFlight_.load(std::memory_order_seq_cst) != 0)
+        std::this_thread::yield();
 }
 
 void VSTChain::processBlock(juce::AudioBuffer<float>& buffer, int numSamples)
 {
-    // No chainLock_ here — AudioProcessorGraph internally swaps render sequences atomically.
-    // Holding chainLock_ in the RT callback would risk deadlock with message-thread operations
-    // that hold chainLock_ and call suspendProcessing() (which waits for the RT callback to finish).
+    // JUCE's root graph suspension flag does not guard a direct processBlock
+    // call. Use our admission handshake; never wait on a control-side lock.
 
     // RT thread only — must NOT be called from the message thread
     jassert(!juce::MessageManager::getInstanceWithoutCreating()
             || !juce::MessageManager::getInstance()->isThisTheMessageThread());
 
-    if (!prepared_.load(std::memory_order_acquire)) return;
+    if (numSamples <= 0 || numSamples > buffer.getNumSamples()) return;
+    if (!processingAdmission_.load(std::memory_order_seq_cst)) {
+        buffer.clear(0, numSamples);
+        return;
+    }
+    processingInFlight_.fetch_add(1, std::memory_order_seq_cst);
+    if (!processingAdmission_.load(std::memory_order_seq_cst)
+        || !prepared_.load(std::memory_order_acquire)) {
+        processingInFlight_.fetch_sub(1, std::memory_order_seq_cst);
+        buffer.clear(0, numSamples);
+        return;
+    }
 
-    // Safety: clamp numSamples to buffer capacity
-    if (numSamples > buffer.getNumSamples()) return;
+#if JUCE_WINDOWS
+    // AudioEngine catches plug-in SEH faults outside this function. Ordinary
+    // C++ RAII is not unwound for those faults under /EHsc, so use __finally
+    // here and keep destructible locals in processAdmittedBlock instead.
+    __try {
+        processAdmittedBlock(buffer, numSamples);
+    } __finally {
+        processingInFlight_.fetch_sub(1, std::memory_order_seq_cst);
+    }
+#else
+    struct RenderLease {
+        std::atomic<unsigned>& count;
+        ~RenderLease() { count.fetch_sub(1, std::memory_order_seq_cst); }
+    } lease{processingInFlight_};
+    processAdmittedBlock(buffer, numSamples);
+#endif
+}
 
+void VSTChain::processAdmittedBlock(juce::AudioBuffer<float>& buffer, int numSamples)
+{
     // Use a lightweight sub-buffer view instead of mutating the buffer size.
     // This avoids setSize overhead (channel pointer recalculation) on every callback.
     if (numSamples < buffer.getNumSamples()) {
@@ -254,36 +307,36 @@ int VSTChain::addPlugin(const juce::PluginDescription& desc)
         return -1;
     }
 
-    // addNode inserts into the node list — the render sequence is not rebuilt
-    // until rebuildGraph() which handles its own suspend/resume pair.
-    // Do NOT suspendProcessing here: JUCE uses a counter, so an extra
-    // suspend(true) without a matching suspend(false) leaves the graph muted.
-    const juce::ScopedLock controlLock(graphControlLock_);
-    auto node = graph_->addNode(std::move(instance));
-    if (!node) {
-        juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
-        if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
-        return -1;
-    }
-
-    // Create plugin slot
-    PluginSlot slot;
-    slot.name = desc.name;
-    slot.path = desc.fileOrIdentifier;
-    slot.desc = desc;
-    slot.nodeId = node->nodeID;
-    slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
-
+    // Stop admission before node mutation; nested rebuilds keep this scope's
+    // suspension until the complete chain and its connections are ready.
     int resultIdx;
     juce::String auditOrder;
     {
-        const juce::ScopedLock sl(chainLock_);
-        chain_.push_back(slot);
-        addProcessorListener(chain_.back().getProcessor());
-        rebuildGraph();  // rebuildGraph calls suspendProcessing(false) internally
-        resultIdx = static_cast<int>(chain_.size()) - 1;
-        if (Log::isAuditMode())
-            auditOrder = buildChainOrderStr(chain_);
+        const ScopedProcessingSuspension suspension(*this);
+        auto node = graph_->addNode(std::move(instance));
+        if (!node) {
+            juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
+            if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
+            return -1;
+        }
+
+        // Create plugin slot
+        PluginSlot slot;
+        slot.name = desc.name;
+        slot.path = desc.fileOrIdentifier;
+        slot.desc = desc;
+        slot.nodeId = node->nodeID;
+        slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
+
+        {
+            const juce::ScopedLock sl(chainLock_);
+            chain_.push_back(slot);
+            addProcessorListener(chain_.back().getProcessor());
+            rebuildGraph();
+            resultIdx = static_cast<int>(chain_.size()) - 1;
+            if (Log::isAuditMode())
+                auditOrder = buildChainOrderStr(chain_);
+        }
     }
 
     juce::Logger::writeToLog("[VST] Loaded: \"" + desc.name + "\" (" + desc.pluginFormatName + ") at index " + juce::String(resultIdx) + " - " + juce::String(desc.numInputChannels) + "in/" + juce::String(desc.numOutputChannels) + "out");
@@ -341,33 +394,34 @@ int VSTChain::addPlugin(const juce::String& pluginPath)
         return -1;
     }
 
-    // See addPlugin(PluginDescription) comment — no suspendProcessing here
-    const juce::ScopedLock controlLock(graphControlLock_);
-    auto node = graph_->addNode(std::move(instance));
-    if (!node) {
-        juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
-        if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
-        return -1;
-    }
-
-    // Create plugin slot
-    PluginSlot slot;
-    slot.name = desc.name;
-    slot.path = pluginPath;
-    slot.desc = desc;
-    slot.nodeId = node->nodeID;
-    slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
-
     int resultIdx;
     juce::String auditOrder;
     {
-        const juce::ScopedLock sl(chainLock_);
-        chain_.push_back(slot);
-        addProcessorListener(chain_.back().getProcessor());
-        rebuildGraph();
-        resultIdx = static_cast<int>(chain_.size()) - 1;
-        if (Log::isAuditMode())
-            auditOrder = buildChainOrderStr(chain_);
+        const ScopedProcessingSuspension suspension(*this);
+        auto node = graph_->addNode(std::move(instance));
+        if (!node) {
+            juce::Logger::writeToLog("[VST] Failed to add to graph: " + desc.name);
+            if (onPluginLoadFailed) onPluginLoadFailed(desc.name, "Failed to add to audio graph");
+            return -1;
+        }
+
+        // Create plugin slot
+        PluginSlot slot;
+        slot.name = desc.name;
+        slot.path = pluginPath;
+        slot.desc = desc;
+        slot.nodeId = node->nodeID;
+        slot.instance = dynamic_cast<juce::AudioPluginInstance*>(node->getProcessor());
+
+        {
+            const juce::ScopedLock sl(chainLock_);
+            chain_.push_back(slot);
+            addProcessorListener(chain_.back().getProcessor());
+            rebuildGraph();
+            resultIdx = static_cast<int>(chain_.size()) - 1;
+            if (Log::isAuditMode())
+                auditOrder = buildChainOrderStr(chain_);
+        }
     }
 
     juce::Logger::writeToLog("[VST] Loaded: \"" + desc.name + "\" (" + desc.pluginFormatName + ") at index " + juce::String(resultIdx) + " - " + juce::String(desc.numInputChannels) + "in/" + juce::String(desc.numOutputChannels) + "out");
@@ -422,52 +476,54 @@ ActionResult VSTChain::addBuiltinProcessor(PluginSlot::Type type, int insertInde
     // to set up internal routing. Without this call, the processor reports 0 channels
     // and the graph won't create audio connections to/from it.
     // The (2, 2) means stereo in, stereo out -- matching the host's bus layout.
+    int resultIdx;
+    juce::String auditOrder;
     const juce::ScopedLock controlLock(graphControlLock_);
     processor->setPlayConfigDetails(2, 2, currentSampleRate_, currentBlockSize_);
     processor->prepareToPlay(currentSampleRate_, currentBlockSize_);
-
-    // Add to graph (mirrors addPlugin flow: addNode → create slot → rebuildGraph).
-    //
-    // IMPORTANT: Save raw pointer BEFORE std::move transfers ownership to the graph.
-    // After addNode(std::move(processor)), the unique_ptr is empty and we can no
-    // longer access the processor through it. The raw pointer remains valid because
-    // the graph keeps the processor alive as part of its Node.
-    auto* rawPtr = processor.get();
-    auto node = graph_->addNode(std::move(processor));
-    if (!node)
-        return ActionResult::fail("Failed to add built-in processor to graph");
-
-    // Create plugin slot
-    PluginSlot slot;
-    slot.name = name;
-    slot.type = type;
-    slot.nodeId = node->nodeID;
-    slot.instance = nullptr;
-    slot.builtinProcessor = rawPtr;
-
-    int resultIdx;
-    juce::String auditOrder;
     {
-        const juce::ScopedLock sl(chainLock_);
+        const ScopedProcessingSuspension suspension(*this);
 
-        // Insert at the requested position, or append
-        if (insertIndex >= 0 && insertIndex <= static_cast<int>(chain_.size())) {
-            chain_.insert(chain_.begin() + insertIndex, slot);
-            resultIdx = insertIndex;
-        } else {
-            chain_.push_back(slot);
-            resultIdx = static_cast<int>(chain_.size()) - 1;
+        // Add to graph (mirrors addPlugin flow: addNode → create slot → rebuildGraph).
+        //
+        // IMPORTANT: Save raw pointer BEFORE std::move transfers ownership to the graph.
+        // After addNode(std::move(processor)), the unique_ptr is empty and we can no
+        // longer access the processor through it. The raw pointer remains valid because
+        // the graph keeps the processor alive as part of its Node.
+        auto* rawPtr = processor.get();
+        auto node = graph_->addNode(std::move(processor));
+        if (!node)
+            return ActionResult::fail("Failed to add built-in processor to graph");
+
+        // Create plugin slot
+        PluginSlot slot;
+        slot.name = name;
+        slot.type = type;
+        slot.nodeId = node->nodeID;
+        slot.instance = nullptr;
+        slot.builtinProcessor = rawPtr;
+
+        {
+            const juce::ScopedLock sl(chainLock_);
+
+            // Insert at the requested position, or append
+            if (insertIndex >= 0 && insertIndex <= static_cast<int>(chain_.size())) {
+                chain_.insert(chain_.begin() + insertIndex, slot);
+                resultIdx = insertIndex;
+            } else {
+                chain_.push_back(slot);
+                resultIdx = static_cast<int>(chain_.size()) - 1;
+            }
+            addProcessorListener(chain_[static_cast<size_t>(resultIdx)].getProcessor());
+
+            // Keep metadata and graph connections in the same control transaction.
+            // RT does not read chain_; the outer suspension already excludes
+            // rendering while nodes and connections are changed.
+            rebuildGraph();
+
+            if (Log::isAuditMode())
+                auditOrder = buildChainOrderStr(chain_);
         }
-        addProcessorListener(chain_[static_cast<size_t>(resultIdx)].getProcessor());
-
-        // NOTE: rebuildGraph() is called INSIDE chainLock_ scope to ensure the
-        // graph's audio connections match the chain_ vector atomically. If we
-        // rebuilt outside the lock, processBlock could see a chain_ with the new
-        // slot but graph connections without it, causing audio routing errors.
-        rebuildGraph();
-
-        if (Log::isAuditMode())
-            auditOrder = buildChainOrderStr(chain_);
     }
 
     juce::Logger::writeToLog("[VST] Built-in loaded: \"" + name + "\" at index " + juce::String(resultIdx));
@@ -534,8 +590,8 @@ bool VSTChain::removePlugin(int index)
     juce::String logMsg;
     juce::String auditOrder;
     int newCount = 0;
-    const juce::ScopedLock controlLock(graphControlLock_);
     {
+        const ScopedProcessingSuspension suspension(*this);
         const juce::ScopedLock sl(chainLock_);
 
         if (index < 0 || index >= static_cast<int>(chain_.size()))
@@ -664,8 +720,8 @@ void VSTChain::setPluginBypassed(int index, bool bypassed)
         // signal chain (audio routes around them). This is more reliable than
         // JUCE's node->setBypassed() which doesn't work for plugins that have
         // their own bypass parameter (VST2 canDo("bypass"), VST3 bypass param).
-        // suspend=false: only connections change (no nodes added/removed), so
-        // the render sequence swaps atomically without audio gap.
+        // No nodes are added/removed: retain the existing unsuspended connection
+        // handoff. Abrupt bypass can still change the waveform or cut plug-in tails.
         rebuildGraph(/*suspend=*/false);
     }
 
@@ -942,7 +998,7 @@ void VSTChain::closePluginEditor(int index)
 
 // ─── rebuildGraph: 그래프 연결 재구성 ─────────────────────────
 // suspend=true: 노드 추가/제거 시 (오디오 갭 발생 가능)
-// suspend=false: 바이패스 토글 시 (연결만 변경, 갭 없음)
+// suspend=false: 바이패스 연결 변경 시 (명시적 무음 gate 없음; 파형 연속성 보장 아님)
 // 바이패스된 플러그인은 연결 그래프에서 건너뜀
 // WARNING: getConnections() 복사 후 제거 루프 실행 (이터레이터 안전)
 // ──────────────────────────────────────────────────────────────
@@ -950,16 +1006,13 @@ void VSTChain::rebuildGraph(bool suspend)
 {
     using UK = juce::AudioProcessorGraph::UpdateKind;
 
-    // When nodes are added/removed, suspend processing to prevent the RT thread
-    // from accessing a half-built graph. When only connections change (bypass
-    // toggle), suspension is unnecessary — the render sequence swaps atomically
-    // via UK::sync, so the audio thread sees either the old or new sequence.
-    if (suspend)
-        graph_->suspendProcessing(true);
+    // Structural mutations own suspension before touching nodes; this nested
+    // scope cannot resume an outer state restore. Connection-only bypass uses
+    // JUCE's render-sequence handoff and deliberately leaves admission unchanged.
+    const ScopedProcessingSuspension suspension(*this, suspend);
 
     // Guard: I/O nodes must exist (created in prepareToPlay)
     if (inputNodeId_.uid == 0 || outputNodeId_.uid == 0) {
-        if (suspend) graph_->suspendProcessing(false);
         return;
     }
 
@@ -976,7 +1029,6 @@ void VSTChain::rebuildGraph(bool suspend)
         // Direct connection: input -> output (last connection triggers rebuild)
         graph_->addConnection({{inputNodeId_, 0}, {outputNodeId_, 0}}, UK::async);
         graph_->addConnection({{inputNodeId_, 1}, {outputNodeId_, 1}}, UK::sync);
-        if (suspend) graph_->suspendProcessing(false);
         return;
     }
 
@@ -1008,8 +1060,6 @@ void VSTChain::rebuildGraph(bool suspend)
     graph_->addConnection({{prevNodeId, 0}, {outputNodeId_, 0}}, UK::async);
     graph_->addConnection({{prevNodeId, 1}, {outputNodeId_, 1}}, UK::sync);
 
-    if (suspend)
-        graph_->suspendProcessing(false);
 }
 
 std::unique_ptr<juce::AudioPluginInstance> VSTChain::loadPlugin(
@@ -1238,10 +1288,8 @@ bool VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
     juce::StringArray auditParams;
     bool swapOk = false;
     {
-        const juce::ScopedLock controlLock(graphControlLock_);
+        const ScopedProcessingSuspension suspension(*this);
         const juce::ScopedLock sl(chainLock_);
-
-        graph_->suspendProcessing(true);
 
         std::vector<PluginSlot> newChain;
         newChain.reserve(preloaded.size());
@@ -1348,7 +1396,6 @@ bool VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
         if (failed) {
             for (auto nodeId : stagedNodeIds)
                 graph_->removeNode(nodeId, juce::AudioProcessorGraph::UpdateKind::async);
-            graph_->suspendProcessing(false);
             asyncLoading_.store(false);
             juce::Logger::writeToLog("ERR [VST] Cached chain swap aborted; keeping existing chain");
             return false;
@@ -1364,7 +1411,7 @@ bool VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
         for (auto& slot : chain_)
             addProcessorListener(slot.getProcessor());
 
-        rebuildGraph();  // single rebuild with connections + suspendProcessing(false)
+        rebuildGraph();  // one rebuild, with the outer suspension still held
         auto elapsed = juce::Time::getMillisecondCounter() - startMs;
         logMsg = "INF [VST] Cached chain swap: " + juce::String(chain_.size())
             + " plugins (" + juce::String(elapsed) + "ms)";

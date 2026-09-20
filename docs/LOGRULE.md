@@ -247,11 +247,22 @@ This flow is based on Windows endpoint events, not input RMS/silence detection. 
 
 ### [IPC] SharedMemWriter
 
+4.4.0의 생성 로그는 `legacy=ready/unavailable`, `independent=ready/unavailable`을
+별도로 표시합니다. 한 전송 생성 실패가 다른 전송까지 실패했다는 뜻은 아닙니다.
+새 Receiver의 연결/대기/한도/비호환 상태는 Receiver 화면에서 확인합니다.
+RT write에는 로그를 추가하지 않습니다. / Initialization reports each transport
+independently; consult Receiver status for connection/acknowledgement/capacity/
+compatibility. Do not log from the real-time write path.
+
 | 이벤트 / Event | INF/WRN/ERR | AUD (audit mode) |
 |--------|-------------|-------------------|
 | 활성화 / Activate | — | SR |
 | 비활성화 / Deactivate | — | — |
 | 재초기화 실패 / Re-init failure | — | SR |
+
+위 표는 출력 경로의 audit 이벤트입니다. SharedMemWriter 자체는 생성 상태와
+매핑/event 오류를 `[IPC]` 로그로 기록합니다. / The table describes output-route
+audit events; the writer separately logs initialization and mapping/event errors.
 
 ---
 

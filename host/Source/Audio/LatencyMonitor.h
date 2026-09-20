@@ -123,7 +123,8 @@ public:
     /**
      * @brief Get the number of callback overruns detected since last reset.
      * A callback overrun means the processing time exceeded the buffer period,
-     * which guarantees an audio glitch (the hardware ran out of data to play).
+     * indicating a missed nominal processing budget. Audible loss depends on
+     * driver buffering and scheduling; this counter is not a hardware measurement.
      */
     uint32_t getCallbackOverrunCount() const { return callbackOverruns_.load(std::memory_order_relaxed); }
 
@@ -133,8 +134,8 @@ public:
     void resetCallbackOverruns() { callbackOverruns_.store(0, std::memory_order_relaxed); }
 
 private:
-    std::atomic<double> sampleRate_{48000.0};       // [Message write, RT read]
-    std::atomic<int> bufferSize_{128};               // [Message write, RT read]
+    std::atomic<double> sampleRate_{48000.0};       // [Device lifecycle reset, RT read]
+    std::atomic<int> bufferSize_{128};               // [Device lifecycle reset, RT read]
 
     // Timing (updated from RT thread)
     std::atomic<uint64_t> callbackStartTicks_{0};    // [RT thread only, atomic for safety across reset()]
@@ -146,10 +147,10 @@ private:
     std::atomic<double> cpuUsage_{0.0};
 
     // Running average for smooth display
-    std::atomic<double> avgProcessingTime_{0.0};     // [Message write (reset), RT read+write]
+    std::atomic<double> avgProcessingTime_{0.0};     // [Device lifecycle reset, RT read+write]
     static constexpr double kSmoothingFactor = 0.1;
 
-    // Callback overrun detection: processing time > buffer period = guaranteed glitch
+    // Callback overrun detection: measured processing time exceeds the buffer period
     std::atomic<uint32_t> callbackOverruns_{0};       // [RT write, Message read]
 };
 

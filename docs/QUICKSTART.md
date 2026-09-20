@@ -1,5 +1,10 @@
 # Quick Start: USB 마이크 설정 가이드 / USB Mic Setup Guide
 
+> **4.4.0 안내 / Version 4.4.0:** 독립 다중 수신에는 본체와 Receiver 모두 4.4.0이 필요합니다.
+> 4.3.0 자동 갱신은 본체만 교체하므로, 갱신 뒤 **Settings > Update Receiver...**를 실행하세요.
+> / Independent reception requires both host and Receiver 4.4.0. The 4.3.0 updater
+> replaces only the host; then use **Settings > Update Receiver...**.
+
 > USB 마이크 사용자를 위한 5분 온보딩 가이드. 자세한 내용은 [User Guide](USER_GUIDE.md) 참조.
 >
 > 5-minute onboarding guide for USB mic users. See [User Guide](USER_GUIDE.md) for details.
@@ -112,7 +117,7 @@ Audio 탭 / Audio Tab
    - macOS: `BlackHole 2ch`
    - Linux: PipeWire/JACK 해당 장치 / corresponding device
 
-> 상세 내용: [사용자 가이드 — 가상 오디오 케이블](USER_GUIDE.md#가상-오디오-케이블--virtual-audio-cable)
+> 상세 내용: [사용자 가이드 — 가상 케이블과 Receiver 선택](USER_GUIDE.md#가상-케이블-vs-directpipe-receiver-선택-가이드--virtual-cable-vs-directpipe-receiver-which-to-use)
 
 ```
 USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
@@ -122,9 +127,9 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 
 ### OBS 사용자 (가상 케이블 불필요) / OBS Users (No Virtual Cable)
 
-> **왜 OBS는 가상 케이블이 필요 없나요?** DirectPipe에 포함된 Receiver 플러그인이 OBS 안에서 직접 오디오를 수신하기 때문입니다. 더 깔끔하고 지연(레이턴시)도 적습니다.
+> **왜 OBS는 가상 케이블이 필요 없나요?** DirectPipe에 포함된 Receiver 플러그인이 OBS 안에서 직접 오디오를 수신하기 때문입니다. 실제 지연은 장치·버퍼·플러그인 설정에 따라 달라집니다.
 >
-> **Why no virtual cable for OBS?** The included Receiver plugin receives audio directly inside OBS. Cleaner setup with less latency.
+> **Why no virtual cable for OBS?** The included Receiver plugin receives audio directly inside OBS. Actual latency depends on devices, buffers and plugins.
 
 1. Receiver 플러그인을 VST2 폴더에 복사 / Copy Receiver plugin to VST2 folder:
    - Windows: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\`
@@ -132,6 +137,18 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
    - Linux: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 / or `~/.vst/`
 2. DirectPipe 하단 **VST** 버튼 클릭 (초록색 = IPC ON) / Click **VST** button at bottom (green = ON)
 3. OBS → 오디오 소스 → 필터 → VST 2.x → **DirectPipe Receiver** 선택 / Select in OBS VST filter
+
+4. DirectPipe와 OBS의 샘플레이트를 같게 설정하고 Receiver 연결 상태를 확인합니다.
+   / Match the host and OBS sample rates and check the Receiver connection status.
+
+본체와 Receiver가 모두 4.4.0이면 최대 8개가 같은 처리 음성을 독립적으로 받습니다.
+구형 본체에 연결한 새 Receiver의 `Connected (v1)`은 기존 단일 수신 제한을 뜻합니다.
+Windows의 기존 Receiver는 **Settings > Update Receiver...**에서 경로·버전을 확인하고
+갱신할 수 있습니다. 사용 중인 OBS는 직접 종료한 뒤 **Retry**, 또는 **Later**를 선택합니다.
+/ Both ends on 4.4.0 support eight independent receivers of the same processed
+stream. `Connected (v1)` on an older host retains its single-reader restriction.
+Windows **Settings > Update Receiver...** previews existing copies; close OBS
+manually before **Retry**, or choose **Later**. Online upkeep follows public releases.
 
 > 플랫폼별 Receiver 설치 경로 상세: [플랫폼 가이드 — Receiver 설치](PLATFORM_GUIDE.md#receiver-설치--receiver-installation)
 
@@ -234,5 +251,5 @@ DirectPipe stays in the system tray (Windows/Linux) or menu bar (macOS). The X b
 | Stream Deck 연동 / Stream Deck setup | [Stream Deck Guide](STREAMDECK_GUIDE.md) |
 | MIDI 컨트롤러 매핑 / MIDI controller mapping | [User Guide — MIDI 제어](USER_GUIDE.md#midi-제어--midi-control) |
 | HTTP/WebSocket API 연동 / API integration | [Control API Reference](CONTROL_API.md) |
-| ASIO 저지연 설정 (Windows) / ASIO low-latency (Windows) | [User Guide — ASIO vs WASAPI](USER_GUIDE.md#asio-vs-wasapi-선택-가이드--asio-vs-wasapi-decision-guide) |
+| ASIO 저지연 설정 (Windows) / ASIO low-latency (Windows) | [User Guide — 드라이버 선택](USER_GUIDE.md#드라이버-선택-가이드--driver-selection-guide) |
 | 소리 안 남 / No audio | [User Guide — 문제 해결](USER_GUIDE.md#문제-해결--troubleshooting) |

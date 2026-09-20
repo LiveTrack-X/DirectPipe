@@ -120,7 +120,8 @@ struct PluginSlot {
  * Manages a serial chain of VST plugins:
  * Input → Plugin1 → Plugin2 → ... → PluginN → Output
  *
- * All plugin processing is inline (zero additional latency).
+ * Processing runs inline in the host callback; each active processor's reported
+ * algorithmic latency contributes to graph PDC. There is no extra worker queue.
  */
 class VSTChain : private juce::AudioProcessorListener {
 public:
@@ -143,7 +144,10 @@ public:
      * @brief Process an audio buffer through the VST chain.
      *
      * This is called from the real-time audio thread.
-     * No allocations, no locks.
+     * DirectPipe's admission gate uses atomics, never either control lock or a
+     * blocking wait. Suspended/unprepared calls clear the requested region.
+     * JUCE and third-party processors run inside the admitted callback; their
+     * implementation is not made allocation-free or fault-isolated by this gate.
      *
      * @param buffer Audio buffer to process in-place.
      * @param numSamples Number of samples to process.
@@ -305,11 +309,13 @@ public:
     };
 
     /**
-     * @brief Replace the entire chain asynchronously (non-blocking).
+     * @brief Prepare an entire replacement chain asynchronously, then commit it.
      *
-     * Prepares every requested plug-in on a background thread while the
-     * current chain remains live, then performs one staged graph swap on the
-     * message thread. Any preparation or staging failure keeps the old chain.
+     * Constructs external plug-ins through the background loader while the
+     * current chain remains live (macOS creation dispatches to the message
+     * thread). Built-ins and state restoration run during the message-thread
+     * swap, with rendering drained and new callbacks silenced. Preparation or
+     * staging failure keeps the old chain; commit time depends on the plug-ins.
      * @param requests Plugins to load.
      * @param onComplete Called on the message thread with the transaction result.
      */
@@ -343,8 +349,9 @@ public:
      * @brief Replace the entire chain with pre-loaded instances (synchronous).
      *
      * Must be called on the message thread. Used with PluginPreloadCache
-     * to skip DLL loading entirely. Old chain continues processing until
-     * swap completes (~10-50ms suspend).
+     * to skip external DLL construction. Old chain continues processing until
+     * staging begins. Staging, state restoration and commit hold suspension;
+     * new callbacks emit silence for a duration determined by those operations.
      * @param preloaded Pre-created VST instances and/or built-in requests.
      * @param onComplete Called after swap is complete.
      */
@@ -378,6 +385,8 @@ public:
     }
 
     void waitForAsyncWorkerForTest();
+    bool isProcessingAdmittedForTest() const { return processingAdmission_.load(); }
+    unsigned getProcessingInFlightForTest() const { return processingInFlight_.load(); }
 #endif
 
     /** @brief True while async chain loading is in progress. */
@@ -387,8 +396,27 @@ public:
      *  Used by SettingsAutosaver as an additional guard beyond loadingSlot_. */
     bool isStable() const { return prepared_.load(std::memory_order_relaxed) && !asyncLoading_.load(std::memory_order_relaxed); }
 
-    /** @brief Suspend/resume graph processing (for safe state changes). */
+    /**
+     * Non-RT only. Idempotent manual suspension: true closes RT admission and
+     * drains any callback already processing; false resumes unless a scoped
+     * mutation still owns suspension. Prefer ScopedProcessingSuspension for
+     * state changes so exceptions cannot leave processing suspended.
+     */
     void suspendProcessing(bool suspend);
+
+    /** Holds graphControlLock_ before any chainLock_ acquisition. With suspend=true,
+        drains rendering and owns a nestable suspension until scope exit. The
+        control-side drain can wait indefinitely for a plug-in that never returns. */
+    class ScopedProcessingSuspension {
+    public:
+        explicit ScopedProcessingSuspension(VSTChain& chain, bool suspend = true);
+        ~ScopedProcessingSuspension();
+    private:
+        VSTChain& chain_;
+        const juce::ScopedLock controlLock_;
+        const bool suspended_;
+        JUCE_DECLARE_NON_COPYABLE(ScopedProcessingSuspension)
+    };
 
     // Callback when the chain changes (for UI update)
     std::function<void()> onChainChanged;
@@ -400,6 +428,8 @@ public:
     std::function<void(const juce::String&, const juce::String&)> onPluginLoadFailed;
 
 private:
+    void closeProcessingAdmissionAndDrain(); // graphControlLock_ held; non-RT only
+    void processAdmittedBlock(juce::AudioBuffer<float>& buffer, int numSamples);
     void audioProcessorParameterChanged(juce::AudioProcessor*, int, float) override {}
     void audioProcessorChanged(
         juce::AudioProcessor*,
@@ -413,7 +443,8 @@ private:
      * @brief Rebuild the audio graph connections after chain modification.
      * @param suspend If true, suspend/resume processing around rebuild
      *        (needed when nodes are added/removed). If false, only connections
-     *        change and the render sequence swaps atomically (no audio gap).
+     *        change through JUCE's render-sequence handoff without explicitly
+     *        closing admission; this is not a click-free or tail-preserving switch.
      */
     void rebuildGraph(bool suspend = true);
 
@@ -427,9 +458,9 @@ private:
     // Thread Ownership — 변경 시 Audio/README.md "Thread Model" 테이블도 업데이트할 것
     // ═══════════════════════════════════════════════════════════════════
 
-    juce::AudioPluginFormatManager formatManager_;       // [Message thread only]
+    juce::AudioPluginFormatManager formatManager_;       // [Message / serialized BG loader; creation follows platform rules]
     juce::KnownPluginList knownPlugins_;                 // [Message thread only]
-    std::unique_ptr<juce::AudioProcessorGraph> graph_;   // [RT: processBlock, Message: node add/remove]
+    std::unique_ptr<juce::AudioProcessorGraph> graph_;   // [RT: processBlock; non-RT: guarded graph/lifecycle changes]
 
     // I/O nodes in the graph
     juce::AudioProcessorGraph::NodeID inputNodeId_;      // [Protected by chainLock_]
@@ -441,11 +472,17 @@ private:
 
     double currentSampleRate_ = 48000.0;                 // [Protected by graphControlLock_]
     int currentBlockSize_ = 128;                         // [Protected by graphControlLock_]
-    std::atomic<bool> prepared_{false};                   // [Message write, RT read]
+    std::atomic<bool> prepared_{false};                   // [Non-RT control/lifecycle write, RT read]
+    // SC admission handshake: a control mutation closes admission, then waits
+    // outside RT for admitted callbacks. RT never waits or takes either lock.
+    std::atomic<bool> processingAdmission_{true};         // [Control write, RT read]
+    std::atomic<unsigned> processingInFlight_{0};         // [RT write, Control read]
+    unsigned scopedSuspensionDepth_ = 0;                 // [graphControlLock_]
+    bool manuallySuspended_ = false;                     // [graphControlLock_]
 
-    juce::MidiBuffer emptyMidi_;                         // [RT thread only] Pre-allocated (avoids per-callback allocation)
+    juce::MidiBuffer emptyMidi_;                         // [RT; non-RT prepare under suspension] Reserved then cleared per callback
 
-    std::atomic<bool> chainDirty_{false};                // [Message write, RT read] Lock-free chain swap flag
+    std::atomic<bool> chainDirty_{false};                // Legacy unused flag; not the admission or swap mechanism
     std::atomic<bool> latencyRebuildPending_{false};     // [Plugin callback write, Message consume]
 
     // Serializes every non-RT AudioProcessorGraph lifecycle/structural mutation.
@@ -459,7 +496,7 @@ private:
     mutable juce::CriticalSection chainLock_;
 
     // ─── Async loading state ───
-    std::atomic<bool> asyncLoading_{false};               // [BG write, Message/UI read]
+    std::atomic<bool> asyncLoading_{false};               // [Message write/read; shared loading status]
     std::atomic<int> loadWorkerActive_{0};                // [BG/Message] active format-manager workers
     std::unique_ptr<std::thread> loadThread_;             // [Message thread only]
     std::atomic<uint32_t> asyncGeneration_{0};            // [Message write, BG read] Incremented per replaceChainAsync call

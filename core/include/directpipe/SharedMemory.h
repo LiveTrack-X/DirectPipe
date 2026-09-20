@@ -20,8 +20,8 @@
  * @file SharedMemory.h
  * @brief Platform-specific shared memory and event signaling wrapper
  *
- * Provides create/open/close for Windows shared memory (CreateFileMapping)
- * and Named Events for data-ready signaling between processes.
+ * Provides Windows mappings/events and POSIX mappings/semaphores. Both audio
+ * transports use mappings; only legacy v1 retains data-ready event signaling.
  */
 #pragma once
 
@@ -35,10 +35,11 @@
 namespace directpipe {
 
 /**
- * @brief Windows shared memory region wrapper.
+ * @brief Cross-platform shared memory region wrapper.
  *
  * Producer calls create() to allocate the shared memory region.
- * Consumer calls open() to connect to an existing region.
+ * Consumer calls open() to connect to an existing region. Mapping operations
+ * run off audio callbacks; this wrapper does not validate either audio ABI.
  */
 class SharedMemory {
 public:
@@ -55,6 +56,9 @@ public:
 
     /**
      * @brief Create a new shared memory region (producer side).
+     * Windows may reopen an existing object: check createOpenedExistingObject()
+     * before initializing any header. POSIX unlinks/recreates the named object;
+     * readers can retain their old view until their worker detects replacement.
      * @param name The shared memory name (e.g., "Local\\DirectPipeAudio").
      * @param size Size in bytes of the shared memory region.
      * @return true if creation succeeded.
@@ -64,13 +68,15 @@ public:
     /**
      * @brief Open an existing shared memory region (consumer side).
      * @param name The shared memory name.
-     * @param size Expected size in bytes. Use 0 to map the full existing region.
+     * @param size Requested view size, not ABI validation. Use 0 to map the full
+     * existing object, then pass getSize() to the transport's bounded validation.
      * @return true if open succeeded.
      */
     bool open(const std::string& name, size_t size);
 
     /**
      * @brief Close the shared memory region and release resources.
+     * First drain all local users and detach their transport views.
      */
     void close();
 
@@ -91,7 +97,7 @@ public:
      * A POSIX producer restart unlinks and recreates the named object while an
      * existing consumer can still hold the old mapping. Consumers can compare
      * this value with a freshly opened mapping to detect that replacement.
-     * Returns zero on platforms where producer_generation is sufficient.
+     * Returns zero on Windows, where retirement and fresh-creation rules apply.
      */
     uint64_t getObjectIdentity() const { return objectIdentity_; }
 
@@ -128,8 +134,10 @@ private:
 /**
  * @brief Named event wrapper for inter-process signaling.
  *
- * Used to notify the consumer (OBS plugin) when new audio data
- * is available in the shared ring buffer.
+ * Preserves legacy v1 data-ready signaling. The current Receiver polls its
+ * selected queue from processBlock(); FanOut needs no event. create/open/close
+ * and blocking waits are control-side operations. Legacy writeAudio retains
+ * signal(), an OS call, after writing frames for older event-waiting consumers.
  */
 class NamedEvent {
 public:
@@ -153,6 +161,7 @@ public:
 
     /**
      * @brief Open an existing named event (consumer side).
+     * Windows opens SYNCHRONIZE access only: this handle can wait, not signal.
      * @param name Event name.
      * @return true if open succeeded.
      */
@@ -160,6 +169,7 @@ public:
 
     /**
      * @brief Signal the event (producer calls this after writing data).
+     * On Windows use a handle obtained with create(), not the wait-only open().
      */
     void signal();
 

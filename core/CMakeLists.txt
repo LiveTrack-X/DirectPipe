@@ -1,7 +1,8 @@
 # DirectPipe Core Library
-# SPSC Lock-free Ring Buffer + Shared Memory IPC
+# Legacy v1 SPSC + eight independent FanOut SPSC queues + shared-memory wrappers
 
 add_library(directpipe-core STATIC
+    src/FanOut.cpp
     src/RingBuffer.cpp
     src/SharedMemory.cpp
 )

@@ -4,6 +4,11 @@ DirectPipe는 Windows, macOS, Linux를 지원합니다. 플랫폼에 따라 기�
 
 DirectPipe supports Windows, macOS, and Linux. Features, setup, and release maturity vary by platform.
 
+> **현재 소스 / Current source: 4.4.0.** Windows 자동·격리 실행 검증과 Linux/WSL2
+> POSIX core 검증을 구분합니다. 전체 앱 빌드/배포와 실기기 확인은 별도입니다.
+> / Windows software/runtime checks and Linux/WSL2 core checks have separate
+> scopes; neither proves hardware behavior. See [4.4.0 validation](MULTI_RECEIVER_4_4_0.md).
+
 ---
 
 ## 지원 상태 / Support Status
@@ -15,8 +20,10 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 | **Linux x86_64** | 실험적 / Experimental | CI `ubuntu-24.04` tar.gz | ALSA/JACK 경로는 유지. 배포판/데스크톱/오디오 서버 조합별 편차가 있을 수 있음. |
 | **Stream Deck plugin** | 별도 크로스 플랫폼 패키지 / Separate cross-platform package | CI `ubuntu-latest` `.streamDeckPlugin` | Manifest 기준 Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
 
-> 현재 v4.3.0 문서의 "지원"은 소스/CI 빌드 경로와 플랫폼 구현 존재를 의미합니다. 안정도와 실기기 검증 수준은 위 표의 상태를 따릅니다.
-> In the current v4.3.0 documentation, "supported" means the source/CI path and platform implementation exist. Release maturity and hardware validation follow the table above.
+> 위 표는 공개 v4.3.0 기준의 지원·배포 이력입니다. "지원"은 소스/CI 빌드 경로와
+> 플랫폼 구현 존재를 의미하며, 4.4.0 검증은 위 링크와 구분합니다.
+> / The table records the published v4.3.0 support baseline. Source/CI availability
+> does not establish 4.4.0 release or hardware validation.
 
 > **Windows 시작 라우팅**: 선행 장치 손실이 없는 유효한 시작은 v4.2.0과 같이 Windows가 실제 선택한 기본 드라이버·입력·출력을 채택합니다. 실제 장치 손실 뒤에는 저장 target을 유지하고 해당 장치로 복구합니다. 이후의 설정 복원이나 수동 선택은 지연 callback보다 우선하며 `CABLE Input`을 포함한 특정 장치명은 고정하지 않습니다. / **Windows startup routing**: a valid start with no preceding device loss adopts the driver, input, and output actually selected by Windows, matching v4.2.0. After a real loss, saved targets remain authoritative for recovery. A later settings restore or manual selection wins over deferred callbacks, and no device name including `CABLE Input` is hard-coded.
 
@@ -79,6 +86,19 @@ Toggle from the Settings tab or tray menu.
 
 GitHub Releases에서 자동 다운로드 → exe 교체 → 재시작. "Update Now" 버튼.
 
+4.4.0에는 Windows **Settings > Update Receiver...**가 추가되어 기존 VST2/VST3
+설치 경로·버전을 확인하고 `Choose Folder...`로 사용자 폴더를 검색할 수 있습니다.
+OBS/DAW가 사용 중이면 직접 종료한 뒤 **Retry**, 또는 **Later**를 선택합니다.
+Receiver만 갱신할 때 본체는 계속 실행되며, 보호된 폴더는 UAC가 필요할 수 있습니다.
+/ Receiver upkeep previews existing VST2/VST3 copies and optional custom folders.
+Close apps manually when prompted; Receiver-only maintenance keeps DirectPipe running.
+Protected destinations may require UAC. Current/newer installed copies are preserved.
+
+온라인 갱신은 공개 릴리즈를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로
+4.4.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요.
+/ Online updates use published releases. **The 4.3.0 updater replaces only the
+host**; after launching 4.4.0, use **Settings > Update Receiver...** too.
+
 ### Receiver 설치 / Receiver Installation
 
 `DirectPipe Receiver.dll`을 VST2 폴더에 복사:
@@ -87,6 +107,12 @@ GitHub Releases에서 자동 다운로드 → exe 교체 → 재시작. "Update 
 
 VST3: `DirectPipe Receiver.vst3`를 VST3 폴더에 복사:
 - `C:\Program Files\Common Files\VST3\`
+
+본체와 Receiver 모두 4.4.0이면 같은 처리 음성을 최대 8곳에 독립적으로 전송합니다.
+구형 Receiver는 legacy 연결 하나, 구형 본체에 연결한 새 Receiver는 단일 수신
+제약을 유지합니다. DirectPipe와 수신 앱의 샘플레이트는 같아야 합니다.
+/ Both ends on 4.4.0 support eight independent receivers. One legacy Receiver
+can coexist; fallback to an older host remains single-reader. Sample rates must match.
 
 ---
 

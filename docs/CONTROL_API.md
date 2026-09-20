@@ -241,6 +241,13 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
 >
 > **Note**: Receiver VST is an output-only plugin (no input bus) — it ignores OBS source audio and only outputs what DirectPipe sends via IPC. `ipc_toggle` effectively acts as an **independent mute switch for the OBS stream mic** — it works independently from `toggle_mute` (main output/Discord).
 
+> **4.4.0 범위 / Scope**: `ipc_toggle`은 연결된 모든 Receiver의 공통 전송을
+> 켜고 끕니다(최대 8개 독립 큐 + legacy 경로). 특정 OBS 필터 하나만 제어하는
+> API가 아닙니다. 한 수신처만 끄려면 해당 Receiver의 로컬 Mute를 사용합니다.
+> / This action controls the shared feed to every attached Receiver, not one
+> selected instance. Use that Receiver's local Mute for per-instance silence.
+> API action/state 형식은 그대로입니다. / Action and state schemas are unchanged.
+
 ---
 
 #### `set_plugin_parameter` — Set Plugin Parameter / 플러그인 파라미터 설정

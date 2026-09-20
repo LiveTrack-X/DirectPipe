@@ -27,10 +27,11 @@ private:
     juce::Label bufferLabel_{"", "Buffer:"};
     juce::Label bufferLatencyLabel_;
     juce::Label srWarningLabel_;
-    juce::Label multiConsumerLabel_;  // SPSC violation warning
+    juce::Label multiConsumerLabel_;  // Legacy limit/warning or FanOut full/incompatible status.
 
     bool lastConnected_ = false;
     bool lastMultiConsumer_ = false;
+    DirectPipeReceiverProcessor::ConnectionState lastConnectionState_ = DirectPipeReceiverProcessor::ConnectionState::Disconnected;
     uint32_t lastSampleRate_ = 0;
     uint32_t lastChannels_ = 0;
     int lastBufferIdx_ = -1;

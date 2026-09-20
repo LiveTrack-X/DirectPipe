@@ -127,7 +127,8 @@ void PluginPreloadCache::preloadAllSlots(
         uint32_t version;  // slot version at file-read time (stale detection)
     };
     std::vector<SlotData> slotsToLoad;
-    // Load ALL slots including active slot (so switching away and back is instant).
+    // Include the active slot so switching away and back can reuse an instance.
+    // State restore and graph commit still take place at switch time.
     // Put non-active slots first (higher priority — more likely to be switched to).
     for (int i = 0; i < kNumSlots; ++i) {
         if (i == exceptSlot) continue;

@@ -81,6 +81,13 @@ void DirectPipeReceiverEditor::paint(juce::Graphics& g)
     // Status text
     g.setFont(juce::Font(13.0f));
     juce::String statusText = connected ? "Connected" : "Disconnected";
+    switch (processor_.getConnectionState()) {
+        case DirectPipeReceiverProcessor::ConnectionState::Waiting: statusText = "Connecting..."; break;
+        case DirectPipeReceiverProcessor::ConnectionState::Legacy: statusText = "Connected (v1)"; break;
+        case DirectPipeReceiverProcessor::ConnectionState::LimitReached: statusText = "Receiver limit"; break;
+        case DirectPipeReceiverProcessor::ConnectionState::Incompatible: statusText = "Update needed"; break;
+        default: break;
+    }
     g.drawText(statusText, bounds.getX() + 16, y, 100, 16, juce::Justification::centredLeft);
 
     // Audio info (sample rate + channels)
@@ -127,16 +134,19 @@ void DirectPipeReceiverEditor::timerCallback()
     uint32_t sr = processor_.getSourceSampleRate();
     uint32_t ch = processor_.getSourceChannels();
     bool srChanged = sr != lastSampleRate_;
+    const auto connectionState = processor_.getConnectionState();
+    const bool connectionStateChanged = connectionState != lastConnectionState_;
 
-    if (connected != lastConnected_ || srChanged || ch != lastChannels_) {
+    if (connected != lastConnected_ || srChanged || ch != lastChannels_ || connectionStateChanged) {
+        lastConnectionState_ = connectionState;
         lastConnected_ = connected;
         lastSampleRate_ = sr;
         lastChannels_ = ch;
         repaint();
     }
 
-    // Update buffer latency display based on host sample rate
-    // (host SR is always known; source SR may be 0 when disconnected)
+    // Show selected fill in milliseconds using the containing audio host's rate.
+    // Before preparation that rate can be zero; source rate can be unknown offline.
     int bufIdx = bufferCombo_.getSelectedItemIndex();
     uint32_t hostSr = static_cast<uint32_t>(processor_.getSampleRate());
     if (bufIdx != lastBufferIdx_ || srChanged || hostSr != lastHostSr_) {
@@ -154,14 +164,24 @@ void DirectPipeReceiverEditor::timerCallback()
         }
     }
 
-    // Multi-consumer warning (SPSC violation — another Receiver is already reading)
+    // FanOut capacity/compatibility status and the legacy-only one-reader warning.
+    // A normal FanOut connection does not warn merely because another slot is used.
     bool multiConsumer = processor_.hasMultiConsumerWarning();
-    if (multiConsumer != lastMultiConsumer_) {
+    if (multiConsumer != lastMultiConsumer_ || connectionStateChanged) {
         lastMultiConsumer_ = multiConsumer;
-        if (multiConsumer)
+        multiConsumerLabel_.setColour(juce::Label::textColourId,
+            connectionState == DirectPipeReceiverProcessor::ConnectionState::Legacy && !multiConsumer
+                ? juce::Colour(0xFF8888AA) : juce::Colour(0xFFFF8844));
+        if (connectionState == DirectPipeReceiverProcessor::ConnectionState::LimitReached)
+            multiConsumerLabel_.setText("8 in use: close an unused Receiver", juce::dontSendNotification);
+        else if (connectionState == DirectPipeReceiverProcessor::ConnectionState::Incompatible)
+            multiConsumerLabel_.setText("Update host and Receiver together", juce::dontSendNotification);
+        else if (multiConsumer)
             multiConsumerLabel_.setText(
-                "WARNING: Another Receiver is active — audio may be corrupted",
+                "Legacy: multiple Receivers conflict",
                 juce::dontSendNotification);
+        else if (connectionState == DirectPipeReceiverProcessor::ConnectionState::Legacy)
+            multiConsumerLabel_.setText("Legacy: one Receiver per host", juce::dontSendNotification);
         else
             multiConsumerLabel_.setText("", juce::dontSendNotification);
     }

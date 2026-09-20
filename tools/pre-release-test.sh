@@ -272,7 +272,7 @@ else
   rm -f "$BUILD_DIR/plugins/receiver/DirectPipeReceiver_artefacts/JuceLibraryCode/DirectPipeReceiver_resources.rc" 2>/dev/null
 
   # Build targets — VST2 only if SDK is present
-  TARGETS="DirectPipe DirectPipeReceiver_VST3 directpipe-tests directpipe-host-tests directpipe-endpoint-watcher-tests"
+  TARGETS="DirectPipe DirectPipeReceiver_VST3 directpipe-tests directpipe-host-tests directpipe-receiver-tests directpipe-endpoint-watcher-tests"
   if [[ -f "$PROJECT_ROOT/thirdparty/VST2_SDK/pluginterfaces/vst2.x/aeffect.h" ]]; then
     TARGETS="$TARGETS DirectPipeReceiver_VST"
   fi
@@ -332,6 +332,29 @@ if [[ -f "$HOST_TEST_EXE" ]]; then
 else
   fail "Host test exe not found ($HOST_TEST_EXE)"
   add_result "Host Tests|FAIL"
+fi
+echo ""
+
+# ═══════════════════════════════════════════════
+# Step 4b: Actual Receiver Processor Tests
+# ═══════════════════════════════════════════════
+echo "[Step 4b] Receiver Processor Tests"
+echo "─────────────────────────────────────"
+RECEIVER_TEST_EXE="$BUILD_DIR/tests/directpipe-receiver-tests_artefacts/Release/directpipe-receiver-tests.exe"
+RECEIVER_JSON="$BUILD_DIR/tests/receiver-test-results.json"
+RECEIVER_JSON_ARG="build/tests/receiver-test-results.json"
+if [[ -f "$RECEIVER_TEST_EXE" ]]; then
+  if "$RECEIVER_TEST_EXE" "--gtest_output=json:$RECEIVER_JSON_ARG" 2>&1 | tail -3; then
+    pass "Receiver processor tests"
+    add_result "Receiver Tests|PASS"
+  else
+    fail "Receiver processor tests"
+    add_result "Receiver Tests|FAIL"
+  fi
+  [[ -f "$RECEIVER_JSON" ]] && info "JSON report: $RECEIVER_JSON"
+else
+  fail "Receiver test exe not found ($RECEIVER_TEST_EXE)"
+  add_result "Receiver Tests|FAIL"
 fi
 echo ""
 

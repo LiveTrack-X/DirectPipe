@@ -4,6 +4,97 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.4.0] - 2026-09-20
+
+### Added
+
+- Up to eight independent Receiver connections, plus one separate legacy
+  connection for an older Receiver. Each new Receiver owns its own bounded queue;
+  slow, muted or restarted instances do not consume another instance's data.
+- Capacity reporting and retry without silently joining the legacy queue.
+  Slots are released on plugin unload or verified owner-process death, never
+  because a live receiver is idle. Overflow recovery discards stale backlog.
+- Windows **Settings > Update Receiver...** for existing VST2/VST3 installations,
+  exact path/version preview, custom-folder selection, manual close/Retry/Later,
+  complete bundle replacement, package/identity checks, backups and rollback.
+
+### Fixed
+
+- Callback-aware Receiver buffering, larger-than-prepared callbacks, local mute
+  queue freshness and bounded underrun/recovery transitions.
+- Preset restore and graph/lifecycle mutation now exclude concurrent rendering
+  and drain active callbacks. Existing preload behavior is preserved; a short
+  silence interval remains possible.
+- Windows companion updates use short unique sibling staging/rotated-backup
+  paths. The verified package and every planned transaction path are checked
+  before asking the host to exit, so unsupported long paths fail before shutdown.
+  File-use, identity, hash and rollback protections remain in place.
+
+### Upgrade and compatibility
+
+- **The 4.3.0 updater replaces only the host.** Launch 4.4.0, then use
+  **Settings > Update Receiver...** to update existing Receivers too. Both ends
+  need 4.4.0 for independent reception; an older host retains its single reader.
+- A–E/Auto slots, Receiver identities, parameters and saved OBS settings remain
+  compatible. All Receivers receive the same processed sound and require matching
+  sample rates. No new OBS extension, driver, destination-specific effects or
+  resampling is introduced.
+- The previously unpublished 4.3.1 work below is incorporated into 4.4.0.
+  Current verification and its limits are in [the 4.4.0 report](docs/MULTI_RECEIVER_4_4_0.md).
+
+## [4.3.1] - Unreleased development checkpoint (incorporated into 4.4.0)
+
+**Historical, not separately published.** v4.3.0 was the published baseline at
+this checkpoint. These changes were incorporated into 4.4.0; the test counts and
+scope below preserve the earlier development record.
+
+### Fixed
+
+- Preset state restoration and graph/lifecycle changes now close an atomic
+  render-admission gate and drain active callbacks before mutation. Scoped
+  suspension preserves public boolean semantics and nested resume behavior;
+  the real-time callback never waits on an ordinary mutex. A short silence
+  interval remains possible; this is not a gap-free switching claim.
+- Receiver high-water trimming retains enough frames for the actual callback,
+  low-water handling does not shorten fully available blocks, and callbacks
+  larger than the prepare hint are processed in preallocated chunks.
+- Receiver local Mute drains queued speech while remaining immediately silent.
+  Underrun, trim and reconnect transitions now join from the last emitted
+  sample over 64 samples, including callbacks shorter than the transition.
+
+### Added
+
+- Windows **Settings > Update Receiver...** maintenance for installed VST2/VST3
+  copies, including custom-folder discovery and exact destination/version
+  preview. Receiver-only maintenance keeps DirectPipe running; current/newer
+  installed versions are preserved and routine startup remains quiet.
+- In-use Receiver detection offers **Retry / Later** after the user manually
+  closes OBS or the identified app. No other app is terminated automatically.
+  Verified package and staged identities, complete VST3 bundle replacement,
+  backups and rollback protect installation; protected paths may require UAC.
+- Actual Receiver processor regressions using isolated test memory and preset
+  suspension/drain/exception/lifecycle regressions.
+
+### Development tooling
+
+- Refresh the development-only dependency lockfile to sharp 0.35.4 (including
+  its matching native packages) and brace-expansion 5.0.12. Full and production
+  npm audits report zero vulnerabilities; the generated Stream Deck runtime
+  bundle is byte-identical before and after this tooling refresh.
+
+### Compatibility and validation
+
+- A-E/Auto, preset/settings schemas, plugin/parameter IDs, buffer choices,
+  IPC v1 and same-rate operation are unchanged. No resampling, new reader
+  ownership protocol or dual-graph crossfade is introduced.
+- Windows Release build succeeded; CTest: 616 passed, 2 skipped, 0 failed
+  (618 registered). Stream Deck: 22/22 tests; both npm audits: zero findings.
+  Official plugin validation/packing, 14 version checks and archive integrity
+  checks passed. Evidence and pending manual checks are tracked in
+  [the candidate report](docs/RECEIVER_RELIABILITY_UPDATE.md). Real-device
+  listening, live OBS reload and interactive UAC acceptance are still separate
+  checks; previous v4.3.0 test/release counts do not certify this candidate.
+
 ## [4.3.0] - 2026-08-01
 
 ### Fixed

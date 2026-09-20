@@ -18,11 +18,12 @@
 
 /**
  * @file RingBuffer.h
- * @brief SPSC (Single Producer Single Consumer) lock-free ring buffer
+ * @brief Legacy v1 SPSC (Single Producer Single Consumer) ring buffer
  *
  * Designed to be placed directly in shared memory. Uses atomic operations
- * with acquire/release semantics for thread-safe communication between
- * the DirectPipe host (producer) and OBS plugin (consumer).
+ * with acquire/release semantics between one host producer and one Receiver.
+ * The additive FanOut transport provides independent queues for multiple
+ * Receivers; it does not turn this legacy shared read cursor into multicast.
  */
 #pragma once
 
@@ -49,7 +50,8 @@ public:
      * @brief Initialize the ring buffer over a pre-allocated memory region.
      *
      * The memory region must be at least calculateSharedMemorySize() bytes.
-     * This is called by the producer (host) to set up the shared memory layout.
+     * The host calls this off the audio thread on a genuinely fresh mapping.
+     * Never placement-initialize memory still mapped by a retained Receiver.
      *
      * @param memory Pointer to the shared memory region.
      * @param capacity_frames Ring buffer size in frames (must be power of 2).
@@ -61,10 +63,11 @@ public:
     /**
      * @brief Attach to an existing ring buffer in shared memory.
      *
-     * Called by the consumer (OBS plugin) to connect to an already-initialized buffer.
-     * Atomically claims the consumer_active flag in the header. If another consumer
-     * is already active, attachment still succeeds but anotherConsumerWasActive()
-     * returns true (caller should warn the user — SPSC cannot support two readers).
+     * Called off the audio thread to connect to an already-initialized v1 buffer.
+     * Atomically sets consumer_active. Duplicate attachment still succeeds;
+     * anotherConsumerWasActive() normally warns, but the historical >80%-full
+     * heuristic suppresses that warning. This is not proof that an owner died
+     * and does not make multiple readers safe.
      *
      * @param memory Pointer to the shared memory region.
      * @param mappedSizeBytes Mapped size in bytes (0 to skip size checks).
@@ -73,8 +76,8 @@ public:
     bool attachAsConsumer(void* memory, size_t mappedSizeBytes = 0);
 
     /**
-     * @brief Returns true if another consumer was already active when we attached.
-     * Use this to display a warning in the Receiver UI.
+     * @brief Legacy duplicate-reader warning, subject to the stale-fill heuristic.
+     * Not an authoritative attachment count or process-liveness check.
      */
     bool anotherConsumerWasActive() const { return anotherConsumerWasActive_; }
 
@@ -155,15 +158,15 @@ public:
     /**
      * @brief Detach from the shared memory region.
      *
-     * Clears consumer_active flag in the header, then resets internal pointers
-     * to nullptr so isValid() returns false. Call this before closing the
-     * underlying shared memory to prevent dangling pointer dereferences.
+     * Caller must first drain all local reads/writes using this view. Clears the
+     * same-generation consumer_active flag and resets pointers; call before
+     * closing the mapping. The flag is not a reference count for duplicate readers.
      */
     void detach() {
         detached_.store(true, std::memory_order_release);
         if (header_) {
-            // A Windows producer restart can reinitialize the same named mapping.
-            // Do not let a retiring old connection clear the new generation's flag.
+            // Compatibility guard for an older producer that reinitialized a
+            // retained mapping. Current hosts require a genuinely fresh object.
             const auto currentGeneration =
                 header_->producer_generation.load(std::memory_order_acquire);
             if (currentGeneration == attachedGeneration_)
@@ -180,9 +183,9 @@ private:
     DirectPipeHeader* header_ = nullptr;
     float* data_ = nullptr;
     uint32_t mask_ = 0;  // capacity - 1 for power-of-2 modulo
-    bool anotherConsumerWasActive_ = false;  // true if consumer_active was already set on attach
+    bool anotherConsumerWasActive_ = false;  // Legacy warning after stale-fill heuristic.
     uint64_t attachedGeneration_ = 0;
-    std::atomic<bool> detached_{false};  // [Any thread] Set before nulling pointers in detach()
+    std::atomic<bool> detached_{false};  // Early-out flag; not a substitute for caller-side draining.
 };
 
 } // namespace directpipe

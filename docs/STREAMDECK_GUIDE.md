@@ -1,5 +1,7 @@
 # DirectPipe Stream Deck Plugin / 스트림 덱 플러그인
 
+> **4.4.0.0** — Action IDs, saved settings and the control protocol are unchanged. Receiver upkeep is available through the Windows host **Settings > Update Receiver...**, separately from Stream Deck installation. The 4.3.0 host updater replaces only the host; update Receivers after launching 4.4.0. / 액션·설정·프로토콜은 유지합니다. 4.3.0 자동 갱신은 본체만 교체하므로 4.4.0 실행 후 Windows Settings에서 Receiver도 갱신하세요.
+
 ## Overview / 개요
 
 The DirectPipe Stream Deck plugin connects to the host via WebSocket and provides 10 actions for controlling the VST host remotely.
@@ -188,6 +190,12 @@ No settings required. / 설정 불필요.
 >
 > **Receiver VST behavior**: The Receiver VST is an output-only plugin with no input bus. OBS source audio and preceding filters are ignored — only audio sent from DirectPipe via IPC is output. IPC Toggle controls this feed, effectively acting as an independent mute button for your OBS stream mic.
 
+> **4.4.0 다중 수신 / Multiple Receivers**: IPC Toggle은 최대 8개 독립 수신과
+> legacy 수신에 대한 **공통 전송 스위치**입니다. 특정 Receiver 하나를 고르는
+> Stream Deck 액션은 추가되지 않았습니다. 한 곳만 끄려면 Receiver의 로컬 Mute를
+> 사용합니다. / IPC Toggle controls all Receiver destinations together. Existing
+> action IDs/settings are unchanged; use local Receiver Mute for one instance.
+
 ---
 
 ### Performance Monitor / 성능 모니터
@@ -290,7 +298,7 @@ Dual-app setup with VB-Cable (Discord) + DirectPipe Receiver (OBS) + Monitor (he
 
 ### SDK Version / SDK 버전
 
-Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.3.0.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.3.0.0. SingletonAction 클래스 기반 아키텍처.
+Built with `@elgato/streamdeck` v2.0.1 (npm), SDKVersion 3 in manifest, plugin version 4.4.0.0. Uses `SingletonAction` class-based architecture. / `@elgato/streamdeck` v2.0.1 (npm), manifest SDKVersion 3, 플러그인 버전 4.4.0.0. SingletonAction 클래스 기반 아키텍처.
 
 ### WebSocket 클라이언트 / WebSocket Client (`websocket-client.js`)
 

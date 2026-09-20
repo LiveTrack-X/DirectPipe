@@ -34,7 +34,7 @@ DirectPipeReceiverProcessor::createParameterLayout()
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"buffer", 1}, "Buffer",
         juce::StringArray{"Ultra Low (256)", "Low (512)", "Medium (1024)", "High (2048)", "Safe (4096)"},
-        1));  // default: Low (~10ms)
+        1));  // default: Low (512 frames, ~10.7ms at 48kHz)
     return { params.begin(), params.end() };
 }
 
@@ -44,22 +44,14 @@ void DirectPipeReceiverProcessor::prepareToPlay(double /*sampleRate*/, int sampl
 
     const size_t maxCh = directpipe::DEFAULT_CHANNELS;
 
-    // Pre-allocate interleaved buffer (max block size * max channels)
-    interleavedBuffer_.resize(static_cast<size_t>(samplesPerBlock) * maxCh, 0.0f);
-
-    // Pre-allocate fade-out buffer (planar: channels * blockSize)
-    // Ensure at least 64 * maxCh for the fade-out tail (saveLastOutput uses min(numSamples, 64))
-    size_t fadeMin = 64u * maxCh;
-    size_t blockAlloc = static_cast<size_t>(samplesPerBlock) * maxCh;
-    lastOutputBuffer_.resize((std::max)(blockAlloc, fadeMin), 0.0f);
-    lastOutputSamples_ = 0;
-    lastOutputChannels_ = 0;
-    hadAudioLastBlock_ = false;
-    fadeGain_ = 0.0f;
+    // Hosts can deliver a larger callback than this hint. Read those callbacks in
+    // chunks through this scratch buffer instead of allocating or dropping audio.
+    interleavedBuffer_.resize(static_cast<size_t>((std::max)(samplesPerBlock, 64)) * maxCh, 0.0f);
+    resetOutputState();
     blocksSinceConnect_ = 0;
     rtConnectionSerial_ = connectionSerial_.load(std::memory_order_relaxed);
 
-    // Report buffering latency to the host DAW
+    // Report the selected target fill, not queue capacity or measured end-to-end latency.
     const auto latency = static_cast<int>(getTargetFillFrames());
     requestedLatencySamples_.store(latency, std::memory_order_relaxed);
     setLatencySamples(latency);
@@ -70,7 +62,7 @@ void DirectPipeReceiverProcessor::prepareToPlay(double /*sampleRate*/, int sampl
 void DirectPipeReceiverProcessor::releaseResources()
 {
     stopConnectionWorker();
-    lastOutputSamples_ = 0;
+    resetOutputState();
 }
 
 void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
@@ -85,118 +77,134 @@ void DirectPipeReceiverProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
-    // Check mute parameter
-    auto* muteParam = apvts_.getRawParameterValue("mute");
-    if (muteParam && muteParam->load() >= 0.5f) {
-        buffer.clear();
-        hadAudioLastBlock_ = false;
+    // Zero-length host callbacks must not consume data or disturb a pending fade.
+    if (numSamples == 0)
         return;
-    }
+
+    buffer.clear();
+    auto* muteParam = apvts_.getRawParameterValue("mute");
+    const bool muted = muteParam && muteParam->load() >= 0.5f;
 
     ConnectionLease connectionLease(*this);
     auto* connection = connectionLease.get();
     if (connection == nullptr) {
-        if (hadAudioLastBlock_) {
-            applyFadeOut(buffer, numSamples, numChannels);
-        } else {
-            buffer.clear();
-        }
+        if (muted)
+            resetOutputState();
+        else
+            applyFadeOut(buffer, 0, numSamples, numChannels);
         return;
     }
 
-    auto& ringBuffer = connection->ringBuffer;
+    auto& ringBuffer = *connection;
     if (!ringBuffer.isProducerActive()
         || ringBuffer.getCurrentProducerGeneration()
                != ringBuffer.getAttachedProducerGeneration()) {
         reconnectRequested_.store(true, std::memory_order_release);
-        if (hadAudioLastBlock_) {
-            applyFadeOut(buffer, numSamples, numChannels);
-        } else {
-            buffer.clear();
-        }
+        if (muted)
+            resetOutputState();
+        else
+            applyFadeOut(buffer, 0, numSamples, numChannels);
         return;
     }
 
     const auto connectionSerial = connectionSerial_.load(std::memory_order_relaxed);
     if (connectionSerial != rtConnectionSerial_) {
         rtConnectionSerial_ = connectionSerial;
+        rtOverflowEpoch_ = 0;
         blocksSinceConnect_ = 0;
+        beginTransition();
+        needsFadeIn_ = true;
     }
-    ++blocksSinceConnect_;
+    // Only the warmup state matters; do not overflow on long-running sessions.
+    if (blocksSinceConnect_ <= kDriftCheckWarmup)
+        ++blocksSinceConnect_;
+
+    const auto overflowEpoch = ringBuffer.getOverflowEpoch();
+    if (overflowEpoch != rtOverflowEpoch_) {
+        rtOverflowEpoch_ = overflowEpoch;
+        // FanOut reports incoming-frame loss when this queue filled. Flush only
+        // this acknowledged consumer's stale backlog, then fade/recover across
+        // callbacks. Legacy v1 has no overflow epoch; this branch is inactive there.
+        ringBuffer.discard(ringBuffer.availableRead());
+        if (muted)
+            resetOutputState();
+        else
+            applyFadeOut(buffer, 0, numSamples, numChannels);
+        return;
+    }
+
+    if (muted) {
+        // While the containing host calls processBlock, local mute keeps this
+        // queue drained. A suspended host issues no callbacks; if its FanOut
+        // queue overflowed meanwhile, the epoch triggers recovery on resumption.
+        ringBuffer.discard(ringBuffer.availableRead());
+        resetOutputState();
+        return;
+    }
 
     uint32_t available = ringBuffer.availableRead();
-    uint32_t channels = ringBuffer.getChannels();
+    const uint32_t channels = ringBuffer.getChannels();
+    const uint32_t requested = static_cast<uint32_t>(numSamples);
 
     // ── Clock drift compensation: skip excess when buffer is too full ──
-    uint32_t targetFill = getTargetFillFrames();
-
-    uint32_t highThreshold = getHighFillThreshold();
+    const uint32_t targetFill = (std::max)(getTargetFillFrames(), requested);
+    const uint32_t highThreshold = (std::max)(getHighFillThreshold(), targetFill);
 
     if (blocksSinceConnect_ > kDriftCheckWarmup && available > highThreshold) {
-        uint32_t excess = available - targetFill;
+        const uint32_t excess = available - targetFill;
         ringBuffer.discard(excess);
         available = ringBuffer.availableRead();
+        beginTransition();
     }
 
     // ── Clock drift compensation: throttle reads when buffer is running low ──
     // Dead-band: between lowThreshold/2 and lowThreshold, normal reading occurs
     // without throttling — prevents oscillation between throttle and normal mode.
-    uint32_t lowThreshold = getLowFillThreshold();
-    if (blocksSinceConnect_ > kDriftCheckWarmup && available > 0 && available < lowThreshold / 2) {
-        // Buffer running low — host clock is slightly slower than DAW clock.
-        // Reduce read amount to leave a buffer cushion, preventing hard underrun.
-        // The unread portion of the output buffer gets zero-padded (existing behavior),
-        // creating micro-gaps instead of hard clicks.
-        uint32_t cushionRead = (std::min)(available, static_cast<uint32_t>(numSamples) / 2);
+    const uint32_t lowThreshold = getLowFillThreshold();
+    if (blocksSinceConnect_ > kDriftCheckWarmup && available > 0
+        && available < requested && available < lowThreshold / 2) {
+        // A shortage may reflect drift or scheduling. Keep the historical cushion
+        // only for an already-partial callback; never reduce a fully available
+        // callback. Missing output frames fade continuously into silence below.
+        const uint32_t cushionRead = (std::min)(available, requested / 2);
         available = cushionRead;
     }
 
-    // ── Read whatever is available (partial read OK — pad rest with silence) ──
-    uint32_t toRead = (std::min)(available, static_cast<uint32_t>(numSamples));
+    // De-interleave in bounded scratch chunks, including callbacks larger than
+    // the prepareToPlay hint. No heap allocation or mapping work occurs here.
+    const uint32_t toRead = (std::min)(available, requested);
+    const uint32_t maxFrames = static_cast<uint32_t>(interleavedBuffer_.size())
+                            / (std::max)(channels, 1u);
+    const int outputChannels = (std::min)(numChannels, static_cast<int>(directpipe::DEFAULT_CHANNELS));
+    uint32_t totalRead = 0;
+    while (totalRead < toRead) {
+        const uint32_t chunk = (std::min)(toRead - totalRead, maxFrames);
+        const uint32_t readCount = ringBuffer.read(interleavedBuffer_.data(), chunk);
+        if (readCount == 0)
+            break;
 
-    if (toRead == 0) {
-        // Complete underrun — no data at all
-        if (hadAudioLastBlock_) {
-            applyFadeOut(buffer, numSamples, numChannels);
-        } else {
-            buffer.clear();
+        if (needsFadeIn_) {
+            beginTransition();
+            needsFadeIn_ = false;
         }
-        return;
+
+        for (uint32_t i = 0; i < readCount; ++i) {
+            const float blend = nextTransitionBlend();
+            OutputFrame frame{};
+            for (int ch = 0; ch < outputChannels; ++ch) {
+                const auto channel = static_cast<size_t>(ch);
+                const float sample = channel < channels
+                    ? interleavedBuffer_[static_cast<size_t>(i) * channels + channel] : 0.0f;
+                frame[channel] = transitionStart_[channel] * (1.0f - blend) + sample * blend;
+                buffer.setSample(ch, static_cast<int>(totalRead + i), frame[channel]);
+            }
+            rememberOutput(frame);
+        }
+        totalRead += readCount;
     }
 
-    // Clamp read to pre-allocated interleaved buffer capacity (no heap alloc in RT callback)
-    uint32_t maxFrames = static_cast<uint32_t>(interleavedBuffer_.size()) / (std::max)(channels, 1u);
-    if (toRead > maxFrames)
-        toRead = maxFrames;
-
-    uint32_t readCount = ringBuffer.read(interleavedBuffer_.data(), toRead);
-    if (readCount == 0) {
-        buffer.clear();
-        return;
-    }
-
-    // De-interleave: [L0 R0 L1 R1 ...] → JUCE planar [L0 L1 ...][R0 R1 ...]
-    int actualRead = static_cast<int>(readCount);
-    for (int ch = 0; ch < numChannels && ch < static_cast<int>(channels); ++ch) {
-        float* dest = buffer.getWritePointer(ch);
-        for (int i = 0; i < actualRead; ++i)
-            dest[i] = interleavedBuffer_[static_cast<size_t>(i) * channels + static_cast<size_t>(ch)];
-    }
-
-    // Clear remaining channels
-    for (int ch = static_cast<int>(channels); ch < numChannels; ++ch)
-        buffer.clear(ch, 0, numSamples);
-
-    // Pad remaining samples with silence (partial read)
-    if (actualRead < numSamples) {
-        for (int ch = 0; ch < numChannels; ++ch)
-            buffer.clear(ch, actualRead, numSamples - actualRead);
-    }
-
-    // Save state for fade-out
-    saveLastOutput(buffer, numSamples, numChannels);
-    hadAudioLastBlock_ = true;
-    fadeGain_ = 1.0f;
+    if (totalRead < requested)
+        applyFadeOut(buffer, static_cast<int>(totalRead), numSamples - static_cast<int>(totalRead), numChannels);
 }
 
 DirectPipeReceiverProcessor::ConnectionLease::ConnectionLease(
@@ -236,6 +244,10 @@ void DirectPipeReceiverProcessor::releaseConnection() noexcept
 
 void DirectPipeReceiverProcessor::startConnectionWorker()
 {
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+    if (isolatedConnectionForTest_)
+        return;
+#endif
     if (connectionThread_.joinable())
         return;
 
@@ -260,7 +272,7 @@ void DirectPipeReceiverProcessor::connectionWorkerLoop()
         bool shouldReconnect = reconnectRequested_.exchange(false, std::memory_order_acq_rel);
 
         if (workerConnection_ != nullptr) {
-            auto& ringBuffer = workerConnection_->ringBuffer;
+            auto& ringBuffer = *workerConnection_;
             shouldReconnect = shouldReconnect
                 || !ringBuffer.isProducerActive()
                 || ringBuffer.getCurrentProducerGeneration()
@@ -270,19 +282,49 @@ void DirectPipeReceiverProcessor::connectionWorkerLoop()
             // POSIX unlink/recreate leaves an existing mapping valid but stale.
             // Probe the name without attaching and compare the underlying object.
             directpipe::SharedMemory probe;
-            if (probe.open(directpipe::SHM_NAME, 0)
+            const auto& mappingName = workerConnection_->usesFanOut ? fanOutMappingName_ : legacyMappingName_;
+            if (probe.open(mappingName, 0)
                 && probe.getObjectIdentity() != workerConnection_->sharedMemory.getObjectIdentity()) {
                 shouldReconnect = true;
             }
 #endif
+            if (!workerConnection_->usesFanOut) {
+                // Upgrade a legacy connection when the new host becomes available.
+                // A non-claiming probe cannot consume another reader's slot.
+                directpipe::SharedMemory probe;
+                if (probe.open(fanOutMappingName_, 0)
+                    && directpipe::FanOutConsumer::isAvailable(probe.getData(), probe.getSize()))
+                    shouldReconnect = true;
+            }
+        } else if (pendingConnection_ != nullptr) {
+            shouldReconnect = shouldReconnect || !pendingConnection_->isProducerActive()
+                || pendingConnection_->getCurrentProducerGeneration()
+                       != pendingConnection_->getAttachedProducerGeneration();
+#ifndef _WIN32
+            // A producer can die before acknowledging this claim. POSIX may
+            // replace its named object while this pending mapping still looks
+            // active, so pending and published connections need the same probe.
+            directpipe::SharedMemory probe;
+            if (probe.open(fanOutMappingName_, 0)
+                && probe.getObjectIdentity() != pendingConnection_->sharedMemory.getObjectIdentity())
+                shouldReconnect = true;
+#endif
+            if (!shouldReconnect && pendingConnection_->isReady())
+                publishConnection(std::move(pendingConnection_));
         } else {
             shouldReconnect = true;
         }
 
         if (shouldReconnect) {
             retireConnection();
-            if (auto connection = openConnection())
-                publishConnection(std::move(connection));
+            if (auto connection = openConnection()) {
+                if (connection->isReady())
+                    publishConnection(std::move(connection));
+                else {
+                    pendingConnection_ = std::move(connection);
+                    connectionState_.store(ConnectionState::Waiting, std::memory_order_relaxed);
+                }
+            }
         }
 
         for (int i = 0; i < 10
@@ -294,8 +336,29 @@ void DirectPipeReceiverProcessor::connectionWorkerLoop()
 std::unique_ptr<DirectPipeReceiverProcessor::Connection>
 DirectPipeReceiverProcessor::openConnection()
 {
+    // Prefer FanOut. Retain Waiting claims until ack; Full/Invalid are explicit
+    // states and must not consume the shared legacy queue as a hidden ninth slot.
+    // Only absent/inactive FanOut allows the older-host compatibility path.
     auto connection = std::make_unique<Connection>();
-    if (!connection->sharedMemory.open(directpipe::SHM_NAME, 0))
+    if (connection->sharedMemory.open(fanOutMappingName_, 0)) {
+        const auto result = connection->fanOut.claim(connection->sharedMemory.getData(),
+                                                    connection->sharedMemory.getSize());
+        if (result == directpipe::FanOutAttachResult::Ready
+            || result == directpipe::FanOutAttachResult::Waiting) {
+            connection->usesFanOut = true;
+            return connection;
+        }
+        if (result == directpipe::FanOutAttachResult::Full) {
+            connectionState_.store(ConnectionState::LimitReached, std::memory_order_relaxed);
+            return {};
+        }
+        if (result == directpipe::FanOutAttachResult::Invalid) {
+            connectionState_.store(ConnectionState::Incompatible, std::memory_order_relaxed);
+            return {};
+        }
+        connection->sharedMemory.close();
+    }
+    if (!connection->sharedMemory.open(legacyMappingName_, 0))
         return {};
     if (!connection->ringBuffer.attachAsConsumer(connection->sharedMemory.getData(),
                                                   connection->sharedMemory.getSize()))
@@ -310,101 +373,114 @@ DirectPipeReceiverProcessor::openConnection()
 void DirectPipeReceiverProcessor::publishConnection(std::unique_ptr<Connection> connection)
 {
     jassert(workerConnection_ == nullptr);
+    // A newly acknowledged queue can fill while the ~100ms worker waits. Trim
+    // before publishing so connecting does not add a worker-period of latency.
+    skipToFreshPosition(*connection);
     workerConnection_ = std::move(connection);
 
-    multiConsumerWarning_.store(workerConnection_->ringBuffer.anotherConsumerWasActive(),
+    multiConsumerWarning_.store(!workerConnection_->usesFanOut && workerConnection_->ringBuffer.anotherConsumerWasActive(),
                                 std::memory_order_relaxed);
-    cachedSampleRate_.store(workerConnection_->ringBuffer.getSampleRate(),
+    cachedSampleRate_.store(workerConnection_->getSampleRate(),
                             std::memory_order_relaxed);
-    cachedChannels_.store(workerConnection_->ringBuffer.getChannels(),
+    cachedChannels_.store(workerConnection_->getChannels(),
                           std::memory_order_relaxed);
     connectionSerial_.fetch_add(1, std::memory_order_relaxed);
     activeConnection_.store(workerConnection_.get(), std::memory_order_release);
     connected_.store(true, std::memory_order_release);
+    connectionState_.store(workerConnection_->usesFanOut ? ConnectionState::Connected : ConnectionState::Legacy,
+                           std::memory_order_relaxed);
     connectionAccessEnabled_.store(true, std::memory_order_seq_cst);
 }
 
 void DirectPipeReceiverProcessor::retireConnection()
 {
+    // Control/worker side only. Pending claims have no audio users; published
+    // connections must drain local leases before their owner token is released.
     connectionAccessEnabled_.store(false, std::memory_order_seq_cst);
     while (connectionUsers_.load(std::memory_order_seq_cst) != 0)
         std::this_thread::yield();
 
     activeConnection_.store(nullptr, std::memory_order_release);
     connected_.store(false, std::memory_order_release);
+    connectionState_.store(ConnectionState::Disconnected, std::memory_order_relaxed);
     multiConsumerWarning_.store(false, std::memory_order_relaxed);
     cachedSampleRate_.store(0, std::memory_order_relaxed);
     cachedChannels_.store(0, std::memory_order_relaxed);
     workerConnection_.reset();
+    pendingConnection_.reset();
 }
 
 void DirectPipeReceiverProcessor::skipToFreshPosition(Connection& connection)
 {
     const uint32_t targetFill = getTargetFillFrames();
-    const uint32_t available = connection.ringBuffer.availableRead();
+    const uint32_t available = connection.availableRead();
     if (available > targetFill)
-        connection.ringBuffer.discard(available - targetFill);
+        connection.discard(available - targetFill);
 }
 
-void DirectPipeReceiverProcessor::saveLastOutput(const juce::AudioBuffer<float>& buffer,
-                                                  int numSamples, int numChannels)
+void DirectPipeReceiverProcessor::resetOutputState() noexcept
 {
-    // Store the tail of the output buffer for fade-out on underrun
-    // Keep last 64 samples max (enough for a smooth fade)
-    int samplesToSave = (std::min)(numSamples, 64);
-    int offset = numSamples - samplesToSave;
-    int chToSave = (std::min)(numChannels, static_cast<int>(directpipe::DEFAULT_CHANNELS));
+    lastOutput_.fill(0.0f);
+    transitionStart_.fill(0.0f);
+    for (auto& channel : outputHistory_)
+        channel.fill(0.0f);
+    for (auto& channel : transitionHistory_)
+        channel.fill(0.0f);
+    outputHistoryPosition_ = 0;
+    transitionPosition_ = kTransitionSamples;
+    needsFadeIn_ = true;
+}
 
-    size_t needed = static_cast<size_t>(samplesToSave) * static_cast<size_t>(chToSave);
-    jassert(lastOutputBuffer_.size() >= needed);  // pre-allocated in prepareToPlay
-    juce::ignoreUnused(needed);
+void DirectPipeReceiverProcessor::beginTransition() noexcept
+{
+    transitionStart_ = lastOutput_;
+    for (size_t ch = 0; ch < outputHistory_.size(); ++ch)
+        for (int i = 0; i < kTransitionSamples; ++i)
+            transitionHistory_[ch][static_cast<size_t>(i)] = outputHistory_[ch][
+                static_cast<size_t>((outputHistoryPosition_ + i) % kTransitionSamples)];
+    transitionPosition_ = 0;
+}
 
-    for (int ch = 0; ch < chToSave; ++ch) {
-        const float* src = buffer.getReadPointer(ch) + offset;
-        float* dst = lastOutputBuffer_.data() + static_cast<size_t>(ch) * samplesToSave;
-        std::memcpy(dst, src, static_cast<size_t>(samplesToSave) * sizeof(float));
-    }
-    lastOutputSamples_ = samplesToSave;
-    lastOutputChannels_ = chToSave;
+float DirectPipeReceiverProcessor::nextTransitionBlend() noexcept
+{
+    if (transitionPosition_ >= kTransitionSamples)
+        return 1.0f;
+    return static_cast<float>(transitionPosition_++) / static_cast<float>(kTransitionSamples - 1);
+}
+
+void DirectPipeReceiverProcessor::rememberOutput(const OutputFrame& frame) noexcept
+{
+    lastOutput_ = frame;
+    for (size_t ch = 0; ch < frame.size(); ++ch)
+        outputHistory_[ch][static_cast<size_t>(outputHistoryPosition_)] = frame[ch];
+    outputHistoryPosition_ = (outputHistoryPosition_ + 1) % kTransitionSamples;
 }
 
 void DirectPipeReceiverProcessor::applyFadeOut(juce::AudioBuffer<float>& buffer,
-                                                int numSamples, int numChannels)
+                                                int startSample, int numSamples, int numChannels)
 {
-    // Fade out from the last known audio to avoid clicks/pops
-    if (fadeGain_ <= 0.0f || lastOutputSamples_ <= 0) {
-        buffer.clear();
-        hadAudioLastBlock_ = false;
-        return;
+    if (!needsFadeIn_) {
+        beginTransition();
+        needsFadeIn_ = true;
     }
 
-    // Generate a fade-out ramp using saved buffer data (not just the last sample)
-    for (int ch = 0; ch < numChannels; ++ch) {
-        float* dest = buffer.getWritePointer(ch);
-        float gain = fadeGain_;
-
-        for (int i = 0; i < numSamples; ++i) {
-            if (gain <= 0.0f) {
-                dest[i] = 0.0f;
-            } else {
-                float sample = 0.0f;
-                if (ch < lastOutputChannels_ && lastOutputSamples_ > 0) {
-                    // Use saved buffer data, clamping index to available range
-                    int srcIdx = (std::min)(i, lastOutputSamples_ - 1);
-                    sample = lastOutputBuffer_[
-                        static_cast<size_t>(ch) * lastOutputSamples_ + srcIdx];
-                }
-                dest[i] = sample * gain;
-                gain -= kFadeStep;
-                if (gain < 0.0f) gain = 0.0f;
-            }
+    const int outputChannels = (std::min)(numChannels, static_cast<int>(directpipe::DEFAULT_CHANNELS));
+    for (int i = 0; i < numSamples; ++i) {
+        const auto historySample = static_cast<size_t>((std::min)(transitionPosition_, kTransitionSamples - 1));
+        const float blend = nextTransitionBlend();
+        const float gain = 1.0f - blend;
+        OutputFrame frame{};
+        for (int ch = 0; ch < outputChannels; ++ch) {
+            const auto channel = static_cast<size_t>(ch);
+            // Preserve the saved waveform-tail intent without jumping backwards
+            // to its first sample. Both endpoints and the amplitude are bounded:
+            // first = last emitted sample; sample 64 and later = exact silence.
+            const float tail = transitionStart_[channel] * gain
+                             + transitionHistory_[channel][historySample] * blend;
+            frame[channel] = tail * gain;
+            buffer.setSample(ch, startSample + i, frame[channel]);
         }
-    }
-
-    fadeGain_ = fadeGain_ - kFadeStep * static_cast<float>(numSamples);
-    if (fadeGain_ <= 0.0f) {
-        fadeGain_ = 0.0f;
-        hadAudioLastBlock_ = false;
+        rememberOutput(frame);
     }
 }
 
@@ -443,6 +519,9 @@ void DirectPipeReceiverProcessor::parameterChanged(const juce::String& parameter
         index = 1;
     requestedLatencySamples_.store(static_cast<int>(kBufferPresets[index][0]),
                                    std::memory_order_release);
+    // Host parameter notifications may arrive on an audio thread. This existing
+    // JUCE async notification schedules setLatencySamples on the message thread;
+    // it is separate from the allocation/OS-free transport read in processBlock.
     triggerAsyncUpdate();
 }
 
@@ -455,13 +534,13 @@ void DirectPipeReceiverProcessor::handleAsyncUpdate()
 
 uint32_t DirectPipeReceiverProcessor::getSourceSampleRate() const
 {
-    // Return cached value — safe to call from GUI thread without touching ringBuffer_
+    // GUI reads worker-cached metadata without dereferencing either shared mapping.
     return cachedSampleRate_.load(std::memory_order_relaxed);
 }
 
 uint32_t DirectPipeReceiverProcessor::getSourceChannels() const
 {
-    // Return cached value — safe to call from GUI thread without touching ringBuffer_
+    // GUI reads worker-cached metadata without dereferencing either shared mapping.
     return cachedChannels_.load(std::memory_order_relaxed);
 }
 

@@ -18,10 +18,11 @@
 
 /**
  * @file Protocol.h
- * @brief DirectPipe IPC protocol definitions
+ * @brief Frozen legacy v1 SPSC IPC layout
  *
- * Defines the shared memory header structure used for communication
- * between the DirectPipe host application and the OBS source plugin.
+ * Defines the shared header used by the host and a legacy Receiver audio plugin.
+ * Independent multi-Receiver connections use FanOut.h and a separate mapping;
+ * they do not replace, extend, or reinterpret this 192-byte legacy ABI.
  */
 #pragma once
 
@@ -31,7 +32,7 @@
 
 namespace directpipe {
 
-/// Protocol version — increment when header layout changes
+/// Legacy wire version remains 1; incompatible transports need a separate ABI/name.
 constexpr uint32_t PROTOCOL_VERSION = 1;
 
 /**
@@ -69,11 +70,11 @@ struct DirectPipeHeader {
     /// Whether the producer (JUCE host) is actively writing
     std::atomic<bool> producer_active{false};
 
-    /// Whether a consumer (Receiver VST) is currently attached and reading.
-    /// SPSC design: only one consumer is supported. If a second consumer attaches
-    /// while this is true, it should warn the user (data will be corrupted with
-    /// two readers advancing the same read_pos).
-    /// Set to true by RingBuffer::attachAsConsumer(), false by detach().
+    /// Legacy attachment flag, not a reader count, heartbeat, or exclusive lock.
+    /// Only one consumer is supported on THIS queue. RingBuffer still permits
+    /// duplicate attachment for compatibility and may warn; both consumers would
+    /// advance the same read_pos. FanOut's independent slots do not use this flag.
+    /// Set by attachAsConsumer(), cleared by same-generation detach().
     /// PROTOCOL_VERSION remains 1 — old consumers ignore this field (it was in
     /// the previously unused reserved area of cache line 1).
     std::atomic<bool> consumer_active{false};
@@ -84,7 +85,7 @@ struct DirectPipeHeader {
     /// consumers remain binary-compatible (legacy producers expose zero).
     std::atomic<uint64_t> producer_generation{0};
 
-    /// Reserved padding for cache line 1 (keeps sizeof(DirectPipeHeader) == 192)
+    /// Reserved trailing bytes (alignment keeps sizeof(DirectPipeHeader) == 192).
     uint8_t reserved[64 - 2 * sizeof(std::atomic<bool>)
                      - sizeof(std::atomic<uint64_t>) - 4 * sizeof(uint32_t)]{};
 };
@@ -103,10 +104,10 @@ static_assert(alignof(DirectPipeHeader) >= 64,
               "DirectPipeHeader must be at least 64-byte aligned");
 
 // Ensure header size is consistent across compilers (3 x 64-byte cache lines = 192 bytes).
-// Cache line 0: write_pos. Cache line 1: read_pos + config + producer_active + consumer_active.
-// Cache line 2: trailing padding/future use.
+// Cache line 0: write_pos. Cache line 1: read_pos + config + flags + generation.
+// Cache line 2: trailing reserved bytes/alignment padding.
 // consumer_active and producer_generation were added in reserved space (no size change).
-// PROTOCOL_VERSION stays at 1 — old consumers ignore the new field.
+// PROTOCOL_VERSION stays at 1 — older consumers ignore these reserved-space fields.
 static_assert(sizeof(DirectPipeHeader) == 192,
               "DirectPipeHeader size changed — update PROTOCOL_VERSION if layout changed");
 

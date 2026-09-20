@@ -1,5 +1,11 @@
 # DirectPipe 테스트 가이드
 
+> **4.4.0 검증 / Validation**: 자동 회귀 검사와 실제 DLL·OBS 필터 엔진·업데이트
+> helper·POSIX core의 격리 실행 결과는 [검증 기록](docs/MULTI_RECEIVER_4_4_0.md)에
+> 구분합니다. 아래 수동 체크리스트가 모두 완료됐다는 뜻은 아닙니다.
+> / Automated and isolated runtime evidence does not imply that every manual
+> checklist item, OBS frontend, device, listening or interactive UAC check passed.
+
 ## 릴리스 전 체크리스트 / Pre-Release Checklist
 
 릴리스 전에 아래 3단계를 순서대로 실행합니다.
@@ -30,10 +36,16 @@ ctest --test-dir build --build-config Release --output-on-failure
 - Stream Deck full and production-only dependency audit (0 vulnerabilities required)
 - Exact-candidate API integration tests (`test_api.js`, HTTP port 8766)
 - Release build
-- Google Test unit tests (core + host + focused endpoint watcher)
+- Google Test unit tests (core + host + actual Receiver processor + focused endpoint watcher)
 - Full CTest registration/integration pass
 - Stream Deck test, build, and package validation
 - Git status check
+
+Receiver processor 테스트는 Step 2의 `directpipe-receiver-tests` target으로 빌드하고
+Step 4b에서 실행해 `receiver-test-results.json`을 생성합니다. 독립 DLL/OBS 엔진
+harness 결과는 별도 검증 기록입니다. / The script builds the Receiver processor
+test target in Step 2 and runs it in Step 4b; standalone DLL/OBS-engine harness
+results are recorded separately.
 
 옵션: `--skip-build`, `--skip-api`, `--api-only`, `--version-only`
 
@@ -273,6 +285,52 @@ node test_api.js
 77. OBS에서 Receiver VST 로드 → DirectPipe 오디오 수신
 78. Receiver 버퍼 사이즈 변경(5단계) → 반영 확인
 79. SR 불일치 시 Receiver에 경고 표시
+
+#### 4.4.0 독립 수신 / Independent reception
+
+- [ ] 본체와 Receiver 모두 4.4.0인지 확인하고 같은 샘플레이트로 두 OBS 소스 또는
+  OBS/DAW에 동시에 연결합니다. 두 곳에서 같은 처리 음성을 정상 수신해야 합니다.
+  / With both ends on 4.4.0 and matching sample rates, verify the same processed
+  audio arrives at two OBS sources or OBS/DAW instances simultaneously.
+- [ ] 한 Receiver만 뮤트·정지·재연결하고 다른 Receiver가 계속 수신하는지 확인합니다.
+  오래 정지한 쪽을 재개했을 때 묵은 음성이 재생되지 않아야 합니다.
+  / Verify local mute/stall/reconnect isolation and fresh audio after overflow.
+- [ ] 8개 연결 후 9번째는 `Receiver limit`을 표시해야 합니다. 사용하지 않는
+  Receiver 필터/플러그인을 제거(unload)하거나 해당 앱을 종료하면 대기 중인
+  Receiver가 자동 재시도해 연결되는지 확인합니다. 편집 창만 닫아서는 해제되지 않습니다.
+  / The ninth Receiver reports capacity; unload an unused instance or close its
+  host app to release the slot. Closing the editor alone does not release it.
+- [ ] 새 Receiver + 구형 본체는 `Connected (v1)`과 단일 수신 제한을 확인합니다.
+  새 본체 + 구형 Receiver도 legacy 경로 하나를 유지해야 합니다.
+  / Verify both compatibility directions; legacy remains single-reader.
+- [ ] 본체 정지/재시작, VST 출력 OFF/ON, 각 버퍼 선택에서 복구와 장시간 청취를
+  확인합니다. `Connecting...`은 producer 확인 대기일 수 있으며 callback 정지만으로
+  슬롯을 강제 회수해서는 안 됩니다. / Check restart/output toggles/buffer choices
+  and long-session audio; inactivity alone must never reclaim a live Receiver's slot.
+
+#### Receiver 갱신 / Receiver upkeep (Windows)
+
+- [ ] 4.3.0의 본체 전용 갱신 후 4.4.0을 실행하고 **Settings > Update Receiver...**로
+  별도 Receiver 갱신이 가능한지 확인합니다. / Verify the two-step migration from
+  the 4.3.0 host-only updater to 4.4.0 Receiver maintenance.
+- [ ] **Settings > Update Receiver...**에서 설치 경로·버전과 `Choose Folder...`
+  검색 결과를 확인합니다. 현재/더 최신 설치본은 갱신 대상에서 제외합니다.
+  / Verify discovered/custom-folder targets and preservation of current/newer copies.
+- [ ] 사용 중인 OBS/DAW가 있으면 **Retry / Later** 안내를 확인하고 직접 종료한 뒤
+  재시도합니다. 자동 강제 종료는 없어야 합니다. Receiver만 갱신할 때 본체는 유지합니다.
+  / Verify manual app-close handling and that Receiver-only maintenance leaves the host running.
+- [ ] 보호된 경로의 UAC 승인/취소, 실패 시 백업 복구, 정상 재시작 후 실제 로드 버전과
+  저장 OBS 설정을 확인합니다. / Verify UAC, rollback, loaded version and saved settings.
+- [ ] 긴 VST3 경로·기존 백업·bundle 리소스를 포함한 갱신과, 지원 길이를 넘는
+  경로의 본체 종료 전 거부를 확인합니다. / Check long VST3 paths, existing backups,
+  bundle resources and rejection of unsupported transaction paths before host exit.
+
+온라인 갱신은 공개 릴리즈를 사용합니다. **4.3.0 업데이터로 처음 갱신하면 본체만
+교체**되므로 4.4.0 실행 후 **Settings > Update Receiver...**로 Receiver도 갱신해야
+합니다. 실제 설치·청취·UAC 검증은 격리된 helper/OBS 엔진 검사와 별도입니다.
+/ Online maintenance uses published releases. **Updating from 4.3.0 replaces only
+the host**; launch 4.4.0 and update the Receiver from Settings too. Isolated helper
+and OBS-engine results do not mark installation, listening or UAC checks complete.
 
 ### 설정 내보내기/가져오기
 80. Settings 탭 > Save Settings → .dpbackup 파일 생성

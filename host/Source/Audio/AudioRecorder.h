@@ -18,7 +18,7 @@
 
 /**
  * @file AudioRecorder.h
- * @brief Lock-free audio recorder using JUCE's ThreadedWriter
+ * @brief Nonblocking audio-callback handoff to JUCE's ThreadedWriter
  */
 #pragma once
 
@@ -32,10 +32,11 @@
 namespace directpipe {
 
 /**
- * @brief Records processed audio to WAV files, lock-free from audio callback.
+ * @brief Records processed audio to WAV files without waiting in the audio callback.
  *
  * Uses AudioFormatWriter::ThreadedWriter internally:
- * - Audio callback writes to a lock-free FIFO (no allocation, no mutex)
+ * - Audio callback try-locks writer lifetime, then writes to the preallocated FIFO
+ * - Contended lifetime changes or a full FIFO drop the block and count the drop
  * - Background thread flushes FIFO to disk
  */
 class AudioRecorder {
@@ -47,7 +48,7 @@ public:
     void stopRecording();
 
     /** Write audio samples from the real-time callback. RT-safe. */
-    void writeBlock(const juce::AudioBuffer<float>& buffer, int numSamples);  // [RT thread only — ThreadedWriter lock-free FIFO]
+    void writeBlock(const juce::AudioBuffer<float>& buffer, int numSamples);  // [RT: SpinLock try-lock/drop, then FIFO]
 
     bool isRecording() const { return recording_.load(std::memory_order_acquire); }
     juce::File getRecordingFile() const;

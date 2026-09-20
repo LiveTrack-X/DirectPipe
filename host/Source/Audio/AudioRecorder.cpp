@@ -18,7 +18,7 @@
 
 /**
  * @file AudioRecorder.cpp
- * @brief Lock-free audio recorder implementation
+ * @brief Nonblocking recorder handoff with off-thread WAV writing
  */
 
 #include "AudioRecorder.h"

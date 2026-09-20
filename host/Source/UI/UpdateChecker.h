@@ -18,8 +18,12 @@
 
 /**
  * @file UpdateChecker.h
- * @brief Background update checker — polls GitHub releases, shows update dialog,
- *        and performs in-app auto-update (Windows only).
+ * @brief Published-release checks and explicit Windows Receiver maintenance.
+ *
+ * Startup reports only a strictly newer host release. Settings maintenance can
+ * separately find older Receiver installations, preview exact destinations and
+ * ask the user to close audio applications. File inspection/downloads run off
+ * the message thread; dialogs, installer launch and result polling run on it.
  */
 #pragma once
 
@@ -30,6 +34,7 @@
 #include <thread>
 #include <functional>
 #include <utility>
+#include "ReceiverUpdateSupport.h"
 
 namespace directpipe {
 
@@ -57,20 +62,27 @@ enum class UpdateCheckStatus {
     InvalidResponse,
 };
 
-class UpdateChecker {
+class UpdateChecker : private juce::Timer {
 public:
     UpdateChecker();
     ~UpdateChecker();
 
-    /** Check GitHub for a newer release (runs on background thread). */
+    /** Start a background GitHub check. Equal/older host releases stay quiet;
+        result callbacks are posted to the message thread. */
     void checkForUpdate();
+
+    /** Message-thread Windows maintenance entry: preview strictly older installed
+        Receivers even if this host is current/ahead. Receiver-only installation
+        keeps the host running; it never downgrades a Receiver or kills its host. */
+    void checkForReceiverUpdate();
 
     /** Clean up transient update files and detect the post-update flag.
      *  The known-good backup executable remains until the next update rotation.
      *  Call once during startup. If a flag is found, onPostUpdateNotification is called. */
     void cleanupPreviousUpdate();
 
-    /** Show the update dialog (Update Now / View on GitHub / Later). */
+    /** Message-thread host-update dialog. Windows Update Now opens the Receiver
+        destination preview before download; other platforms offer the release page. */
     void showUpdateDialog();
 
     bool isUpdateAvailable() const { return updateAvailable_.load(std::memory_order_acquire); }
@@ -127,11 +139,14 @@ public:
     std::function<void(const juce::String& version,
                        const juce::String& downloadUrl)> onUpdateAvailable;
 
-    /** Called on message thread after detecting a successful post-update flag.
-     *  Parameter: version string from the flag file. */
+    /** Called on message thread after detecting a host post-update flag at startup.
+     *  Receiver-only results are handled by timerCallback without restarting the host.
+     *  Parameter: version string from the flag file; not an OBS reload/audio check. */
     std::function<void(const juce::String& version)> onPostUpdateNotification;
 
 private:
+    void checkForUpdateImpl(bool receiverOnly);
+    void timerCallback() override;
     bool startUpdateCheckWorker(std::function<void()> work);
     void reapFinishedUpdateCheckThread();
     void setCheckFailure(UpdateCheckStatus status, const juce::String& message);
@@ -141,7 +156,21 @@ private:
                              const juce::String& downloadUrl);
 
 #if JUCE_WINDOWS
-    void performUpdate();
+    void prepareReceiverUpdate(bool receiverOnly, const juce::File& customFolder = {});
+    void showReceiverUpdatePlan(bool receiverOnly, update_detail::ReceiverDiscoveryResult found);
+    void runReceiverInspection(std::function<void()> task);
+    void checkReceiverUse(std::vector<update_detail::ReceiverInstallTarget> targets,
+                          std::function<void()> whenReady);
+    void checkReceiverUseAndUpdate(bool receiverOnly,
+                                  std::vector<update_detail::ReceiverInstallTarget> targets);
+    void performUpdate(bool receiverOnly = false,
+                       std::vector<update_detail::ReceiverInstallTarget> targets = {});
+    bool receiverFlowActive_ = false; // message thread only
+    bool maintenanceCheckPending_ = false;
+    juce::File companionResultFile_;
+    void* companionProcess_ = nullptr; // Receiver-only installer handle; closing it does not kill the child
+    std::unique_ptr<juce::AlertWindow> maintenanceDialog_;
+    std::thread receiverInspectionThread_; // Discovery/exact-file use checks; joined before reuse/destruction
     bool startDownloadWorker(std::function<void()> work);
     void reapFinishedDownloadThread();
     double downloadProgress_ = -1.0;

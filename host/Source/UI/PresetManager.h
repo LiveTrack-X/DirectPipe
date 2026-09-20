@@ -120,19 +120,19 @@ public:
         std::function<bool()> rollbackExternalState,
         std::function<void(bool)> onComplete);
 
-    // Quick Preset Slots (A..E)
+    // Quick slots A..E (0..4) plus the separately presented Auto slot (5).
 
     static constexpr int kNumSlots = 6;  // A-E (0-4) + Auto (5)
 
     /**
      * @brief Save current state to a quick slot (chain only).
-     * @param slotIndex 0..4 (A..E)
+     * @param slotIndex 0..4 (A..E), or 5 (Auto).
      */
     bool saveSlot(int slotIndex);
 
     /**
      * @brief Load state from a quick slot (chain only, preserves audio/output settings).
-     * @param slotIndex 0..4 (A..E)
+     * @param slotIndex 0..4 (A..E), or 5 (Auto).
      * @return true if slot existed and loaded successfully.
      */
     bool loadSlot(int slotIndex);
@@ -144,23 +144,25 @@ public:
     bool importChainFromJSON(const juce::String& json);
 
     /**
-     * @brief Load a slot asynchronously (non-blocking for different chains).
-     * @param slotIndex 0..4 (A..E)
+     * @brief Load a slot through same-chain restore, a preload hit, or BG preparation.
+     * State restoration and commit run synchronously on the message thread under
+     * scoped render suspension; async construction does not make commit nonblocking.
+     * @param slotIndex 0..4 (A..E), or 5 (Auto).
      * @param onComplete Called on message thread when done (bool = success).
      */
     void loadSlotAsync(int slotIndex, std::function<void(bool)> onComplete);
 
     /**
      * @brief Copy one slot's data to another slot (file copy).
-     * @param fromSlot Source slot index (0..4).
-     * @param toSlot Destination slot index (0..4).
+     * @param fromSlot Source slot index (0..5; Auto is 5).
+     * @param toSlot Destination slot index (0..5; Auto is 5).
      * @return true if copied successfully.
      */
     bool copySlot(int fromSlot, int toSlot);
 
     /**
      * @brief Delete a slot's saved data.
-     * @param slotIndex 0..4 (A..E)
+     * @param slotIndex 0..4 (A..E), or 5 (Auto).
      * @return true if deleted successfully.
      */
     bool deleteSlot(int slotIndex);
@@ -228,8 +230,9 @@ public:
      *  destructive active-slot path can be regression-tested. */
     bool importSlotFromFile(int slotIndex, const juce::File& sourceFile);
 
-    /** Import into the active slot without changing either disk or runtime
-     *  until every replacement processor has been prepared. */
+    /** Prepare external replacement plug-ins before committing an active-slot
+     *  import. Built-ins/state are staged during the guarded graph swap; file
+     *  changes are rolled back if that swap fails. */
     void importSlotFromFileAsync(int slotIndex, const juce::File& sourceFile,
                                  std::function<void(bool)> onComplete);
 

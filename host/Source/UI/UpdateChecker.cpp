@@ -28,6 +28,7 @@
 
 #if JUCE_WINDOWS
 #include <windows.h>
+#include <shellapi.h>
 namespace {
     constexpr const char* kUpdateBatchFile = "_update.bat";
     constexpr const char* kUpdateDir       = "_update";
@@ -35,6 +36,24 @@ namespace {
     constexpr const char* kUpdateExe       = "DirectPipe_update.exe";
     constexpr const char* kBackupExe       = "DirectPipe_backup.exe";
     constexpr const char* kUpdatedFlag     = "_updated.flag";
+
+    class ReceiverPlanDialog final : public juce::AlertWindow {
+    public:
+        explicit ReceiverPlanDialog(const juce::String& details)
+            : AlertWindow("Receiver Update", "Review the exact installation paths below.",
+                          juce::MessageBoxIconType::InfoIcon)
+        {
+            details_.setMultiLine(true);
+            details_.setReadOnly(true);
+            details_.setScrollbarsShown(true);
+            details_.setText(details, false);
+            details_.setSize(620, 280);
+            details_.setCaretPosition(0);
+            addCustomComponent(&details_);
+        }
+    private:
+        juce::TextEditor details_;
+    };
 }
 #endif
 
@@ -89,8 +108,12 @@ UpdateChecker::UpdateChecker() = default;
 
 UpdateChecker::~UpdateChecker()
 {
+    stopTimer();
     alive_->store(false);
 #if JUCE_WINDOWS
+    if (receiverInspectionThread_.joinable()) receiverInspectionThread_.join();
+    if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
+    if (companionProcess_) ::CloseHandle(static_cast<HANDLE>(companionProcess_));
     {
         std::lock_guard<std::mutex> lock(downloadThreadMutex_);
         if (downloadThread_.joinable())
@@ -271,9 +294,14 @@ void UpdateChecker::cleanupPreviousUpdate()
 #endif
 }
 
-// ─── Check for Update (background thread) ─────────────────────────────────
+// ─── Check admission on caller; network worker posts message-thread results ──
 
 void UpdateChecker::checkForUpdate()
+{
+    checkForUpdateImpl(false);
+}
+
+void UpdateChecker::checkForUpdateImpl(bool receiverOnly)
 {
     // Serialize request admission separately from the worker lifecycle mutex.
     // This keeps concurrent callers from invalidating the generation captured
@@ -287,7 +315,7 @@ void UpdateChecker::checkForUpdate()
     const auto currentVersion = juce::String(ProjectInfo::versionString);
     const auto requestGeneration = beginUpdateCheckRequest();
 
-    if (!startUpdateCheckWorker([this, currentVersion, requestGeneration] {
+    if (!startUpdateCheckWorker([this, currentVersion, requestGeneration, receiverOnly] {
         juce::URL url("https://api.github.com/repos/LiveTrack-X/DirectPipe/releases/latest");
         int statusCode = 0;
         auto stream = url.createInputStream(
@@ -343,7 +371,9 @@ void UpdateChecker::checkForUpdate()
             return;
         }
 
-        if (releaseVersion <= installedVersion) {
+        // Startup compares the host only. Explicit maintenance still needs the
+        // published package so each discovered Receiver can be compared separately.
+        if (!receiverOnly && releaseVersion <= installedVersion) {
             checkStatus_.store(UpdateCheckStatus::UpToDate, std::memory_order_release);
             return;
         }
@@ -389,6 +419,24 @@ void UpdateChecker::checkForUpdate()
         if (downloadUrl.isEmpty())
             downloadUrl = fallbackExecutableUrl;
 
+#if JUCE_WINDOWS
+        if (receiverOnly) {
+            juce::MessageManager::callAsync([this, alive = alive_, requestGeneration,
+                                           canonicalReleaseVersion, downloadUrl] {
+                if (!alive->load() || requestGeneration != updateCheckRequestGeneration_.load())
+                    return;
+                maintenanceCheckPending_ = false;
+                stopTimer();
+                if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
+                maintenanceDialog_.reset();
+                latestVersion_ = canonicalReleaseVersion;
+                latestDownloadUrl_ = downloadUrl;
+                checkStatus_.store(UpdateCheckStatus::UpToDate, std::memory_order_release);
+                prepareReceiverUpdate(true);
+            });
+            return;
+        }
+#endif
         if (!postUpdateAvailable(requestGeneration,
                                  canonicalReleaseVersion,
                                  downloadUrl)) {
@@ -407,6 +455,211 @@ void UpdateChecker::checkForUpdate()
         }
     }
 }
+
+void UpdateChecker::checkForReceiverUpdate()
+{
+#if JUCE_WINDOWS
+    if (receiverFlowActive_ || companionProcess_ || downloadInProgress_.load()
+        || updateCheckInProgress_.load()) {
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
+            "Update in Progress", "Please finish the current update check or installation first.");
+        return;
+    }
+    receiverFlowActive_ = true;
+    maintenanceCheckPending_ = true;
+    maintenanceDialog_ = std::make_unique<juce::AlertWindow>(
+        "Receiver Update", "Checking the latest published release...",
+        juce::MessageBoxIconType::NoIcon);
+    maintenanceDialog_->enterModalState(true, nullptr, false);
+    checkForUpdateImpl(true);
+    startTimer(250);
+#endif
+}
+
+void UpdateChecker::timerCallback()
+{
+#if JUCE_WINDOWS
+    if (maintenanceCheckPending_) {
+        const auto status = getCheckStatus();
+        if (status == UpdateCheckStatus::Checking) return;
+        maintenanceCheckPending_ = false;
+        receiverFlowActive_ = false;
+        stopTimer();
+        if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
+        maintenanceDialog_.reset();
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+            "Receiver Update", getLastCheckError() + "\nPlease try again later.");
+        return;
+    }
+    if (companionProcess_) {
+        DWORD exitCode = STILL_ACTIVE;
+        if (::GetExitCodeProcess(static_cast<HANDLE>(companionProcess_), &exitCode)
+            && exitCode == STILL_ACTIVE) return;
+        ::CloseHandle(static_cast<HANDLE>(companionProcess_));
+        companionProcess_ = nullptr;
+        receiverFlowActive_ = false;
+        stopTimer();
+        if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
+        maintenanceDialog_.reset();
+        const auto result = juce::JSON::parse(companionResultFile_);
+        const bool success = result.getProperty("success", false);
+        juce::String message;
+        if (success) {
+            message = "Receiver update complete. You can reopen OBS or your audio application.\n"
+                      "DirectPipe and your saved settings were kept running and unchanged.";
+        } else {
+            message = result.getProperty("error", "The installer did not report a result.").toString();
+            if (result.getProperty("rollbackSucceeded", false))
+                message += "\nPrevious files were preserved or restored.";
+            message += "\nDetails: " + companionResultFile_.getFullPathName()
+                     + "\nClose applications using the Receiver, then check again.";
+        }
+        juce::Logger::writeToLog("[APP] Receiver update: " + message);
+        juce::AlertWindow::showMessageBoxAsync(success ? juce::MessageBoxIconType::InfoIcon
+                                                     : juce::MessageBoxIconType::WarningIcon,
+                                              "Receiver Update", message);
+    }
+#endif
+}
+
+#if JUCE_WINDOWS
+void UpdateChecker::runReceiverInspection(std::function<void()> task)
+{
+    // Message-thread entry only. A preceding inspection posts its result only
+    // after all I/O has finished, so reaping it here never waits on that I/O.
+    if (receiverInspectionThread_.joinable()) receiverInspectionThread_.join();
+    const auto failed = [this, alive = alive_] {
+        juce::MessageManager::callAsync([this, alive] {
+            if (!alive->load()) return;
+            if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
+            maintenanceDialog_.reset();
+            receiverFlowActive_ = false;
+            juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                "Receiver Update", "The installation check could not finish. No files were replaced. Please retry.");
+        });
+    };
+    try {
+        receiverInspectionThread_ = std::thread([task = std::move(task), failed] {
+            try { task(); } catch (...) { failed(); }
+        });
+    } catch (...) { failed(); }
+}
+
+void UpdateChecker::prepareReceiverUpdate(bool receiverOnly, const juce::File& customFolder)
+{
+    // Discovery reads metadata without loading plug-ins. A custom directory is
+    // added to the standard search roots; it does not authorize a new install.
+    if (companionProcess_ || downloadInProgress_.load()) return;
+    receiverFlowActive_ = true;
+    maintenanceDialog_ = std::make_unique<juce::AlertWindow>("Receiver Update",
+        "Finding installed Receivers...", juce::MessageBoxIconType::NoIcon);
+    maintenanceDialog_->enterModalState(true, nullptr, false);
+    runReceiverInspection([this, alive = alive_, receiverOnly, customFolder] {
+        auto found = update_detail::discoverInstalledReceivers(customFolder);
+        juce::MessageManager::callAsync([this, alive, receiverOnly, found = std::move(found)]() mutable {
+            if (!alive->load()) return;
+            if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
+            maintenanceDialog_.reset();
+            showReceiverUpdatePlan(receiverOnly, std::move(found));
+        });
+    });
+}
+
+void UpdateChecker::showReceiverUpdatePlan(bool receiverOnly, update_detail::ReceiverDiscoveryResult found)
+{
+    std::vector<update_detail::ReceiverInstallTarget> targets;
+    juce::String details = receiverOnly
+        ? "DirectPipe will keep running. Installed Receivers older than v" + latestVersion_
+              + " can be updated from that published release.\n\n"
+        : "DirectPipe will close and restart after the update to v" + latestVersion_ + ".\n\n";
+    for (const auto& target : found.targets) {
+        const bool update = update_detail::receiverNeedsUpdate(target.installedVersion, latestVersion_);
+        details += target.installPath + "\n  v" + target.installedVersion;
+        details += update ? " -> v" + latestVersion_ : " (kept: same or newer version)";
+        details += "\n\n";
+        if (update) targets.push_back(target);
+    }
+    if (found.targets.empty())
+        details += "No verified installed Receiver was found in the standard VST folders.\n"
+                   "Use Choose Folder for a custom installation.\n\n";
+    if (!found.warnings.isEmpty())
+        details += "Some locations could not be verified:\n" + found.warnings.joinIntoString("\n") + "\n\n";
+    if (!targets.empty())
+        details += "Close OBS or other applications using these Receivers before continuing.\n"
+                   "Windows may request administrator permission for protected folders.";
+    auto* window = new ReceiverPlanDialog(details);
+    if (!receiverOnly || !targets.empty()) window->addButton("Update", 1);
+    window->addButton("Choose Folder...", 2);
+    window->addButton("Later", 0);
+    window->enterModalState(true, juce::ModalCallbackFunction::create(
+        [this, alive = alive_, receiverOnly, targets](int choice) {
+            if (!alive->load()) return;
+            if (choice == 1) {
+                checkReceiverUseAndUpdate(receiverOnly, targets);
+            } else if (choice == 2) {
+                auto chooser = std::make_shared<juce::FileChooser>("Select your Receiver installation folder");
+                chooser->launchAsync(juce::FileBrowserComponent::openMode
+                                     | juce::FileBrowserComponent::canSelectDirectories,
+                    [this, alive, receiverOnly, chooser](const juce::FileChooser& selected) {
+                        if (!alive->load()) return;
+                        if (selected.getResult().isDirectory())
+                            prepareReceiverUpdate(receiverOnly, selected.getResult());
+                        else receiverFlowActive_ = false;
+                    });
+            } else receiverFlowActive_ = false;
+        }), true);
+}
+
+void UpdateChecker::checkReceiverUseAndUpdate(
+    bool receiverOnly, std::vector<update_detail::ReceiverInstallTarget> targets)
+{
+    checkReceiverUse(targets, [this, alive = alive_, receiverOnly, targets] {
+        if (!alive->load()) return;
+        receiverFlowActive_ = false;
+        performUpdate(receiverOnly, targets);
+    });
+}
+
+void UpdateChecker::checkReceiverUse(std::vector<update_detail::ReceiverInstallTarget> targets,
+                                    std::function<void()> whenReady)
+{
+    // Read-only preflight: Retry repeats inspection after the user closes OBS or
+    // another owner manually; Later cancels this flow. The installer rechecks use
+    // and target identity because this UI check is not a lasting file lock.
+    receiverFlowActive_ = true;
+    maintenanceDialog_ = std::make_unique<juce::AlertWindow>("Receiver Update",
+        "Checking whether the selected Receivers are in use...", juce::MessageBoxIconType::NoIcon);
+    maintenanceDialog_->enterModalState(true, nullptr, false);
+    runReceiverInspection([this, alive = alive_, targets, whenReady] {
+      const auto usage = update_detail::queryReceiverUse(targets);
+      juce::MessageManager::callAsync([this, alive, targets, whenReady, usage] {
+        if (!alive->load()) return;
+        if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
+        maintenanceDialog_.reset();
+        if (!targets.empty() && (!usage.inspectable || usage.busy)) {
+        auto* window = new juce::AlertWindow("Receiver In Use",
+            usage.busy
+                ? "Close the applications using the selected Receiver, then retry.\n\n"
+                    + usage.processes.joinIntoString("\n")
+                : "Receiver access could not be verified. No files have been replaced.\n\n"
+                    + usage.error,
+            juce::MessageBoxIconType::WarningIcon);
+        window->addButton("Retry", 1);
+        window->addButton("Later", 0);
+        window->enterModalState(true, juce::ModalCallbackFunction::create(
+            [this, alive = alive_, targets, whenReady](int result) {
+                if (!alive->load()) return;
+                if (result == 1) checkReceiverUse(targets, whenReady);
+                else receiverFlowActive_ = false;
+            }), true);
+        return;
+        }
+        receiverFlowActive_ = false;
+        whenReady();
+      });
+    });
+}
+#endif
 
 void UpdateChecker::showUpdateDialog()
 {
@@ -428,7 +681,7 @@ void UpdateChecker::showUpdateDialog()
             if (!alive->load()) return;
 #if JUCE_WINDOWS
             if (result == 1) {
-                performUpdate();
+                prepareReceiverUpdate(false);
             } else
 #endif
             if (result == 2) {
@@ -441,7 +694,8 @@ void UpdateChecker::showUpdateDialog()
 // ─── Auto-Update (Windows only) ──────────────────────────────────────────
 
 #if JUCE_WINDOWS
-void UpdateChecker::performUpdate()
+void UpdateChecker::performUpdate(bool receiverOnly,
+                                  std::vector<update_detail::ReceiverInstallTarget> targets)
 {
     if (latestDownloadUrl_.isEmpty()) {
         juce::AlertWindow::showMessageBoxAsync(
@@ -467,10 +721,15 @@ void UpdateChecker::performUpdate()
         return;
     }
 
-    // Determine paths
+    // Selected Receiver targets use an isolated companion transaction. A host-only
+    // update with no eligible Receiver keeps the existing batch-script path.
     auto currentExe = juce::File::getSpecialLocation(
         juce::File::currentExecutableFile);
-    auto updateDir = currentExe.getParentDirectory().getChildFile(kUpdateDir);
+    const bool companionUpdate = receiverOnly || !targets.empty();
+    auto companionDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("DirectPipe-update-" + juce::Uuid().toString());
+    auto updateDir = companionUpdate ? companionDir.getChildFile("expanded")
+                                    : currentExe.getParentDirectory().getChildFile(kUpdateDir);
     auto batchFile = currentExe.getSiblingFile(kUpdateBatchFile);
 
     // Show progress (indeterminate spinner)
@@ -501,8 +760,9 @@ void UpdateChecker::performUpdate()
     const auto currentProcessId = static_cast<unsigned long>(::GetCurrentProcessId());
 
     const bool workerStarted = startDownloadWorker(
-        [alive = alive_, downloadUrl, updateDir, batchFile, currentExe,
-         version, isZip, currentProcessId, progressDlg]() {
+        [this, alive = alive_, downloadUrl, updateDir, batchFile, currentExe,
+         version, isZip, currentProcessId, progressDlg, receiverOnly, targets,
+         companionUpdate, companionDir]() {
         // Download the file
         juce::URL url(downloadUrl);
         int statusCode = 0;
@@ -526,9 +786,9 @@ void UpdateChecker::performUpdate()
         }
 
         // Determine download target
-        auto downloadFile = isZip
-            ? currentExe.getSiblingFile(kUpdateZip)
-            : currentExe.getSiblingFile(kUpdateExe);
+        if (companionUpdate) companionDir.createDirectory();
+        auto downloadFile = companionUpdate ? companionDir.getChildFile(kUpdateZip)
+            : (isZip ? currentExe.getSiblingFile(kUpdateZip) : currentExe.getSiblingFile(kUpdateExe));
 
         // Write to file
         {
@@ -547,6 +807,8 @@ void UpdateChecker::performUpdate()
                 return;
             }
 
+            output.setPosition(0);
+            output.truncate();
             char buffer[8192];
             while (!stream->isExhausted()) {
                 auto bytesRead = stream->read(buffer, sizeof(buffer));
@@ -572,6 +834,7 @@ void UpdateChecker::performUpdate()
             return;
         }
 
+        juce::String expectedHash;
         // Verify downloaded file — SHA-256 integrity check
         {
             const bool checksumRequired = update_detail::releaseRequiresChecksum(version);
@@ -585,7 +848,6 @@ void UpdateChecker::performUpdate()
                     .withConnectionTimeoutMs(5000)
                     .withStatusCode(&checksumStatus));
 
-            juce::String expectedHash;
             bool checksumEntryValid = false;
             if (checksumStream && checksumStatus == 200) {
                 checksumEntryValid = update_detail::parseExpectedSha256(
@@ -638,7 +900,126 @@ void UpdateChecker::performUpdate()
             }
         }
 
-        // Create update batch script
+        // The companion independently revalidates the ZIP hash, source identities,
+        // selected destination versions and file use immediately before replacement.
+        if (companionUpdate) {
+            update_detail::WindowsUpdateInstallSpec spec;
+            spec.currentExePath = currentExe.getFullPathName();
+            spec.downloadedFilePath = downloadFile.getFullPathName();
+            spec.stagedExePath = companionDir.getChildFile(kUpdateExe).getFullPathName();
+            spec.backupExePath = currentExe.getSiblingFile(kBackupExe).getFullPathName();
+            spec.updateDirPath = updateDir.getFullPathName();
+            spec.expectedVersion = version;
+            spec.isZip = isZip;
+            spec.receiverTargets = targets;
+            spec.skipHostUpdate = receiverOnly;
+            spec.processId = currentProcessId;
+            spec.resultFilePath = companionDir.getChildFile("result.json").getFullPathName();
+            spec.updatedFlagPath = currentExe.getSiblingFile(kUpdatedFlag).getFullPathName();
+            spec.relaunchHostAfterUpdate = !receiverOnly;
+            spec.expectedPackageSha256 = expectedHash;
+            // Use the same path rules as installation while this host is still
+            // running. This child only extracts into the private download folder;
+            // no elevation, installation writes, host wait, or relaunch occurs.
+            auto preflightSpec = spec;
+            preflightSpec.resultFilePath = companionDir.getChildFile("preflight-result.json").getFullPathName();
+            const auto preflightFile = companionDir.getChildFile("preflight.ps1");
+            const auto preflightScript = update_detail::buildWindowsCompanionInstallPowerShell(preflightSpec, true);
+            juce::String preparationError;
+            juce::ChildProcess preflight;
+            const auto powershell = juce::File::getSpecialLocation(juce::File::windowsSystemDirectory)
+                .getChildFile("WindowsPowerShell/v1.0/powershell.exe").getFullPathName();
+            if (preflightScript.isEmpty() || !preflightFile.replaceWithText(preflightScript, false, true)
+                || !preflight.start(juce::StringArray{powershell, "-NoProfile", "-NonInteractive",
+                    "-ExecutionPolicy", "Bypass", "-File", preflightFile.getFullPathName()})) {
+                preparationError = "Could not start the update path check.";
+            } else {
+                const auto deadline = juce::Time::getMillisecondCounterHiRes() + 90000.0;
+                while (preflight.isRunning() && alive->load()
+                       && juce::Time::getMillisecondCounterHiRes() < deadline)
+                    preflight.waitForProcessToFinish(100);
+                if (preflight.isRunning()) {
+                    preflight.kill();
+                    preflight.waitForProcessToFinish(5000);
+                    preparationError = "The update path check did not finish. Please retry.";
+                } else {
+                    const auto checked = juce::JSON::parse(juce::File(preflightSpec.resultFilePath).loadFileAsString());
+                    if (preflight.getExitCode() != 0 || !static_cast<bool>(checked["success"])) {
+                        preparationError = checked["error"].toString();
+                        if (preparationError.isEmpty()) preparationError = "The update paths could not be verified.";
+                    }
+                }
+            }
+            if (!alive->load()) return;
+            const auto script = update_detail::buildWindowsCompanionInstallPowerShell(spec);
+            const auto scriptFile = companionDir.getChildFile("install.ps1");
+            const bool prepared = preparationError.isEmpty() && script.isNotEmpty()
+                && scriptFile.replaceWithText(script, false, true);
+            juce::MessageManager::callAsync([this, alive, progressDlg, prepared, scriptFile,
+                                            receiverOnly, targets, spec, preparationError] {
+                if (!alive->load()) return;
+                if (*progressDlg) (*progressDlg)->exitModalState(0);
+                if (!prepared) {
+                    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                        "Update Failed", (preparationError.isEmpty()
+                            ? "Could not prepare a verified Receiver update." : preparationError)
+                            + "\nDirectPipe is still running; no installed files were replaced.");
+                    return;
+                }
+                // A retry here keeps the already verified download; no second download is needed.
+                checkReceiverUse(targets, [this, alive, scriptFile, receiverOnly, targets, spec] {
+                if (!alive->load()) return;
+                bool elevate = std::any_of(targets.begin(), targets.end(),
+                    [](const auto& target) { return target.needsElevation; });
+                // Receiver ACL/root checks are not enough for paired updates:
+                // the host executable's destination may also need elevation.
+                if (!receiverOnly && !elevate) {
+                    const auto probe = juce::File(spec.currentExePath).getParentDirectory()
+                        .getChildFile(".DirectPipe-write-probe-" + juce::Uuid().toString()).getFullPathName();
+                    HANDLE access = ::CreateFileW(probe.toWideCharPointer(), GENERIC_WRITE | DELETE,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, CREATE_NEW,
+                        FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+                    elevate = access == INVALID_HANDLE_VALUE;
+                    if (access != INVALID_HANDLE_VALUE) ::CloseHandle(access);
+                }
+                const auto powershell = juce::File::getSpecialLocation(juce::File::windowsSystemDirectory)
+                    .getChildFile("WindowsPowerShell/v1.0/powershell.exe").getFullPathName();
+                const auto arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""
+                                       + scriptFile.getFullPathName() + "\"";
+                SHELLEXECUTEINFOW launch{};
+                launch.cbSize = sizeof(launch);
+                launch.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+                launch.lpVerb = elevate ? L"runas" : L"open";
+                launch.lpFile = powershell.toWideCharPointer();
+                launch.lpParameters = arguments.toWideCharPointer();
+                launch.nShow = SW_HIDE;
+                if (!::ShellExecuteExW(&launch) || !launch.hProcess) {
+                    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
+                        "Update Not Started", "The installer could not start or administrator permission was cancelled."
+                                              "\nDirectPipe is still running; no files were replaced.");
+                    return;
+                }
+                // Quit only after a paired installer has started. Receiver-only
+                // work keeps the audio host alive and polls the child result file.
+                if (receiverOnly) {
+                    companionProcess_ = launch.hProcess;
+                    companionResultFile_ = juce::File(spec.resultFilePath);
+                    receiverFlowActive_ = true;
+                    maintenanceDialog_ = std::make_unique<juce::AlertWindow>("Receiver Update",
+                        "Updating the selected Receivers. DirectPipe will keep running...",
+                        juce::MessageBoxIconType::NoIcon);
+                    maintenanceDialog_->enterModalState(true, nullptr, false);
+                    startTimer(250);
+                } else {
+                    ::CloseHandle(launch.hProcess);
+                    juce::JUCEApplication::getInstance()->systemRequestedQuit();
+                }
+                });
+            });
+            return;
+        }
+
+        // Legacy host-only batch installer (no selected Receiver destinations).
         auto currentPath = currentExe.getFullPathName().replace("/", "\\");
         auto downloadPath = downloadFile.getFullPathName().replace("/", "\\");
         auto backupPath = currentExe.getSiblingFile(kBackupExe)

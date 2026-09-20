@@ -130,7 +130,8 @@ void DirectPipeLogger::logMessage(const juce::String& message)
     auto ts = now.toString(false, true, true, true);  // HH:MM:SS.mmm
     auto line = "[" + ts + "] " + message;
 
-    // Mutex protects multi-producer writes (called from WebSocket, HTTP, audio, MIDI threads)
+    // Serialize non-RT producers (WebSocket, HTTP, device/control, MIDI).
+    // The mutex and disk flush below prohibit use from the audio RT hot path.
     std::lock_guard<std::mutex> lock(writeMutex_);
 
     // Write to disk (flush immediately for crash safety)
@@ -284,6 +285,11 @@ LogPanel::LogPanel()
     setupBtn(clearPluginCacheBtn_);
     setupBtn(clearPresetsBtn_);
     setupBtn(resetSettingsBtn_);
+#if JUCE_WINDOWS
+    setupBtn(updateReceiverBtn_);
+    updateReceiverBtn_.setTooltip("Find installed DirectPipe Receivers and check for an update.");
+    updateReceiverBtn_.onClick = [this] { if (onReceiverMaintenance) onReceiverMaintenance(); };
+#endif
 
     // Reset button with red tint
     resetSettingsBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(kRedColour).withAlpha(0.3f));
@@ -384,7 +390,12 @@ void LogPanel::resized()
     clearPresetsBtn_.setBounds(x, y, w, rowH);
     y += rowH + gap;
 
+#if JUCE_WINDOWS
+    updateReceiverBtn_.setBounds(x, y, btnW, rowH);
+    resetSettingsBtn_.setBounds(x + btnW + gap, y, w - btnW - gap, rowH);
+#else
     resetSettingsBtn_.setBounds(x, y, w, rowH);
+#endif
 }
 
 void LogPanel::flushPendingLogs()

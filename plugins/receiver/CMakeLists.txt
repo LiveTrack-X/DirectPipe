@@ -1,5 +1,6 @@
 # DirectPipe Receiver Plugin
-# Receives processed audio from DirectPipe host via shared memory IPC
+# Receives one processed stream through an independent FanOut slot, with legacy
+# v1 fallback when FanOut is absent/inactive. Plugin identities/parameters persist.
 
 # Build format list based on available SDKs
 set(RECEIVER_FORMATS VST3)
@@ -14,7 +15,7 @@ juce_add_plugin(DirectPipeReceiver
     PLUGIN_MANUFACTURER_CODE DPip
     PLUGIN_CODE DPRx
     FORMATS ${RECEIVER_FORMATS}
-    VERSION "4.3.0"
+    VERSION "4.4.0"
     PRODUCT_NAME "DirectPipe Receiver"
     COMPANY_NAME "DirectPipe"
     IS_SYNTH FALSE
@@ -51,7 +52,8 @@ target_link_libraries(DirectPipeReceiver PRIVATE
 )
 
 # ─── macOS ad-hoc code signing ───
-# Receiver plugin needs signing so OBS (or any DAW) can load it without Gatekeeper blocking.
+# Give locally built bundles an ad-hoc signature. This does not notarize a
+# distribution or guarantee that a quarantined download passes Gatekeeper.
 if(APPLE)
     foreach(fmt IN ITEMS VST3 VST AU)
         if(TARGET DirectPipeReceiver_${fmt})

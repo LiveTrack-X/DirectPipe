@@ -386,10 +386,41 @@ jobs:
 
       - name: Create DMG
         run: |
+          # Validate every shipped bundle before creating the disk image.
+          python3 - <<'PY'
+          import pathlib, plistlib, re, subprocess
+          version = re.search(r'project\(DirectPipe VERSION ([0-9.]+)', pathlib.Path('CMakeLists.txt').read_text()).group(1)
+          bundles = list(pathlib.Path('staging').glob('*'))
+          assert any(p.suffix == '.app' for p in bundles)
+          assert any(p.suffix == '.vst3' for p in bundles)
+          assert any(p.suffix == '.component' for p in bundles)
+          if pathlib.Path('thirdparty/VST2_SDK/pluginterfaces/vst2.x/aeffect.h').is_file():
+              assert any(p.suffix == '.vst' for p in bundles), 'Configured Receiver VST2 is missing'
+          for bundle in bundles:
+              info = plistlib.loads((bundle / 'Contents/Info.plist').read_bytes())
+              assert info['CFBundleShortVersionString'] == version, (bundle, info)
+              binary = bundle / 'Contents/MacOS' / info['CFBundleExecutable']
+              subprocess.run(['lipo', '-verify_arch', 'arm64', 'x86_64', str(binary)], check=True)
+              print(f'Verified {bundle.name}: {version}, arm64+x86_64')
+          PY
           hdiutil create -volname "DirectPipe" \
             -srcfolder staging \
             -ov -format UDZO \
             DirectPipe-macOS.dmg
+          hdiutil verify DirectPipe-macOS.dmg
+          MOUNT_DIR=$(mktemp -d "${RUNNER_TEMP}/directpipe-dmg.XXXXXX")
+          hdiutil attach DirectPipe-macOS.dmg -readonly -nobrowse -mountpoint "$MOUNT_DIR"
+          trap 'hdiutil detach "$MOUNT_DIR"' EXIT
+          # Compare mounted payload bytes, not just the pre-image staging tree.
+          python3 - "$MOUNT_DIR" <<'PY'
+          import hashlib, pathlib, sys
+          staging, mounted = pathlib.Path('staging'), pathlib.Path(sys.argv[1])
+          for source in staging.rglob('*'):
+              if source.is_file():
+                  target = mounted / source.relative_to(staging)
+                  assert hashlib.sha256(source.read_bytes()).digest() == hashlib.sha256(target.read_bytes()).digest(), source
+          print('Mounted DMG payload matches staging')
+          PY
           ls -lh DirectPipe-macOS.dmg
 
       - name: Upload artifact
@@ -492,9 +523,29 @@ jobs:
 
       - name: Create tar.gz
         run: |
+          python3 - <<'PY'
+          import pathlib, struct
+          root = pathlib.Path('staging')
+          binaries = [root / 'DirectPipe'] + list(root.rglob('*.so'))
+          assert any(p.parent.name == 'x86_64-linux' for p in binaries), 'Receiver VST3 is missing'
+          for binary in binaries:
+              header = binary.read_bytes()[:20]
+              assert header[:6] == b'\x7fELF\x02\x01', binary
+              assert struct.unpack_from('<H', header, 18)[0] == 62, binary
+              print(f'Verified ELF x86_64: {binary}')
+          PY
           cd staging
           tar czf ../DirectPipe-linux-x64.tar.gz .
           cd ..
+          python3 - <<'PY'
+          import hashlib, pathlib, tarfile
+          root = pathlib.Path('staging')
+          with tarfile.open('DirectPipe-linux-x64.tar.gz', 'r:gz') as archive:
+              for member in archive.getmembers():
+                  if member.isfile():
+                      assert hashlib.sha256(archive.extractfile(member).read()).digest() == hashlib.sha256((root / member.name).read_bytes()).digest(), member.name
+          print('tar.gz payload matches staging')
+          PY
           ls -lh DirectPipe-linux-x64.tar.gz
 
       - name: Upload artifact

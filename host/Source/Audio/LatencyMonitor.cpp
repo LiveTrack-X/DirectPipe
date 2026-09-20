@@ -18,7 +18,7 @@
 
 /**
  * @file LatencyMonitor.cpp
- * @brief Real-time latency measurement implementation
+ * @brief Driver-based path latency estimates and measured callback timing
  */
 
 #include "LatencyMonitor.h"
@@ -98,9 +98,9 @@ void LatencyMonitor::markCallbackEnd()
         double usage = (avg / callbackPeriodMs) * 100.0;
         cpuUsage_.store(usage, std::memory_order_relaxed);
 
-        // Callback overrun detection: if THIS callback (not the average) took longer
-        // than the buffer period, the audio hardware ran out of data — guaranteed glitch.
-        // Use raw processingMs, not the smoothed average, for instant detection.
+        // Count a nominal budget overrun when this callback exceeds its buffer
+        // period. Driver buffering determines whether that produces audible loss.
+        // Use raw processingMs rather than smoothing short overruns away.
         if (processingMs > callbackPeriodMs)
             callbackOverruns_.fetch_add(1, std::memory_order_relaxed);
     }

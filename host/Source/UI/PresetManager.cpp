@@ -1359,9 +1359,10 @@ std::vector<VSTChain::PreloadedPlugin> PresetManager::buildPreloadedPluginsFromC
 
 void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
 {
-    // Suspend graph processing to prevent audio thread from calling processBlock
-    // while we modify plugin state via setStateInformation (not thread-safe)
-    chain.suspendProcessing(true);
+    // Close DirectPipe's RT admission and drain rendering before state restore.
+    // Callbacks still run but emit silence; nested bypass rebuilds cannot resume
+    // them until this whole restore scope exits, including C++ exception unwinding.
+    const VSTChain::ScopedProcessingSuspension suspension(chain);
 
     for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
         auto& t = targets[static_cast<size_t>(i)];
@@ -1376,7 +1377,6 @@ void PresetManager::applyFastPath(const std::vector<TargetPlugin>& targets, VSTC
         }
     }
 
-    chain.suspendProcessing(false);
 }
 
 void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTChain& chain)
@@ -1438,10 +1438,11 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
         }
     }
 
-    // Batch state restore under single suspend (prevents audio thread from
-    // seeing partially-restored state between plugins)
+    // Drain rendering for this whole batch of state restores. Earlier synchronous
+    // remove/add operations have their own scopes, so this slow path is not one
+    // atomic whole-chain transaction. New callbacks emit silence during this scope.
     if (!loaded.empty()) {
-        chain.suspendProcessing(true);
+        const VSTChain::ScopedProcessingSuspension suspension(chain);
         for (auto& lp : loaded) {
             if (auto* loadedSlot = chain.getPluginSlot(lp.idx)) {
                 // Use getProcessor() to handle both built-in and VST processors
@@ -1452,7 +1453,6 @@ void PresetManager::applySlowPath(const std::vector<TargetPlugin>& targets, VSTC
                 }
             }
         }
-        chain.suspendProcessing(false);
     }
 }
 
@@ -1742,7 +1742,7 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         ? root->getProperty("name").toString()
         : juce::String{};
 
-    // Fast path: same plugins in same order -> sync (instant)
+    // Same structure: synchronous state restore; duration depends on the plug-ins.
     if (isSameChain(targets, chain)) {
         applyFastPath(targets, chain);
         juce::Logger::writeToLog("[PRESET] Slot " + juce::String::charToString(slotLabel(slotIndex)) + ": fast path (" + juce::String(targets.size()) + " plugins)");
@@ -1759,7 +1759,8 @@ void PresetManager::loadSlotAsync(int slotIndex, std::function<void(bool)> onCom
         return;
     }
 
-    // Cache path: pre-loaded instances available instant swap (~10-50ms)
+    // Cache path: skip DLL construction, then suspend for staging/state/commit.
+    // Cache hits do not promise a fixed switching time or uninterrupted audio.
     // Check cache BEFORE cancelAndWait preload thread may still be populating it.
     // replaceChainWithPreloaded does NOT use formatManager, so no concurrent access risk.
     {

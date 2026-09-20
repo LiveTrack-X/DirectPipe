@@ -90,6 +90,8 @@ public:
     /** Wired by MainComponent: called after Clear All Presets deletes slot files. */
     std::function<void()> onPresetsCleared;
     std::function<void()> onFullBackup;
+    /** Explicit Windows Receiver update flow; MainComponent owns the checker. */
+    std::function<void()> onReceiverMaintenance;
     std::function<void()> onFullRestore;
 
 private:
@@ -118,6 +120,7 @@ private:
     juce::TextButton clearPluginCacheBtn_{"Clear Plugin Cache"};
     juce::TextButton clearPresetsBtn_{"Clear All Presets"};
     juce::TextButton resetSettingsBtn_{"Factory Reset"};
+    juce::TextButton updateReceiverBtn_{"Update Receiver..."};
 
     // In-memory log history
     juce::StringArray logLines_;

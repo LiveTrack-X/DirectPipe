@@ -64,7 +64,8 @@ MainComponent::MainComponent(bool enableExternalControls)
         });
     };
 
-    // In audio-only mode, also block IPC (shared memory name would conflict)
+    // Extra host instances remain audio-only: both transport names belong to
+    // the primary writer. Multiple Receivers do not permit multiple producers.
     if (!enableExternalControls)
         audioEngine_.setIpcAllowed(false);
 
@@ -291,6 +292,11 @@ MainComponent::MainComponent(bool enableExternalControls)
     // Settings panel owns logs, startup behavior, and maintenance actions.
     {
         auto settingsPanel = std::make_unique<LogPanel>();
+        // Explicit maintenance discovers older installed Receivers and previews
+        // destinations. Receiver-only installation keeps this host running.
+        settingsPanel->onReceiverMaintenance = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+            if (safeThis) safeThis->updateChecker_.checkForReceiverUpdate();
+        };
         settingsPanel->setStartMinimizedToTrayEnabled(startMinimizedToTrayOnLaunch_);
         settingsPanel->onStartMinimizedToTrayChanged = [this](bool enabled) {
             setStartMinimizedToTrayOnLaunch(enabled);
@@ -802,7 +808,8 @@ MainComponent::MainComponent(bool enableExternalControls)
     presetSlotBar_->updateSlotButtonStates();
     updateAutoButtonVisual();
 
-    // Update checker: set callbacks and start
+    // Startup only marks a strictly newer published host release in the link.
+    // It does not open Receiver maintenance or prompt when current/ahead.
     updateChecker_.onUpdateAvailable = [safeThis = juce::Component::SafePointer<MainComponent>(this)](
             const juce::String& version, const juce::String& /*downloadUrl*/) {
         if (!safeThis) return;
@@ -1103,7 +1110,7 @@ void MainComponent::timerCallback()
         pluginChainEditor_->setLimiterGR(audioEngine_.getSafetyLimiter().getCurrentGainReduction());
     }
 
-    // Update recording state in OutputPanel (Monitor tab)
+    // Update recording state in OutputPanel (Output tab)
     if (outputPanelPtr_) {
         bool isRec = audioEngine_.getRecorder().isRecording();
         double recSecs = audioEngine_.getRecorder().getRecordedSeconds();

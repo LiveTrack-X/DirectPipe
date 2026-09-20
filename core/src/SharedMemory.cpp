@@ -114,7 +114,7 @@ bool SharedMemory::create(const std::string& name, size_t size)
         size_ = size;
     }
     createOpenedExistingObject_ = openedExisting;
-    isCreator_ = true;  // Mark as creator so close() can clean up properly
+    isCreator_ = true;  // Tracks creator role; Windows close always releases its view/handle.
     return true;
 }
 
@@ -201,6 +201,7 @@ bool NamedEvent::create(const std::string& name)
 bool NamedEvent::open(const std::string& name)
 {
     close();
+    // Consumer wait-only handle. The legacy producer signals its create() handle.
     event_ = OpenEventA(SYNCHRONIZE, FALSE, name.c_str());
     return event_ != nullptr;
 }
@@ -309,7 +310,8 @@ bool SharedMemory::create(const ::std::string& name, size_t size)
     close();
     name_ = toPosixName(name);
 
-    // Remove any existing shared memory with this name
+    // Replace the name, not retained views. Receivers compare object identities
+    // on their worker to find the fresh object, including while waiting for an ack.
     shm_unlink(name_.c_str());
 
     fd_ = shm_open(name_.c_str(), O_CREAT | O_RDWR, 0600);
@@ -492,7 +494,7 @@ void NamedEvent::close()
 {
     if (sem_) {
         if (sem_close(static_cast<sem_t*>(sem_)) != 0) {
-            // Log but continue cleanup
+            // Ignore the close error and continue local cleanup.
         }
         sem_ = nullptr;
     }
@@ -591,7 +593,7 @@ void NamedEvent::close()
 {
     if (sem_) {
         if (sem_close(static_cast<sem_t*>(sem_)) != 0) {
-            // Log but continue cleanup
+            // Ignore the close error and continue local cleanup.
         }
         sem_ = nullptr;
     }

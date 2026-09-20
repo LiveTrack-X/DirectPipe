@@ -18,10 +18,11 @@
 
 /**
  * @file SharedMemWriter.h
- * @brief Producer-side shared memory writer for OBS IPC
+ * @brief Producer-side shared memory writer for legacy and independent Receivers
  *
- * Writes processed PCM audio into the shared ring buffer
- * and signals the OBS plugin that new data is available.
+ * Interleaves processed PCM once, then feeds the legacy ring buffer and the
+ * eight independent Receiver queues. Both carry the same processed stream;
+ * only the legacy endpoint uses an event signal and supports just one reader.
  */
 #pragma once
 
@@ -29,6 +30,7 @@
 #include "directpipe/RingBuffer.h"
 #include "directpipe/SharedMemory.h"
 #include "directpipe/Constants.h"
+#include "directpipe/FanOut.h"
 
 #include <atomic>
 
@@ -39,10 +41,11 @@ class SharedMemWriterTestAccess;
 #endif
 
 /**
- * @brief Writes audio to shared memory for the OBS plugin to read.
+ * @brief Writes the same processed stream to independent and legacy Receivers.
  *
- * Creates and manages the shared memory region and named event.
- * Safe to call write methods from the real-time audio thread.
+ * Creates and manages both shared mappings and the legacy named event.
+ * writeAudio is single-audio-thread only. initialize/shutdown run on a control
+ * thread; shutdown closes admission and drains entered writes before unmapping.
  */
 class SharedMemWriter {
 public:
@@ -50,25 +53,31 @@ public:
     ~SharedMemWriter();
 
     /**
-     * @brief Initialize shared memory and event objects.
+     * @brief Initialize both transports off the audio thread.
+     * A failed legacy mapping/event does not disable FanOut, or vice versa.
+     * This producer-side independence does not authorize a Receiver to bypass
+     * an available full or incompatible FanOut mapping by using legacy v1.
      * @param sampleRate Audio sample rate.
      * @param channels Number of channels.
-     * @param bufferFrames Ring buffer capacity in frames.
-     * @return true if initialization succeeded.
+     * @param bufferFrames Capacity of the legacy queue and each independent queue.
+     * @return true if at least one transport initialized successfully.
      */
     [[nodiscard]] bool initialize(uint32_t sampleRate,
                                   uint32_t channels,
                                   uint32_t bufferFrames);
 
     /**
-     * @brief Shut down and release shared memory resources.
+     * @brief Close write admission, drain admitted callbacks, then retire both mappings.
+     * Control thread only; waiting here must never occur inside writeAudio.
      */
     void shutdown();
 
     /**
-     * @brief Write audio data to the shared ring buffer.
+     * @brief Interleave once and write the same audio to both initialized transports.
      *
-     * Called from the real-time audio thread. No allocations, no locks.
+     * Called from the real-time audio thread. No allocation or mutex acquisition.
+     * FanOut uses bounded atomics/copies only; the retained legacy event signal
+     * is an OS call. Test-only builds can inject a blocking write barrier.
      *
      * @param buffer JUCE audio buffer with processed audio.
      * @param numSamples Number of samples to write.
@@ -76,12 +85,18 @@ public:
     void writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples);  // [RT thread only — no alloc, no lock]
 
     /**
-     * @brief Check if the shared memory is active and connected.
+     * @brief Whether at least one transport is ready to accept writes.
+     * This does not indicate that a Receiver is currently attached.
      */
     bool isConnected() const { return connected_.load(std::memory_order_acquire); }
 
     /**
-     * @brief Get the number of frames dropped due to buffer overrun.
+     * @brief Cumulative delivery frames dropped across attached Receiver sinks.
+     *
+     * Drops are summed per claimed destination, so one frame missed by two
+     * Receivers counts twice. An unattached legacy queue does not contribute.
+     * FanOut slots remain claimed while idle or until dead-owner reclaim;
+     * this is not a live-callback count, device XRun, or single-stream statistic.
      */
     uint64_t getDroppedFrames() const { return droppedFrames_.load(std::memory_order_relaxed); }
 
@@ -91,14 +106,23 @@ private:
     using TestWriteBarrier = void (*)(void* context);
     TestWriteBarrier testWriteBarrier_ = nullptr;
     void* testWriteBarrierContext_ = nullptr;
+    std::string testLegacyName_ = SHM_NAME;
+    std::string testEventName_ = EVENT_NAME;
+    std::string testFanOutName_;
+    bool testTransportNamesConfigured_ = false;
 #endif
+
+    // Control-side only: admission must be closed and admitted writes drained.
+    void shutdownLegacy();
 
     SharedMemory sharedMemory_;
     NamedEvent dataEvent_;
     RingBuffer ringBuffer_;
+    SharedMemory fanOutMemory_;
+    FanOutProducer fanOutProducer_;
 
-    // Pre-allocated interleave buffer (for converting JUCE's
-    // non-interleaved format to interleaved for the ring buffer)
+    // Pre-allocated once per initialize: one JUCE planar-to-interleaved conversion
+    // is shared by the legacy queue and every claimed independent queue.
     std::vector<float> interleaveBuffer_;
 
     std::atomic<bool> connected_{false};
@@ -116,6 +140,13 @@ public:
     static void setWriteBarrier(SharedMemWriter& writer,
                                 WriteBarrier barrier,
                                 void* context);
+
+    // Configure only while disconnected. Empty fanOutName exercises the exact
+    // legacy-only lifecycle without touching either production endpoint.
+    static void configureTransportNames(SharedMemWriter& writer,
+                                        const std::string& legacyName,
+                                        const std::string& eventName,
+                                        const std::string& fanOutName);
 };
 #endif
 

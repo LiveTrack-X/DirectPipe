@@ -21,6 +21,10 @@ If you discover a security vulnerability in DirectPipe, **please do NOT report i
 
 ## 지원 버전 / Supported Versions
 
+아래는 공개 버전 지원 정책입니다. 4.4.0은 현재 미공개 로컬 후보이며
+이 표의 공개 릴리즈 상태를 변경하지 않습니다. / The table is the published
+support policy; the local 4.4.0 candidate is not a published release.
+
 | Version | Supported |
 |---|---|
 | v4.3.0 | ✅ |
@@ -94,6 +98,17 @@ Strictly speaking, state-changing actions should use POST per REST semantics, bu
 
 Audio transfer between host and Receiver VST uses OS shared memory.
 
+4.4.0은 기존 `Local\DirectPipeAudio`와 별도로
+`Local\DirectPipeAudioFanOutV1`에 최대 8개의 독립 큐를 둡니다. 양쪽 모두 아래
+공유 메모리 권한을 사용하며, 큐 분리는 같은 사용자 프로세스에 대한 보안 격리가 아닙니다.
+Named Event/semaphore 알림은 legacy 전송에만 남고 새 전송은 producer 확인과
+슬롯별 atomic 상태를 사용합니다. 슬롯 회수는 정상 해제 또는 확인된 프로세스 종료에
+한하며, callback 정지·시간 초과만으로 소유권을 빼앗지 않습니다.
+/ The additive eight-reader mapping uses the same access policy as the legacy
+mapping. Independent queues are not a same-user security boundary. Only legacy
+delivery uses the named event/semaphore; fan-out uses producer acknowledgement
+and per-slot atomic state. Reclaim requires release or proven process death.
+
 | 플랫폼 / Platform | 메커니즘 / Mechanism | 권한 / Permissions |
 |---|---|---|
 | **Windows** | `CreateFileMapping` + `CreateEvent` | 기본 DACL (같은 사용자 접근 가능) / Default DACL (same-user access) |
@@ -112,17 +127,29 @@ The auto-updater checks the GitHub Releases API for new versions and downloads b
 **무결성 검증 / Integrity Verification**:
 - v4.2.0 이상 Windows 인앱 업데이트는 정확히 일치하는 `checksums.sha256` 항목과 다운로드 파일의 SHA-256 일치를 필수로 검증합니다
 - checksum metadata가 없거나 읽을 수 없거나 일치하지 않으면 교체 전에 fail-closed합니다
-- 최소 파일 크기 검증 (100KB 이상)
+- 최소 파일 크기 검증 (100 KiB 이상)
 - 현재 신뢰된 코드 서명 인증서가 없으므로 공식 Windows 패키지도 unsigned일 수 있습니다. 인앱 checksum은 전송/패키지 정합성 검사이며 Authenticode publisher identity를 대신하지 않습니다
 
 - Windows in-app updates for v4.2.0 and later require an exact readable `checksums.sha256` entry and matching downloaded SHA-256
 - Missing, unreadable, or mismatched checksum metadata fails closed before replacement
-- Minimum file size check (>100KB)
+- Minimum file size check (at least 100 KiB)
 - With no trusted code-signing certificate configured, official Windows packages may be unsigned. The in-app checksum verifies package/transport consistency; it does not replace Authenticode publisher identity
 
 **플랫폼별 동작 / Platform Behavior**:
 - **Windows**: 자동 다운로드 → 배치 스크립트로 교체 → 재시작 / Auto-download → batch script replacement → restart
 - **macOS/Linux**: "View on GitHub" 버튼 (수동 다운로드) / Manual download only
+
+Windows에서 Receiver를 포함한 갱신은 대상 경로·실제 제품/포맷·버전과 패키지
+SHA-256을 검증한 뒤 PowerShell 트랜잭션으로 적용합니다. 준비한 파일도 재검증하고
+사용 중인 대상은 차단하며, 전체 VST3 번들을 교체하고 실패 시 백업 복구를 시도합니다.
+현재/더 최신 버전은 보존합니다. 보호된 경로는 UAC를 요구할 수 있습니다. OBS/DAW는
+자동 종료하지 않고 **Retry / Later**로 안내하며 Receiver-only 갱신은 본체를 종료하지
+않습니다. Receiver가 없는 host-only 갱신은 기존 배치 경로를 유지합니다.
+/ Companion upkeep validates exact targets, product/format/version, archive hash
+and staged identities, then uses a PowerShell transaction with in-use checks,
+complete VST3 bundle replacement and attempted rollback on failure. Current/newer
+versions are preserved. UAC may be required. Apps are closed manually; Receiver-only
+maintenance leaves the host running. Host-only updates retain the batch path.
 
 ### VST 플러그인 보안 / VST Plugin Security
 

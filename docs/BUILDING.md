@@ -1,6 +1,7 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current release / 현재 릴리즈: 4.3.0**
+> **Current source / 현재 소스: 4.4.0**
+> Historical v4.3.0 release results below are separate from [4.4.0 validation](MULTI_RECEIVER_4_4_0.md). / 아래 v4.3.0 검증 수치는 당시 기록이며 현재 소스의 검증과 구분합니다.
 
 > **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 전체 플랫폼 빌드·패키지·checksum·Windows unsigned 상태를 검증했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
 > **Platform support**: Windows 10/11 x64 is the stable release target. v4.3.0 completed 582 local Windows Release registrations with 580 passed, 2 environment-dependent skips, and 0 failures, plus exact-tag CI run `30701998763`. Cross-platform builds, packages, checksums, and Windows unsigned state were verified. Real-device and third-party VST crash-containment remain separate evidence.
@@ -146,6 +147,7 @@ build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST/*.dll           
 build/plugins/receiver/DirectPipeReceiver_artefacts/Release/VST3/*.vst3         Receiver VST3
 build/bin/Release/directpipe-tests.exe                                          Core tests
 build/tests/directpipe-host-tests_artefacts/Release/directpipe-host-tests.exe   Host tests
+build/tests/directpipe-receiver-tests_artefacts/Release/directpipe-receiver-tests.exe  Receiver processor tests
 ```
 
 ### macOS
@@ -200,9 +202,34 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Three test executables are built: `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (JUCE host coverage), and `directpipe-endpoint-watcher-tests` (focused endpoint notification coverage). v4.3.0 passed all 582 local Windows Release registrations (580 passed, 2 environment-dependent skips, 0 failed), exact-tag CI run `30701998763`, public package checksums, and executable-version identity. Authenticode remains optional until a trusted certificate is configured.
+Four test targets are available when host and Receiver are enabled:
+`directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (host),
+`directpipe-endpoint-watcher-tests` (endpoint notifications), and
+`directpipe-receiver-tests` (actual Receiver processor using isolated in-memory
+connections and uniquely named test mappings). The latter never attaches to the
+user's production IPC stream. `fanout-test-child` supports separate-process
+core tests; it is a helper, not a fifth CTest suite.
 
-세 개의 테스트 실행 파일을 빌드합니다: `directpipe-tests`(코어, JUCE 의존성 없음), `directpipe-host-tests`(JUCE 호스트 범위), `directpipe-endpoint-watcher-tests`(endpoint 알림 집중 검증). v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`, 패키지 checksum, 실행 파일 버전 신원 검증을 완료했습니다. 신뢰 인증서가 설정되기 전 Authenticode는 선택 사항입니다.
+호스트와 Receiver를 활성화하면 네 테스트 target을 빌드합니다. 새 Receiver 전용
+테스트는 실제 processor 코드를 로컬 메모리와 고유한 테스트 mapping으로 실행하며
+사용자 운영 IPC에 연결하지 않습니다.
+
+Build and run the focused 4.4.0 tests without launching the app:
+
+```bash
+cmake --build build --config Release --target directpipe-tests directpipe-host-tests directpipe-receiver-tests
+ctest --test-dir build -C Release --output-on-failure -R "FanOut|VSTChainTest|Receiver.*Test|CompanionUpdatePlanTest|UpdateScript"
+```
+
+The tables below preserve the **v4.3.0 historical inventory** (582 CTest
+registrations: 580 passed, 2 environment-dependent skips, 0 failed; exact-tag CI
+`30701998763`). Version 4.4.0 adds independent transport, preset, actual Receiver and updater coverage;
+use its [validation report](MULTI_RECEIVER_4_4_0.md) and current CTest
+results for current totals. Do not treat old counts as new release evidence.
+Authenticode remains optional until a trusted certificate is configured.
+
+아래 표는 **v4.3.0 이력**입니다. 4.4.0의 추가 테스트와 통합 결과는 별도 검증
+보고서에 기록하며 이전 성공 수치를 새 릴리즈의 통과 수치로 재사용하지 않습니다.
 
 ### directpipe-tests (Core)
 
@@ -256,9 +283,16 @@ Host test source files additionally include HTTP/WebSocket shutdown, shared-memo
 
 ### GTest JSON Output / GTest JSON 출력
 
-`tools/pre-release-test.sh` generates GTest JSON output files (`core-test-results.json`, `host-test-results.json`, and `endpoint-test-results.json`) that can be loaded into the pre-release dashboard or retained as validation evidence.
+`tools/pre-release-test.sh` includes `directpipe-receiver-tests` in its Step 2
+build targets and executes it in Step 4b, alongside core, host and endpoint tests.
+This target tests the actual Receiver processor with isolated test connections.
+It generates `core-test-results.json`,
+`host-test-results.json`, `receiver-test-results.json` and `endpoint-test-results.json`.
+Retain these as validation evidence; dashboard support depends on the result type.
 
-`tools/pre-release-test.sh`는 core, host, endpoint GTest JSON 출력 파일을 생성하며, 프리릴리즈 대시보드에서 로드하거나 검증 증거로 보존할 수 있습니다.
+`tools/pre-release-test.sh`는 Step 2에서 `directpipe-receiver-tests`도 빌드하고
+Step 4b에서 실행합니다. 실제 Receiver processor에 격리된 테스트 연결을 주입하는
+target이며 위 네 JSON을 생성합니다. 대시보드 지원 형식과 구분하여 보존할 수 있습니다.
 
 Exact-tag CI uploads 30-day JUnit/CTest logs for Windows, macOS, and Linux plus
 the Stream Deck TAP log as separate evidence artifacts; these logs are not

@@ -9,12 +9,75 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <stdexcept>
 
 #if JUCE_WINDOWS
  #include <windows.h>
 #endif
 
 using namespace directpipe;
+
+namespace {
+// Exercise the real VSTChain/AudioProcessorGraph path with a deterministic
+// in-process plug-in. No audio device or external VST is opened. These probes
+// establish render/state exclusion and cleanup, not audible switch quality or
+// recovery from a third-party callback that never returns.
+class SuspensionProbePlugin final : public juce::AudioPluginInstance {
+public:
+    SuspensionProbePlugin() { setPlayConfigDetails(2, 2, 48000.0, 512); }
+    std::atomic<int> processCalls{0};
+    std::function<void()> onProcess;
+    std::function<void()> onRestore;
+
+    void fillInPluginDescription(juce::PluginDescription& desc) const override
+    {
+        desc.name = "SuspensionProbe";
+        desc.pluginFormatName = "Test";
+    }
+    const juce::String getName() const override { return "SuspensionProbe"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        ++processCalls;
+        if (onProcess) onProcess();
+        buffer.applyGain(0.5f);
+    }
+    bool hasEditor() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override { if (onRestore) onRestore(); }
+};
+
+void renderProbeBlock(VSTChain& chain, juce::AudioBuffer<float>& buffer)
+{
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        juce::FloatVectorOperations::fill(buffer.getWritePointer(channel), 0.5f,
+                                          buffer.getNumSamples());
+    std::thread audio([&] { chain.processBlock(buffer, buffer.getNumSamples()); });
+    audio.join();
+}
+
+#if JUCE_WINDOWS
+bool renderAndCatchStructuredException(VSTChain& chain, juce::AudioBuffer<float>& buffer)
+{
+    __try {
+        chain.processBlock(buffer, buffer.getNumSamples());
+        return false;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return true;
+    }
+}
+#endif
+} // namespace
 
 class VSTChainTest : public ::testing::Test {
 protected:
@@ -37,8 +100,216 @@ protected:
         ASSERT_TRUE(r.success) << "addBuiltinProcessor failed: " << r.message.toStdString();
     }
 
+    SuspensionProbePlugin* addProbe()
+    {
+        auto instance = std::make_unique<SuspensionProbePlugin>();
+        auto* probe = instance.get();
+        VSTChain::PreloadedPlugin entry;
+        entry.instance = std::move(instance);
+        entry.request.name = "SuspensionProbe";
+        std::vector<VSTChain::PreloadedPlugin> entries;
+        entries.push_back(std::move(entry));
+        EXPECT_TRUE(chain_->replaceChainWithPreloaded(std::move(entries), nullptr));
+        return probe;
+    }
+
     std::unique_ptr<VSTChain> chain_;
 };
+
+TEST_F(VSTChainTest, SuspendedGraphEmitsSilenceAndResumes)
+{
+    auto* probe = addProbe();
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 1);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+
+    chain_->suspendProcessing(true);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 1);
+    EXPECT_FLOAT_EQ(buffer.getMagnitude(0, 512), 0.0f);
+
+    chain_->suspendProcessing(false);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 2);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+}
+
+TEST_F(VSTChainTest, SuspendedStateRestoreCannotOverlapProcessing)
+{
+    auto* probe = addProbe();
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderProbeBlock(*chain_, buffer);
+    probe->onRestore = [&] { renderProbeBlock(*chain_, buffer); };
+
+    chain_->suspendProcessing(true);
+    probe->setStateInformation(nullptr, 0);
+    chain_->suspendProcessing(false);
+    EXPECT_EQ(probe->processCalls.load(), 1);
+    EXPECT_FLOAT_EQ(buffer.getMagnitude(0, 512), 0.0f);
+}
+
+TEST_F(VSTChainTest, SuspensionDrainsAlreadyRunningCallbackBeforeStateRestore)
+{
+    auto* probe = addProbe();
+    juce::AudioBuffer<float> buffer(2, 512);
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool entered = false;
+    bool release = false;
+    std::atomic<bool> restored{false};
+    probe->onProcess = [&] {
+        std::unique_lock<std::mutex> lock(mutex);
+        entered = true;
+        condition.notify_all();
+        condition.wait(lock, [&] { return release; });
+    };
+    probe->onRestore = [&] { restored.store(true); };
+    std::thread audio([&] { chain_->processBlock(buffer, 512); });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        const bool started = condition.wait_for(lock, std::chrono::seconds(2), [&] { return entered; });
+        if (!started) {
+            release = true;
+            condition.notify_all();
+            lock.unlock();
+            audio.join();
+            FAIL() << "Probe never entered processBlock";
+        }
+    }
+    std::thread control([&] {
+        VSTChain::ScopedProcessingSuspension suspension(*chain_);
+        probe->setStateInformation(nullptr, 0);
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (chain_->isProcessingAdmittedForTest() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    EXPECT_FALSE(chain_->isProcessingAdmittedForTest());
+    EXPECT_FALSE(restored.load());
+    EXPECT_EQ(chain_->getProcessingInFlightForTest(), 1u);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release = true;
+    }
+    condition.notify_all();
+    audio.join();
+    control.join();
+    EXPECT_TRUE(restored.load());
+    EXPECT_TRUE(chain_->isProcessingAdmittedForTest());
+    EXPECT_EQ(chain_->getProcessingInFlightForTest(), 0u);
+}
+
+TEST_F(VSTChainTest, NestedSuspensionAndRebuildCannotResumeOuterRestore)
+{
+    addProbe();
+    juce::AudioBuffer<float> buffer(2, 512);
+    {
+        VSTChain::ScopedProcessingSuspension outer(*chain_);
+        {
+            VSTChain::ScopedProcessingSuspension inner(*chain_);
+            addBuiltin(PluginSlot::Type::BuiltinFilter);
+        }
+        chain_->suspendProcessing(false);
+        renderProbeBlock(*chain_, buffer);
+        EXPECT_FLOAT_EQ(buffer.getMagnitude(0, 512), 0.0f);
+        EXPECT_FALSE(chain_->isProcessingAdmittedForTest());
+    }
+    EXPECT_TRUE(chain_->isProcessingAdmittedForTest());
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_GT(buffer.getMagnitude(0, 512), 0.0f);
+}
+
+TEST_F(VSTChainTest, ManualSuspensionKeepsBooleanSemanticsAcrossScopedMutation)
+{
+    auto* probe = addProbe();
+    juce::AudioBuffer<float> buffer(2, 512);
+    chain_->suspendProcessing(true);
+    chain_->suspendProcessing(true);
+    {
+        VSTChain::ScopedProcessingSuspension scope(*chain_);
+    }
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 0);
+    chain_->suspendProcessing(false);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 1);
+}
+
+TEST_F(VSTChainTest, SuspensionResumesAfterStateRestoreThrows)
+{
+    auto* probe = addProbe();
+    probe->onRestore = [] { throw std::runtime_error("state restore failed"); };
+    EXPECT_THROW({
+        VSTChain::ScopedProcessingSuspension scope(*chain_);
+        probe->setStateInformation(nullptr, 0);
+    }, std::runtime_error);
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 1);
+    EXPECT_EQ(chain_->getProcessingInFlightForTest(), 0u);
+}
+
+TEST_F(VSTChainTest, RenderLeaseDrainsWhenPluginThrows)
+{
+    auto* probe = addProbe();
+    probe->onProcess = [] { throw std::runtime_error("DSP failed"); };
+    juce::AudioBuffer<float> buffer(2, 512);
+    bool caught = false;
+    std::thread audio([&] {
+        try { chain_->processBlock(buffer, 512); }
+        catch (const std::runtime_error&) { caught = true; }
+    });
+    audio.join();
+    EXPECT_TRUE(caught);
+    EXPECT_EQ(chain_->getProcessingInFlightForTest(), 0u);
+    probe->onProcess = nullptr;
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+}
+
+#if JUCE_WINDOWS
+TEST_F(VSTChainTest, RenderLeaseDrainsWhenPluginRaisesStructuredException)
+{
+    auto* probe = addProbe();
+    probe->onProcess = [] { RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr); };
+    juce::AudioBuffer<float> buffer(2, 512);
+    bool caught = false;
+    std::thread audio([&] { caught = renderAndCatchStructuredException(*chain_, buffer); });
+    audio.join();
+    EXPECT_TRUE(caught);
+    EXPECT_EQ(chain_->getProcessingInFlightForTest(), 0u);
+    probe->onProcess = nullptr;
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+}
+#endif
+
+TEST_F(VSTChainTest, ReleasedGraphEmitsSilenceAndPrepareRestoresProcessing)
+{
+    auto* probe = addProbe();
+    chain_->releaseResources();
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 0);
+    EXPECT_FLOAT_EQ(buffer.getMagnitude(0, 512), 0.0f);
+    chain_->prepareToPlay(48000.0, 512);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 1);
+}
+
+TEST_F(VSTChainTest, FailedStagedSwapResumesOldAudio)
+{
+    auto* probe = addProbe();
+    VSTChain::PreloadedPlugin invalid;
+    invalid.request.name = "Missing instance";
+    std::vector<VSTChain::PreloadedPlugin> entries;
+    entries.push_back(std::move(invalid));
+    EXPECT_FALSE(chain_->replaceChainWithPreloaded(std::move(entries), nullptr));
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderProbeBlock(*chain_, buffer);
+    EXPECT_EQ(probe->processCalls.load(), 1);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+}
 
 // Test 1: VSTChain starts with zero plugins
 TEST_F(VSTChainTest, InitialEmpty) {

@@ -18,11 +18,12 @@
 
 /**
  * @file PluginPreloadCache.h
- * @brief Background pre-loading of plugin instances for instant preset switching
+ * @brief Background pre-loading to reduce external plug-in construction at slot switch
  *
  * After a slot is loaded, this cache pre-loads plugin instances for other
  * occupied slots in the background. When the user switches to a cached slot,
- * the pre-loaded instances are used directly (no DLL loading delay).
+ * the pre-loaded instances skip DLL construction. State restore and graph commit
+ * still occur under VSTChain's suspension and can take plug-in-dependent time.
  */
 #pragma once
 
@@ -60,7 +61,7 @@ public:
 
     /**
      * @brief Take cached slot data (transfers ownership).
-     * @return The cached slot or nullptr if not cached / SR mismatch.
+     * @return The cached slot or nullptr if absent or its SR/block size is incompatible.
      */
     std::unique_ptr<CachedSlot> take(int slotIndex, double currentSR, int currentBS);
 

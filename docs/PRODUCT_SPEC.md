@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — 공개된 v4.3.0 구현을 기준으로 작성
+> 역기획서 — v4.4.0 소스 기준. 아래 v4.3.0 검증 이력은 현재 소스의 검증과 구분합니다.
 >
-> Reverse spec — based on the published v4.3.0 implementation
+> Reverse spec — current v4.4.0 source. Historical v4.3.0 validation is separate from [4.4.0 evidence](MULTI_RECEIVER_4_4_0.md).
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.3.0
+4.4.0
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -101,9 +101,9 @@ Mic Input  → VST Plugin Chain   → Output
 | 드라이버 타입 / Driver Type | **Windows**: 5종 — DirectSound (레거시 / legacy), WASAPI Shared (권장 / recommended), WASAPI Low Latency (IAudioClient3), WASAPI Exclusive, ASIO. **macOS**: CoreAudio. **Linux**: ALSA, JACK |
 | 드라이버 전환 / Driver Switching | 런타임 전환 가능 / Runtime switching supported. ASIO (Windows): 입력/출력을 하나의 duplex 드라이버로 취급, 동적 SR/BS, 채널 라우팅 / treats input/output as one duplex driver, dynamic SR/BS, channel routing. WASAPI: 입출력 분리 가능 / separate input/output possible |
 | ASIO SR/BS 정책 / ASIO SR/BS Policy | ASIO 장치는 SR/BS를 전역으로 소유 (장치를 공유하는 모든 앱에 영향). DirectPipe는 ASIO 시작/복원 시 저장된 BS를 강제하지 않고 실제 BS를 수용하지만, 저장 파일에 명시된 SR(예: 48k)이 있고 드라이버가 다른 SR(예: 44.1k)을 보고하면 그 SR을 다음 복원 대상으로 덮어쓰지 않는다. ASIO 컨트롤 패널에서 변경한 BS는 설정에 반영된다. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값 강제 적용 (다른 앱에 영향 없음) / ASIO devices own SR/BS globally. On ASIO startup/restore, DirectPipe accepts the actual buffer size without forcing a driver restart, but if settings explicitly requested a sample rate (for example 48k) and the driver reports a different rate (for example 44.1k), the requested SR is preserved for the next restore. ASIO control-panel BS changes are saved. WASAPI/CoreAudio/ALSA use per-app SR/BS, so saved values are safely forced. |
-| 시작 흐름 / Startup Flow | WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 설정 시 저장된 ASIO 장치로만 전환 시도 (~100ms, 창 표시 전 완료). 저장된 ASIO가 없으면 FL Studio ASIO/Realtek ASIO 같은 다른 ASIO로 넘어가지 않고 WASAPI에 남아 저장 target을 기다림 / Opens WASAPI first (safe fallback) → loads saved driver type from settings → switches only to the saved ASIO device if configured (~100ms, before window shown). If the saved ASIO device is missing, DirectPipe stays on WASAPI and waits for the saved target instead of falling through to other ASIO drivers such as FL Studio ASIO or Realtek ASIO |
+| 시작 흐름 / Startup Flow | Windows에서는 WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 설정 시 저장된 ASIO 장치로만 전환 시도. 장치 초기화 시간은 드라이버에 따라 다름. 저장된 ASIO가 없으면 FL Studio ASIO/Realtek ASIO 같은 다른 ASIO로 넘어가지 않고 WASAPI에 남아 저장 target을 기다림 / On Windows, opens WASAPI first (safe fallback) → loads saved driver type from settings → switches only to the saved ASIO device if configured. Device initialization time depends on the driver. If the saved ASIO device is missing, DirectPipe stays on WASAPI and waits for the saved target instead of falling through to other ASIO drivers such as FL Studio ASIO or Realtek ASIO |
 | 채널 모드 / Channel Mode | Mono / Stereo (기본값 / default: Stereo, `channelMode_` = 2) |
-| 입력 게인 / Input Gain | 0.0x ~ 2.0x (기본 / default 1.0x). `|gain - 1.0f| > 0.001f`일 때만 SIMD 적용 / SIMD applied only when gain differs from 1.0 |
+| 입력 게인 / Input Gain | 0.0x ~ 2.0x (기본 / default 1.0x). `abs(gain - 1.0f) > 0.001f`일 때만 SIMD 적용 / SIMD applied only when gain differs from 1.0 |
 | 샘플레이트 / Sample Rate | 장치 지원 범위 (일반적 44.1kHz ~ 192kHz) / Device-supported range (typically 44.1kHz ~ 192kHz) |
 | 버퍼 크기 / Buffer Size | 장치 지원 범위. 자동 폴백: 장치가 요청 크기를 거부하면 가장 가까운 지원 크기 선택 후 NotificationBar 알림 / Device-supported range. Auto-fallback: if device rejects requested size, selects closest supported size and shows NotificationBar alert |
 
@@ -130,15 +130,15 @@ Mic Input  → VST Plugin Chain   → Output
 
 #### 4.1.3 출력 경로 (3가지 + 녹음) / Output Paths (3 + Recording)
 
-3가지 출력 경로는 모두 **독립적으로 켜기/끄기 및 볼륨 조절**이 가능하다. OUT/MON/VST 버튼 또는 외부 제어(핫키, MIDI, Stream Deck, HTTP API)로 각 경로를 개별 제어하여, 예를 들어 OBS 마이크만 끄고 Discord는 유지하거나 그 반대도 가능하다. Panic Mute(Ctrl+Shift+M)로 전체를 즉시 차단하고 활성 녹음을 중지할 수 있으며, 해제 시 이전 ON/OFF 상태가 자동 복원된다(녹음은 자동 재시작하지 않음). 패닉 중에는 대부분의 액션이 차단되며 Input Mute/XRun Reset/Safety Guard(legacy SafetyLimiter names)/AutoProcessorsAdd는 유지보수·준비 용도로 허용된다.
+3가지 출력 경로는 **독립적으로 켜고 끌 수 있다**. 별도 볼륨은 Main/Monitor에 제공하며 IPC는 최종 처리 음성을 그대로 전달한다. OUT/MON/VST 버튼 또는 외부 제어로 경로를 제어하고, VST는 연결된 Receiver 전체 송신을 제어한다. 각 Receiver의 로컬 Mute는 해당 수신기에만 적용된다. Panic Mute(Ctrl+Shift+M)는 전체 출력을 차단하고 활성 녹음을 중지하며, 해제 시 이전 ON/OFF 상태를 복원한다(녹음은 자동 재시작하지 않음). 패닉 중에는 대부분의 액션이 차단되며 Input Mute/XRun Reset/Safety Guard(legacy SafetyLimiter names)/AutoProcessorsAdd는 유지보수·준비 용도로 허용된다.
 
-All 3 output paths can be **independently toggled and volume-adjusted**. Use OUT/MON/VST buttons or external controls (hotkeys, MIDI, Stream Deck, HTTP API) to independently control each path — e.g., mute OBS mic while keeping Discord active, or vice versa. Panic Mute (Ctrl+Shift+M) kills all outputs instantly and stops active recording; previous ON/OFF states auto-restore on unmute (recording does not auto-restart). During panic, most actions (bypass, volume, preset, gain, recording, plugin parameters) are blocked; Input Mute/XRun Reset/Safety Guard controls (legacy SafetyLimiter names)/AutoProcessorsAdd are allowed.
+All 3 output paths can be **independently toggled**. Main and Monitor have separate volume controls; IPC carries the final processed signal unchanged. OUT/MON/VST or external controls select the paths; VST controls transmission to every Receiver, while each Receiver's local Mute affects only itself. Panic Mute (Ctrl+Shift+M) kills all outputs and stops active recording; previous ON/OFF states restore on unmute (recording does not auto-restart). During panic, most actions are blocked; Input Mute/XRun Reset/Safety Guard controls (legacy SafetyLimiter names)/AutoProcessorsAdd remain allowed.
 
 | 경로 / Path | 설명 / Description | 기술 / Technology | 제어 / Control |
 |------|------|------|------|
 | **Main Output** | 메인 출력 (스피커/가상 케이블) / Main output (speakers/virtual cable) | AudioSettings의 Output 장치에 직접 쓰기. WASAPI/ASIO 모두 지원 / Direct write to AudioSettings Output device. Both WASAPI/ASIO supported | OUT 버튼, ToggleMute, SetVolume |
 | **Monitor Output** | 헤드폰 모니터링 (자기 목소리 확인) / Headphone monitoring (hear your own voice) | 별도 shared-mode AudioDeviceManager (Windows: WASAPI, macOS: CoreAudio, Linux: ALSA) + lock-free AudioRingBuffer (8192 프레임, 스테레오, power-of-2) + low-watermark priming + adaptive PLL fractional playback + emergency trim fallback / Separate shared-mode AudioDeviceManager + lock-free AudioRingBuffer (8192 frames, stereo, power-of-2) + low-watermark priming + adaptive PLL fractional playback + emergency trim fallback | MON 버튼, MonitorToggle, SetVolume |
-| **IPC Output** | OBS용 DirectPipe Receiver / DirectPipe Receiver for OBS | SharedMemory 기반 IPC. 공유 메모리 이름: `Local\\DirectPipeAudio`. 인터리브 float 형식. POSIX sem/shm 퍼미션 0600 (owner-only) / SharedMemory-based IPC. Shared memory name: `Local\\DirectPipeAudio`. Interleaved float format. POSIX sem/shm permissions 0600 (owner-only) | VST 버튼, IpcToggle |
+| **IPC Output** | OBS/DAW용 DirectPipe Receiver / Receiver for OBS/DAWs | `Local\\DirectPipeAudioFanOutV1`: 독립 큐 최대 8개. `Local\\DirectPipeAudio`: 구형 Receiver 1개용 별도 호환 큐. 인터리브 float, POSIX 0600 / Eight independent FanOut queues plus one separate legacy queue; interleaved float, POSIX permissions 0600 | VST 버튼, IpcToggle (전체 송신 / all transmission); Receiver 로컬 Mute / local Mute |
 | **Recording** | WAV 녹음 (VST 체인, Safety Guard, Safety Volume 이후) / WAV recording (after VST chain, Safety Guard, and Safety Volume) | AudioRecorder, ThreadedWriter, RT try-lock/drop during teardown | REC 버튼, RecordingToggle |
 
 #### 4.1.4 오디오 최적화 / Audio Optimizations
@@ -271,8 +271,8 @@ AudioProcessorGraph:
 | 슬롯 수 / Slot Count | 5개 사용자 슬롯 / 5 user slots (A=0, B=1, C=2, D=3, E=4) + 1개 Auto 슬롯 / 1 Auto slot (인덱스 / index 5, 이름 변경 불가 / cannot rename, Next/Previous 사이클 제외 / excluded from Next/Previous cycling, Reset 시 Filter+NoiseRemoval+AutoGain 기본값 복원 / Reset restores Filter+NoiseRemoval+AutoGain defaults) |
 | 저장 내용 / Stored Content | VST 체인만 / VST chain only — 플러그인 이름, 경로 / plugin name, path, PluginDescription, 바이패스 상태 / bypass state, 내부 상태(base64 인코딩) / internal state (base64 encoded) |
 | 저장 위치 / Storage Location | 앱 데이터 디렉토리 / App data directory `Slots/slot_A.dppreset` ~ `slot_E.dppreset` (Windows: `%AppData%/DirectPipe/`, macOS/Linux: see platform paths above) |
-| 전환 속도 / Switch Speed | 캐시 히트 / Cache hit: 10-50ms, DLL 로딩 / DLL loading: 200-500ms |
-| 전환 방식 / Switch Method | **Keep-Old-Until-Ready**: 이전 체인이 오디오 처리 계속 → 새 체인 준비 완료 시 메시지 스레드에서 원자적 교체 / Old chain continues audio processing → atomic swap on message thread when new chain is ready |
+| 전환 속도 / Switch Speed | 프리로드는 재생성 부담을 줄이지만 상태 복원·교체 시간은 플러그인과 시스템에 따라 다름. 고정 시간·무중단 보장 없음 / Preloading avoids construction work; restore/commit duration depends on plugins and system load, with no fixed or gap-free guarantee |
+| 전환 방식 / Switch Method | **Keep-Old-Until-Ready** 유지. 준비 중 기존 처리 계속, 실제 상태 복원·교체 전 callback 진입 차단과 진행 callback 배출, 보호 구간 새 callback은 무음 / Keep processing during preparation; scoped admission close/drain protects actual state restore and commit, silencing newly arriving callbacks |
 | 프리로드 / Preload | `PluginPreloadCache`: 슬롯 로드 후 백그라운드에서 다른 슬롯 플러그인 미리 로드 / After slot load, preloads other slot plugins in background. SR/BS 변경, 구조 변경(이름/경로/순서) 시 무효화 / Invalidated on SR/BS change or structure change (name/path/order). Cache hit 전 현재 슬롯 파일의 plugin type/name/path와 재검증, 불일치 시 stale cache 폐기 후 async load / Cache hits are revalidated against current slot-file plugin type/name/path; mismatches discard stale cache and fall back to async load. 공유 상태의 per-slot 버전 카운터로 프리로드 중 무효화 경합 방지, 종료 시 제한된 message-thread 대기 후 background cleanup 지속 / Shared-state per-slot version counters prevent invalidation races during preload; shutdown uses bounded message-thread waiting and continues background cleanup if needed |
 | 자동 저장 / Auto-Save | 플러그인 에디터 닫을 때 (`onEditorClosed`) 활성 슬롯에 자동 저장 / Auto-saves to active slot when plugin editor closes (`onEditorClosed`) |
 | 슬롯 이름 / Slot Naming | 커스텀 이름 지원 / Custom names supported. 표시 / Display: `A\|게임` (파이프 구분자, 최대 8자 + ".." 자동 잘림 / pipe delimiter, max 8 chars + ".." auto-truncation). `.dppreset` JSON `"name"` 필드에 저장 / stored in `"name"` field. StateBroadcaster `slot_names` 배열로 외부 전달 / externally delivered via `slot_names` array |
@@ -284,7 +284,7 @@ AudioProcessorGraph:
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 생성 카운터 / Generation Counter | `asyncGeneration_` (uint32_t atomic) — 호출마다 증가. 이전 요청의 콜백 폐기 / Incremented per call. Discards callbacks from previous requests |
-| 백그라운드 스레드 / Background Thread | COM 초기화 (`CoInitializeEx`) 후 전체 플러그인을 준비하고, 이전 loader가 남으면 message thread가 아닌 worker가 인계 / Prepares the complete target after COM initialization; any prior loader join is handed to a worker, never the message thread |
+| 백그라운드 스레드 / Background Thread | COM 초기화 후 외부 VST 인스턴스를 준비하며 built-in 요청/상태는 최종 staged 경로에서 처리. 이전 loader join은 worker에 인계 / External VST instances are prepared after COM initialization; built-in requests/state are handled in the final staged path. Prior loader joins are handed to a worker |
 | 메시지 스레드 교체 / Message Thread Swap | 모든 target entry 준비·구조 확인 후 `callAsync`에서 explicit bool staged swap. 실패 시 old graph 유지 / Explicit-bool staged swap via `callAsync` only after every target entry and structure are ready; failure keeps the old graph |
 | 수명 보호 / Lifetime Protection | `alive_` 플래그 (`shared_ptr<atomic<bool>>`) — callAsync 람다에서 this 접근 전 확인 / `alive_` flag checked before accessing `this` in callAsync lambda |
 | 프리로드 경로 / Preload Path | `replaceChainWithPreloaded`: 미리 로드된 인스턴스로 동기 교체 (DLL 로딩 없음) / Synchronous swap with pre-loaded instances (no DLL loading) |
@@ -292,18 +292,18 @@ AudioProcessorGraph:
 #### 4.2.6 그래프 재빌드 / Graph Rebuild (rebuildGraph)
 ```
 rebuildGraph(bool suspend = true)
-1. suspend=true일 때만 suspendProcessing(true) (노드 추가/제거 시)
-   / suspendProcessing(true) only when suspend=true (on node add/remove)
+1. suspend=true일 때 ScopedProcessingSuspension 진입 (atomic admission 차단 + drain)
+   / Enter ScopedProcessingSuspension when suspend=true (close atomic admission and drain)
 2. 연결 목록 복사 후 모든 연결 제거 (async → 개별 리빌드 지연)
    / Copy connection list then remove all connections (async → deferred per-connection rebuild)
 3. 입력 → plugin[0] → ... → plugin[N-1] → 출력 연결 (bypassed 플러그인 스킵)
    / Input → plugin[0] → ... → plugin[N-1] → output connections (bypassed plugins skipped)
 4. 마지막 연결만 sync (단일 리빌드 트리거)
    / Only the last connection is sync (single rebuild trigger)
-5. suspend=true일 때만 suspendProcessing(false)
-   / suspendProcessing(false) only when suspend=true
+5. scope 종료 시 가장 바깥 suspension이 끝난 뒤 admission 재개
+   / Restore admission only after the outer suspension scope exits
 ```
-- `suspend=false`: bypass 토글 시 사용 — 연결만 변경되므로 suspend 불필요, 오디오 갭 없음 / Used for bypass toggle — only connections change, no suspend needed, no audio gap
+- `suspend=false`: bypass 토글 시 별도 chain suspension 없이 연결 변경. 기존 노드 우회/tail 절단 의미 유지 / Bypass changes connections without an explicit chain-suspension scope; existing node-routing and tail-cut behavior remain.
 - bypassed 플러그인은 그래프 연결에서 제외 (오디오가 우회) / Bypassed plugins excluded from graph connections (audio bypasses them). `node->setBypassed()` + `getBypassParameter()` 동기화와 함께 이중 보호 / dual protection with synchronization
 
 ---
@@ -776,6 +776,7 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 | Full Restore | `.dpfullbackup`에서 전체 복원 / Full restore from `.dpfullbackup` | 있음 / Yes |
 | Clear Plugin Cache | 플러그인 스캔 캐시 삭제 / Delete plugin scan cache | 있음 / Yes |
 | Clear All Presets | 슬롯 A-E + Auto + 백업/임시 파일(`.bak`, `.backup`, `.tmp`) 삭제, 활성 체인과 런타임 슬롯 상태/프리로드 캐시 초기화 / Delete slots A-E + Auto + backup/temp files (`.bak`, `.backup`, `.tmp`), reset active chain and runtime slot/preload state | 있음 / Yes |
+| Update Receiver... (Windows) | 설치된 VST2/VST3 버전·정확한 경로 확인, 사용자 폴더 선택, Receiver만 갱신 / Inspect installed versions/exact paths, choose custom folder, update Receiver independently | Update / Choose Folder... / Later; 사용 중이면 Retry / Later |
 | Factory Reset | 모든 데이터 삭제 (설정, 컨트롤, 프리셋(A-E + Auto), 캐시, 녹음 설정), 슬롯 이름/점유 캐시/프리로드 캐시도 초기화 / Delete all data (settings, controls, presets (A-E + Auto), cache, recording config), also clear slot names, occupancy cache, and preload cache | 있음 / Yes |
 
 #### 4.6.6 상태 바 / Status Bar (30px)
@@ -850,6 +851,17 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 
 ### 4.8 DirectPipe Receiver 플러그인 / DirectPipe Receiver Plugin (VST2/VST3/AU)
 
+**4.4.0 independent connections:** matching new host/Receiver versions support
+up to eight receivers, each with its own queue and mute/buffer behavior. Older
+plugins keep the original endpoint, while new plugins on old hosts use legacy
+single-reader mode. Saved plugin identity, parameters and A-E/Auto behavior are
+unchanged. The original v1 protocol description below applies to that compatibility
+path; the additive transport is documented in [the 4.4.0 report](MULTI_RECEIVER_4_4_0.md).
+
+**4.4.0 다중 수신:** 새 본체와 Receiver는 최대 8개 독립 연결을 지원합니다.
+구형 본체 연결 시 단일 수신 제약이 남습니다. 각 연결은 같은 처리 음성을 받으며,
+OBS 장면·필터를 다시 만들거나 별도 OBS 확장을 설치하는 개편은 아닙니다.
+
 #### 기본 정보 / Basic Info
 | 항목 / Item | 상세 / Details |
 |------|------|
@@ -870,11 +882,11 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 - OBS 필터 체인에서 Receiver 앞에 있는 다른 필터의 출력도 **무시됨** / Output from other filters preceding Receiver in the OBS filter chain is also **ignored**
 - DirectPipe에서 VST 체인을 거쳐 IPC로 전송된 **최종 처리 오디오만 출력** / Only the **final processed audio** sent via IPC through DirectPipe's VST chain is output
 
-이 설계 덕분에 OBS 마이크 소스의 자체 오디오와 DirectPipe 오디오가 중복되지 않으며, IPC 토글(VST 버튼)로 OBS 마이크를 독립적으로 ON/OFF 할 수 있다.
+이 설계 덕분에 OBS 마이크 소스의 자체 오디오와 DirectPipe 오디오가 중복되지 않는다. IPC 토글(VST 버튼)은 메인·모니터 출력과 별도로 연결된 모든 Receiver의 송신을 제어한다. 특정 Receiver 하나만 끄려면 해당 Receiver의 로컬 Mute를 사용한다.
 
-This design prevents audio duplication between OBS mic source audio and DirectPipe audio, and enables independent OBS mic ON/OFF control via IPC toggle (VST button).
+This design prevents audio duplication between OBS source audio and DirectPipe audio. The IPC toggle (VST button) controls transmission to every Receiver independently of main and monitor output. Use local Mute to silence just one Receiver.
 
-DirectPipe Receiver is an **output-only plugin with no input bus**. In `processBlock()`, it completely replaces the host (OBS) buffer with data read from IPC shared memory. Therefore: OBS source audio is ignored, preceding filters are ignored, only DirectPipe's final processed audio is output. This design prevents audio duplication and enables independent OBS mic control via IPC toggle (VST button).
+이는 처리 callback이 실행될 때의 동작이며, OBS 소스의 오디오 처리가 멈춘 동안 Receiver가 독립적으로 오디오를 생성한다는 뜻은 아니다. 여러 Receiver를 같은 믹스에 합치면 같은 신호가 중복될 수 있다. / This behavior requires processing callbacks; Receiver does not independently generate host audio while its source is suspended. Mixing several Receiver outputs together can duplicate the same signal.
 
 #### 파라미터 / Parameters (AudioProcessorValueTreeState)
 | ID | 타입 / Type | 기본값 / Default | 설명 / Description |
@@ -883,7 +895,7 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 | `buffer` | Choice (0-4) | 1 (Low) | 버퍼 프리셋 선택 / Buffer preset selection |
 
 #### 버퍼 프리셋 / Buffer Presets
-| # | 이름 / Name | targetFillFrames | highFillThreshold | lowFillThreshold | 레이턴시 / Latency @48kHz |
+| # | 이름 / Name | targetFillFrames | highFillThreshold | lowFillThreshold | 보고 버퍼 지연 / Reported buffering @48kHz |
 |---|------|-----------------|-------------------|------------------|----------------|
 | 0 | Ultra Low | 256 | 768 | 64 | ~5ms |
 | 1 | Low | 512 | 1536 | 128 | ~10ms |
@@ -891,24 +903,26 @@ DirectPipe Receiver is an **output-only plugin with no input bus**. In `processB
 | 3 | High | 2048 | 6144 | 512 | ~42ms |
 | 4 | Safe | 4096 | 12288 | 1024 | ~85ms |
 
+이 값은 `setLatencySamples`로 보고하는 버퍼 분량이며, 전체 마이크→수신 앱 경로의 실측 지연이나 실제 큐 점유량을 보장하지 않는다. / These values are reported through `setLatencySamples`; they are neither measured end-to-end latency nor a guarantee of actual queue occupancy.
+
 #### IPC 연결 / IPC Connection
 | 항목 / Item | 상세 / Details |
 |------|------|
-| 공유 메모리 이름 / Shared Memory Name | `Local\\DirectPipeAudio` |
-| 프로토콜 / Protocol | SPSC 링 버퍼 / SPSC ring buffer, atomic read/write 포지션 / positions. RingBuffer에 atomic `detached_` 플래그 / flag (detach 시 읽기/쓰기 즉시 차단 / immediately blocks read/write on detach) |
-| 연결 확인 / Connection Check | RT callback은 `producer_active`와 `producer_generation`을 atomic 확인 / atomically checks both fields |
+| 기본 연결 / Preferred transport | `Local\\DirectPipeAudioFanOutV1`: 독립 SPSC 큐 최대 8개, owner token과 producer ack로 준비 완료 확인 / Up to eight independent SPSC queues; ownership and producer acknowledgement gate readiness |
+| 호환 연결 / Compatibility transport | `Local\\DirectPipeAudio`: 기존 192-byte protocol v1와 단일 Receiver 제약 유지. 새 경로가 없거나 inactive일 때만 시도 / Original 192-byte protocol v1 for one Receiver; attempted only when the new transport is absent or inactive |
+| 대기·한도·비호환 / Waiting, full, invalid | Waiting은 claim을 보존하고 ack 대기. Full/Invalid는 v1로 우회하지 않고 상태 표시·재시도 / Waiting retains its slot; Full/Invalid show status and retry without falling back to v1 |
+| 연결 확인 / Connection Check | RT counted lease 안에서 producer activity와 연결 세대를 확인. FanOut 세대·geometry는 mapping 수명 동안 불변 / Check producer activity and connection generation under a counted RT lease; FanOut generation/geometry are immutable for the mapping lifetime |
 | 재연결 간격 / Reconnection Interval | 전용 connection worker가 약 100ms마다 확인 / Dedicated connection worker checks about every 100ms |
 | 드리프트 워밍업 / Drift Warmup | 50 블록 후 클록 드리프트 체크 시작 / Clock drift checks start after 50 blocks |
 
 #### 오디오 처리 / Audio Processing
-0. 인터리브 버퍼 empty 가드 → prepareToPlay 전 호출 시 즉시 무음 반환 / Interleaved buffer empty guard → immediate silence return if called before prepareToPlay
-1. Mute 확인 → 뮤트면 버퍼 클리어 / Check mute → clear buffer if muted
-2. 미연결: 페이드아웃 또는 무음 / Not connected: fade-out or silence
-3. 연결 시: audio callback은 counted lease로 게시된 connection을 빌리고 producer active/generation만 확인한다. mismatch 시 reconnect를 요청하고 fade/silence를 출력한다 / On connection, the audio callback borrows the published connection through a counted lease and only checks producer active/generation; a mismatch requests reconnect and emits fade/silence.
-4. 클록 드리프트 보상: 버퍼 > highThreshold이면 초과 프레임 스킵 / Clock drift compensation: skip excess frames when buffer > highThreshold
-5. 링 버퍼에서 프레임 읽기 / Read frames from ring buffer
-6. 인터리브 → JUCE planar 변환 / Interleaved → JUCE planar conversion
-7. 부분 읽기 시 패딩 (무음) / Padding with silence on partial read
+0. 준비 전·빈 callback은 데이터를 소비하지 않고 반환 / Calls before prepare or with no samples do not consume audio.
+1. output buffer 초기화, counted lease로 connection·generation 확인 / Clear output and validate the connection/generation through a counted lease.
+2. FanOut overflow epoch가 달라지면 해당 큐의 오래된 데이터를 모두 버리고 fade-out/무음 후 새 데이터를 기다림. 로컬 Mute도 해당 FIFO를 배출하고 즉시 무음 유지 / A changed FanOut overflow epoch discards that queue's backlog, fades to silence and awaits fresh data. Local Mute also drains only its own FIFO while remaining silent.
+3. high-fill trim은 현재 callback 길이 이상의 데이터를 남김 / Excess-fill trim retains at least the current callback length.
+4. 실제 데이터 부족일 때만 low-fill cushion 정책 적용 / Apply low-fill cushioning only when a full callback is not available.
+5. 사전 할당 scratch buffer를 나눠 읽고 planar 출력으로 변환 / Read in preallocated scratch chunks and convert to planar output, including callbacks larger than the preparation hint.
+6. underrun·trim·재연결 경계를 마지막 출력 샘플부터 64샘플 전환으로 연결 / Join underrun/trim/reconnect events from the last emitted sample over 64 samples, persisting across short callbacks.
 
 공유 메모리 open/retire/unmap과 latency host notification은 audio callback 밖의
 connection worker/message thread에서 수행한다. worker는 새 lease 진입을 닫고
@@ -925,10 +939,10 @@ Automatically compensates buffer drift caused by slight differences between the 
 
 | 상태 / State | 조건 / Condition | 동작 / Behavior |
 |------|------|------|
-| 정상 / Normal | lowThreshold/2 ≤ fill ≤ highThreshold | 그대로 읽기 / Read as-is |
-| 버퍼 과다 (호스트 빠름) / Buffer Overflow (host faster) | fill > highThreshold | excess 프레임 스킵 → targetFill로 복귀 / Skip excess frames → return to targetFill |
-| 데드 밴드 (히스테리시스) / Dead Band (hysteresis) | lowThreshold/2 ≤ fill < lowThreshold | 정상 읽기 — 스로틀/정상 모드 간 진동 방지 / Normal read — prevents oscillation between throttle/normal mode |
-| 버퍼 부족 (호스트 느림) / Buffer Underflow (host slower) | fill < lowThreshold/2 | 읽기량 절반으로 쿠션 확보 → 하드 클릭 대신 미세 갭 / Halve read amount for cushion → micro-gaps instead of hard clicks |
+| 정상 / Normal | fill ≥ actual callback frames, within high threshold | 실제 callback 전체 읽기 / Read the entire actual callback |
+| 버퍼 과다 (호스트 빠름) / Excess fill | fill > max(highThreshold, actual callback frames) | max(targetFill, actual callback frames)까지 trim하여 충분한 callback 데이터 보존 / Trim while retaining at least a full current callback |
+| 데드 밴드 (히스테리시스) / Dead band | lowThreshold/2 ≤ fill < lowThreshold | 정상 읽기; callback 전체가 있으면 읽기량 축소 없음 / Normal read; a complete available callback is never shortened |
+| 실제 부족 / Genuine shortage | fill < actual callback frames | 가능한 데이터를 읽고 남은 구간은 연속 fade 후 무음. fill < lowThreshold/2에서만 기존 cushion 정책 적용 / Read available frames, fade into silence; historical cushion rule applies only below lowThreshold/2 |
 
 버퍼 프리셋별 임계값 / Thresholds per buffer preset:
 
@@ -940,30 +954,42 @@ Automatically compensates buffer drift caused by slight differences between the 
 | High (2048) | 2048 | 6144 | 512 |
 | Safe (4096) | 4096 | 12288 | 1024 |
 
-#### 페이드아웃 로직 / Fade-Out Logic
-- 마지막 출력 버퍼: 64 샘플 (planar 형식) / Last output buffer: 64 samples (planar format)
-- 페이드 게인: 1.0 → 0.0, 샘플당 0.05 감소 / Fade gain: 1.0 → 0.0, decreasing by 0.05 per sample
-- 언더런 시 마지막 샘플을 페이딩하며 재생 / On underrun, plays last samples while fading
+#### 전환·페이드 로직 / Transition and Fade Logic
+- 64샘플 출력 이력과 마지막 실제 출력값을 보존 / Retains 64-sample output history and the last emitted sample.
+- underrun은 현재 출력값부터 보존 파형의 fade-out으로, 복구·trim은 새 오디오로 연결 / Underrun joins the current output to a retained-waveform fade-out; recovery/trim joins new audio.
+- 64샘플 전환은 짧은 callback 여러 개에 걸쳐 이어지며 일반 정상 샘플은 변경하지 않음 / The 64-sample event transition continues across short callbacks; steady-state samples are unchanged.
+- 리샘플링 없음. 실제 underrun·clock drift의 데이터 손실/무음은 여전히 가능 / No resampling; genuine underrun/clock drift can still cause data loss or silence.
 
-#### 에디터 UI / Editor UI (240×200px)
+#### 에디터 UI / Editor UI (240×216px)
 | 요소 / Element | 설명 / Description |
 |------|------|
 | 타이틀 / Title | "DirectPipe Receiver" (볼드 화이트 / bold white, 16pt) |
 | 상태 원 / Status Circle | 초록(연결) / 빨강(미연결) / Green (connected) / Red (disconnected) |
-| 상태 텍스트 / Status Text | "Connected" / "Disconnected" |
+| 상태 텍스트 / Status Text | `Connected`, `Connected (v1)`, `Connecting...`, `Receiver limit`, `Update needed`, `Disconnected` |
 | 오디오 정보 / Audio Info | 연결 시 / When connected: "{SR}Hz {Channels}ch" |
-| Mute 버튼 / Mute Button | 빨강(ON) / 어두운(OFF) / Red (ON) / Dark (OFF), 40px 높이 / height |
+| Mute 버튼 / Mute Button | 빨강(ON) / 어두운(OFF) / Red (ON) / Dark (OFF), 32px 높이 / height |
 | Buffer ComboBox | 5개 프리셋 / 5 presets |
 | 레이턴시 라벨 / Latency Label | "X.XX ms (YYYY samples @ ZZZZ Hz)" |
 | SR 경고 / SR Warning | "SR mismatch: {source} vs {host}" (주황 / orange, 10pt) |
-| 버전 / Version | "v4.3.0" (우하단 / bottom-right, 10pt) |
+| 연결 안내 / Connection Detail | legacy 단일 Receiver 안내·충돌 경고, `8 in use: close an unused Receiver`, `Update host and Receiver together` / Legacy single-reader/conflict notice, slot-limit and update guidance |
+| 버전 / Version | `JucePlugin_VersionString` (우하단 / bottom-right, 10pt; 접두사 v 없음 / no v prefix) |
 | 갱신 / Update | 10Hz 타이머 콜백 / 10Hz timer callback |
 
 ---
 
 ### 4.9 IPC 코어 라이브러리 / IPC Core Library
 
-#### 프로토콜 헤더 / Protocol Header (DirectPipeHeader)
+#### 독립 수신 transport / Independent Receiver Transport (FanOut)
+
+- 공유 이름 / Mapping name: Windows `Local\\DirectPipeAudioFanOutV1`, POSIX `/DirectPipeAudioFanOutV1`. `FANOUT_VERSION=1`은 이 별도 transport의 버전이며 legacy `PROTOCOL_VERSION=1`과 별개 / The version belongs to this additive transport, independently of legacy protocol v1.
+- 64-byte 정렬 `FanOutHeader` 1664바이트 + 독립 PCM 큐 8개. 슬롯마다 owner/ack, write/read 위치, dropped frames와 overflow epoch 보유 / A 1664-byte aligned header plus eight PCM queues, each with separate owner/ack, positions and overflow counters.
+- 기본 크기: 1664 + 8 × 16384 × 2 × 4 = 1,050,240바이트. capacity는 2..2^20의 2의 거듭제곱, 채널은 1..2, sample rate는 0이 아닌 장치 값 / Default size 1,050,240 bytes; bounded power-of-two capacity, mono/stereo and a nonzero device sample rate.
+- 초기화와 PCM 메모리 준비는 비RT에서 완료한 뒤 active를 게시. RT writer는 최대 8개 슬롯만 순회하고 각 큐의 남은 공간까지만 기록 / Initialization and memory touching precede publication; RT writes visit a fixed maximum of eight slots and never overwrite unread cells.
+- 공유 claim serial은 mapping 수명 안에서 재사용하지 않음. consumer는 고유 토큰을 확보하고 writer가 위치를 초기화한 뒤 같은 토큰을 ack할 때까지 읽지 않음 / Shared claim IDs do not repeat; readers wait for the writer to initialize and acknowledge their token.
+- detach 전 해당 Receiver의 진행 중 callback을 배출. 비RT claim은 OS가 프로세스 종료를 확인한 슬롯만 회수하며, 느림·heartbeat 만료로 살아 있는 슬롯을 빼앗지 않음 / Drain local callbacks before detach; off-RT claim reclaims only proven-dead owners, never by timeout alone.
+- 각 큐 포화는 그 독자의 쓰기만 drop. consumer가 overflow epoch 변경을 보고 오래된 큐를 비움. 구형 큐에는 이 새로운 지표가 없음 / Overflow drops only that reader's frames; the reader flushes stale backlog on epoch change. Legacy queues have no new overflow epoch.
+
+#### 구형 호환 프로토콜 헤더 / Legacy Compatibility Header (DirectPipeHeader)
 ```
 alignas(64) atomic<uint64_t> write_pos    — 프로듀서 증가 / producer increments
 alignas(64) atomic<uint64_t> read_pos     — 컨슈머 증가 / consumer increments
@@ -980,7 +1006,7 @@ reserved 공간을 사용하므로 기존 field offset과 `PROTOCOL_VERSION=1`�
 Header size remains fixed at 192 bytes and 64-byte aligned. New fields consume
 protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`.
 
-#### 공유 메모리 레이아웃 / Shared Memory Layout
+#### 구형 공유 메모리 레이아웃 / Legacy Shared Memory Layout
 ```
 [Header (192 bytes)] [Ring Buffer PCM (interleaved floats)]
 ```
@@ -989,18 +1015,20 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
 #### 상수 / Constants
 | 상수 / Constant | 값 / Value | 설명 / Description |
 |------|-----|------|
-| SHM_NAME | Windows: `Local\\DirectPipeAudio`, POSIX: `/DirectPipeAudio` | 공유 메모리 이름 / Shared memory name |
-| EVENT_NAME | `Local\\DirectPipeDataReady` | 이벤트 이름 / Event name |
+| SHM_NAME | Windows: `Local\\DirectPipeAudio`, POSIX: `/DirectPipeAudio` | 구형 단일 수신 큐 / Legacy single-reader queue |
+| EVENT_NAME | `Local\\DirectPipeDataReady` | 구형 큐의 데이터 이벤트 / Legacy data event |
+| FANOUT_SHM_NAME | Windows: `Local\\DirectPipeAudioFanOutV1`, POSIX: `/DirectPipeAudioFanOutV1` | 새 독립 수신 mapping / Independent Receiver mapping |
+| FANOUT_MAX_READERS | 8 | 새 경로의 최대 연결 수 / Maximum new-path connections |
 | DEFAULT_BUFFER_FRAMES | 16384 | ~341ms @48kHz |
 | DEFAULT_SAMPLE_RATE | 48000 | 기본 SR / Default SR |
 | DEFAULT_CHANNELS | 2 | 스테레오 / Stereo |
-| PROTOCOL_VERSION | 1 | 프로토콜 버전 / Protocol version |
+| PROTOCOL_VERSION / FANOUT_VERSION | 1 / 1 | 별도 mapping의 각각의 버전 / Separate versions for separate mappings |
 
 #### SharedMemWriter (호스트 측 / Host Side)
-- `initialize(sampleRate, channels, bufferFrames)` — 공유 메모리 생성 / Creates shared memory
-- `writeAudio(buffer, numSamples)` — RT-safe. 사전 할당된 인터리브 버퍼로 변환 후 쓰기 / Converts to pre-allocated interleaved buffer then writes
-- `shutdown()` — RT write admission 차단 → in-flight writer drain → `producer_active=false` → ring detach → memory/event 해제 / Closes RT write admission, drains in-flight writers, clears `producer_active`, detaches the ring, then releases memory/event
-- 같은 writer 재초기화 또는 Windows의 기존 named mapping 교체는 consumer가 inactive를 관찰하고 분리할 시간을 준 뒤 fresh object에서만 header를 생성하며, 안전한 handoff가 불가능하면 fail-closed한다 / Reinitialization and Windows existing-mapping replacement quiesce the consumer and construct a header only in a fresh object; an unsafe handoff fails closed
+- `initialize(sampleRate, channels, bufferFrames)` — 새 FanOut과 구형 mapping을 독립 생성. 한 경로의 초기화 실패가 다른 경로를 해제하지 않으며 둘 다 실패하면 IPC 연결 실패 / Initializes FanOut and legacy mappings independently; one path can survive the other's failure, while failure of both disables IPC.
+- `writeAudio(buffer, numSamples)` — 사전 할당 버퍼에 한 번 interleave한 뒤 사용할 수 있는 두 경로에 기록. FanOut은 OS 호출·대기 없음; 구형 경로의 기존 data event signal은 유지 / Interleaves once and writes both available paths. FanOut performs no OS calls or waits; the existing legacy data-event signal remains.
+- `shutdown()` — RT admission 차단 → in-flight writer drain → 두 producer inactive → detach/unmap 및 구형 event 해제 / Closes RT admission, drains writes, retires both producers, then detaches/unmaps and releases the legacy event.
+- Windows는 기존 mapping을 inactive로 만들고 핸들 해제를 제한 시간 동안 기다린 뒤 fresh object에서만 초기화하며 실패한 경로는 사용하지 않음. POSIX는 unlink/recreate의 object identity로 교체를 감지 / Windows initializes only a genuinely fresh object after bounded retirement; a failed path remains unavailable. POSIX consumers detect unlink/recreate through object identity.
 
 ---
 
@@ -1092,7 +1120,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.3.0",
+  "appVersion": "4.4.0",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1115,7 +1143,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.3.0",
+  "appVersion": "4.4.0",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */
@@ -1177,12 +1205,40 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
 | 항목 / Item | 상세 / Details |
 |------|------|
 | 체크 / Check | 시작 시 백그라운드 스레드에서 GitHub API (최신 릴리즈) / Background thread checks GitHub API (latest release) on startup |
-| 비교 / Comparison | 엄격한 `MAJOR.MINOR.PATCH` Semver 비교 / Strict `MAJOR.MINOR.PATCH` semver comparison |
+| 비교 / Comparison | 엄격한 `MAJOR.MINOR.PATCH` 비교. host가 공개 latest와 같거나 높으면 시작 알림 없음·downgrade 없음 / Strict semver; startup stays quiet when host is current/ahead, with no downgrade |
 | 표시 / Display | Credit 라벨에 "NEW vX.Y.Z" (주황색) / "NEW vX.Y.Z" (orange) in credit label |
 | 다이얼로그 / Dialog | [Update Now] (Windows only) / [View on GitHub] / [Later] |
-| 업데이트 / Update | Windows in-app: v4.2.0+ asset은 exact-name `checksums.sha256` entry와 일치 SHA-256을 필수 확인하고, ZIP 내부에 정확히 하나의 `DirectPipe.exe`가 있으며 FileVersion/ProductVersion이 예상 릴리즈와 일치해야 한다. 검증 후 staging → 정확한 PID 종료 대기 → known-good exe 교체/rollback → 재시작하며, 이전 exe backup은 다음 업데이트 회전까지 보존하고 시작 시 임시 updater 파일만 정리한다. 브라우저 수동 다운로드는 이 검사 밖이다 / Windows in-app: v4.2.0+ assets require an exact readable checksum entry and matching SHA-256, exactly one `DirectPipe.exe` in the ZIP, and FileVersion/ProductVersion matching the expected release. After validation: staging, exact-PID wait, replacement/rollback, and restart; the prior EXE backup remains until the next update rotation while startup removes only transient updater files. Manual browser downloads are outside this enforcement. macOS/Linux는 release page를 연다 / macOS/Linux open the release page. |
-| 완료 확인 / Completion Verification | `_updated.flag` 파일 → 다음 시작 시 "Updated successfully" 알림 / `_updated.flag` file → "Updated successfully" notification on next startup |
+| 업데이트 / Update | Windows: exact-name SHA-256 항목과 ZIP hash, staged product/version/format 신원을 검증한 뒤 backup·교체·rollback. Receiver VST3는 전체 bundle 교체. 사용 중인 정확한 경로를 재확인하며 다른 앱을 강제 종료하지 않음. host 동반 갱신만 기존 PID 대기·재시작 수행 / Verify exact checksum entry, archive hash and staged identities before backup/replacement/rollback; replace full VST3 bundles and recheck target locks without killing other apps. Combined host updates retain exact-PID wait/restart. macOS/Linux use the release page; manual browser downloads are outside in-app checksum enforcement. |
+| 완료 확인 / Completion Verification | host: `_updated.flag`와 재시작 알림. Receiver-only: installer 결과를 현재 창에 표시하며 host 유지. 파일 설치 성공과 실제 OBS/audio 검증은 별도 / Host: `_updated.flag` after restart. Receiver-only: installer result shown without closing the host; file-install success is separate from OBS/audio acceptance. |
 | 스레드 안전 / Thread Safety | running/finished atomic과 lifecycle mutex로 download worker 회수/재시도/종료를 직렬화하고, `checkForUpdate` `callAsync`는 `alive_` 플래그로 보호 / Running/finished atomics plus a lifecycle mutex serialize download-worker reap/retry/destruction; `alive_` guards `checkForUpdate` `callAsync` |
+
+#### 4.13.1 Windows Receiver maintenance / Receiver 유지보수
+
+**Settings > Update Receiver...** is an explicit check even when the host is
+current. It inspects standard/registered paths and a user-chosen folder without
+loading plugin code; the dialog lists exact destinations and versions. Build
+outputs and unverified copies are not silently treated as installed targets.
+Same/newer Receiver versions are retained. Protected destinations may need UAC.
+
+The installer uses short unique sibling staging and rotated-backup paths. A
+path-only preflight validates the verified archive and planned source, target,
+backup, temporary and bundle-child paths before host exit; unsupported Windows
+file-use inspection paths are rejected. Installation still rechecks identities,
+hashes and file use before replacement. / 짧고 고유한 sibling 임시·이전 백업 경로를
+사용하고 본체 종료 전에 패키지와 모든 예정 경로를 검사합니다. 지원하지 않는
+긴 경로는 먼저 거부하며 실제 교체 시 파일 신원·해시·사용 여부도 재확인합니다.
+
+If OBS or another app uses a target, **Retry / Later** lets the user finish the
+session and close that app manually. No automatic app termination occurs.
+Receiver-only maintenance leaves DirectPipe running. Routine startup behavior
+stays quiet when no newer host exists. The 4.3.0 updater replaces only the host;
+after launching 4.4.0, use **Settings > Update Receiver...** to update Receivers
+too. / 4.3.0 최초 자동 갱신은 본체만 교체하므로 4.4.0 실행 후 Settings에서
+Receiver도 갱신해야 합니다. See [4.4.0 scope](MULTI_RECEIVER_4_4_0.md).
+
+host가 최신이어도 Settings에서 Receiver만 명시적으로 확인합니다. 사용자 폴더와
+정확한 경로·버전을 먼저 검토하고, 사용 중이면 앱을 직접 종료한 뒤 Retry하거나
+Later로 미룹니다. 시작 알림·강제 종료·다운그레이드는 추가하지 않습니다.
 
 ---
 
@@ -1231,6 +1287,7 @@ DirectPipe/
 │       ├── Constants.h             → SHM_NAME, DEFAULT_BUFFER_FRAMES 등 / etc.
 │       ├── Protocol.h              → DirectPipeHeader (64바이트 정렬 / 64-byte aligned)
 │       ├── RingBuffer.h            → SPSC lock-free 링 버퍼 / ring buffer
+│       ├── FanOut.h                → 최대 8개 독립 Receiver 큐 / Up to eight independent Receiver queues
 │       └── SharedMemory.h          → Windows 공유 메모리 / shared memory + NamedEvent
 │
 ├── host/                           → JUCE 메인 앱 / JUCE main app
@@ -1295,10 +1352,10 @@ DirectPipe/
 ├── plugins/receiver/               → DirectPipe Receiver (VST2/VST3/AU)
 │   └── Source/
 │       ├── PluginProcessor.h/cpp   → IPC 소비자, 5 버퍼 프리셋, 페이드아웃 / IPC consumer, 5 buffer presets, fade-out
-│       └── PluginEditor.h/cpp      → 240×200 UI, 상태/SR 경고 / 240×200 UI, status/SR warnings
+│       └── PluginEditor.h/cpp      → 240×216 UI, 연결·한도·호환/SR 경고 / Connection, limit, compatibility and SR status
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.3.0.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.4.0.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management
@@ -1328,7 +1385,7 @@ DirectPipe/
 
 ### 핵심 차별점 / Key Differentiators
 1. **5종 외부 제어 통합 / 5 External Control Types Unified** — 핫키/MIDI/Stream Deck/HTTP/WebSocket을 한 프로그램에서 / Hotkeys/MIDI/Stream Deck/HTTP/WebSocket all in one program
-2. **프리셋 즉시 전환 / Instant Preset Switching** — A-E 슬롯, Keep-Old-Until-Ready로 10-50ms 교체 / A-E slots, 10-50ms swap with Keep-Old-Until-Ready
+2. **프리셋 전환 / Preset Switching** — A-E 슬롯과 프리로드, Keep-Old-Until-Ready 유지 및 상태 복원 구간 보호. 시간은 플러그인에 따라 다름 / A-E slots, preloading and Keep-Old-Until-Ready with guarded state restore; timing depends on plugins
 3. **DirectPipe Receiver** — 가상 케이블 없이 OBS 직접 연결 / Direct OBS connection without virtual cables (SharedMemory IPC, VST2/VST3/AU)
 4. **포터블 / Portable** — 설치 없이, 시스템 변경 없이 단일 exe 실행 / Single exe, no installation, no system changes
 5. **오픈소스 / Open Source** — GPL v3, 누구나 기여 가능 / GPL v3, anyone can contribute

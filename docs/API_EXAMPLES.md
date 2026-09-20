@@ -1049,6 +1049,13 @@ VB-Cable(Discord) + Receiver VST(OBS) 동시 사용 시, API로 각 출력을 �
 
 When using VB-Cable (Discord) + Receiver VST (OBS) together, you can independently mute/unmute each output via API. (On macOS/Linux, use platform-equivalent virtual audio devices such as BlackHole or PipeWire instead of VB-Cable.)
 
+4.4.0에서 Receiver를 여러 개 사용하면 IPC 토글은 **모든 Receiver**에 적용됩니다.
+아래 "OBS만"은 Receiver를 OBS 한 곳에서만 쓰는 예제 구성입니다. 특정 Receiver만
+끄려면 해당 플러그인의 로컬 Mute를 사용합니다. / With multiple Receivers, IPC
+toggle controls every Receiver. "OBS only" below assumes OBS is the only Receiver
+destination; use local Mute for one instance. Preset changes also affect the
+shared processed stream for every destination.
+
 ```bash
 # OBS만 뮤트 (Discord 유지) — IPC 출력만 끔
 curl http://127.0.0.1:8766/api/ipc/toggle

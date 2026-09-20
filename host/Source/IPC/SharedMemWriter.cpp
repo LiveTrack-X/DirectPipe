@@ -51,9 +51,10 @@ private:
 static_assert(std::atomic<uint32_t>::is_always_lock_free,
               "SharedMemWriter RT guard must be lock-free");
 
-bool createFreshSharedMemory(SharedMemory& sharedMemory, size_t size)
+bool createFreshSharedMemory(SharedMemory& sharedMemory, const std::string& name,
+                             size_t size, bool fanOut = false)
 {
-    if (!sharedMemory.create(SHM_NAME, size))
+    if (!sharedMemory.create(name, size))
         return false;
 
 #if defined(_WIN32)
@@ -70,21 +71,28 @@ bool createFreshSharedMemory(SharedMemory& sharedMemory, size_t size)
     const auto deadline = std::chrono::steady_clock::now() + handoffTimeout;
 
     for (;;) {
-        auto* header = static_cast<DirectPipeHeader*>(sharedMemory.getData());
-        if (header != nullptr && sharedMemory.getSize() >= sizeof(DirectPipeHeader))
-            header->producer_active.store(false, std::memory_order_release);
+        if (fanOut) {
+            // Retire only a validated transport. Never placement-initialize
+            // retained state or touch an incompatible layout.
+            FanOutProducer::invalidateMapping(sharedMemory.getData(), sharedMemory.getSize());
+        } else {
+            auto* header = static_cast<DirectPipeHeader*>(sharedMemory.getData());
+            if (header != nullptr && sharedMemory.getSize() >= sizeof(DirectPipeHeader))
+                header->producer_active.store(false, std::memory_order_release);
+        }
 
         sharedMemory.close();
         if (std::chrono::steady_clock::now() >= deadline)
             return false;
 
         std::this_thread::sleep_for(retryInterval);
-        if (!sharedMemory.create(SHM_NAME, size))
+        if (!sharedMemory.create(name, size))
             return false;
         if (!sharedMemory.createOpenedExistingObject())
             return true;
     }
 #else
+    (void)fanOut;
     return true;
 #endif
 }
@@ -106,53 +114,106 @@ void SharedMemWriterTestAccess::setWriteBarrier(SharedMemWriter& writer,
     writer.testWriteBarrier_ = barrier;
     writer.testWriteBarrierContext_ = context;
 }
+
+void SharedMemWriterTestAccess::configureTransportNames(SharedMemWriter& writer,
+                                                        const std::string& legacyName,
+                                                        const std::string& eventName,
+                                                        const std::string& fanOutName)
+{
+    jassert(!writer.isConnected());
+    writer.testLegacyName_ = legacyName;
+    writer.testEventName_ = eventName;
+    writer.testFanOutName_ = fanOutName;
+    writer.testTransportNamesConfigured_ = true;
+}
 #endif
 
 bool SharedMemWriter::initialize(uint32_t sampleRate, uint32_t channels, uint32_t bufferFrames)
 {
-    bool wasConnected = connected_.load(std::memory_order_relaxed);
-    shutdown();  // Clean up any previous state (sets producer_active=false)
+    const bool wasConnected = connected_.load(std::memory_order_relaxed);
+    shutdown();  // Drain prior writes and publish inactive on both old transports.
 
-    // Brief pause after shutdown to let the consumer (Receiver VST) detect
-    // producer_active=false and disconnect before we reinitialize the header.
-    // Without this, initAsProducer stomps the header while the consumer reads it.
+    // Brief control-thread pause lets Receivers notice inactive producers and
+    // release old mappings. This pause alone never
+    // grants permission to reinitialize one: fresh creation is required below.
     if (wasConnected)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
+    const auto fanOutSize = calculateFanOutMemorySize(bufferFrames, channels);
+    if (sampleRate == 0 || channels == 0 || channels > 2 || fanOutSize == 0) {
+        juce::Logger::writeToLog("[IPC] SharedMemWriter: Invalid stream geometry");
+        return false;
+    }
     channels_ = channels;
+    // Allocate before publishing either endpoint. The callback interleaves once.
+    interleaveBuffer_.resize(static_cast<size_t>(bufferFrames) * channels, 0.0f);
 
-    // Calculate shared memory size
-    size_t shmSize = calculateSharedMemorySize(bufferFrames, channels);
+    const size_t shmSize = calculateSharedMemorySize(bufferFrames, channels);
 
     // Create a genuinely fresh region. On Windows, createFreshSharedMemory()
     // first retires any crash-retained mapping and fails closed if a Receiver
     // does not release it within the bounded handoff window.
-    if (!createFreshSharedMemory(sharedMemory_, shmSize)) {
-        juce::Logger::writeToLog(
-            "[IPC] SharedMemWriter: Failed to acquire a fresh shared memory object");
-        return false;
+    const std::string legacyName =
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+        testLegacyName_;
+#else
+        SHM_NAME;
+#endif
+    const std::string eventName =
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+        testEventName_;
+#else
+        EVENT_NAME;
+#endif
+    const std::string fanOutName =
+#if defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+        testTransportNamesConfigured_ ? testFanOutName_ : FANOUT_SHM_NAME;
+#else
+        FANOUT_SHM_NAME;
+#endif
+
+    if (!fanOutName.empty()) {
+        if (!createFreshSharedMemory(fanOutMemory_, fanOutName, fanOutSize, true)
+            || !fanOutProducer_.initialize(fanOutMemory_.getData(), fanOutMemory_.getSize(),
+                                           sampleRate, channels, bufferFrames)) {
+            fanOutProducer_.shutdown();
+            fanOutMemory_.close();
+            juce::Logger::writeToLog(
+                "[IPC] SharedMemWriter: Independent Receiver transport unavailable; "
+                "legacy output will be attempted. Receivers must not bypass a retained "
+                "or incompatible independent transport.");
+        }
     }
 
-    // Initialize ring buffer in the shared memory
-    ringBuffer_.initAsProducer(sharedMemory_.getData(), bufferFrames, channels, sampleRate);
+    if (!createFreshSharedMemory(sharedMemory_, legacyName, shmSize)) {
+        juce::Logger::writeToLog(
+            "[IPC] SharedMemWriter: Legacy Receiver mapping unavailable; "
+            "independent Receiver transport is unaffected");
+    } else {
+        ringBuffer_.initAsProducer(sharedMemory_.getData(), bufferFrames, channels, sampleRate);
+        if (!dataEvent_.create(eventName)) {
+            juce::Logger::writeToLog(
+                "[IPC] SharedMemWriter: Legacy Receiver event unavailable; "
+                "independent Receiver transport is unaffected");
+            shutdownLegacy();
+        }
+    }
 
-    // Create named event for signaling
-    if (!dataEvent_.create(EVENT_NAME)) {
-        juce::Logger::writeToLog("[IPC] SharedMemWriter: Failed to create named event");
+    if (!ringBuffer_.isValid() && !fanOutProducer_.isActive()) {
         shutdown();
         return false;
     }
 
-    // Pre-allocate interleave buffer (max expected buffer size × channels)
-    interleaveBuffer_.resize(static_cast<size_t>(bufferFrames) * channels, 0.0f);
-
-    connected_.store(true, std::memory_order_seq_cst);
     droppedFrames_.store(0, std::memory_order_relaxed);
+    connected_.store(true, std::memory_order_seq_cst);
 
     juce::Logger::writeToLog("[IPC] SharedMemWriter: Initialized - " +
                              juce::String(sampleRate) + "Hz, " +
                              juce::String(channels) + "ch, " +
-                             juce::String(bufferFrames) + " frames buffer");
+                             juce::String(bufferFrames) + " frames buffer; legacy=" +
+                             (ringBuffer_.isValid() ? "ready" : "unavailable") +
+                             ", independent=" +
+                             (fanOutProducer_.isActive() ? "ready" : "unavailable"));
 
     return true;
 }
@@ -166,8 +227,16 @@ void SharedMemWriter::shutdown()
     while (inFlightWriters_.load(std::memory_order_seq_cst) != 0)
         std::this_thread::yield();
 
-    // Signal receiver that producer is gone BEFORE unmapping shared memory.
-    // The receiver checks producer_active to detect clean disconnects.
+    shutdownLegacy();
+    fanOutProducer_.shutdown();
+    fanOutMemory_.close();
+    // Keep the allocation for reuse on the next initialize().
+}
+
+void SharedMemWriter::shutdownLegacy()
+{
+    // Mark the legacy producer inactive BEFORE unmapping (no event signal here).
+    // Receivers inspect producer_active to detect clean disconnects.
     if (ringBuffer_.isValid()) {
         auto* data = sharedMemory_.getData();
         if (data) {
@@ -177,11 +246,10 @@ void SharedMemWriter::shutdown()
     }
 
     // Invalidate ring buffer pointers before unmapping shared memory. All writers
-    // that passed admission have already drained above.
+    // that passed admission have drained, or admission has not opened yet.
     ringBuffer_.detach();
     dataEvent_.close();
     sharedMemory_.close();
-    // Keep the allocation for reuse on the next initialize().
 }
 
 void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int numSamples)
@@ -219,7 +287,7 @@ void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int num
     {
         // Convert from JUCE's non-interleaved format to interleaved
         // JUCE: [L0 L1 L2 ...][R0 R1 R2 ...]
-        // Ring buffer: [L0 R0 L1 R1 L2 R2 ...]
+        // Both transports: [L0 R0 L1 R1 L2 R2 ...]
         if (channels_ == 1) {
             // Mono: just copy channel 0
             const float* src = buffer.getReadPointer(0);
@@ -236,22 +304,24 @@ void SharedMemWriter::writeAudio(const juce::AudioBuffer<float>& buffer, int num
         }
     }
 
-    // Write to ring buffer (lock-free)
-    uint32_t written = ringBuffer_.write(interleaveBuffer_.data(),
-                                          static_cast<uint32_t>(samples));
+    const auto frames = static_cast<uint32_t>(samples);
+    uint64_t dropped = 0;
+    if (ringBuffer_.isValid()) {
+        const auto* header = static_cast<const DirectPipeHeader*>(sharedMemory_.getData());
+        const bool legacyListener = header->consumer_active.load(std::memory_order_acquire);
+        const auto written = ringBuffer_.write(interleaveBuffer_.data(), frames);
+        if (legacyListener)
+            dropped += frames - written;
 
-    if (written < static_cast<uint32_t>(samples)) {
-        // Buffer overrun — some frames were dropped
-        droppedFrames_.fetch_add(
-            static_cast<uint32_t>(samples) - written,
-            std::memory_order_relaxed);
+        // Preserve the legacy event contract. This pre-existing signal is the
+        // only OS call here; the independent transport needs no named event.
+        if (written > 0)
+            dataEvent_.signal();
     }
 
-    // Signal the consumer only when data was actually written.
-    // Skipping the signal when written==0 avoids an unnecessary kernel syscall
-    // (SetEvent/sem_post) on every callback, reducing DPC overhead.
-    if (written > 0)
-        dataEvent_.signal();
+    dropped += fanOutProducer_.write(interleaveBuffer_.data(), frames).droppedFrames;
+    if (dropped != 0)
+        droppedFrames_.fetch_add(dropped, std::memory_order_relaxed);
 }
 
 } // namespace directpipe

@@ -205,26 +205,30 @@ TEST_F(PlatformTest, MultiInstanceAlreadyHeld) {
     SUCCEED();
 }
 
-#if JUCE_WINDOWS
-TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
-    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
-        CloseHandle(existingEvent);
-        GTEST_SKIP() << "DirectPipe named event is already in use";
-    }
+#if JUCE_WINDOWS && defined(DIRECTPIPE_ENABLE_TEST_ACCESS)
+namespace {
+struct LegacyWriterTestNames {
+    const std::string prefix = "Local\\DirectPipeLegacyWriterTest_" + juce::Uuid().toString().toStdString();
+    const std::string mapping = prefix + "_audio";
+    const std::string event = prefix + "_event";
 
-    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
-        CloseHandle(existingMapping);
-        GTEST_SKIP() << "DirectPipe shared memory is already in use";
+    void configure(SharedMemWriter& writer) const {
+        SharedMemWriterTestAccess::configureTransportNames(writer, mapping, event, {});
     }
+};
+} // namespace
+
+TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
+    LegacyWriterTestNames testNames;
 
     // Windows kernel objects share a namespace. A mutex with the event name
     // makes CreateEventA fail deterministically with ERROR_INVALID_HANDLE.
-    auto* conflictingMutex = CreateMutexA(nullptr, FALSE, EVENT_NAME);
+    auto* conflictingMutex = CreateMutexA(nullptr, FALSE, testNames.event.c_str());
     ASSERT_NE(conflictingMutex, nullptr) << "CreateMutexA failed: " << GetLastError();
 
     const auto mappingSize = calculateSharedMemorySize(1024, 2);
     auto* retainedMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
-                                               0, static_cast<DWORD>(mappingSize), SHM_NAME);
+                                               0, static_cast<DWORD>(mappingSize), testNames.mapping.c_str());
     ASSERT_NE(retainedMapping, nullptr) << "CreateFileMappingA failed: " << GetLastError();
     auto* retainedView = static_cast<DirectPipeHeader*>(
         MapViewOfFile(retainedMapping, FILE_MAP_ALL_ACCESS, 0, 0, mappingSize));
@@ -247,6 +251,7 @@ TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
 
     {
         SharedMemWriter writer;
+        testNames.configure(writer);
         EXPECT_FALSE(writer.initialize(48000, 2, 1024));
         EXPECT_FALSE(writer.isConnected());
 
@@ -262,14 +267,7 @@ TEST(SharedMemWriterTest, EventCreationFailureLeavesShutdownSafe) {
 }
 
 TEST(SharedMemWriterTest, CrashRetainedDifferentSizedMappingIsQuiescedBeforeFreshInitialization) {
-    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
-        CloseHandle(existingEvent);
-        GTEST_SKIP() << "DirectPipe named event is already in use";
-    }
-    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
-        CloseHandle(existingMapping);
-        GTEST_SKIP() << "DirectPipe shared memory is already in use";
-    }
+    LegacyWriterTestNames testNames;
 
     constexpr uint32_t oldCapacity = 512;
     constexpr uint32_t oldChannels = 1;
@@ -277,7 +275,7 @@ TEST(SharedMemWriterTest, CrashRetainedDifferentSizedMappingIsQuiescedBeforeFres
     constexpr uint32_t newChannels = 2;
     const auto mappingSize = calculateSharedMemorySize(oldCapacity, oldChannels);
     auto* retainedMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
-                                               0, static_cast<DWORD>(mappingSize), SHM_NAME);
+                                               0, static_cast<DWORD>(mappingSize), testNames.mapping.c_str());
     ASSERT_NE(retainedMapping, nullptr) << "CreateFileMappingA failed: " << GetLastError();
     auto* retainedView = static_cast<DirectPipeHeader*>(
         MapViewOfFile(retainedMapping, FILE_MAP_ALL_ACCESS, 0, 0, mappingSize));
@@ -302,6 +300,7 @@ TEST(SharedMemWriterTest, CrashRetainedDifferentSizedMappingIsQuiescedBeforeFres
     });
 
     SharedMemWriter writer;
+    testNames.configure(writer);
     const bool initialized = writer.initialize(48000, newChannels, newCapacity);
     retainedConsumer.join();
 
@@ -310,7 +309,7 @@ TEST(SharedMemWriterTest, CrashRetainedDifferentSizedMappingIsQuiescedBeforeFres
     EXPECT_TRUE(writer.isConnected());
 
     SharedMemory observer;
-    ASSERT_TRUE(observer.open(SHM_NAME, 0));
+    ASSERT_TRUE(observer.open(testNames.mapping.c_str(), 0));
     auto* freshHeader = static_cast<DirectPipeHeader*>(observer.getData());
     EXPECT_TRUE(freshHeader->producer_active.load(std::memory_order_acquire));
     EXPECT_EQ(freshHeader->sample_rate, 48000u);
@@ -323,21 +322,14 @@ TEST(SharedMemWriterTest, CrashRetainedDifferentSizedMappingIsQuiescedBeforeFres
 }
 
 TEST(SharedMemWriterTest, UnreleasedMappingFailsWithoutReinitializingHeader) {
-    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
-        CloseHandle(existingEvent);
-        GTEST_SKIP() << "DirectPipe named event is already in use";
-    }
-    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
-        CloseHandle(existingMapping);
-        GTEST_SKIP() << "DirectPipe shared memory is already in use";
-    }
+    LegacyWriterTestNames testNames;
 
     // 2048 mono and 1024 stereo have the same mapping size, so create() can
     // open the retained object. The producer configuration must still remain
     // untouched when the retained handle never releases.
     const auto mappingSize = calculateSharedMemorySize(2048, 1);
     auto* retainedMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
-                                               0, static_cast<DWORD>(mappingSize), SHM_NAME);
+                                               0, static_cast<DWORD>(mappingSize), testNames.mapping.c_str());
     ASSERT_NE(retainedMapping, nullptr) << "CreateFileMappingA failed: " << GetLastError();
     auto* retainedView = static_cast<DirectPipeHeader*>(
         MapViewOfFile(retainedMapping, FILE_MAP_ALL_ACCESS, 0, 0, mappingSize));
@@ -349,6 +341,7 @@ TEST(SharedMemWriterTest, UnreleasedMappingFailsWithoutReinitializingHeader) {
         retainedView->producer_generation.load(std::memory_order_acquire);
 
     SharedMemWriter writer;
+    testNames.configure(writer);
     EXPECT_FALSE(writer.initialize(48000, 2, 1024));
     EXPECT_FALSE(writer.isConnected());
     EXPECT_FALSE(retainedView->producer_active.load(std::memory_order_acquire));
@@ -392,17 +385,10 @@ bool spinWaitUntil(Predicate&& predicate, std::chrono::milliseconds timeout) {
 } // namespace
 
 TEST(SharedMemWriterTest, ShutdownWaitsForActiveWrite) {
-    if (auto* existingEvent = OpenEventA(SYNCHRONIZE, FALSE, EVENT_NAME)) {
-        CloseHandle(existingEvent);
-        GTEST_SKIP() << "DirectPipe named event is already in use";
-    }
-
-    if (auto* existingMapping = OpenFileMappingA(FILE_MAP_READ, FALSE, SHM_NAME)) {
-        CloseHandle(existingMapping);
-        GTEST_SKIP() << "DirectPipe shared memory is already in use";
-    }
+    LegacyWriterTestNames testNames;
 
     SharedMemWriter writer;
+    testNames.configure(writer);
     ASSERT_TRUE(writer.initialize(48000, 2, 1024));
 
     SharedMemWriteBarrier barrier;

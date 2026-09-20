@@ -10,6 +10,7 @@ add_executable(directpipe-tests
     test_ipc_integration.cpp
     test_receiver_simulation.cpp
     test_cross_process_ipc.cpp
+    test_fanout.cpp
 )
 
 target_link_libraries(directpipe-tests PRIVATE
@@ -24,8 +25,36 @@ endif()
 
 gtest_discover_tests(directpipe-tests)
 
+# Actual Receiver callback coverage, using isolated in-memory test connections.
+if(DIRECTPIPE_BUILD_RECEIVER)
+    juce_add_console_app(directpipe-receiver-tests PRODUCT_NAME "DirectPipeReceiverTests")
+    target_sources(directpipe-receiver-tests PRIVATE
+        test_receiver_processor.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/receiver/Source/PluginProcessor.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/receiver/Source/PluginEditor.cpp
+    )
+    juce_generate_juce_header(directpipe-receiver-tests)
+    target_compile_definitions(directpipe-receiver-tests PRIVATE
+        DIRECTPIPE_ENABLE_TEST_ACCESS=1
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0
+        JucePlugin_VersionString="${PROJECT_VERSION}"
+    )
+    target_link_libraries(directpipe-receiver-tests PRIVATE
+        directpipe-core GTest::gtest GTest::gtest_main
+        juce::juce_audio_utils juce::juce_recommended_config_flags
+    )
+    if(WIN32)
+        target_link_libraries(directpipe-receiver-tests PRIVATE kernel32 ole32 uuid)
+    endif()
+    gtest_discover_tests(directpipe-receiver-tests)
+endif()
+
 # ─── Cross-process IPC test child process ─────────────────────
 add_executable(ipc-test-child ipc_test_child.cpp)
+
+add_executable(fanout-test-child fanout_test_child.cpp)
+target_link_libraries(fanout-test-child PRIVATE directpipe-core)
+add_dependencies(directpipe-tests fanout-test-child)
 
 target_link_libraries(ipc-test-child PRIVATE directpipe-core)
 
@@ -68,8 +97,10 @@ if(DIRECTPIPE_BUILD_HOST)
         test_vst_chain.cpp
         # Slice 4: Platform
         test_platform.cpp
+        test_shared_mem_fanout.cpp
         test_endpoint_change_watcher.cpp
         test_update_script.cpp
+        test_receiver_update.cpp
         # Host source files needed by tests
         ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Control/StateBroadcaster.cpp
@@ -101,6 +132,7 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Platform/EndpointChangeWatcher.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/UpdateChecker.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/UpdateScript.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/ReceiverUpdateSupport.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/FilterEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/NoiseRemovalEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/AGCEditPanel.cpp
@@ -162,7 +194,15 @@ if(DIRECTPIPE_BUILD_HOST)
     )
 
     if(WIN32)
-        target_link_libraries(directpipe-host-tests PRIVATE kernel32 ole32 uuid)
+        target_link_libraries(directpipe-host-tests PRIVATE kernel32 ole32 uuid Rstrtmgr Version Advapi32)
+        if(TARGET DirectPipeReceiver_VST AND TARGET DirectPipeReceiver_VST3)
+            add_dependencies(directpipe-host-tests DirectPipe DirectPipeReceiver_VST DirectPipeReceiver_VST3)
+            target_compile_definitions(directpipe-host-tests PRIVATE
+                DIRECTPIPE_TEST_HOST_PATH="$<TARGET_FILE:DirectPipe>"
+                DIRECTPIPE_TEST_RECEIVER_VST2_PATH="$<TARGET_FILE:DirectPipeReceiver_VST>"
+                DIRECTPIPE_TEST_RECEIVER_VST3_PATH="$<TARGET_FILE:DirectPipeReceiver_VST3>"
+            )
+        endif()
     endif()
 
     gtest_discover_tests(directpipe-host-tests)
