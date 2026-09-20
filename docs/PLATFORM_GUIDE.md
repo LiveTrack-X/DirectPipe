@@ -229,7 +229,7 @@ XDG autostart 표준을 따릅니다. `~/.config/autostart/directpipe.desktop` �
 
 ### Receiver 설치 / Receiver Installation
 
-**VST2**: `DirectPipe Receiver.so`를 VST 폴더에 복사:
+**VST2**: `libDirectPipe Receiver.so`를 VST 폴더에 복사:
 - `~/.vst/`
 - `/usr/lib/vst/`
 - `/usr/local/lib/vst/`

@@ -29,6 +29,9 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
   paths. The verified package and every planned transaction path are checked
   before asking the host to exit, so unsupported long paths fail before shutdown.
   File-use, identity, hash and rollback protections remain in place.
+- macOS universal build defaults now apply before CMake initializes its cache;
+  release CI explicitly selects `arm64;x86_64` and macOS `10.15`, then verifies
+  both architectures in the host and every packaged Receiver bundle.
 
 ### Upgrade and compatibility
 

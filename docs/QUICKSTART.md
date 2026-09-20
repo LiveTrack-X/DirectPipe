@@ -134,7 +134,7 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 1. Receiver 플러그인을 VST2 폴더에 복사 / Copy Receiver plugin to VST2 folder:
    - Windows: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\`
    - macOS: `DirectPipe Receiver.vst` → `~/Library/Audio/Plug-Ins/VST/`
-   - Linux: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 / or `~/.vst/`
+   - Linux: `libDirectPipe Receiver.so` → `/usr/lib/vst/` 또는 / or `~/.vst/`
 2. DirectPipe 하단 **VST** 버튼 클릭 (초록색 = IPC ON) / Click **VST** button at bottom (green = ON)
 3. OBS → 오디오 소스 → 필터 → VST 2.x → **DirectPipe Receiver** 선택 / Select in OBS VST filter
 

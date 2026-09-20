@@ -299,7 +299,7 @@ If you use OBS, the Receiver VST2 plugin offers a simpler setup without any virt
 1. Receiver 플러그인 파일을 VST2 폴더에 복사 — Copy the Receiver plugin to a VST2 folder:
    - **Windows**: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\` (권장), `C:\Program Files\Common Files\VST2\`, 또는 `C:\Program Files\Steinberg\VstPlugins\`
    - **macOS**: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/` 또는 `~/Library/Audio/Plug-Ins/VST/`
-   - **Linux**: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 `~/.vst/`
+   - **Linux**: `libDirectPipe Receiver.so` → `/usr/lib/vst/` 또는 `~/.vst/`
 2. DirectPipe에서 **VST** 버튼 클릭 (VST 출력 켜기) — Enable VST output in DirectPipe
 3. OBS → 오디오 소스 (ex.기존 마이크)→ 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택 — Add VST filter in OBS
 
@@ -897,7 +897,7 @@ Normally, to route DirectPipe's processed audio to OBS, you need a **virtual aud
 1. **Receiver 플러그인**을 VST2 폴더에 복사
    - **Windows**: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\` (권장), `C:\Program Files\Common Files\VST2\`, 또는 `C:\Program Files\Steinberg\VstPlugins\`
    - **macOS**: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/` 또는 `~/Library/Audio/Plug-Ins/VST/`
-   - **Linux**: `DirectPipe Receiver.so` → `/usr/lib/vst/` 또는 `~/.vst/`
+   - **Linux**: `libDirectPipe Receiver.so` → `/usr/lib/vst/` 또는 `~/.vst/`
 
 2. **DirectPipe**에서 IPC 출력 켜기
    - DirectPipe 실행 → 하단의 **VST** 버튼 클릭 (초록색으로 변경)
@@ -929,7 +929,7 @@ OBS [DirectPipe Receiver VST 필터]
 1. **Copy the Receiver plugin** to a VST2 folder:
    - **Windows**: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\` (Recommended), `C:\Program Files\Common Files\VST2\`, or `C:\Program Files\Steinberg\VstPlugins\`
    - **macOS**: `DirectPipe Receiver.vst` → `/Library/Audio/Plug-Ins/VST/` or `~/Library/Audio/Plug-Ins/VST/`
-   - **Linux**: `DirectPipe Receiver.so` → `/usr/lib/vst/` or `~/.vst/`
+   - **Linux**: `libDirectPipe Receiver.so` → `/usr/lib/vst/` or `~/.vst/`
 
 2. **Enable IPC output in DirectPipe**
    - Run DirectPipe → click the **VST** button at the bottom (turns green)

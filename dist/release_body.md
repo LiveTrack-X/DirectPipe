@@ -62,6 +62,12 @@ rates matched; this update does not add resampling.
   폴더에는 관리자 승인이 필요할 수 있습니다.
   짧은 임시·이전 백업 이름을 사용하고 지원하지 않는 긴 경로는 본체 종료 전에
   확인합니다.
+- **macOS universal builds:** corrected CMake defaults and explicit CI options
+  select `arm64;x86_64` with deployment target `10.15`; packaging checks both
+  architectures in the host and every Receiver bundle.
+- **macOS Universal 빌드:** CMake 기본값 적용 순서와 CI 옵션을 정정하여
+  `arm64;x86_64`, 배포 대상 `10.15`를 명시하고 본체와 모든 Receiver 번들에
+  두 아키텍처가 포함되어 있는지 패키징 단계에서 검사합니다.
 
 ### Compatibility and verification / 호환성과 검증 범위
 

@@ -1,4 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
+
+# Apple target defaults must precede project(), which initializes these cache
+# entries. Preserve explicit caller/toolchain overrides instead of forcing them.
+if(CMAKE_HOST_APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Build universal binary")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
+endif()
+
 project(DirectPipe VERSION 4.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -8,12 +16,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # MSVC: treat source/execution as UTF-8 to avoid C4819 warnings
 if(MSVC)
     add_compile_options(/utf-8)
-endif()
-
-# macOS: universal binary (Apple Silicon + Intel) with minimum deployment target
-if(APPLE)
-    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Build universal binary")
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
 endif()
 
 # Platform info

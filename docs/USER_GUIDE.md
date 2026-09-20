@@ -122,7 +122,7 @@ USB Mic   → DirectPipe → Virtual Cable Input
 1. Receiver 플러그인을 VST2 폴더에 복사 / Copy the Receiver plugin to a VST2 folder:
    - **Windows**: `DirectPipe Receiver.dll` → `C:\Program Files\VSTPlugins\` (권장 / recommended), `C:\Program Files\Common Files\VST2\`, 또는 / or `C:\Program Files\Steinberg\VstPlugins\`
    - **macOS**: `DirectPipe Receiver.vst` → `~/Library/Audio/Plug-Ins/VST/`
-   - **Linux**: `DirectPipe Receiver.so` → `~/.vst/` 또는 / or `/usr/lib/vst/`
+   - **Linux**: `libDirectPipe Receiver.so` → `~/.vst/` 또는 / or `/usr/lib/vst/`
 2. DirectPipe에서 **VST** 버튼 클릭 (IPC 출력 켜기) / Click **VST** button in DirectPipe (enable IPC output)
 3. OBS → 오디오 소스 → 필터 → VST 2.x 플러그인 → **DirectPipe Receiver** 선택 / OBS → audio source → Filters → VST 2.x Plugin → select **DirectPipe Receiver**
 
@@ -175,7 +175,7 @@ Copy the Receiver plugin file to **one** of these VST2 folders:
 |---|---|
 | `~/Library/Audio/Plug-Ins/VST/` | **권장** / Recommended |
 
-**Linux** (`DirectPipe Receiver.so`):
+**Linux** (`libDirectPipe Receiver.so`):
 
 | 경로 / Path | 비고 / Note |
 |---|---|

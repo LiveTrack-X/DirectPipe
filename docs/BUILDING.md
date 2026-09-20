@@ -90,6 +90,14 @@ cmake --build build --config Release
 cd build && ctest --config Release
 ```
 
+For the macOS configure step, run this from the repository root / macOS 설정 단계는 저장소 루트에서 다음과 같이 실행하세요:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+```
+
 ### Windows — Visual Studio
 
 ```powershell
@@ -105,11 +113,24 @@ Or open `build/DirectPipe.sln` in Visual Studio and build from the IDE. / 또는
 ### macOS — Xcode
 
 ```bash
-cmake -B build -G Xcode
+cmake -B build -G Xcode \
+  -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
 cmake --build build --config Release
 ```
 
 Or open `build/DirectPipe.xcodeproj` in Xcode. / 또는 Xcode에서 직접 빌드.
+
+Fresh macOS build directories default to `arm64;x86_64` and deployment target
+`10.15`. Existing CMake caches retain their values; pass the explicit options
+above when reusing a build directory. CI passes both options and uses `lipo` to
+print and verify both architectures in the host and every packaged Receiver
+bundle before creating the DMG.
+
+새 macOS 빌드 디렉터리는 `arm64;x86_64`, 배포 대상 `10.15`를 기본값으로
+사용합니다. 기존 CMake 캐시는 값을 유지하므로 재사용할 때 위 옵션을 명시하세요.
+CI도 두 옵션을 명시하며 DMG 생성 전에 본체와 모든 Receiver 번들의 아키텍처를
+`lipo`로 출력하고 `arm64`와 `x86_64`가 모두 포함되어 있는지 검사합니다.
 
 ### Linux
 

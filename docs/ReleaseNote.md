@@ -37,6 +37,11 @@ all planned paths before host shutdown. Unsupported long paths are reported
 before closing DirectPipe. / Windows 갱신은 짧은 임시·이전 백업 이름을 사용하고
 모든 예정 경로를 먼저 검사하여 지원하지 않는 긴 경로를 본체 종료 전에 알립니다.
 
+macOS universal build defaults now apply before CMake cache initialization, and
+release CI explicitly builds and checks `arm64` + `x86_64` for the host and all
+Receiver bundles. / macOS Universal 빌드 기본값을 CMake 캐시 초기화 전에 적용하고,
+릴리즈 CI가 본체와 모든 Receiver 번들의 `arm64` + `x86_64` 포함 여부를 검사합니다.
+
 See [4.4.0 changes and validation](MULTI_RECEIVER_4_4_0.md) for automated and
 isolated runtime results. Actual DLL and OBS filter-engine checks are distinct
 from OBS frontend, physical-device, listening and interactive UAC acceptance.
