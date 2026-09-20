@@ -56,12 +56,16 @@ rates matched; this update does not add resampling.
   folders may require Windows administrator approval.
   Short temporary/rotated-backup names avoid unnecessary path expansion, and
   unsupported transaction paths are detected before host shutdown.
+  Short (8.3) aliases and long names are handled consistently for temporary and
+  installation paths, preventing false rejection of valid updates.
 - **Windows Receiver 갱신:** 설치 경로·버전을 먼저 표시하고 같은 버전·더 최신
   설치본을 유지합니다. 사용 중인 파일, 패키지와 플러그인 신원을 확인하고
   백업·복구를 지원합니다. Receiver만 갱신하면 본체는 계속 실행되며 보호된
   폴더에는 관리자 승인이 필요할 수 있습니다.
   짧은 임시·이전 백업 이름을 사용하고 지원하지 않는 긴 경로는 본체 종료 전에
   확인합니다.
+  임시·설치 경로의 짧은 표기(8.3 별칭)와 긴 표기를 일관되게 처리하여 정상 경로의
+  잘못된 거부도 수정했습니다.
 - **macOS universal builds:** corrected CMake defaults and explicit CI options
   select `arm64;x86_64` with deployment target `10.15`; packaging checks both
   architectures in the host and every Receiver bundle.

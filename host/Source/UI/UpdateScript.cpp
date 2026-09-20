@@ -370,7 +370,7 @@ function Assert-Binary([string]$path, [string]$product, [string]$version, [strin
 }
 
 function Get-TreeFiles([string]$path, [bool]$includeDirectories = $false) {
-    $null = Assert-LiteralPath $path
+    $path = Assert-LiteralPath $path
     if (Test-Path -LiteralPath $path -PathType Leaf) { return @($path) }
     $files = @()
     $pending = New-Object 'System.Collections.Generic.Queue[string]'; $pending.Enqueue($path)
@@ -443,6 +443,10 @@ function Assert-LockedHashes([IO.FileStream[]]$held, [hashtable]$expectedHashes)
 }
 
 function Expand-VerifiedArchive([string]$archive, [string]$destination) {
+    # Framework GetFullPath expands existing 8.3 aliases (e.g. RUNNER~1).
+    # Canonicalize the root too, so the strict separator-boundary comparison
+    # uses the same representation as each extracted entry.
+    $destination = Assert-LiteralPath $destination
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($archive)
     try {
@@ -455,7 +459,8 @@ function Expand-VerifiedArchive([string]$archive, [string]$destination) {
             if ((($entry.ExternalAttributes -shr 16) -band 0xf000) -eq 0xa000) { throw 'Linked archive entries are not supported' }
             $path = [IO.Path]::GetFullPath((Join-Path $destination $relative))
             Assert-SupportedPathLength $path
-            if (-not $path.StartsWith($destination.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or -not $seen.Add($path)) { throw 'Duplicate or escaping archive entry' }
+            if (-not $path.StartsWith($destination.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "Escaping archive entry: $relative" }
+            if (-not $seen.Add($path)) { throw "Duplicate archive entry: $relative" }
             $total += $entry.Length
             if ($total -gt 536870912) { throw 'Update archive is too large' }
             if ($relative.EndsWith('\')) { $null = [IO.Directory]::CreateDirectory($path); continue }
@@ -477,6 +482,11 @@ function Expand-VerifiedArchive([string]$archive, [string]$destination) {
 }
 
 function New-Entry([string]$source, [string]$target, [string]$backup, [string]$format, [string]$priorVersion) {
+    # FileInfo/FileStream names and dictionary keys must share this form during
+    # staging, bundle-relative path mapping, identity checks, and rollback.
+    $source = Assert-LiteralPath $source
+    $target = Assert-LiteralPath $target
+    $backup = Assert-LiteralPath $backup $false
     $suffix = [Guid]::NewGuid().ToString('N')
     # Unique siblings keep same-volume renames without appending long names to
     # the existing bundle. Both stage and rotated backup must stay short.
@@ -488,15 +498,19 @@ function New-Entry([string]$source, [string]$target, [string]$backup, [string]$f
 )DIRECTPIPE";
     script << R"DIRECTPIPE(
 try {
-    $null = Assert-LiteralPath $plan.downloadedFilePath
-    $null = Assert-LiteralPath $plan.resultFilePath $false
+    $plan.downloadedFilePath = Assert-LiteralPath $plan.downloadedFilePath
+    $plan.resultFilePath = Assert-LiteralPath $plan.resultFilePath $false
     $null = Assert-LiteralPath ($plan.resultFilePath + '.tmp') $false
-    if (-not $plan.skipHostUpdate) { $null = Assert-LiteralPath $plan.updatedFlagPath $false }
+    if (-not $plan.skipHostUpdate) {
+        $plan.currentExePath = Assert-LiteralPath $plan.currentExePath
+        $plan.backupExePath = Assert-LiteralPath $plan.backupExePath $false
+        $plan.updatedFlagPath = Assert-LiteralPath $plan.updatedFlagPath $false
+    }
     $expected = Get-ReleaseVersion $plan.expectedVersion
     $archiveLock = [IO.File]::Open($plan.downloadedFilePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     if ((Get-FileDigest $plan.downloadedFilePath) -ine $plan.expectedPackageSha256) { throw 'The release archive checksum changed before installation' }
     $work = Join-Path ([IO.Path]::GetDirectoryName($plan.downloadedFilePath)) ('directpipe-stage-' + [Guid]::NewGuid().ToString('N'))
-    $null = Assert-LiteralPath $work $false
+    $work = Assert-LiteralPath $work $false
     $null = [IO.Directory]::CreateDirectory($work)
     Expand-VerifiedArchive $plan.downloadedFilePath $work
     $hostCandidates = @(Get-ChildItem -LiteralPath $work -Recurse -File -Filter 'DirectPipe.exe')
@@ -519,7 +533,8 @@ try {
         $entries.Add((New-Entry $hostSource $plan.currentExePath $plan.backupExePath 'host' $currentVersion))
     }
     foreach ($target in $plan.targets) {
-        $null = Assert-LiteralPath $target.path
+        $target.path = Assert-LiteralPath $target.path
+        $target.binary = Assert-LiteralPath $target.binary
         $export = if ($target.format -eq 'vst2') { 'VSTPluginMain' } else { 'GetPluginFactory' }
         Assert-Binary $target.binary 'DirectPipe Receiver' $target.version $export
         if ((Get-ReleaseVersion $target.version) -ge $expected) { throw 'Receiver is current or newer; refusing replacement or downgrade' }

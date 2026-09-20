@@ -37,6 +37,10 @@ all planned paths before host shutdown. Unsupported long paths are reported
 before closing DirectPipe. / Windows 갱신은 짧은 임시·이전 백업 이름을 사용하고
 모든 예정 경로를 먼저 검사하여 지원하지 않는 긴 경로를 본체 종료 전에 알립니다.
 
+Windows updates also handle short (8.3) aliases and long names consistently for
+temporary and installation paths. / Windows 임시·설치 경로의 짧은 표기(8.3 별칭)와
+긴 표기를 일관되게 처리하여 정상 경로가 잘못 거부되는 문제를 수정했습니다.
+
 macOS universal build defaults now apply before CMake cache initialization, and
 release CI explicitly builds and checks `arm64` + `x86_64` for the host and all
 Receiver bundles. / macOS Universal 빌드 기본값을 CMake 캐시 초기화 전에 적용하고,

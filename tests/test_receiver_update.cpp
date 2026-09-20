@@ -125,6 +125,14 @@ PowerShellResult runPowerShell(const juce::File& scriptFile, const juce::String&
 
 juce::String literal(const juce::File& file) { return "'" + file.getFullPathName().replace("'", "''") + "'"; }
 
+juce::String shortDirectoryPath(const juce::File& directory)
+{
+    std::vector<wchar_t> buffer(32768);
+    const auto length = GetShortPathNameW(directory.getFullPathName().toWideCharPointer(),
+                                         buffer.data(), static_cast<DWORD>(buffer.size()));
+    return length > 0 && length < buffer.size() ? juce::String(buffer.data()) : juce::String();
+}
+
 // Mutate only a private fixture resource. No executable code, installed files,
 // production IPC, running host or plug-in installation is touched by the tests.
 bool makeOlderFixture(const juce::File& file, const juce::String& original, const juce::String& older)
@@ -227,6 +235,18 @@ protected:
         juce::FileInputStream stream(zip); ASSERT_TRUE(stream.openedOk());
         spec.expectedPackageSha256 = juce::SHA256(stream).toHexString();
     }
+    void appendArchiveEntries(const juce::StringArray& names) {
+        juce::StringArray quoted;
+        for (const auto& name : names) quoted.add("'" + name.replace("'", "''") + "'");
+        const juce::File zip(spec.downloadedFilePath);
+        const auto run = runPowerShell(root.getChildFile("append-zip.ps1"),
+            "$ErrorActionPreference='Stop'\nAdd-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem\n"
+            "$zip=[IO.Compression.ZipFile]::Open(" + literal(zip) + ", [IO.Compression.ZipArchiveMode]::Update)\n"
+            "try { foreach ($name in @(" + quoted.joinIntoString(",") + ")) { $null=$zip.CreateEntry($name) } } finally { $zip.Dispose() }\n");
+        ASSERT_TRUE(run.started && run.finished); ASSERT_EQ(0, run.exitCode) << run.output;
+        juce::FileInputStream stream(zip); ASSERT_TRUE(stream.openedOk());
+        spec.expectedPackageSha256 = juce::SHA256(stream).toHexString();
+    }
     PowerShellResult install(const juce::String& replacement = {}) {
         auto script = buildWindowsCompanionInstallPowerShell(spec);
         EXPECT_FALSE(script.isEmpty());
@@ -290,6 +310,76 @@ TEST_F(ReceiverTransactionTest, PathPreflightDoesNotWaitForOrReplaceRunningHost)
     EXPECT_FALSE(juce::File(spec.resultFilePath).exists());
     EXPECT_TRUE(installed.findChildFiles(juce::File::findFilesAndDirectories, false, ".dp-*").isEmpty());
     EXPECT_TRUE(root.findChildFiles(juce::File::findDirectories, false, "directpipe-stage-*").isEmpty());
+}
+
+TEST_F(ReceiverTransactionTest, ShortArchiveParentUsesCanonicalExtractionBoundary)
+{
+    const auto shortRoot = shortDirectoryPath(root);
+    if (shortRoot.isEmpty() || shortRoot.equalsIgnoreCase(root.getFullPathName()))
+        GTEST_SKIP() << "This volume does not provide a distinct 8.3 directory alias";
+    spec.downloadedFilePath = juce::File(shortRoot).getChildFile("DirectPipe.zip").getFullPathName();
+    // Explicit entries for already implied directories and a new empty directory
+    // are valid ZIP syntax; they must not be confused with duplicate files.
+    appendArchiveEntries({"DirectPipe Receiver.vst3/Contents/", "DirectPipe Receiver.vst3/Contents/empty/"});
+    ASSERT_FALSE(HasFatalFailure());
+    const auto run = preflight();
+    ASSERT_TRUE(run.started && run.finished); ASSERT_EQ(0, run.exitCode) << run.output;
+    EXPECT_TRUE(static_cast<bool>(preflightResult()["success"]));
+    EXPECT_EQ(older, installedVersion("DirectPipe Receiver.vst3"));
+    const auto hostHash = juce::SHA256(juce::File(spec.currentExePath)).toHexString();
+    for (const auto& invalid : std::vector<std::pair<juce::String, juce::String>> {
+             {"./DirectPipe Receiver.dll", "Duplicate archive entry"},
+             {"../outside.txt", "Unsafe update archive entry"} }) {
+        makeArchive(); ASSERT_FALSE(HasFatalFailure());
+        appendArchiveEntries({invalid.first}); ASSERT_FALSE(HasFatalFailure());
+        const auto rejected = preflight();
+        ASSERT_TRUE(rejected.started && rejected.finished); EXPECT_NE(0, rejected.exitCode) << rejected.output;
+        EXPECT_TRUE(preflightResult()["error"].toString().contains(invalid.second)) << rejected.output;
+        EXPECT_EQ(hostHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+        EXPECT_EQ(older, installedVersion("DirectPipe Receiver.vst3"));
+        EXPECT_FALSE(root.getChildFile("outside.txt").exists());
+        EXPECT_FALSE(juce::File(spec.resultFilePath).exists());
+    }
+}
+
+TEST_F(ReceiverTransactionTest, ShortInstallParentsKeepHashKeysAndRollbackPathsConsistent)
+{
+    const auto shortRoot = shortDirectoryPath(root);
+    const auto shortInstalled = shortDirectoryPath(installed);
+    if (shortRoot.isEmpty() || shortInstalled.isEmpty()
+        || shortRoot.equalsIgnoreCase(root.getFullPathName()))
+        GTEST_SKIP() << "This volume does not provide a distinct 8.3 directory alias";
+    spec.skipHostUpdate = false;
+    spec.downloadedFilePath = juce::File(shortRoot).getChildFile("DirectPipe.zip").getFullPathName();
+    spec.resultFilePath = juce::File(shortRoot).getChildFile("result.json").getFullPathName();
+    spec.updatedFlagPath = juce::File(shortRoot).getChildFile("updated.flag").getFullPathName();
+    spec.currentExePath = juce::File(shortInstalled).getChildFile("DirectPipe.exe").getFullPathName();
+    spec.backupExePath = juce::File(shortInstalled).getChildFile("DirectPipe_backup.exe").getFullPathName();
+    for (auto& target : spec.receiverTargets) {
+        const auto name = juce::File(target.installPath).getFileName();
+        const auto path = juce::File(shortInstalled).getChildFile(name);
+        target.installPath = path.getFullPathName();
+        target.binaryPath = target.format == ReceiverFormat::vst2 ? target.installPath
+            : path.getChildFile("Contents/x86_64-win/DirectPipe Receiver.vst3").getFullPathName();
+    }
+    ASSERT_TRUE(juce::File(spec.backupExePath).replaceWithText("previous host backup"));
+    const auto oldBackup = installed.getChildFile("DirectPipe Receiver.vst3.directpipe-backup");
+    ASSERT_TRUE(installed.getChildFile("DirectPipe Receiver.vst3").copyDirectoryTo(oldBackup));
+    ASSERT_TRUE(oldBackup.getChildFile("prior.txt").replaceWithText("previous bundle backup"));
+    const auto hostHash = juce::SHA256(juce::File(spec.currentExePath)).toHexString();
+    auto run = install("if ($entry.format -eq 'vst3') { throw 'Injected failure after alias-path bundle swap' }");
+    ASSERT_TRUE(run.started && run.finished); EXPECT_NE(0, run.exitCode) << run.output;
+    ASSERT_TRUE(result()["error"].toString().contains("Injected failure after alias-path")) << run.output;
+    EXPECT_TRUE(static_cast<bool>(result()["rollbackSucceeded"]));
+    EXPECT_EQ(hostHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+    EXPECT_EQ(juce::String("previous host backup"), juce::File(spec.backupExePath).loadFileAsString());
+    EXPECT_EQ(juce::String("previous bundle backup"), oldBackup.getChildFile("prior.txt").loadFileAsString());
+    EXPECT_EQ(older, installedVersion("DirectPipe Receiver.vst3"));
+    run = install();
+    ASSERT_TRUE(run.started && run.finished); ASSERT_EQ(0, run.exitCode) << run.output;
+    EXPECT_TRUE(static_cast<bool>(result()["success"]));
+    EXPECT_EQ(version, installedVersion("DirectPipe Receiver.dll"));
+    EXPECT_EQ(version, installedVersion("DirectPipe Receiver.vst3"));
 }
 
 TEST_F(ReceiverTransactionTest, LongVst3PathUpdatesAndRotatesExistingBackup)

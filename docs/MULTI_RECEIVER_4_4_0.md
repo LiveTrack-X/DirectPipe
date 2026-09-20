@@ -63,29 +63,32 @@ The previously verified 4.3.1 preset/audio/update improvements remain included;
 their archived evidence is in [the 4.3.1 report](RECEIVER_RELIABILITY_UPDATE.md).
 Those counts do not certify 4.4.0. The 4.3.1 candidate files remain preserved.
 
-## Final local verification — 2026-09-20
+## Windows software checkpoint — 2026-09-20, before the path-alias fix
 
-The final Windows source, including the updater path correction, completed these
-local checks. CI and published-asset evidence are recorded separately on the
-Actions and release pages linked above.
+This completed local checkpoint includes the updater staging/path-length fix,
+but precedes the later correction for Windows short (8.3) aliases versus long
+path names. These results are historical evidence, not final-source validation.
+Final-source platform CI results and published-asset evidence are recorded on
+the Actions and release pages linked above.
 
 | Check | Result |
 | --- | --- |
 | Full Windows Release build | Host, VST2/VST3 Receiver and test targets passed |
-| Full CTest suite after the path correction | 654 registered: 652 passed, 2 skipped, 0 failed; 295.56 seconds |
+| Full CTest suite after the staging/path-length fix, before the alias fix | 654 registered: 652 passed, 2 skipped, 0 failed; 295.56 seconds |
 | Stream Deck tests | 22/22 passed |
 | Full and production npm audits | Zero findings |
 
 The two skips remain `ActionDispatcherTest.ConcurrentDispatchFromMultipleThreads`
 (requires a JUCE message loop) and `PlatformTest.MultiInstanceAlreadyHeld`
 (the existing user host owns the application lock). Skipped cases are not counted
-as passed. New path regressions are included in the full-suite total. These
+as passed. The staging/path-length regressions are included in this checkpoint's
+full-suite total; the later alias regressions are not. These
 software results do not mark physical-device, OBS frontend, listening or
 interactive UAC acceptance complete.
 
-## Windows software checkpoint — 2026-09-20, before the final updater path fix
+## Windows software checkpoint — 2026-09-20, before the staging/path-length fix
 
-The following completed checkpoint precedes the final updater path correction.
+The following completed checkpoint precedes the updater staging/path-length fix.
 Its results are retained as dated evidence, not substituted for final-source
 regression results. Focused counts are subsets of the full suite.
 
@@ -138,7 +141,7 @@ The scanner's existing `Total scanned` log counter omits the last file of each
 format. The resulting plugin XML, Found counts, exit codes and failed-file lists
 were checked directly; the misleading counter was not used as evidence.
 
-## Final updater path correction
+## Updater path corrections
 
 The additional runtime checks reproduced a valid VST3 installation path becoming
 unsupported when a long temporary suffix was appended. The updater now uses
@@ -150,9 +153,16 @@ paths fail with a shorter-folder message; the installation helper repeats the
 checks before replacement. File-use, identity, hash and rollback protections stay
 in place.
 
-Six new actual-PowerShell regressions passed, including the reproduced 232-character
+The updater also normalizes temporary and installation paths consistently when
+Windows represents the same directory with a short (8.3) alias or a long name.
+This prevents valid archive contents and installation paths from being rejected
+because boundary checks compare different spellings of the same location.
+
+Six actual-PowerShell regressions for the earlier staging/path-length fix passed,
+including the reproduced 232-character
 VST3 module path with an existing backup, and rejection of paths beyond Windows
-file-use inspection's supported length. These focused results do not replace the
+file-use inspection's supported length. These precede the alias correction and do
+not establish its result. These focused results do not replace the
 final whole-tree build, regression suite or platform CI checks.
 
 ## Bounded transport cost
