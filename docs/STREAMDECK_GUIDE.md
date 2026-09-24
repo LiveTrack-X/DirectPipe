@@ -346,6 +346,7 @@ com.directpipe.directpipe.sdPlugin/
   icons-src/                  SVG icon sources / SVG 아이콘 원본
   scripts/
     generate-icons.mjs        SVG -> PNG generation script (sharp) / 아이콘 생성 스크립트
+    check-icons.mjs           Action-list PNG color, transparency and size checks / 목록 아이콘 검사
 dist/
   com.directpipe.directpipe.streamDeckPlugin   Packaged plugin / 패키지 파일
 ```
@@ -377,7 +378,18 @@ dist/
 ```bash
 cd com.directpipe.directpipe.sdPlugin
 npm run icons    # SVG -> PNG generation (requires sharp)
+npm run check:icons # White/transparent action-list PNGs and standard/@2x dimensions
 ```
+
+Action-list icons use white (`#FFFFFF`) artwork on transparent backgrounds:
+20/40px for actions and 28/56px for the category. Performance Monitor uses the
+dedicated `images/performance` pair, generated from the white microphone source.
+The colored plugin logo and key/state artwork serve separate roles and stay
+unchanged. `npm run validate` and `npm run package` check the actual PNGs before
+the official CLI runs, including in CI validation. / 액션 목록 아이콘은 흰색·투명
+배경으로 검사하며, 제품 로고와 실제 키의 상태 이미지는 별도로 유지합니다.
+
+See [Elgato action-list icon requirements](https://docs.elgato.com/guidelines/stream-deck/plugins/#icons).
 
 ### Package Plugin / 플러그인 패키징
 
@@ -389,8 +401,8 @@ npm run icons    # SVG -> PNG generation (requires sharp)
 npm install -g @elgato/cli
 cd com.directpipe.directpipe.sdPlugin
 npm run build                  # Rollup bundle src/ -> bin/plugin.js
-streamdeck validate .          # Validate manifest and structure
-streamdeck pack . --output ../dist/ --force  # Create .streamDeckPlugin
+npm run validate              # Check action-list PNGs, manifest and structure
+npm run package               # Check icons and create .streamDeckPlugin
 ```
 
 Output: `dist/com.directpipe.directpipe.streamDeckPlugin`

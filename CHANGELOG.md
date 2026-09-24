@@ -6,6 +6,17 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ## [4.4.0] - 2026-09-20
 
+### Stream Deck package correction - 2026-09-24
+
+- Correct the Performance Monitor action-list icon to white artwork on a
+  transparent background at 20/40px, retaining the colored plugin/key branding.
+- Add manifest-driven PNG checks before validation and npm packaging to catch
+  incorrect action-list colors, transparency or dimensions.
+- The replacement Stream Deck package remains 4.4.0.0. Its runtime code, action
+  UUIDs and saved settings are unchanged; desktop packages and the v4.4.0 tag
+  retain their original build. The release page records the replacement source
+  and the refreshed checksum manifest.
+
 ### Added
 
 - Up to eight independent Receiver connections, plus one separate legacy

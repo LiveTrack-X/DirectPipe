@@ -4,6 +4,13 @@
 
 ## DirectPipe v4.4.0
 
+**2026-09-24 Stream Deck package correction:** Performance Monitor now uses a
+white, transparent action-list icon. The plugin stays at 4.4.0.0; existing
+actions, settings and key artwork remain unchanged. Desktop downloads retain
+their original build. / **Stream Deck 파일 수정:** Performance Monitor의 목록
+아이콘을 흰색·투명 배경으로 교정했습니다. 기존 기능·설정·키 이미지는 유지하며,
+수정된 플러그인과 갱신된 체크섬은 같은 v4.4.0 릴리즈에서 제공합니다.
+
 Up to **eight independent Receivers** receive the same processed microphone
 stream, alongside one separate legacy connection for an older Receiver. Existing
 **A–E/Auto slots**, plugin identities and saved OBS settings stay compatible.

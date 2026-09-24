@@ -8,7 +8,9 @@
     "dev": "node --watch src/plugin.js",
     "build": "rollup -c rollup.config.mjs",
     "icons": "node scripts/generate-icons.mjs",
-    "validate": "streamdeck validate .",
+    "check:icons": "node scripts/check-icons.mjs",
+    "validate": "npm run check:icons && streamdeck validate .",
+    "prepackage": "npm run check:icons",
     "package": "streamdeck pack . --output ../dist/ --force",
     "lint": "eslint src/",
     "test": "node --test src/websocket-client.test.js src/actions/control-actions.test.js"

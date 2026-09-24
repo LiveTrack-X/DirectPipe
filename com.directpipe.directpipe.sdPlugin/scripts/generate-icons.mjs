@@ -19,7 +19,7 @@
 /**
  * Generate PNG icons from SVG sources for Stream Deck plugin.
  *
- * Icon size requirements (Elgato SDK v2):
+ * Icon size requirements (Elgato Marketplace):
  *   Plugin icon:   256x256 + 512x512 (@2x)
  *   Category icon:  28x28  +  56x56  (@2x)
  *   Action icons:   20x20  +  40x40  (@2x)
@@ -52,6 +52,8 @@ const icons = [
   { src: 'volume.svg', out: 'volume', size: 20, x2: 40 },
   { src: 'preset.svg', out: 'preset', size: 20, x2: 40 },
   { src: 'monitor.svg', out: 'monitor', size: 20, x2: 40 },
+  // Keep the microphone identity without the colored plugin-logo background.
+  { src: 'category.svg', out: 'performance', size: 20, x2: 40 },
 
   // State images (72 + 144@2x) — shown on Stream Deck keys
   { src: 'bypass-active.svg', out: 'bypass-active', size: 72, x2: 144 },

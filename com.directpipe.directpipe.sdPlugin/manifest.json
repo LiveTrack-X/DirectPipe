@@ -208,7 +208,7 @@
       "UUID": "com.directpipe.directpipe.performance-monitor",
       "Name": "Performance Monitor",
       "Tooltip": "Display latency, CPU usage, XRun count, and audio format.",
-      "Icon": "images/directpipe",
+      "Icon": "images/performance",
       "Controllers": [
         "Keypad",
         "Encoder"
