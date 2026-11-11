@@ -1,0 +1,36 @@
+name: Diagnose Windows shell launch context
+
+# Diagnostic only: no JUCE/CMake build, audio, installation or release changes.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-context:
+    runs-on: windows-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare direct and Shell.Application child context
+        timeout-minutes: 5
+        shell: cmd
+        run: |
+          @echo off
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "DP_SHELL_VS=%%i"
+          if not defined DP_SHELL_VS exit /b 2
+          call "%DP_SHELL_VS%\Common7\Tools\VsDevCmd.bat" -no_logo -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b 2
+          pwsh -NoProfile -File tools\diagnose_windows_shell_context.ps1
+          exit /b %errorlevel%
+
+      - name: Upload bounded shell-context evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-shell-context-${{ github.run_id }}
+          path: build/test-results/windows-shell-context-*/
+          if-no-files-found: warn
+          retention-days: 14
