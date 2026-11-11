@@ -19,6 +19,141 @@
 #include <Windows.h>
 #endif
 
+#if JUCE_WINDOWS
+namespace directpipe::test_detail {
+namespace {
+juce::String canonicalStartupDiagnosticHandle(HANDLE handle)
+{
+    std::vector<wchar_t> path(32768);
+    const auto length = GetFinalPathNameByHandleW(handle, path.data(), static_cast<DWORD>(path.size()),
+        FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    return length > 0 && length < path.size() ? juce::String(path.data()) : juce::String{};
+}
+
+juce::String canonicalStartupDiagnosticDirectory(const juce::File& directory)
+{
+    const auto handle = CreateFileW(directory.getFullPathName().toWideCharPointer(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return {};
+    const auto path = canonicalStartupDiagnosticHandle(handle);
+    CloseHandle(handle);
+    return path;
+}
+
+bool startupDiagnosticDirectoryIsInside(const juce::String& directory, const juce::String& root)
+{
+    return root.isNotEmpty() && directory.isNotEmpty()
+        && (directory.equalsIgnoreCase(root) || directory.startsWithIgnoreCase(root.trimCharactersAtEnd("\\") + "\\"));
+}
+
+bool writeStartupDiagnosticText(const juce::File& destination, const juce::String& text)
+{
+    juce::FileOutputStream output(destination);
+    if (!output.openedOk()) return false;
+    const bool written = output.writeText(text, false, false, "\n");
+    output.flush();
+    return written && output.getStatus().wasOk();
+}
+}
+
+// Read only named files belonging to this fixture; never search TEMP or copy
+// executable/package files. Tails are bounded and explicitly marked truncated.
+void retainStartupFixtureDiagnostics(const juce::File& ownedRoot,
+    const update_detail::WindowsUpdateInstallSpec& spec, const juce::String& installerOutput)
+{
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    const auto testName = info != nullptr
+        ? juce::String(info->test_suite_name()) + "." + info->name() : juce::String("startup-fixture");
+    const auto canonicalRoot = canonicalStartupDiagnosticDirectory(ownedRoot);
+    std::vector<wchar_t> temporary(32768);
+    const auto temporaryLength = GetTempPathW(static_cast<DWORD>(temporary.size()), temporary.data());
+    const auto callerTemporary = temporaryLength > 0 && temporaryLength < temporary.size()
+        ? juce::String(temporary.data()) : juce::String{};
+    juce::String report;
+    report << "Startup fixture diagnostics: " << testName << "\n"
+        << "OwnedRoot=" << ownedRoot.getFullPathName() << "\nCanonicalRoot=" << canonicalRoot << "\n"
+        << "CallerGetTempPathW=" << callerTemporary << "\n"
+        << "CanonicalCallerTemp=" << (callerTemporary.isNotEmpty()
+            ? canonicalStartupDiagnosticDirectory(juce::File(callerTemporary)) : juce::String{}) << "\n"
+        << "CallerTEMP=" << juce::SystemStats::getEnvironmentVariable("TEMP", "") << "\n"
+        << "CallerTMP=" << juce::SystemStats::getEnvironmentVariable("TMP", "") << "\n";
+
+    juce::File evidenceDirectory;
+    const auto evidenceRoot = juce::SystemStats::getEnvironmentVariable("DIRECTPIPE_TEST_STARTUP_EVIDENCE_DIR", "");
+    if (evidenceRoot.isNotEmpty() && juce::File::isAbsolutePath(evidenceRoot)) {
+        evidenceDirectory = juce::File(evidenceRoot).getChildFile(
+            juce::File::createLegalFileName(testName).substring(0, 110) + "-" + juce::Uuid().toString());
+        if (!evidenceDirectory.createDirectory().wasOk()) {
+            report << "Could not create designated diagnostic directory\n";
+            evidenceDirectory = {};
+        }
+    }
+    const auto emit = [&](const juce::String& label, const juce::String& text) {
+        report << "\n--- " << label << " ---\n" << text << "\n";
+        if (evidenceDirectory != juce::File{}
+            && !writeStartupDiagnosticText(evidenceDirectory.getChildFile(label), text))
+            report << "Could not copy diagnostic tail: " << label << "\n";
+    };
+    const auto capture = [&](const juce::String& label, const juce::String& path, int limit) {
+        report << "\nFile=" << label << "\n";
+        if (path.isEmpty()) { report << "Not configured\n"; return; }
+        const juce::File file(path);
+        report << "Source=" << file.getFullPathName() << "\n";
+        if (!file.isAChildOf(ownedRoot)
+            || !startupDiagnosticDirectoryIsInside(canonicalStartupDiagnosticDirectory(file.getParentDirectory()), canonicalRoot)) {
+            report << "Refused: outside this owned fixture or parent unavailable\n";
+            return;
+        }
+        const auto handle = CreateFileW(file.getFullPathName().toWideCharPointer(), GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (handle == INVALID_HANDLE_VALUE) {
+            report << "Missing or unreadable; nativeError=" << static_cast<int>(GetLastError()) << "\n";
+            return;
+        }
+        BY_HANDLE_FILE_INFORMATION identity{};
+        if (!GetFileInformationByHandle(handle, &identity)
+            || (identity.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) != 0
+            || !startupDiagnosticDirectoryIsInside(canonicalStartupDiagnosticHandle(handle), canonicalRoot)) {
+            CloseHandle(handle);
+            report << "Refused: final file identity is outside this fixture or is a reparse point\n";
+            return;
+        }
+        LARGE_INTEGER length{}, offset{};
+        if (!GetFileSizeEx(handle, &length)) {
+            CloseHandle(handle); report << "Could not read diagnostic size\n"; return;
+        }
+        offset.QuadPart = juce::jmax<juce::int64>(0, length.QuadPart - limit);
+        std::vector<char> bytes(static_cast<size_t>(limit));
+        DWORD bytesRead = 0;
+        const bool read = SetFilePointerEx(handle, offset, nullptr, FILE_BEGIN) != FALSE
+            && ReadFile(handle, bytes.data(), static_cast<DWORD>(bytes.size()), &bytesRead, nullptr) != FALSE;
+        CloseHandle(handle);
+        if (!read) { report << "Could not read diagnostic tail\n"; return; }
+        report << "Bytes=" << static_cast<juce::int64>(length.QuadPart) << "; truncated=" << (offset.QuadPart > 0 ? "true" : "false") << "\n";
+        emit(offset.QuadPart > 0 ? label + ".tail.txt" : label,
+            juce::String::fromUTF8(bytes.data(), static_cast<int>(bytesRead)));
+    };
+    const auto current = spec.currentExePath.isNotEmpty()
+        ? juce::File(spec.currentExePath) : ownedRoot.getChildFile("DirectPipe.exe");
+    capture("probe-pid.txt", current.getSiblingFile("startup-probe.pid").getFullPathName(), 256);
+    capture("probe-diagnostic.txt", current.getSiblingFile("startup-probe.diagnostic.txt").getFullPathName(), 2048);
+    capture("probe-configuration.ini", current.getSiblingFile("startup-probe.ini").getFullPathName(), 4096);
+    capture("startup-ack.json", spec.startupAckFilePath, 8192);
+    capture("update-receipt.json", spec.resultFilePath, 8192);
+    capture("update-log.txt", spec.logFilePath.isNotEmpty()
+        ? spec.logFilePath : ownedRoot.getChildFile("update.log").getFullPathName(), 8192);
+    emit("installer-output.txt", installerOutput.substring(juce::jmax(0, installerOutput.length() - 8192)));
+    if (evidenceDirectory != juce::File{}) {
+        report << "\nCopied bounded startup diagnostics: " << evidenceDirectory.getFullPathName() << "\n";
+        writeStartupDiagnosticText(evidenceDirectory.getChildFile("fixture-report.txt"), report);
+    }
+    std::cerr << report.toStdString() << std::endl;
+}
+}
+#endif
+
 namespace {
 
 TEST(UpdateScriptValidationTest, StrictReleaseVersionRejectsShellAndPartialInput)
@@ -453,12 +588,20 @@ protected:
         ASSERT_TRUE(probe.copyFileTo(juce::File(spec.downloadedFilePath)));
         candidateHash = juce::SHA256(juce::File(spec.downloadedFilePath)).toHexString();
     }
+    void TearDown() override
+    {
+        if (HasFailure())
+            directpipe::test_detail::retainStartupFixtureDiagnostics(testDir_, spec, lastInstallerOutput);
+        UpdateScriptTest::TearDown();
+    }
     ScriptRunResult run(const juce::String& mode)
     {
         EXPECT_TRUE(writeStartupProbeConfiguration(juce::File(spec.currentExePath), spec.startupAckFilePath,
             mode, spec.expectedVersion, GetCurrentProcessId())); // Live but wrong executable identity.
-        return runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
+        auto result = runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
             testDir_.getChildFile("startup-update.bat"));
+        lastInstallerOutput = result.output;
+        return result;
     }
     void expectStartupFailure(const juce::String& mode)
     {
@@ -482,6 +625,7 @@ protected:
     }
     directpipe::update_detail::WindowsUpdateInstallSpec spec;
     juce::String candidateHash;
+    juce::String lastInstallerOutput;
 };
 
 TEST_F(UpdateStartupScriptTest, ActualDesktopLaunchAcknowledgementRemovesOnlyManagedBackups)

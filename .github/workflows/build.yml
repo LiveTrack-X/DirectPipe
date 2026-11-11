@@ -111,7 +111,12 @@ jobs:
 
       - name: Run Tests
         shell: pwsh
+        env:
+          DIRECTPIPE_TEST_STARTUP_EVIDENCE_DIR: ${{ github.workspace }}/build/test-results/startup-fixtures
         run: |
+          # Match the existing desktop session's TEMP before creating fixtures.
+          # The audio-free probe keeps its strict native-TEMP containment check.
+          ./tools/prepare_windows_startup_test_temp.ps1
           New-Item -ItemType Directory -Force build/test-results | Out-Null
           ctest --test-dir build --output-on-failure -C Release --timeout 120 `
             --output-junit test-results/ctest.xml
@@ -126,6 +131,7 @@ jobs:
             build/test-results/api.log
             build/test-results/api-identity.json
             build/test-results/directpipe.log*
+            build/test-results/startup-fixtures/
             build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
           retention-days: 30

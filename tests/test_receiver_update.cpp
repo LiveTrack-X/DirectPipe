@@ -9,9 +9,15 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <iostream>
 
 #if JUCE_WINDOWS
 #include <Windows.h>
+
+namespace directpipe::test_detail {
+void retainStartupFixtureDiagnostics(const juce::File& ownedRoot,
+    const update_detail::WindowsUpdateInstallSpec& spec, const juce::String& installerOutput);
+}
 #endif
 
 namespace {
@@ -420,6 +426,21 @@ protected:
         oldHostHash = juce::SHA256(juce::File(spec.currentExePath)).toHexString();
         newHostHash = juce::SHA256(package.getChildFile("DirectPipe.exe")).toHexString();
     }
+    void TearDown() override
+    {
+        if (HasFailure()) {
+            directpipe::test_detail::retainStartupFixtureDiagnostics(root, spec, lastInstallerOutput);
+            std::cerr << "Retained isolated paired startup fixture: " << root.getFullPathName() << std::endl;
+            return;
+        }
+        ReceiverTransactionTest::TearDown();
+    }
+    PowerShellResult install(const juce::String& replacement = {})
+    {
+        auto result = ReceiverTransactionTest::install(replacement);
+        lastInstallerOutput = result.output;
+        return result;
+    }
     void configure(const juce::String& mode)
     {
         const auto ini = installed.getChildFile("startup-probe.ini").getFullPathName();
@@ -431,6 +452,7 @@ protected:
         ASSERT_TRUE(set(L"LifetimeMs", "4000"));
     }
     juce::String oldHostHash, newHostHash;
+    juce::String lastInstallerOutput;
 };
 
 TEST_F(PairedStartupScriptTest, ActualDesktopLaunchAcknowledgementCleansHostRecoveryOnly)
