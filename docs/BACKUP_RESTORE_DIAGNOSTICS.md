@@ -1,7 +1,7 @@
 # Backup restore diagnostics
 
-Date: 2026-11-11
-Status: Local implementation and verification; not a published release
+Date: 2026-11-12
+Status: 4.5.0 behavior and historical diagnostic checkpoint; see [current verification](RELEASE_4_5_0.md)
 
 ## Requested behavior
 
@@ -52,11 +52,18 @@ snapshot/rollback and existing warning semantics are preserved. The application
 still claims the existing load gate and releases it through the prior success/
 failure paths. This change adds explanations rather than rewriting old backups.
 
-The separate future Analog 1/2 source split is proposal-only. It must be opt-in
-and preserve existing Analog 1+2 bindings, Mono/Stereo, gains, presets and
-external-control identities. No multi-input implementation is included here.
+4.5.0 adds opt-in selection of one physical input (for example Analog 1 or
+Analog 2) with unity duplication before effects. Existing stereo-pair bindings
+and independent Mono/Stereo processing remain the default. Concurrent separate
+microphone chains and a mixer remain future proposals.
 
-## Verification
+The optional Windows mic-level hold is OFF for old files missing its additive
+field. Settings/full backups preserve per-endpoint consent; chain-only quick
+slots leave it unchanged. Present malformed preferences fail before mutation,
+and correction remains suspended during restoration or an incomplete rollback.
+No old backup is automatically split or remapped to a new physical input.
+
+## Historical diagnostic checkpoint verification
 
 Seven diagnostic regressions failed against the initial scaffold because the
 operation reports were empty while the existing failure paths executed. They
@@ -78,6 +85,10 @@ and async plug-in preparation failure.
   dispatch and already-held multi-instance checks, plus optional external GForm.
   Separate real GForm runs passed for both official DLLs against this build.
 - UTF-8/text integrity, patch whitespace and strict SDAD Doctor checks pass.
+
+The counts above describe that earlier checkpoint, not the final 4.5.0 CI gate.
+Current integrated evidence and remaining acceptance limits are recorded in
+[the 4.5.0 verification record](RELEASE_4_5_0.md).
 
 Local evidence is under `build/test-results/` and `build/backup-diagnostics-*`.
 The prior mono-routing checkpoint is recorded independently in

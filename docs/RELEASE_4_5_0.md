@@ -124,6 +124,14 @@ its TEMP containment is unchanged and bounded diagnostics identify failures.
 All 28 startup cases passed after these corrections. This was an unreleased
 4.5.0 handshake defect, not a proven cause of the owner's old 4.4.0 incident.
 
+A later Windows CI diagnostic isolated a fixture-only desktop-launch mismatch:
+the same user/session had caller TEMP at the profile Temp root but desktop-shell
+TEMP at its existing session subdirectory. The harness now validates the current
+user known folder and exact current session, then aligns only its process
+TEMP/TMP to that existing directory. The same launch matrix passed afterward;
+the probe's strict owned-TEMP guard and production updater were unchanged.
+This diagnostic success does not replace the pending full release workflow.
+
 One earlier macOS full-suite run crashed in the saved-driver snapshot fixture.
 The same universal fixture then passed 25 fresh processes without reproducing
 that crash; no native crash stack or definitive root cause was obtained. The

@@ -91,7 +91,7 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 
 - **ActionResult** (`ActionResult.h`) — Typed success/failure return value for action and device operations. `static ok()` / `static fail(msg)`, `explicit operator bool()`, message propagation. Used by AudioEngine device methods and ActionHandler. / 액션 및 장치 작업의 타입화된 성공/실패 반환값. AudioEngine 장치 메서드와 ActionHandler에서 사용.
 - **ActionHandler** — Centralized action event handling, extracted from MainComponent. Receives `ActionEvent` from `ActionDispatcher` and routes to AudioEngine, VSTChain, PresetManager, OutputRouter, etc. `doPanicMute(bool)` consolidates panic mute logic: saves pre-mute state (monitor, output mute, IPC), mutes output paths, stops active recording. On unmute, restores previous state (recording does not auto-restart). Most action cases check `engine_.isMuted()` to block during panic. Guard bypass actions: PanicMute, InputMuteToggle, XRunReset, SafetyLimiterToggle, SetSafetyLimiterCeiling, AutoProcessorsAdd. Callback-based decoupling from MainComponent (`onDirty`, `onNotification`, `onPanicStateChanged`, `onRecordingStopped`, etc.). / MainComponent에서 추출된 중앙 액션 이벤트 처리. `doPanicMute(bool)`가 패닉 뮤트 로직 통합: pre-mute 상태 저장, 출력 경로 차단, 녹음 중지. 해제 시 이전 상태 복원 (녹음은 자동 재시작 안 함). 대부분의 액션은 `isMuted()` 체크로 패닉 중 차단되며, 예외 액션은 PanicMute/InputMuteToggle/XRunReset/SafetyLimiterToggle/SetSafetyLimiterCeiling/AutoProcessorsAdd.
-- **SettingsAutosaver** — Dirty-flag + 1-second debounce auto-save logic, extracted from MainComponent. A stable partial load may merge current non-plugin settings with the last structurally complete persisted plugin array without writing the active slot; if no complete chain exists, retries back off from 5 to 10, 20, and at most 30 seconds. Shutdown exports non-plugin settings to the complete preset when safe or to an atomic recovery sidecar otherwise. Startup overlays that sidecar without reconstructing the plugin chain, retains it when a merge cannot be committed, and Factory Reset removes its entire atomic-write family. A failed write retains dirty state and retries without requiring another UI edit. Manual mute intent remains distinct from automatic device-loss mute. / MainComponent에서 추출된 dirty-flag + 1초 디바운스 자동 저장 로직. 안정된 partial load에서는 현재 비플러그인 설정을 마지막 구조적으로 완전한 plugin 배열과 병합하되 active slot을 쓰지 않으며, 완전 chain이 없으면 5→10→20→최대 30초로 재시도합니다. 종료 시 안전하면 완전 preset에 비플러그인 설정을 병합하고 그렇지 않으면 atomic recovery sidecar에 저장합니다. 다음 시작은 plugin chain을 재구성하지 않고 sidecar를 overlay하며 commit 실패 시 보존하고 Factory Reset은 atomic-write 파일군 전체를 삭제합니다. write 실패 시 dirty를 유지해 추가 UI 변경 없이 재시도하며 수동 mute 의도와 장치 유실 자동 mute를 분리합니다.
+- **SettingsAutosaver** — Dirty-flag + 1-second debounce auto-save logic, extracted from MainComponent. A stable partial load may merge current non-plugin settings with the last structurally complete persisted plugin array without writing the active slot; if no complete chain exists, retries back off from 5 to 10, 20, and at most 30 seconds. Shutdown, and stopped/unprepared audio with no active load, preserve non-plugin settings through a complete-chain merge or an atomic recovery sidecar. Idle saves retain the pending full save until preparation succeeds. Startup overlays that sidecar without reconstructing the plugin chain, retains it when a merge cannot be committed, and Factory Reset removes its entire atomic-write family. A failed write retains dirty state and retries without requiring another UI edit. Manual mute intent remains distinct from automatic device-loss mute. / MainComponent에서 추출된 dirty-flag + 1초 디바운스 자동 저장 로직. 안정된 partial load에서는 현재 비플러그인 설정을 마지막 구조적으로 완전한 plugin 배열과 병합하되 active slot을 쓰지 않으며, 완전 chain이 없으면 5→10→20→최대 30초로 재시도합니다. 종료 또는 load가 없는 정지·미준비 오디오 상태에서는 비플러그인 설정을 완전 chain과 병합하거나 atomic recovery sidecar에 저장합니다. idle 저장 후에도 준비 완료 시 수행할 전체 저장은 pending으로 유지합니다. 다음 시작은 plugin chain을 재구성하지 않고 sidecar를 overlay하며 commit 실패 시 보존하고 Factory Reset은 atomic-write 파일군 전체를 삭제합니다. write 실패 시 dirty를 유지해 추가 UI 변경 없이 재시도하며 수동 mute 의도와 장치 유실 자동 mute를 분리합니다.
 - **ActionDispatcher** — Central action routing. 19 actions: `PluginBypass`, `MasterBypass`, `SetVolume`, `ToggleMute`, `LoadPreset`, `PanicMute`, `InputGainAdjust`, `NextPreset`, `PreviousPreset`, `InputMuteToggle`, `SwitchPresetSlot`, `MonitorToggle`, `RecordingToggle`, `SetPluginParameter`, `IpcToggle`, `XRunReset`, `SafetyLimiterToggle`, `SetSafetyLimiterCeiling`, `AutoProcessorsAdd`. Thread-safe dispatch via `callAsync` with `alive_` flag (`shared_ptr<atomic<bool>>`) lifetime guard. Copy-before-iterate for reentrant safety. `actionToString()` helper for enum-to-string conversion. Dispatched actions logged as `[ACTION]` (high-frequency excluded). Note: `XRunReset` via HTTP bypasses ActionDispatcher (direct `engine_.requestXRunReset()` call); all other actions route through ActionDispatcher from both HTTP and WebSocket. / 중앙 액션 라우팅. 19개 액션. `alive_` 플래그로 수명 보호된 callAsync 디스패치. 재진입 안전을 위한 copy-before-iterate. `actionToString()` 헬퍼로 enum→문자열 변환. 디스패치된 액션 `[ACTION]` 로그 (고빈도 제외). 참고: `XRunReset`은 HTTP에서 ActionDispatcher를 우회하여 `engine_.requestXRunReset()`을 직접 호출. 나머지 액션은 HTTP/WebSocket 모두 ActionDispatcher 경유.
 - **ControlManager** — Aggregates all control sources (Hotkey, MIDI, WebSocket, HTTP). Initialize/shutdown lifecycle. / 모든 제어 소스 통합 관리.
 - **HotkeyHandler** — Global keyboard shortcuts. Windows: `RegisterHotKey` API. macOS: `CGEventTap` (requires Accessibility permission — notifies user via `onError` callback if not granted). Linux: stub (not yet supported — HotkeyTab shows "unsupported" message). Recording mode for key capture. `onError` callback for non-fatal errors (e.g., missing macOS accessibility permission). / 글로벌 키보드 단축키. Windows: `RegisterHotKey` API. macOS: `CGEventTap` (접근성 권한 필요 — 미허용 시 `onError` 콜백으로 사용자 알림). Linux: 스텁 (미지원 — HotkeyTab에 "unsupported" 메시지 표시). 키 녹화 모드. `onError` 콜백으로 비치명적 오류 전달.
@@ -108,6 +108,7 @@ All external inputs funnel through a unified ActionDispatcher. / 모든 외부 �
 
 Cross-platform abstraction layer. Each sub-directory provides platform-specific implementations of a common interface. CMake conditionally compiles the correct source files per platform. / 크로스 플랫폼 추상화 계층. 각 하위 디렉토리가 공통 인터페이스의 플랫폼별 구현 제공. CMake가 플랫폼별로 올바른 소스 파일을 조건부 컴파일.
 
+- **WindowsMicLevelKeeper** — Optional, default-off Windows input master-level hold at 100. A worker outside the audio callback binds only the exact opened WASAPI shared/Low Latency endpoint ID; ASIO, exclusive mode and unresolved IDs cannot enable it. Consent is stored per endpoint ID. Startup/restore gates suspend correction until committed settings and window/tray startup are stable, and shutdown stops the keeper before audio teardown. It never changes mute, boost, output volume or internal gain; the Windows input level affects other applications. / 기본 OFF인 Windows 입력 레벨 100 유지 기능입니다. 오디오 콜백 밖의 worker가 실제 열린 WASAPI shared/Low Latency endpoint ID만 사용하며 장치별 동의, 복원 완료 gate, 종료 전 중지를 적용합니다. mute·boost·출력·내부 gain은 바꾸지 않습니다.
 - **PlatformAudio** (`PlatformAudio.h`, header-only) — Audio device type helpers: `getDefaultSharedDeviceType()` (Windows: "Windows Audio", macOS: "CoreAudio", Linux: "ALSA"), `getSharedModeOutputDevices()`, `isExclusiveDriverType()`. Replaces hardcoded WASAPI strings. / 오디오 디바이스 타입 헬퍼 (헤더 온리): 하드코딩된 WASAPI 문자열 대체.
 - **AutoStart** (`AutoStart.h`) — Auto-start interface: `isAutoStartEnabled()`, `setAutoStartEnabled(bool) -> bool` (returns success/failure), `isAutoStartSupported()`. Windows: Registry (`HKCU\...\Run`) with quoted executable command. macOS: LaunchAgent plist (atomicWriteFile for crash-safety). Linux: XDG `.desktop` file (atomicWriteFile for crash-safety). / 자동 시작 인터페이스. Windows: 따옴표로 감싼 실행 파일 command를 `HKCU\...\Run` 레지스트리에 저장, macOS: LaunchAgent (crash-safe 쓰기), Linux: XDG autostart (crash-safe 쓰기). 설정 실패 시 bool 반환으로 사용자 알림.
 - **ProcessPriority** (`ProcessPriority.h`) — Process priority: `setHighPriority()`, `restoreNormalPriority()`. Windows: `SetPriorityClass` + `timeBeginPeriod` + Power Throttling. macOS: `setpriority`. Linux: `nice`. / 프로세스 우선순위 설정.
@@ -239,6 +240,12 @@ Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDKVersion 3). / Stream
 
 ## Preset System / 프리셋 시스템
 
+`audio_running` telemetry requires both an initialized engine and a current device
+reporting playback; default sample rate/buffer values do not establish a live
+stream. Input-gain setters ignore nonfinite values and clamp finite results to
+0–2, including relative controls. / `audio_running`은 초기화된 engine과 실제 playing
+장치가 모두 있어야 true이며, 입력 gain은 유한 값만 받고 0–2로 제한합니다.
+
 ### Auto-save (settings.dppreset) / 자동 저장
 
 - Audio settings (driver type, devices, sample rate, buffer size, input gain) / 오디오 설정
@@ -247,11 +254,14 @@ Elgato Stream Deck plugin (Node.js, `@elgato/streamdeck` SDKVersion 3). / Stream
 - Active slot index / 활성 슬롯
 - Used for app restart restoration only / 앱 재시작 복원용
 - Loading/partial VST states never replace a complete plugin array or quick-slot
-  file. Non-plugin settings merge with a preserved complete chain; shutdown
-  uses `settings.shutdown-recovery.json` only when that merge is unsafe.
+  file. Non-plugin settings merge with a preserved complete chain. Shutdown or
+  stopped/unprepared audio without an active load uses
+  `settings.shutdown-recovery.json` when that merge is unsafe; the full save
+  remains pending until preparation succeeds.
 - loading/partial VST 상태는 완전 plugin 배열이나 quick-slot 파일을 덮지
-  않습니다. 비플러그인 설정은 보존된 완전 chain과 병합하며 안전하지 않은
-  종료에서만 `settings.shutdown-recovery.json`을 사용합니다.
+  않습니다. 비플러그인 설정은 보존된 완전 chain과 병합합니다. 종료 또는 load가 없는
+  정지·미준비 상태에서 병합할 수 없으면 `settings.shutdown-recovery.json`을 쓰고,
+  준비 완료 후 수행할 전체 저장은 pending으로 유지합니다.
 
 ### Settings Save/Load (.dpbackup) / 설정 저장/불러오기
 

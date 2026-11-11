@@ -1,7 +1,7 @@
-# Windows update diagnosis and recovery (4.5.0 candidate)
+# Windows update diagnosis and recovery (4.5.0)
 
-Date: 2026-11-11
-Status: Local candidate; final checks are recorded in [candidate evidence](RELEASE_4_5_0.md).
+Date: 2026-11-12
+Status: 4.5.0 recovery behavior; verification and acceptance limits are recorded in [the release verification record](RELEASE_4_5_0.md).
 
 ## Comparison with previous releases
 
@@ -38,7 +38,7 @@ Downloaded/staged `DirectPipe_update.exe`, ZIP, BAT and `_update` are separate
 temporary files. None of these installed files was deleted or changed.
 
 Backup retention and automatic restart are separate results. The historical
-`Start-Process` call did not verify application readiness. The 4.5.0 candidate
+`Start-Process` call did not verify application readiness. The 4.5.0 updater
 uses desktop-context relaunch and records completion errors, as described
 below. A read-only COM probe resolved this Windows desktop/application object;
 it launched no process and does not establish real app restart readiness or
@@ -67,9 +67,9 @@ These demonstrate concrete failure and diagnostic gaps, rather than the cause
 of the owner's historical incident. Evidence is retained under
 `build/release-4.5.0-evidence/` and the fixture paths listed in its reports.
 
-## Candidate behavior
+## 4.5.0 behavior
 
-The candidate retains the Windows BAT host installer, strict release/version
+The updater retains the Windows BAT host installer, strict release/version
 checks, ZIP/standalone host support and the separate Receiver transaction.
 It adds a bounded wait for the launching PID, same-volume host replacement,
 preservation of a pre-existing backup, rollback verification and durable
@@ -85,7 +85,10 @@ successful launch, but does not establish the historical incident's cause.
 
 New host/paired installers pass only a unique attempt token. The app derives
 its acknowledgement path from its own per-install receipt; no arbitrary CLI
-file path is accepted. The installer checks token, version, executable path,
+file path is accepted. The app writes through a short sibling temporary file,
+checks write/flush/close and commits atomically without replacing an existing
+acknowledgement; valid long destination paths do not gain a second long basename.
+The installer checks token, version, executable path,
 the acknowledging PID's actual image, candidate hash and a 500 ms liveness
 interval. The default acknowledgement wait is 60 seconds. It durably saves
 ready evidence before any backup deletion, validates captured backup hashes,
@@ -133,9 +136,10 @@ receipt I/O failure. The consoleless Win32 stand-in links no JUCE/audio code,
 and is used for both old and new fixture hosts, including rollback paths.
 It exercises the actual desktop COM launcher and actual process-image checks;
 it is not the real DirectPipe GUI. Notifications are suppressed in fixtures.
-Full combined results are in the candidate report.
+These counts describe the startup-confirmation checkpoint. Current combined
+results and the final workflow gate are in the [verification record](RELEASE_4_5_0.md).
 
-The actual final 4.5.0 ZIP also passed the frozen 4.3.0/4.4.0 legacy template's
+The 4.5.0 ZIP from that local checkpoint also passed the frozen 4.3.0/4.4.0 legacy template's
 install-only path in TEMP. It installed the exact archived host, retained the
 copied 4.3.0 EXE as backup and preserved synthetic configuration markers. This
 demonstrates that package's normal old-updater path; it cannot repair old
@@ -157,4 +161,4 @@ application before Receiver maintenance. A fresh-folder host can confirm the
 download without deleting the previous installation.
 
 No real installation, UAC approval, DirectPipe GUI launch or public release was performed
-by this work. See the candidate report for exact automated results and limits.
+by this work. See the verification record for exact automated results and limits.

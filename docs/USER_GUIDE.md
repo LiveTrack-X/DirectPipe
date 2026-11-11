@@ -1529,7 +1529,7 @@ Config file base path varies by platform. `<CONFIG>` below refers to the paths l
 | 파일 / File | 경로 / Path |
 |---|---|
 | 기본 설정 / Main settings | `<CONFIG>/settings.dppreset` |
-| 종료 복구 설정 / Shutdown recovery settings | `<CONFIG>/settings.shutdown-recovery.json` (loading/partial VST 종료에서만 생성되는 임시 비플러그인 설정 / temporary non-plugin settings used only after shutdown during loading/partial VST state) |
+| 종료 복구 설정 / Shutdown recovery settings | `<CONFIG>/settings.shutdown-recovery.json` (종료 또는 오디오 정지·미준비 상태에서 완전 chain과 병합할 수 없을 때 보존하는 비플러그인 설정; 전체 저장은 준비 후 재개 / non-plugin recovery settings when shutdown or stopped/unprepared audio cannot safely merge with a complete chain; full saving resumes after preparation) |
 | 프리셋 슬롯 / Preset slots | `<CONFIG>/Slots/` |
 | 플러그인 캐시 / Plugin cache | `<CONFIG>/plugin-cache.xml` |
 | 스캐너 로그 / Scanner log | `<CONFIG>/scanner-log.txt` |

@@ -203,7 +203,7 @@ dist/com.directpipe.directpipe.streamDeckPlugin                                 
 cd com.directpipe.directpipe.sdPlugin
 npm install                  # Install dependencies / 의존성 설치
 npm run icons                # Generate PNG icons from SVG / SVG -> PNG 생성
-npm run build                # Rollup bundle src/ -> bin/plugin.js
+npm run build                # esbuild bundle src/ -> bin/plugin.js
 streamdeck validate .        # Validate structure / 구조 검증
 streamdeck pack . --output ../dist/ --force  # Package (official CLI required) / 패키징 (공식 CLI 필수)
 ```
@@ -239,12 +239,33 @@ core tests; it is a helper, not a fifth CTest suite.
 테스트는 실제 processor 코드를 로컬 메모리와 고유한 테스트 mapping으로 실행하며
 사용자 운영 IPC에 연결하지 않습니다.
 
-Build and run the focused 4.4.0 tests without launching the app:
+Build and run focused 4.5.0 tests without launching the application or opening an audio device:
 
 ```bash
 cmake --build build --config Release --target directpipe-tests directpipe-host-tests directpipe-receiver-tests
-ctest --test-dir build -C Release --output-on-failure -R "FanOut|VSTChainTest|Receiver.*Test|CompanionUpdatePlanTest|UpdateScript"
+ctest --test-dir build -C Release --output-on-failure -R "AudioSettingsTest|WindowsMicLevelKeeperTest|StartupUpdateSupportTest|HostUpdateStartupTest|UpdateStartupScriptTest|PairedStartupScriptTest|SettingsAutosaverTest|PresetManagerTest|Receiver.*Test"
 ```
+
+The Windows mic-level controller and UI tests inject fake endpoints; they never
+change a real Windows microphone level. Startup integration tests launch only a
+copied, consoleless, audio-free fixture in owned TEMP storage, with interactive
+notifications suppressed. They do not launch the installed DirectPipe app.
+
+The Windows CI desktop-launch harness aligns only its process TEMP/TMP to the
+existing current user's `LocalAppData/Temp/<current-session-ID>` directory after
+checking the known-folder identity and exact current session. The diagnostic
+matrix confirmed that the desktop shell and caller otherwise used different
+TEMP roots under the same SID/session. This leaves the probe's strict containment
+guard and production updater unchanged; it does not change system TEMP settings.
+The corrected harness matrix passed; the next complete release workflow remains
+an independent gate.
+
+macOS release CI must pass the full CTest suite and then the exact saved-driver
+snapshot regression in **25 fresh processes** (`ctest --repeat until-fail:25
+--no-tests=error` with the exact filter). The uploaded JUnit and
+`snapshot-repeat.log` retain these separate results. Windows static DMG checks
+cannot substitute for native macOS mount, architecture and deployment-target
+checks. See [4.5.0 verification boundaries](RELEASE_4_5_0.md).
 
 The tables below preserve the **v4.3.0 historical inventory** (582 CTest
 registrations: 580 passed, 2 environment-dependent skips, 0 failed; exact-tag CI
@@ -361,9 +382,9 @@ bash tools/pre-release-test.sh --skip-api
 | 플랫폼 / Platform | Runner | 결과물 / Output | 포함 내용 / Includes |
 |---|---|---|---|
 | Windows | `windows-latest` | `DirectPipe-{tag}-Windows.zip` | DirectPipe.exe + Receiver VST2(.dll) + VST3(.vst3) |
-| macOS | `macos-14` (ARM) | `DirectPipe-{tag}-macOS.dmg` | DirectPipe.app + Receiver VST2(.vst) + VST3(.vst3) + AU(.component) |
+| macOS | `macos-15` (universal arm64 + x86_64, minimum 10.15) | `DirectPipe-{tag}-macOS.dmg` | DirectPipe.app + Receiver VST2(.vst) + VST3(.vst3) + AU(.component) |
 | Linux | `ubuntu-24.04` | `DirectPipe-{tag}-Linux.tar.gz` | DirectPipe + Receiver VST2(.so) + VST3(.vst3) |
-| Stream Deck | `ubuntu-latest` | `com.directpipe.directpipe.streamDeckPlugin` | Node.js 20, npm ci + test + rollup + validate + streamdeck pack |
+| Stream Deck | `ubuntu-latest` | `com.directpipe.directpipe.streamDeckPlugin` | Node.js 20, npm ci + test + esbuild + validate + streamdeck pack |
 
 ### GitHub Secrets (필수 / Required)
 

@@ -1076,11 +1076,23 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
 - `loadingSlot_` 또는 unstable chain이면 완전 preset/slot 저장을 스킵하고 dirty를 유지 / Loading or unstable chains defer full preset/slot writes while retaining dirty state
 - 안정된 `partialLoad_`에서는 현재 비플러그인 설정을 마지막 구조적으로 완전한 persisted `plugins` 배열과 병합하고 active quick-slot을 쓰지 않음 / A stable `partialLoad_` merges current non-plugin settings with the last structurally complete persisted `plugins` array without writing the active quick slot
 - 완전 chain이 없으면 5→10→20→최대 30초로 재시도하고 동일 경고를 반복하지 않음 / Missing complete chains retry with 5→10→20→30-second bounded backoff without repeating the same warning
-- 종료 시 완전 chain과 병합할 수 없으면 `settings.shutdown-recovery.json`에 비플러그인 설정만 atomic 저장. 다음 시작은 plugin chain을 재구성하지 않고 overlay하며 commit 실패 시 sidecar 유지, Factory Reset은 sidecar family 삭제 / Shutdown atomically writes only non-plugin settings to `settings.shutdown-recovery.json` when a complete-chain merge is unsafe. Startup overlays it without reconstructing the plugin chain, retains it on commit failure, and Factory Reset deletes the sidecar family
+- 종료 또는 active load가 없는 오디오 정지·미준비 상태에서 완전 chain과 병합할 수 없으면 `settings.shutdown-recovery.json`에 비플러그인 설정만 atomic 저장. idle 저장은 전체 저장 pending을 유지하고 prepare 후 재개한다. 다음 시작은 plugin chain 재구성 없이 overlay하며 commit 실패 시 sidecar 유지, Factory Reset은 sidecar family 삭제 / Shutdown or stopped/unprepared audio without an active load atomically preserves non-plugin settings in `settings.shutdown-recovery.json` when a complete-chain merge is unsafe. Idle persistence keeps the full save pending until preparation succeeds. Startup overlays it without reconstructing the chain, retains it on commit failure, and Factory Reset deletes the sidecar family
 - `plugins` 배열이 아니거나 entry 구조가 잘못된 settings JSON은 active slot, audio state, output state 적용 전에 실패 / Settings JSON with a non-array `plugins` field or malformed plugin entries fails before active slot, audio state, or output state is applied
 - Atomic-write family를 먼저 복구하여 primary가 없거나 잠겨도 유효 `.bak`의 명시적 `outputMuted` 값을 보존하며, partial plugin load도 이 안전 상태를 해제하지 않음 / Resolves the atomic-write family first, preserving an explicit `outputMuted` value from a valid `.bak` when the primary is missing or locked; a partial plugin load does not clear that safety state
 - Full-backup slot restore는 파일 clear/write 단계 전에 기존 quick-slot file family를 snapshot하고 실패 시 롤백 / Full-backup slot restore snapshots existing quick-slot file families before the clear/write phase and rolls them back on failure
 - 저장 위치 / Storage location: Windows `%AppData%/DirectPipe/settings.dppreset`, macOS `~/Library/Application Support/DirectPipe/`, Linux `~/.config/DirectPipe/` (JSON, 버전 / version 4)
+
+The additive app-setting `windowsMicLevelHold` is
+`{"version":1,"enabledEndpointIds":[...]}`. Missing legacy fields mean OFF;
+settings/full backups and autosaves preserve it, while chain-only quick slots
+leave it unchanged. Present malformed fields fail validation before mutation.
+Activation waits for successful outer restore/startup completion. / 추가 설정은
+장치 ID별 동의를 저장하며, 구형 파일에서 누락되면 OFF이고 chain-only 슬롯은 유지합니다.
+
+Input gain accepts finite values only and clamps absolute/relative results to
+0–2. `audio_running` reports an initialized engine plus a playing current device,
+not default sample-rate/buffer metadata. / 입력 gain은 유한 값만 0–2로 제한하고
+`audio_running`은 실제 장치 stream 상태를 반영합니다.
 
 #### 4.11.2 프리셋 파일 형식 / Preset File Format (JSON, version 4)
 ```json
