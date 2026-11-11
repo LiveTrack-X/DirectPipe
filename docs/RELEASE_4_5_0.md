@@ -48,7 +48,7 @@ and the [mic option guide](USER_GUIDE.md#windows-mic-level-hold).
 | Stream Deck Node tests | 28/28 passed; Node 20 and Node 22 verified |
 | Stream Deck syntax/icons/official validation/pack | Passed; 22 action/category PNG references and 10 action identities retained |
 | Full and production npm audits | 0 findings each; no audit suppression |
-| API parser/accepted-response regressions | 7/7 passed, including owned ephemeral TCP fixture |
+| API parser/accepted-response regressions | 8/8 passed, including owned ephemeral TCP fixture |
 | Version/text/patch/structural checks | 15 version paths; UTF-8 integrity; clean patch; strict Doctor 0 errors/0 warnings |
 
 CTest skipped concurrent-dispatch environment coverage, optional GForm discovery,

@@ -73,6 +73,17 @@ function canSkipCheck(name, environment = process.env) {
   return !environment.DIRECTPIPE_TEST_CONFIG_DIR
     || (name === 'Recorded audio sample progression' && environment.DIRECTPIPE_TEST_NO_AUDIO === '1');
 }
+function recordingDirectoryCandidates(environment = process.env) {
+  const candidates = [environment.DIRECTPIPE_TEST_RECORDING_DIR];
+  if (!environment.DIRECTPIPE_TEST_CONFIG_DIR) {
+    if (environment.APPDATA) candidates.push(environment.APPDATA + '\\DirectPipe\\recordings');
+    if (environment.USERPROFILE) {
+      candidates.push(environment.USERPROFILE + '\\Documents\\DirectPipe');
+      candidates.push(environment.USERPROFILE + '\\Music\\DirectPipe');
+    }
+  }
+  return candidates.filter(Boolean);
+}
 function skipped(name, reason) {
   if (!canSkipCheck(name)) {
     check(name + ' required by isolated fixture: ' + reason, true, false);
@@ -214,7 +225,7 @@ function wsConnect(port) {
   });
 }
 
-module.exports = { WebSocketResponseParser, wsConnect, isAcceptedResponse, isStateBroadcast, canSkipCheck };
+module.exports = { WebSocketResponseParser, wsConnect, isAcceptedResponse, isStateBroadcast, canSkipCheck, recordingDirectoryCandidates };
 
 // ──────────── Tests ────────────
 
@@ -877,28 +888,26 @@ if (require.main === module) (async () => {
 
   // ──── TEST 26: Recording File Creation ────
   console.log('\n--- TEST 26: Recording File (2 checks) ---');
-  // Recording dir may vary — check common locations
-  const recDirCandidates = [
-    process.env.DIRECTPIPE_TEST_RECORDING_DIR,
-    process.env.APPDATA + '\\DirectPipe\\recordings',
-    process.env.USERPROFILE + '\\Documents\\DirectPipe',
-    process.env.USERPROFILE + '\\Music\\DirectPipe',
-  ].filter(Boolean);
+  // Isolated proof is restricted to the explicit owned directory. Profile
+  // discovery and state-only fallback are available only for manual runs.
+  const recDirCandidates = recordingDirectoryCandidates();
   let recDir = null;
   for (const d of recDirCandidates) {
-    try { fs.statSync(d); recDir = d; break; } catch(e) {}
+    try {
+      if (fs.statSync(d).isDirectory()) { fs.readdirSync(d); recDir = d; break; }
+    } catch(e) {}
   }
+  if (process.env.DIRECTPIPE_TEST_CONFIG_DIR)
+    check('Owned recording directory exists and is readable', true, recDir !== null);
   if (recDir) {
-    let recCountBefore = 0;
-    try { recCountBefore = fs.readdirSync(recDir).filter(f => f.endsWith('.wav')).length; } catch(e) {}
+    const recCountBefore = fs.readdirSync(recDir).filter(f => f.endsWith('.wav')).length;
     await api('/recording/toggle');
     await sleep(1500);
     await api('/recording/toggle');
     await sleep(500);
-    let recCountAfter = 0;
-    try { recCountAfter = fs.readdirSync(recDir).filter(f => f.endsWith('.wav')).length; } catch(e) {}
+    const recCountAfter = fs.readdirSync(recDir).filter(f => f.endsWith('.wav')).length;
     check('WAV file created in ' + recDir.split('\\').pop(), true, recCountAfter > recCountBefore);
-  } else {
+  } else if (!process.env.DIRECTPIPE_TEST_CONFIG_DIR) {
     // Verify recording works via state even if dir unknown
     await api('/recording/toggle');
     await sleep(1000);

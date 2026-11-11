@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const crypto = require('node:crypto');
 const net = require('node:net');
 const { once } = require('node:events');
-const { WebSocketResponseParser, wsConnect, isAcceptedResponse, isStateBroadcast, canSkipCheck } = require('./test_api');
+const { WebSocketResponseParser, wsConnect, isAcceptedResponse, isStateBroadcast, canSkipCheck, recordingDirectoryCandidates } = require('./test_api');
 
 const key = Buffer.from('owned-api-fixture').toString('base64');
 function handshake(accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64')) {
@@ -71,6 +71,14 @@ test('isolated fixture cannot silently skip lost plugins or settings files', () 
   assert.equal(canSkipCheck('Recorded audio sample progression', isolated), false);
   assert.equal(canSkipCheck('Recorded audio sample progression', { ...isolated, DIRECTPIPE_TEST_NO_AUDIO: '1' }), true);
   assert.equal(canSkipCheck('Plugin bypass', {}), true);
+});
+
+test('isolated recording proof never falls back to owner profile directories', () => {
+  assert.equal(typeof recordingDirectoryCandidates, 'function');
+  const isolated = { DIRECTPIPE_TEST_CONFIG_DIR: 'owned-config', APPDATA: 'owner-data', USERPROFILE: 'owner-profile' };
+  assert.deepEqual(recordingDirectoryCandidates(isolated), []);
+  assert.deepEqual(recordingDirectoryCandidates({ ...isolated, DIRECTPIPE_TEST_RECORDING_DIR: 'owned-recordings' }), ['owned-recordings']);
+  assert.ok(recordingDirectoryCandidates({ APPDATA: 'manual-data', USERPROFILE: 'manual-profile' }).length > 0);
 });
 
 test('real owned TCP fixture preserves handshake remainder without a later broadcast', { timeout: 3000 }, async (t) => {
