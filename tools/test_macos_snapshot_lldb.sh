@@ -25,6 +25,7 @@ fi
     uname -m
     xcrun --find lldb
     file "$test_binary"
+    xcrun lipo -info "$test_binary"
     xcrun dwarfdump --uuid "$test_binary"
 } > "$evidence/identity.log" 2>&1
 
