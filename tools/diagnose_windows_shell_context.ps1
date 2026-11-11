@@ -254,6 +254,11 @@ function Wait-NativeProbe([string] $Directory, [Diagnostics.Process] $DirectProc
 
 # Restore the parent TEMP/TMP before these controls: their directories must be
 # under the caller's real native temp, not the artificial C# inheritance trial.
+$nativeOriginalTemp = $env:TEMP
+$nativeOriginalTmp = $env:TMP
+try {
+& (Join-Path $PSScriptRoot 'prepare_windows_startup_test_temp.ps1') |
+    Tee-Object -FilePath (Join-Path $evidenceDir 'temp-alignment.json')
 $summary.nativeCaller = Get-CallerContext
 $summary.native = [ordered]@{}
 $nativeTemp = $summary.nativeCaller.nativeTempPath
@@ -312,6 +317,11 @@ foreach ($runtime in @('MD', 'MT')) {
         }
         if ($runtimeResult[$mode].status -ne 'ack') { $nativeReady = $false }
     }
+}
+} finally {
+    [Environment]::SetEnvironmentVariable('TEMP', $nativeOriginalTemp, 'Process')
+    [Environment]::SetEnvironmentVariable('TMP', $nativeOriginalTmp, 'Process')
+    $summary.nativeCallerRestored = Get-CallerContext
 }
 [IO.File]::WriteAllText((Join-Path $evidenceDir 'context.json'),
     ($summary | ConvertTo-Json -Depth 10), $utf8)
