@@ -4,6 +4,7 @@
 #include "Control/SettingsAutosaver.h"
 #include "UI/PresetManager.h"
 #include "Audio/AudioEngine.h"
+#include "Platform/WindowsMicLevelKeeper.h"
 
 #if JUCE_WINDOWS
 #include <windows.h>
@@ -12,6 +13,19 @@
 using namespace directpipe;
 
 namespace {
+
+class AutosaveMicBackend final : public WindowsMicLevelKeeper::Backend {
+public:
+    explicit AutosaveMicBackend(int& writes) : writes_(writes) {}
+    WindowsMicLevelKeeper::Resolution resolve(const WindowsMicLevelKeeper::InputContext& context) override
+    { return {WindowsMicLevelKeeper::State::ready, {context.endpointId, "Owned fake microphone"}, {}}; }
+    bool attach(const juce::String&, Callback, juce::String&) override { return true; }
+    bool readScalar(float& value, juce::String&) override { value = 0.45f; return true; }
+    bool setScalar100(juce::String&) override { ++writes_; return true; }
+    void detach() noexcept override {}
+private:
+    int& writes_;
+};
 
 class CapturingLogger final : public juce::Logger {
 public:
@@ -92,6 +106,74 @@ protected:
     std::unique_ptr<PresetManager> presetMgr_;
     std::unique_ptr<SettingsAutosaver> autosaver_;
 };
+
+TEST_F(SettingsAutosaverTest, MonoInputCapturePersistsWithoutChangingLegacyChannelMode)
+{
+    engine_->setMonoInputEnabled(true);
+    engine_->setChannelMode(2);
+    ASSERT_TRUE(autosaver_->saveNow());
+    const auto saved = juce::JSON::parse(getAutoSaveFile().loadFileAsString());
+    ASSERT_TRUE(saved.hasProperty("monoInputEnabled"));
+    EXPECT_TRUE(static_cast<bool>(saved["monoInputEnabled"]));
+    EXPECT_EQ(static_cast<int>(saved["channelMode"]), 2);
+
+    engine_->setMonoInputEnabled(false);
+    ASSERT_TRUE(presetMgr_->importFromJSON(juce::JSON::toString(saved)));
+    EXPECT_TRUE(engine_->isMonoInputEnabled());
+    EXPECT_EQ(engine_->getChannelMode(), 2);
+}
+
+TEST_F(SettingsAutosaverTest, MicEndpointPreferencesRoundTripAndLegacyDefaultsThroughAppHooks)
+{
+    juce::MessageManager::getInstance();
+    int writes = 0;
+    WindowsMicLevelKeeper keeper(std::make_unique<AutosaveMicBackend>(writes), false);
+    keeper.updateInputContext({"Windows Audio", "Owned fake microphone", true, "capture-a"});
+    struct ResetHooks {
+        PresetManager& manager;
+        ~ResetHooks() { manager.onExportAppSettings = {}; manager.onImportAppSettings = {}; }
+    } reset{*presetMgr_};
+    int imports = 0;
+    presetMgr_->onExportAppSettings = [&](juce::DynamicObject& root) {
+        root.setProperty("windowsMicLevelHold", WindowsMicLevelKeeper::serializePreferences(keeper.getPreferences()));
+    };
+    presetMgr_->onImportAppSettings = [&](const juce::DynamicObject& root) {
+        if (root.getProperty("type").toString() == "chain") return true;
+        ++imports; keeper.setStartupReady(false);
+        WindowsMicLevelKeeper::Preferences parsed; juce::String error;
+        if (root.hasProperty("windowsMicLevelHold")
+            && !WindowsMicLevelKeeper::parsePreferences(root.getProperty("windowsMicLevelHold"), parsed, error)) return false;
+        return keeper.setPreferences(parsed, error);
+    };
+    WindowsMicLevelKeeper::Preferences expected;
+    expected.enabledEndpointIds = {"capture-a", "capture-b"};
+    juce::String error;
+    ASSERT_TRUE(keeper.setPreferences(expected, error));
+    ASSERT_TRUE(autosaver_->saveNow());
+    const auto saved = juce::JSON::parse(getAutoSaveFile().loadFileAsString());
+    WindowsMicLevelKeeper::Preferences persisted;
+    ASSERT_TRUE(WindowsMicLevelKeeper::parsePreferences(saved["windowsMicLevelHold"], persisted, error)) << error;
+    EXPECT_EQ(expected.enabledEndpointIds, persisted.enabledEndpointIds);
+
+    ASSERT_TRUE(keeper.setPreferences({}, error));
+    keeper.setStartupReady(true);
+    autosaver_->loadFromFile();
+    EXPECT_GT(imports, 0);
+    EXPECT_EQ(expected.enabledEndpointIds, keeper.getPreferences().enabledEndpointIds);
+    WindowsMicLevelKeeperTestAccess::drain(keeper, 0);
+    WindowsMicLevelKeeperTestAccess::drain(keeper, 100);
+    EXPECT_EQ(0, writes); // Import stages preferences until the outer ready boundary.
+
+    auto legacy = juce::JSON::parse(juce::JSON::toString(saved));
+    ASSERT_NE(nullptr, legacy.getDynamicObject());
+    legacy.getDynamicObject()->removeProperty("windowsMicLevelHold");
+    ASSERT_TRUE(getAutoSaveFile().replaceWithText(juce::JSON::toString(legacy)));
+    keeper.setStartupReady(true);
+    autosaver_->loadFromFile();
+    EXPECT_TRUE(keeper.getPreferences().enabledEndpointIds.isEmpty());
+    WindowsMicLevelKeeperTestAccess::drain(keeper, 1000);
+    EXPECT_EQ(0, writes);
+}
 
 TEST_F(SettingsAutosaverTest, DirtyFlagReset) {
     auto file = getAutoSaveFile();

@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.4.0 소스 기준. 아래 v4.3.0 검증 이력은 현재 소스의 검증과 구분합니다.
+> 역기획서 — v4.5.0 소스 기준입니다. [검증 기록](RELEASE_4_5_0.md)과 아래 과거 검증 이력을 구분합니다.
 >
-> Reverse spec — current v4.4.0 source. Historical v4.3.0 validation is separate from [4.4.0 evidence](MULTI_RECEIVER_4_4_0.md).
+> Reverse spec — current v4.5.0 source. See the [verification record](RELEASE_4_5_0.md); historical v4.3.0 validation remains separate from [4.4.0 evidence](MULTI_RECEIVER_4_4_0.md).
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.4.0
+4.5.0
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -103,9 +103,22 @@ Mic Input  → VST Plugin Chain   → Output
 | ASIO SR/BS 정책 / ASIO SR/BS Policy | ASIO 장치는 SR/BS를 전역으로 소유 (장치를 공유하는 모든 앱에 영향). DirectPipe는 ASIO 시작/복원 시 저장된 BS를 강제하지 않고 실제 BS를 수용하지만, 저장 파일에 명시된 SR(예: 48k)이 있고 드라이버가 다른 SR(예: 44.1k)을 보고하면 그 SR을 다음 복원 대상으로 덮어쓰지 않는다. ASIO 컨트롤 패널에서 변경한 BS는 설정에 반영된다. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값 강제 적용 (다른 앱에 영향 없음) / ASIO devices own SR/BS globally. On ASIO startup/restore, DirectPipe accepts the actual buffer size without forcing a driver restart, but if settings explicitly requested a sample rate (for example 48k) and the driver reports a different rate (for example 44.1k), the requested SR is preserved for the next restore. ASIO control-panel BS changes are saved. WASAPI/CoreAudio/ALSA use per-app SR/BS, so saved values are safely forced. |
 | 시작 흐름 / Startup Flow | Windows에서는 WASAPI로 먼저 시작 (안전한 폴백) → 설정 파일에서 드라이버 타입 로드 → ASIO 설정 시 저장된 ASIO 장치로만 전환 시도. 장치 초기화 시간은 드라이버에 따라 다름. 저장된 ASIO가 없으면 FL Studio ASIO/Realtek ASIO 같은 다른 ASIO로 넘어가지 않고 WASAPI에 남아 저장 target을 기다림 / On Windows, opens WASAPI first (safe fallback) → loads saved driver type from settings → switches only to the saved ASIO device if configured. Device initialization time depends on the driver. If the saved ASIO device is missing, DirectPipe stays on WASAPI and waits for the saved target instead of falling through to other ASIO drivers such as FL Studio ASIO or Realtek ASIO |
 | 채널 모드 / Channel Mode | Mono / Stereo (기본값 / default: Stereo, `channelMode_` = 2) |
+| 입력 캡처 / Input capture | Stereo pair (기본값) / Mono (single channel). 선택한 실제 입력 하나를 감쇠 없이 내부 L/R로 복제하며 기존 Channel Mode는 별도 유지 / Opt-in one physical input to internal L/R at unity; legacy Channel Mode remains independent |
+| Windows 마이크 레벨 유지 / Windows mic-level hold | 기본 OFF, 정확히 식별한 선택 WASAPI 공유 입력(일반/Low Latency)만 Windows master level 100으로 보정. 다른 앱과 수동 Windows 조절에도 적용. ASIO/독점/DirectSound/다른 플랫폼/장치 식별 실패 시 비활성화하며 음소거·부스트·내부 게인은 변경하지 않음 / Default OFF, fixed100 correction for the exact opened selected WASAPI shared endpoint (normal/low-latency). Affects other apps and manual Windows changes; unsupported modes/identities disabled. Mute, boost and internal gain unchanged |
 | 입력 게인 / Input Gain | 0.0x ~ 2.0x (기본 / default 1.0x). `abs(gain - 1.0f) > 0.001f`일 때만 SIMD 적용 / SIMD applied only when gain differs from 1.0 |
 | 샘플레이트 / Sample Rate | 장치 지원 범위 (일반적 44.1kHz ~ 192kHz) / Device-supported range (typically 44.1kHz ~ 192kHz) |
 | 버퍼 크기 / Buffer Size | 장치 지원 범위. 자동 폴백: 장치가 요청 크기를 거부하면 가장 가까운 지원 크기 선택 후 NotificationBar 알림 / Device-supported range. Auto-fallback: if device rejects requested size, selects closest supported size and shows NotificationBar alert |
+
+마이크 레벨 유지의 장치별 선택은 설정·전체 백업에 포함되고 체인 전용 슬롯은
+기존 선택을 유지합니다. 연결 해제·전환 시 이전 연결의 보정을 중지하며 다른
+마이크에 자동 적용하지 않습니다. OFF/종료 시 과거 레벨을 복원하지 않습니다.
+100은 드라이버의 최대값으로 0 dB를 보장하지 않습니다. 사용법은
+[마이크 레벨 유지](USER_GUIDE.md#windows-mic-level-hold)를 참조하세요.
+
+Mic-level choices persist per endpoint in settings/full backups; chain-only
+slots preserve them. Disconnect/switch stops the old binding without opting
+in another microphone. OFF/shutdown stops correction without restoring a stale
+level. Scalar100 is the driver maximum, not guaranteed 0 dB. See the linked guide.
 
 #### 4.1.2 오디오 콜백 처리 흐름 / Audio Callback Processing Flow
 ```
@@ -296,10 +309,14 @@ rebuildGraph(bool suspend = true)
    / Enter ScopedProcessingSuspension when suspend=true (close atomic admission and drain)
 2. 연결 목록 복사 후 모든 연결 제거 (async → 개별 리빌드 지연)
    / Copy connection list then remove all connections (async → deferred per-connection rebuild)
-3. 입력 → plugin[0] → ... → plugin[N-1] → 출력 연결 (bypassed 플러그인 스킵)
-   / Input → plugin[0] → ... → plugin[N-1] → output connections (bypassed plugins skipped)
-4. 마지막 연결만 sync (단일 리빌드 트리거)
-   / Only the last connection is sync (single rebuild trigger)
+3. 현재 main bus 채널 수로 입력 → plugin[0] → ... → 출력 연결 (bypassed 스킵)
+   / Connect current main buses through active plugins; exclude auxiliary buses
+   모노 출력은 다음 stereo 입력/최종 L/R에 복제, stereo 출력은 그대로 유지
+   / Fan mono output to both stereo inputs/final L/R; preserve stereo output
+   모노 입력은 기존 channel 0 선택 유지 (입력 Mono 모드에서 L/R 평균)
+   / Mono inputs retain channel 0; input Mono mode averages L/R before effects
+4. 모든 연결은 async, 끝에서 명시적 rebuild() 한 번 (0-output도 갱신)
+   / All connections async, then one explicit rebuild(), including zero-output stages
 5. scope 종료 시 가장 바깥 suspension이 끝난 뒤 admission 재개
    / Restore admission only after the outer suspension scope exits
 ```
@@ -687,8 +704,10 @@ Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 |---------|------|
 | 드라이버 타입 ComboBox / Driver Type ComboBox | Windows: DirectSound / WASAPI Shared / WASAPI Low Latency / WASAPI Exclusive / ASIO. macOS: CoreAudio. Linux: ALSA / JACK |
 | 입력 장치 ComboBox / Input Device ComboBox | 클릭 시 `scanForDevices()` + 목록 재빌드 / `scanForDevices()` + list rebuild on click |
+| Windows 마이크 레벨 체크박스 / Windows mic-level checkbox | `Keep Windows mic level at 100`: 기본 OFF, 선택한 지원 입력에만 적용. 시스템 전체 영향과 비활성화 이유 표시 / Default OFF for the exact selected supported input; shows system-wide effect and unavailable reason |
 | 출력 장치 ComboBox / Output Device ComboBox | 클릭 시 `scanForDevices()` + 목록 재빌드 / `scanForDevices()` + list rebuild on click |
-| ASIO 입력 채널 ComboBox / ASIO Input Channel ComboBox | ASIO 모드에서만 표시 / Shown only in ASIO mode |
+| 입력 캡처 ComboBox / Input Capture ComboBox | Stereo pair (기본) / Mono (single channel); 기존 Channel Mode와 별도 / Default pair capture; single-channel capture is independent of Channel Mode |
+| 입력 채널 ComboBox / Input Channel ComboBox | ASIO 또는 개별 모노 캡처에서 표시 / Shown in ASIO or after opting into single-channel capture |
 | ASIO 출력 채널 ComboBox / ASIO Output Channel ComboBox | ASIO 모드에서만 표시 / Shown only in ASIO mode |
 | 샘플레이트 ComboBox / Sample Rate ComboBox | 장치에서 동적 팝업 / Dynamic popup from device |
 | 버퍼 크기 ComboBox / Buffer Size ComboBox | 장치에서 동적 팝업 / Dynamic popup from device |
@@ -1076,6 +1095,7 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
   "outputDevice": "Headphones",
   "outputNone": false,
   "channelMode": 2,
+  "monoInputEnabled": false,
   "ipcEnabled": false,
   "outputMuted": false,
   "safetyLimiter": {
@@ -1103,6 +1123,13 @@ protocol-v1 reserved bytes, preserving existing offsets and `PROTOCOL_VERSION=1`
 ```
 
 #### 4.11.3 백업/복원 (2단계) / Backup/Restore (2 Tiers)
+
+Restore diagnostics carry an operation-specific stage, safe reason and next
+check through synchronous settings import and asynchronous full restore. The
+same report reaches the failure dialog and log; rollback incompleteness is
+explicit when observed. File cancellation is silent, but a selected file that
+cannot be read or parsed has actionable feedback. Existing bool results,
+legacy-format acceptance, warnings and transaction ordering remain unchanged.
 
 **플랫폼 호환성 / Platform Compatibility**: `importAll()` / `importFullBackup()` 함수가 내부적으로 플랫폼 호환성을 검사하여, 다른 OS에서 만든 백업의 복원을 차단한다 (UI 레벨이 아닌 API 레벨에서 보호).
 

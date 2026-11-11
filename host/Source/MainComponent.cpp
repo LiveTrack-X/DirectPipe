@@ -78,9 +78,11 @@ MainComponent::MainComponent(bool enableExternalControls)
     dispatcher_.addListener(this);
 
     // Audio Settings
-    audioSettings_ = std::make_unique<AudioSettings>(audioEngine_);
+    windowsMicLevelKeeper_ = std::make_unique<WindowsMicLevelKeeper>();
+    audioSettings_ = std::make_unique<AudioSettings>(audioEngine_, windowsMicLevelKeeper_.get());
     audioSettings_->onSettingsChanged = [this] {
         markSettingsDirty();
+        syncWindowsMicLevelKeeper();
         // Only invalidate preload cache if SR/BS actually changed (device-only changes keep cache valid)
         auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice();
         if (device && presetManager_) {
@@ -188,6 +190,7 @@ MainComponent::MainComponent(bool enableExternalControls)
         auto autoFile = PresetManager::getSlotFile(autoIdx);
         if (!autoFile.existsAsFile()) {
             loadingSlot_ = true;
+            if (windowsMicLevelKeeper_) windowsMicLevelKeeper_->setStartupReady(false);
             // Clear chain and add auto processors
             auto& chain = audioEngine_.getVSTChain();
             while (chain.getPluginCount() > 0) {
@@ -226,6 +229,7 @@ MainComponent::MainComponent(bool enableExternalControls)
             // Load existing Auto preset (same flow as A-E slot switch)
             const bool previousPartial = partialLoad_.load(std::memory_order_acquire);
             loadingSlot_ = true;
+            if (windowsMicLevelKeeper_) windowsMicLevelKeeper_->setStartupReady(false);
             if (presetSlotBar_) {
                 presetSlotBar_->setSlotButtonsEnabled(false);
                 presetSlotBar_->setActiveSlot(autoIdx);
@@ -309,6 +313,14 @@ MainComponent::MainComponent(bool enableExternalControls)
             pluginChainEditor_->refreshList();
         };
         settingsPanel->onResetSettings = [this] {
+            micLevelStartupBoundaryApplied_ = false;
+            micLevelRestoreIncomplete_ = false;
+            if (windowsMicLevelKeeper_) {
+                windowsMicLevelKeeper_->setStartupReady(false);
+                juce::String error;
+                if (!windowsMicLevelKeeper_->setPreferences({}, error))
+                    juce::Logger::writeToLog("[APP] Microphone level preferences reset failed: " + error);
+            }
             clearPresetRuntimeForMaintenance();
             if (!SettingsAutosaver::deleteShutdownRecoveryFiles()) {
                 juce::Logger::writeToLog(
@@ -335,36 +347,44 @@ MainComponent::MainComponent(bool enableExternalControls)
                 });
         };
         settingsPanel->onLoadSettings = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+            auto diagnostics = std::make_shared<SettingsExporter::RestoreDiagnostics>();
             SettingsExporter::showLoadDialog("*.dpbackup",
-                [safeThis](const juce::String& json) -> bool {
-                    if (!safeThis) return false;
+                [safeThis, diagnostics](const juce::String& json) -> bool {
+                    if (!safeThis)
+                        return diagnostics->fail("runtime", "The application closed before restore started.",
+                                                 "Reopen DirectPipe and load the backup again.");
                     bool expected = false;
                     if (!safeThis->loadingSlot_.compare_exchange_strong(
                             expected, true, std::memory_order_acq_rel,
                             std::memory_order_acquire)) {
-                        juce::Logger::writeToLog(
-                            "[APP] Settings import blocked while another load is active");
-                        return false;
+                        return diagnostics->fail("runtime-busy", "Another preset or backup is loading.",
+                                                 "Wait for the current load to finish, then retry.");
                     }
                     if (safeThis->partialLoad_.load(std::memory_order_acquire)
                         || !safeThis->audioEngine_.getVSTChain().isStable()) {
                         safeThis->loadingSlot_.store(false, std::memory_order_release);
-                        juce::Logger::writeToLog(
-                            "[APP] Settings import blocked while runtime state is unstable");
-                        return false;
+                        return diagnostics->fail("runtime-state", "The current plug-in chain is not stable.",
+                                                 "Finish or resolve the current preset load before restoring a backup.");
                     }
+                    if (safeThis->windowsMicLevelKeeper_)
+                        safeThis->windowsMicLevelKeeper_->setStartupReady(false);
                     if (!SettingsExporter::importAll(json, *safeThis->presetManager_,
-                                                     safeThis->controlManager_->getConfigStore())) {
+                                                     safeThis->controlManager_->getConfigStore(),
+                                                     diagnostics.get())) {
                         safeThis->loadingSlot_.store(false, std::memory_order_release);
+                        if (diagnostics->rollbackIncomplete)
+                            safeThis->micLevelRestoreIncomplete_ = true;
+                        safeThis->syncWindowsMicLevelKeeper();
                         return false;
                     }
                     safeThis->controlManager_->reloadConfig();
                     safeThis->loadingSlot_.store(false, std::memory_order_release);
+                    safeThis->micLevelRestoreIncomplete_ = false;
                     safeThis->markSettingsDirty();
                     safeThis->refreshUI();
                     safeThis->presetSlotBar_->updateSlotButtonStates();
                     return true;
-                });
+                }, diagnostics);
         };
         settingsPanel->onFullBackup = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
             SettingsExporter::showSaveDialog("DirectPipe_full.dpfullbackup", "*.dpfullbackup", "dpfullbackup",
@@ -384,10 +404,13 @@ MainComponent::MainComponent(bool enableExternalControls)
                 });
         };
         settingsPanel->onFullRestore = [safeThis = juce::Component::SafePointer<MainComponent>(this)] {
+            auto diagnostics = std::make_shared<SettingsExporter::RestoreDiagnostics>();
             SettingsExporter::showLoadDialogAsync("*.dpfullbackup",
-                [safeThis](const juce::String& json,
+                [safeThis, diagnostics](const juce::String& json,
                            std::function<void(bool)> dialogComplete) {
                     if (!safeThis) {
+                        diagnostics->fail("runtime", "The application closed before restore started.",
+                                          "Reopen DirectPipe and load the backup again.");
                         dialogComplete(false);
                         return;
                     }
@@ -395,8 +418,8 @@ MainComponent::MainComponent(bool enableExternalControls)
                     if (!safeThis->loadingSlot_.compare_exchange_strong(
                             expected, true, std::memory_order_acq_rel,
                             std::memory_order_acquire)) {
-                        juce::Logger::writeToLog(
-                            "[APP] Full backup restore blocked while another load is active");
+                        diagnostics->fail("runtime-busy", "Another preset or backup is loading.",
+                                          "Wait for the current load to finish, then retry.");
                         dialogComplete(false);
                         return;
                     }
@@ -405,12 +428,14 @@ MainComponent::MainComponent(bool enableExternalControls)
                         && safeThis->audioEngine_.getVSTChain().isStable();
                     if (!runtimeStateWasStable) {
                         safeThis->loadingSlot_.store(false, std::memory_order_release);
-                        juce::Logger::writeToLog(
-                            "[APP] Full backup restore blocked while runtime state is unstable");
+                        diagnostics->fail("runtime-state", "The current plug-in chain is not stable.",
+                                          "Finish or resolve the current preset load before restoring a backup.");
                         dialogComplete(false);
                         return;
                     }
 
+                    if (safeThis->windowsMicLevelKeeper_)
+                        safeThis->windowsMicLevelKeeper_->setStartupReady(false);
                     safeThis->savePresetBtn_.setEnabled(false);
                     safeThis->loadPresetBtn_.setEnabled(false);
                     if (safeThis->presetSlotBar_)
@@ -422,9 +447,11 @@ MainComponent::MainComponent(bool enableExternalControls)
                         json, *safeThis->presetManager_,
                         safeThis->controlManager_->getConfigStore(),
                         runtimeStateWasStable,
-                        [safeThis, dialogComplete = std::move(dialogComplete)](
+                        [safeThis, diagnostics, dialogComplete = std::move(dialogComplete)](
                             bool ok) mutable {
                             if (!safeThis) {
+                                diagnostics->fail("runtime", "The application closed during restore.",
+                                                  "Reopen DirectPipe and check the current settings before retrying.");
                                 dialogComplete(false);
                                 return;
                             }
@@ -437,10 +464,13 @@ MainComponent::MainComponent(bool enableExternalControls)
                                 safeThis->pluginChainEditor_->hideLoadingState();
 
                             if (ok) {
+                                safeThis->micLevelRestoreIncomplete_ = false;
                                 safeThis->partialLoad_.store(false, std::memory_order_release);
                                 safeThis->controlManager_->reloadConfig();
                                 safeThis->markSettingsDirty();
                                 juce::Logger::writeToLog("[APP] Full backup restored");
+                            } else if (diagnostics->rollbackIncomplete) {
+                                safeThis->micLevelRestoreIncomplete_ = true;
                             }
                             safeThis->refreshUI();
                             if (safeThis->presetSlotBar_)
@@ -448,8 +478,8 @@ MainComponent::MainComponent(bool enableExternalControls)
                             if (safeThis->pluginChainEditor_)
                                 safeThis->pluginChainEditor_->refreshList();
                             dialogComplete(ok);
-                        });
-                });
+                        }, diagnostics);
+                }, diagnostics);
         };
         rightTabs_->addTab("Settings", tabBg, settingsPanel.release(), true);
     }
@@ -466,11 +496,26 @@ MainComponent::MainComponent(bool enableExternalControls)
     presetManager_ = std::make_unique<PresetManager>(audioEngine_);
     presetManager_->onExportAppSettings = [this](juce::DynamicObject& root) {
         root.setProperty("startMinimizedToTray", startMinimizedToTrayOnLaunch_);
+        if (windowsMicLevelKeeper_)
+            root.setProperty("windowsMicLevelHold",
+                WindowsMicLevelKeeper::serializePreferences(windowsMicLevelKeeper_->getPreferences()));
         if (outputPanelPtr_)
             root.setProperty("recordingFolder",
                              outputPanelPtr_->getRecordingFolder().getFullPathName());
     };
     presetManager_->onImportAppSettings = [this](const juce::DynamicObject& root) -> bool {
+        const bool restoreMicPreferences = root.getProperty("type").toString() != "chain";
+        WindowsMicLevelKeeper::Preferences micPreferences;
+        juce::String micError;
+        if (restoreMicPreferences) {
+            if (windowsMicLevelKeeper_) windowsMicLevelKeeper_->setStartupReady(false);
+            if (root.hasProperty("windowsMicLevelHold")
+                && !WindowsMicLevelKeeper::parsePreferences(
+                    root.getProperty("windowsMicLevelHold"), micPreferences, micError)) {
+                juce::Logger::writeToLog("[APP] Windows microphone preferences restore failed: " + micError);
+                return false;
+            }
+        }
         const bool enabled = root.hasProperty("startMinimizedToTray")
             ? static_cast<bool>(root.getProperty("startMinimizedToTray"))
             : false;
@@ -480,6 +525,11 @@ MainComponent::MainComponent(bool enableExternalControls)
             if (path.isNotEmpty()
                 && !outputPanelPtr_->setRecordingFolderAndSave(juce::File(path)))
                 return false;
+        }
+        if (restoreMicPreferences && windowsMicLevelKeeper_
+            && !windowsMicLevelKeeper_->setPreferences(micPreferences, micError)) {
+            juce::Logger::writeToLog("[APP] Windows microphone preferences could not be staged: " + micError);
+            return false;
         }
         return true;
     };
@@ -595,6 +645,8 @@ MainComponent::MainComponent(bool enableExternalControls)
 
                 safeThis->savePresetBtn_.setEnabled(false);
                 safeThis->loadPresetBtn_.setEnabled(false);
+                if (safeThis->windowsMicLevelKeeper_)
+                    safeThis->windowsMicLevelKeeper_->setStartupReady(false);
                 if (safeThis->presetSlotBar_)
                     safeThis->presetSlotBar_->setSlotButtonsEnabled(false);
                 if (safeThis->pluginChainEditor_)
@@ -691,14 +743,31 @@ MainComponent::MainComponent(bool enableExternalControls)
         if (!safeThis) return;
         if (auto* w = safeThis->getTopLevelComponent()) {
             // Startup-only behavior: if enabled, first show path routes to tray/minimized state.
-            if (safeThis->isStartMinimizedToTrayOnLaunchEnabled()) {
+            const bool tray = safeThis->isStartMinimizedToTrayOnLaunchEnabled();
+            if (tray) {
                 if (auto* docWindow = dynamic_cast<juce::DocumentWindow*>(w))
                     docWindow->closeButtonPressed();
                 else
                     w->setVisible(false);
-                return;
+            } else {
+                w->setVisible(true);
             }
-            w->setVisible(true);
+            const auto* window = dynamic_cast<juce::DocumentWindow*>(w);
+            const bool policyApplied = tray
+                ? (!w->isVisible() || (window != nullptr && window->isMinimised()))
+                : w->isVisible();
+            const bool restored = !safeThis->loadingSlot_.load()
+                && !safeThis->partialLoad_.load()
+                && safeThis->audioEngine_.getVSTChain().isStable();
+            const bool ready = restored && policyApplied;
+            const auto mode = tray ? juce::String("tray") : juce::String("window");
+            const auto reason = ready ? "startup ready (" + mode + ")"
+                : (policyApplied ? "Initial settings or plug-in restore was incomplete (" + mode + ")"
+                                 : "Startup window/tray policy was not applied");
+            safeThis->micLevelStartupBoundaryApplied_ = policyApplied;
+            safeThis->syncWindowsMicLevelKeeper();
+            juce::Logger::writeToLog("[APP] " + reason);
+            safeThis->updateChecker_.cleanupPreviousUpdate(ready, reason);
         }
     };
 
@@ -829,7 +898,6 @@ MainComponent::MainComponent(bool enableExternalControls)
         safeThis->showNotification("Updated to v" + version + " successfully!",
                                    NotificationLevel::Info);
     };
-    updateChecker_.cleanupPreviousUpdate();
     updateChecker_.checkForUpdate();
 
     // Notify if running in audio-only mode (external controls disabled)
@@ -847,6 +915,8 @@ MainComponent::MainComponent(bool enableExternalControls)
 MainComponent::~MainComponent()
 {
     stopTimer();
+    if (windowsMicLevelKeeper_)
+        windowsMicLevelKeeper_->stop();
     if (!settingsAutosaver_->flushForShutdown()) {
         juce::Logger::writeToLog(
             "[PRESET] Shutdown completed without persisting the latest non-plugin settings");
@@ -1074,6 +1144,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
 
 void MainComponent::timerCallback()
 {
+    syncWindowsMicLevelKeeper();
     // Drain notification queue
     {
         PendingNotification notif;
@@ -1125,6 +1196,33 @@ void MainComponent::timerCallback()
 }
 
 // Settings dirty flag
+
+void MainComponent::syncWindowsMicLevelKeeper()
+{
+    if (!windowsMicLevelKeeper_)
+        return;
+
+    // App-settings imports can run before their containing transaction commits.
+    // Only a completed startup boundary and stable outer restore may arm the worker.
+    const bool ready = micLevelStartupBoundaryApplied_
+        && !micLevelRestoreIncomplete_
+        && !loadingSlot_.load(std::memory_order_acquire)
+        && !partialLoad_.load(std::memory_order_acquire)
+        && audioEngine_.getVSTChain().isStable();
+    if (!ready)
+        windowsMicLevelKeeper_->setStartupReady(false);
+
+    const auto setup = audioEngine_.getDeviceManager().getAudioDeviceSetup();
+    auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice();
+    const bool active = device && device->isPlaying()
+        && !audioEngine_.isInputDeviceLost()
+        && !device->getActiveInputChannels().isZero();
+    windowsMicLevelKeeper_->updateInputContext({ audioEngine_.getCurrentDeviceType(),
+                                                setup.inputDeviceName, active,
+                                                active ? device->getWindowsInputEndpointId() : juce::String{} });
+    if (ready)
+        windowsMicLevelKeeper_->setStartupReady(true);
+}
 
 void MainComponent::markSettingsDirty()
 {
@@ -1189,6 +1287,7 @@ void MainComponent::togglePanicMute()
 
 void MainComponent::refreshUI()
 {
+    syncWindowsMicLevelKeeper();
     inputGainSlider_.setValue(audioEngine_.getInputGain(), juce::dontSendNotification);
 
     // Get tab content components for refresh

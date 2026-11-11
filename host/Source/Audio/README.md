@@ -18,6 +18,8 @@ AudioEngine RT callback (audioDeviceIOCallbackWithContext)
  |  1. inputChannelData -> workBuffer_ (pre-allocated 8ch)
  |     - Mono: average first two enabled inputs (one input: copy) -> ch0, duplicate to ch1
  |     - Stereo: compact first two enabled inputs -> internal L/R
+ |     - Opt-in mono capture: selected active input -> internal L/R at unity
+ |       (separate from legacy Mono averaging; effects may still generate stereo)
  |     - inputDeviceLost_: skip copy (use silence)
  |
 |  2. Input gain (SIMD via JUCE FloatVectorOperations)
@@ -28,6 +30,8 @@ AudioEngine RT callback (audioDeviceIOCallbackWithContext)
 v
 VSTChain.processBlock(workBuffer_)
 |  - AudioProcessorGraph inline processing
+|  - Main-bus channel routing; mono outputs fan out to stereo stage inputs/output
+|  - Stereo effects retain L/R; auxiliary buses are not program channels
 |  - Plugin bypass via graph routing and synchronized processor state
 |  - Inline processing (체인/플러그인 PDC 설정이 전체 지연에 반영됨)
 |
@@ -79,6 +83,7 @@ LatencyMonitor.markCallbackEnd()
 |--------|-------------|--------|------|
 | AudioEngine | `audioDeviceIOCallbackWithContext` | `[RT thread]` | host hot path는 사전 할당, blocking control lock/로그/파일 I/O 금지. Recorder는 try-lock/drop. 기존 Windows MMCSS 최초 등록과 legacy IPC event signal은 OS 호출 예외이며 외부 플러그인의 내부 동작은 별도 |
 | AudioEngine | `initialize`, `shutdown`, `set*Device` | `[Message thread]` | 디바이스 매니저 조작. 독점 main open 전 충돌 가능 monitor를 중지하고 rollback/비충돌 결과에서 복원 |
+| AudioEngine | `setInputCaptureMode`, `setMonoInputEnabled` | `[Message thread]` | UI는 mode/mask 트랜잭션 API 사용. bool setter는 영속 설정 복원용; RT는 atomic capture flag만 읽음 |
 | AudioEngine | `checkReconnection`, `updateXRunTracking` | `[Message thread]` | 30Hz 타이머에서 호출. 실패한 zero-active 복구는 90 tick(약 3초) 쿨다운 재적용 |
 | AudioEngine | `audioDeviceError`, `audioDeviceStopped` | `[Device thread]` | JUCE 디바이스 스레드에서 호출 |
 | AudioEngine | `popNotification` (read) | `[Message thread]` | lock-free queue에서 소비 |

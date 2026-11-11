@@ -42,6 +42,7 @@
 #include "UI/PresetSlotBar.h"
 #include "UI/StatusUpdater.h"
 #include "UI/UpdateChecker.h"
+#include "Platform/WindowsMicLevelKeeper.h"
 
 #include <memory>
 #include <thread>
@@ -89,9 +90,13 @@ private:
     void clearPresetRuntimeForMaintenance();
     void syncStartMinimizedToTrayToggle();
     void updateAutoButtonVisual();
+    void syncWindowsMicLevelKeeper();
 
     // Audio engine (core)
     AudioEngine audioEngine_;
+    std::unique_ptr<WindowsMicLevelKeeper> windowsMicLevelKeeper_;
+    bool micLevelStartupBoundaryApplied_ = false;
+    bool micLevelRestoreIncomplete_ = false;
 
     // External control system
     ActionDispatcher dispatcher_;

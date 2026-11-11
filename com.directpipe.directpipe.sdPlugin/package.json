@@ -1,19 +1,20 @@
 {
   "name": "directpipe-streamdeck",
-  "version": "4.4.0",
+  "version": "4.5.0",
   "description": "Stream Deck plugin for DirectPipe - Control VST bypass, volume, presets, and panic mute via WebSocket.",
   "main": "src/plugin.js",
   "scripts": {
     "start": "node src/plugin.js",
     "dev": "node --watch src/plugin.js",
-    "build": "rollup -c rollup.config.mjs",
+    "build": "node scripts/build.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "check:icons": "node scripts/check-icons.mjs",
     "validate": "npm run check:icons && streamdeck validate .",
     "prepackage": "npm run check:icons",
     "package": "streamdeck pack . --output ../dist/ --force",
-    "lint": "eslint src/",
-    "test": "node --test src/websocket-client.test.js src/actions/control-actions.test.js"
+    "lint": "node scripts/lint.mjs",
+    "pretest": "npm run build",
+    "test": "node --test src/websocket-client.test.js src/actions/control-actions.test.js src/dependency-compatibility.test.js src/bundle-compatibility.test.js src/tooling-compatibility.test.js"
   },
   "keywords": [
     "streamdeck",
@@ -25,14 +26,12 @@
   "author": "DirectPipe",
   "license": "GPL-3.0-only",
   "dependencies": {
-    "@elgato/streamdeck": "^2.0.1",
-    "ws": "^8.21.0"
+    "@elgato/streamdeck": "2.0.1",
+    "@elgato/utils": "file:vendor/elgato-utils",
+    "ws": "8.21.0"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^29.0.0",
-    "@rollup/plugin-node-resolve": "^16.0.3",
-    "eslint": "^10.8.0",
-    "rollup": "^4.59.0",
+    "esbuild": "0.28.2",
     "sharp": "^0.35.3"
   },
   "engines": {

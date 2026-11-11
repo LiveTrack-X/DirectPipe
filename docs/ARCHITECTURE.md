@@ -1,7 +1,7 @@
 # DirectPipe Architecture / 아키텍처
 
-> **Current source: 4.4.0 / 현재 소스: 4.4.0**
-> Version-specific v4.3.0 results below are historical; see [4.4.0 changes and validation](MULTI_RECEIVER_4_4_0.md) for the current implementation. / 아래 v4.3.0 수치는 당시 검증 이력이며 현재 변경·검증 범위와 구분합니다.
+> **Current source: 4.5.0 / 현재 소스: 4.5.0** — [Verification record / 검증 기록](RELEASE_4_5_0.md).
+> Version-specific v4.3.0 results below and [4.4.0 validation](MULTI_RECEIVER_4_4_0.md) are historical. / 아래 이전 버전 수치는 당시 검증 이력이며 현재 변경·검증 범위와 구분합니다.
 
 ## System Overview / 시스템 개요
 
@@ -45,6 +45,26 @@ JUCE 7.0.12-based desktop application. Main audio processing engine.
 JUCE 7.0.12 기반 데스크톱 앱. 메인 오디오 처리 엔진.
 
 #### Audio Module (`host/Source/Audio/`) / 오디오 모듈
+
+`AudioEngine::setInputCaptureMode(bool,int)` changes the physical input mask and
+opt-in capture policy transactionally. `monoInputEnabled_` defaults false and
+is independent of `channelMode_`. Opt-in capture copies the first selected
+active callback input at unity to internal L/R before effects, accepting packed
+or sparse input pointers; it does not force post-effect mono. Input readiness
+allows a singleton only under the opt-in flag, retaining existing pair/default
+recovery and output checks. Failure restores the prior mode, stream and mask.
+
+`monoInputEnabled` is an optional settings/preset/backup boolean. Missing means
+legacy capture; explicit new singleton masks bypass legacy Mono pair expansion.
+Chain-only slots keep capture policy unchanged.
+
+The VST serial graph uses each processor's current main input/output bus layout
+for the two-channel program path. A mono output fans out to both inputs of the
+next stereo stage or the host output; stereo outputs stay distinct. Mono inputs
+retain channel-0 selection (use input Mono mode to average L/R before effects).
+Auxiliary buses are not connected as program channels. Connection edits are
+batched and followed by one explicit `AudioProcessorGraph::rebuild()`, including
+zero-output stages; a rejected connection cannot skip the final commit.
 
 - **Device recovery safeguards** — Driver, endpoint, sample-rate, buffer-size, and channel changes commit only after the reopened stream reports valid rates and usable active channels; otherwise DirectPipe restores the exact previous runtime snapshot or fails closed into muted recovery. A recovery-required combo uses a disabled `Device (Reconnect)` placeholder so the real same-name device remains clickable. Missing monitors keep three-second availability polling; enumerated endpoints that repeatedly fail to open back off 3→10→20→30 seconds, with diagnostics on the first and every twentieth attempt. The monitor manager opens the selected shared-mode output directly. Before an exclusive main-output transition, a potentially conflicting monitor is suspended and restored on rollback or when the actual main output differs. Duplicate/self-generated endpoint events are coalesced or ignored during a bounded settle window. / **장치 복구 안전장치** — driver, endpoint, sample rate, buffer size, channel 변경은 재개방 스트림이 유효한 rate와 active channel을 보고한 뒤에만 확정하며, 실패하면 정확한 이전 runtime snapshot을 복원하거나 음소거 복구 상태로 fail-closed합니다. 복구가 필요한 combo는 비활성 `장치명 (Reconnect)` placeholder를 선택해 실제 같은 이름의 장치 항목을 다시 클릭할 수 있게 합니다. 누락 모니터는 3초 availability polling을 유지하고, 열거되지만 반복해서 열리지 않는 endpoint는 3→10→20→30초로 backoff하며 첫 시도와 매 20번째 시도만 진단을 남깁니다. 모니터 manager는 선택한 shared-mode 출력을 직접 열고, 독점 메인 출력 전 충돌 가능 모니터를 중지한 뒤 rollback 또는 다른 실제 endpoint일 때 복원합니다. 중복·자체 생성 endpoint 이벤트는 합치거나 제한된 안정화 구간 동안 무시합니다.
 - **Startup preference authority** — A valid device start with no previously published loss adopts the actual platform-selected driver, input, and output, matching v4.2.0 default routing. After a real loss, the saved per-direction targets remain authoritative and recovery continues toward them. Generation-gated deferred callbacks cannot replace a later settings restore, manual selection, or `Output: None`. No hardware name is hard-coded. / **시작 선택 권위** — 앞서 보고된 장치 손실이 없는 유효한 시작은 v4.2.0 기본 라우팅과 같이 플랫폼이 실제 선택한 드라이버·입력·출력을 채택합니다. 실제 손실 뒤에는 방향별 저장 target이 권위를 유지하며 해당 장치로 복구합니다. 세대 번호로 보호된 지연 callback은 이후의 설정 복원, 수동 선택, `Output: None`을 되돌릴 수 없습니다. 특정 하드웨어 이름은 고정하지 않습니다.
@@ -98,6 +118,14 @@ Cross-platform abstraction layer. Each sub-directory provides platform-specific 
 - **SharedMemWriter** — Interleaves once into preallocated storage and writes the available FanOut and legacy transports. Initialization is independent per transport; one failure does not destroy the other. Shutdown closes admission and drains active RT writes before retiring both producers and unmapping. FanOut visits at most eight queues without waits/OS calls; the original v1 event signal remains on the legacy path. / 사전 할당 버퍼에 한 번 interleave한 뒤 새 FanOut·구형 경로에 기록합니다. 두 경로는 독립 초기화하며 하나의 실패로 다른 경로를 해제하지 않습니다. 종료는 RT 진입을 닫고 진행 중 write를 배출한 뒤 두 mapping을 해제합니다. FanOut은 최대 8개 큐를 대기·OS 호출 없이 방문하며 기존 v1 event signal만 유지합니다.
 
 #### UI Module (`host/Source/UI/`) / UI 모듈
+
+SettingsExporter owns per-operation `RestoreDiagnostics` (stage, safe reason,
+next check and observed rollback incompleteness). Optional output/shared
+reports preserve existing bool import APIs while the file dialog and
+MainComponent carry the same report across asynchronous callbacks. A report is
+never global and does not replace loader callbacks. Settings/full-backup
+acceptance and commit/rollback order remain unchanged. Async VST preparation
+failures also log a bounded plug-in label and loader error before notification.
 
 - **AudioSettings** — Driver type selector (platform-dependent: WASAPI/ASIO on Windows, CoreAudio on macOS, ALSA/JACK on Linux), device selection, ASIO channel routing (one duplex ASIO target with input/output channel pair, Windows only), sample rate, buffer size, channel mode (Mono/Stereo), latency display, ASIO Control Panel button (Windows only). Saved ASIO restore normalizes mismatched input/output device names to one target and waits for it instead of falling through to another ASIO driver. When recovery is pending, the combo selects a disabled `DeviceName (Reconnect)` placeholder if the desired device is enumerated, or `(Disconnected)` if absent, while the real enumerated item remains selectable and triggers an explicit reopen. Windows Audio applies this per lost direction; ASIO applies it to both halves of the duplex device. / 오디오 설정 패널. 드라이버 타입은 플랫폼별 (Windows: WASAPI/ASIO, macOS: CoreAudio, Linux: ALSA/JACK). ASIO는 하나의 duplex target으로 취급하며 다른 ASIO 드라이버로 넘어가지 않고 저장 target을 기다립니다. 복구 대기 중 원하는 장치가 열거되면 비활성 `DeviceName (Reconnect)`, 없으면 `(Disconnected)` placeholder를 선택하되 실제 열거 항목은 다시 선택할 수 있어 명시적 reopen이 발생합니다. Windows Audio는 유실 방향별로, ASIO는 duplex 양쪽에 적용합니다.
 - **PluginChainEditor** — Drag-and-drop reordering, bypass toggle, edit button (native GUI), remove button. Safe deletion via `callAsync`. `addPluginFromDescription` uses `SafePointer` in `callAsync` lambda. / 드래그 앤 드롭 플러그인 체인 편집. callAsync를 통한 안전 삭제. `addPluginFromDescription`은 callAsync 람다에서 `SafePointer` 사용.

@@ -1025,41 +1025,48 @@ void VSTChain::rebuildGraph(bool suspend)
             graph_->removeConnection(conn, UK::async);
     }
 
-    if (chain_.empty()) {
-        // Direct connection: input -> output (last connection triggers rebuild)
-        graph_->addConnection({{inputNodeId_, 0}, {outputNodeId_, 0}}, UK::async);
-        graph_->addConnection({{inputNodeId_, 1}, {outputNodeId_, 1}}, UK::sync);
-        return;
-    }
+    // Route the main program bus only. A mono output fans out at each stereo
+    // boundary, so a later stereo effect receives both inputs and can still
+    // generate stereo. Mono inputs retain the existing channel-0 selection;
+    // connecting both source channels would sum dual-mono at twice the gain.
+    const auto connectMainBuses = [&](juce::AudioProcessorGraph::NodeID source,
+                                      int sourceChannels,
+                                      juce::AudioProcessorGraph::NodeID destination,
+                                      int destinationChannels) {
+        if (sourceChannels <= 0)
+            return;
+        for (int channel = 0; channel < juce::jmin(2, destinationChannels); ++channel) {
+            const int sourceChannel = sourceChannels == 1 ? 0 : channel;
+            if (!graph_->addConnection({{source, sourceChannel}, {destination, channel}}, UK::async)) {
+                juce::Logger::writeToLog(
+                    "WRN [VST] Connection FAILED: node " + juce::String(source.uid)
+                    + " ch" + juce::String(sourceChannel) + " -> node "
+                    + juce::String(destination.uid) + " ch" + juce::String(channel));
+            }
+        }
+    };
 
     // Build serial chain: Input -> Plugin[0] -> ... -> Plugin[N-1] -> Output
     // Bypassed plugins are skipped in the connection graph (audio routes around them).
     // This is more reliable than JUCE's node->setBypassed() which doesn't work for
     // VST2/VST3 plugins that report their own bypass parameter (getBypassParameter()).
-    // All connections use async except the very last one (triggers single rebuild)
+    // Defer every connection edit and explicitly rebuild once at the end.
     auto prevNodeId = inputNodeId_;
+    int prevOutputChannels = 2;
     for (size_t i = 0; i < chain_.size(); ++i) {
         auto& slot = chain_[i];
         if (slot.bypassed) continue;  // skip bypassed plugins in connection graph
-        for (int ch = 0; ch < 2; ++ch) {
-            bool ok = graph_->addConnection({
-                {prevNodeId, ch},
-                {slot.nodeId, ch}
-            }, UK::async);
-            if (!ok) {
-                juce::String msg = "WRN [VST] Connection FAILED: node " + juce::String(prevNodeId.uid)
-                    + " ch" + juce::String(ch) + " -> node " + juce::String(slot.nodeId.uid)
-                    + " ch" + juce::String(ch) + " (\"" + slot.name + "\")";
-                juce::Logger::writeToLog(msg);
-            }
-        }
+        const auto* processor = slot.getProcessor();
+        const int inputChannels = processor != nullptr ? processor->getMainBusNumInputChannels() : 0;
+        connectMainBuses(prevNodeId, prevOutputChannels, slot.nodeId, inputChannels);
         prevNodeId = slot.nodeId;
+        prevOutputChannels = processor != nullptr ? processor->getMainBusNumOutputChannels() : 0;
     }
 
-    // Last non-bypassed plugin (or input) -> Output (final connection triggers the single rebuild)
-    graph_->addConnection({{prevNodeId, 0}, {outputNodeId_, 0}}, UK::async);
-    graph_->addConnection({{prevNodeId, 1}, {outputNodeId_, 1}}, UK::sync);
-
+    connectMainBuses(prevNodeId, prevOutputChannels, outputNodeId_, 2);
+    // A missing channel (including a zero-output processor) must not prevent
+    // the render sequence from committing the complete connection transaction.
+    graph_->rebuild();
 }
 
 std::unique_ptr<juce::AudioPluginInstance> VSTChain::loadPlugin(
@@ -1248,8 +1255,14 @@ void VSTChain::prepareChainAsync(
             const bool complete = result->failures.empty()
                 && result->entries.size() == result->expectedCount;
 
-            if (onPluginLoadFailed) {
-                for (const auto& [name, error] : result->failures)
+            for (const auto& [name, error] : result->failures) {
+                // Keep asynchronous loader failures in the log as well as the
+                // transient notification. Never include serialized plug-in state.
+                Log::warn("VST", "Plug-in preparation failed: "
+                    + name.replaceCharacters("\r\n", "  ").substring(0, 120)
+                    + " - " + error.replaceCharacters("\r\n", "  ").substring(0, 480)
+                    + "; check the plug-in installation, format and architecture.");
+                if (onPluginLoadFailed)
                     onPluginLoadFailed(name, error);
             }
 

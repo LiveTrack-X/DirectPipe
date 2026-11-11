@@ -9,6 +9,8 @@
 #include <future>
 #include <memory>
 #include <thread>
+#include <string>
+#include <iostream>
 
 #include "UI/UpdateChecker.h"
 #include "UI/UpdateScript.h"
@@ -232,6 +234,67 @@ struct ScriptRunResult {
     juce::String output;
 };
 
+// Only a newly-created, hidden sleep process is owned/terminated by this fixture.
+// The test never uses a running DirectPipe or audio-application PID.
+class OwnedUpdaterSleepProcess {
+public:
+    ~OwnedUpdaterSleepProcess() { stop(); }
+    bool start()
+    {
+        const auto executable = juce::File(juce::SystemStats::getEnvironmentVariable(
+            "SystemRoot", "C:\\Windows")).getChildFile("System32/WindowsPowerShell/v1.0/powershell.exe");
+        const auto text = "\"" + executable.getFullPathName()
+            + "\" -NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 30\"";
+        std::wstring command(text.toWideCharPointer());
+        STARTUPINFOW startup{}; startup.cb = sizeof(startup);
+        if (!CreateProcessW(executable.getFullPathName().toWideCharPointer(), command.data(),
+                            nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+                            &startup, &process_))
+            return false;
+        CloseHandle(process_.hThread); process_.hThread = nullptr;
+        return true;
+    }
+    unsigned long id() const { return process_.dwProcessId; }
+    bool running() const
+    {
+        DWORD code = 0;
+        return process_.hProcess && GetExitCodeProcess(process_.hProcess, &code)
+            && code == STILL_ACTIVE;
+    }
+    void stop()
+    {
+        if (!process_.hProcess) return;
+        if (running()) TerminateProcess(process_.hProcess, 0);
+        WaitForSingleObject(process_.hProcess, 5000);
+        CloseHandle(process_.hProcess); process_.hProcess = nullptr;
+    }
+private:
+    PROCESS_INFORMATION process_{};
+};
+
+class ScopedUpdaterTestEnvironment {
+public:
+    ScopedUpdaterTestEnvironment(const wchar_t* name, const wchar_t* value) : name_(name)
+    {
+        const auto length = GetEnvironmentVariableW(name, nullptr, 0);
+        existed_ = length > 0;
+        if (existed_) {
+            std::vector<wchar_t> text(length);
+            GetEnvironmentVariableW(name, text.data(), length);
+            previous_ = text.data();
+        }
+        changed_ = SetEnvironmentVariableW(name, value) != FALSE;
+    }
+    ~ScopedUpdaterTestEnvironment()
+    {
+        SetEnvironmentVariableW(name_.c_str(), existed_ ? previous_.c_str() : nullptr);
+    }
+    bool changed() const { return changed_; }
+private:
+    std::wstring name_, previous_;
+    bool existed_ = false, changed_ = false;
+};
+
 ScriptRunResult runInstallScript(const juce::String& installScript,
                                  const juce::File& batchFile)
 {
@@ -266,6 +329,10 @@ protected:
 
     void TearDown() override
     {
+        if (HasFailure()) {
+            std::cerr << "Retained isolated updater fixture: " << testDir_.getFullPathName() << std::endl;
+            return;
+        }
         testDir_.deleteRecursively();
     }
 
@@ -311,8 +378,410 @@ protected:
         return source.copyFileTo(destination);
     }
 
+    directpipe::update_detail::WindowsUpdateInstallSpec diagnosticSpec() const
+    {
+        auto spec = makeSpec(false);
+        spec.resultFilePath = windowsPath(testDir_.getChildFile("result.json"));
+        spec.logFilePath = windowsPath(testDir_.getChildFile("update.log"));
+        spec.previousBackupExePath = windowsPath(testDir_.getChildFile("previous-backup.exe"));
+        spec.updatedFlagPath = windowsPath(testDir_.getChildFile("updated.flag"));
+        return spec;
+    }
+
     juce::File testDir_;
 };
+
+#if defined(DIRECTPIPE_TEST_STARTUP_PROBE_PATH)
+// Only a copied no-audio WinExe fixture may be observed here. The real app and
+// arbitrary ACK PIDs are never waited on, stopped, or launched by these tests.
+class OwnedStartupProbeObservation {
+public:
+    explicit OwnedStartupProbeObservation(juce::File executable) : executable_(std::move(executable)) {}
+    ~OwnedStartupProbeObservation()
+    {
+        const auto pidFile = executable_.getSiblingFile("startup-probe.pid");
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        while (!pidFile.existsAsFile() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        const DWORD pid = static_cast<DWORD>(pidFile.loadFileAsString().getIntValue());
+        if (!pid) return;
+        const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+        if (!process) return;
+        wchar_t name[32768]{}; DWORD length = 32768;
+        if (QueryFullProcessImageNameW(process, 0, name, &length)
+            && juce::String(name).equalsIgnoreCase(executable_.getFullPathName()))
+            EXPECT_EQ(WAIT_OBJECT_0, WaitForSingleObject(process, 6500));
+        CloseHandle(process);
+    }
+private:
+    juce::File executable_;
+};
+
+bool writeStartupProbeConfiguration(const juce::File& installedExecutable,
+                                   const juce::String& ackPath, const juce::String& mode,
+                                   const juce::String& version, unsigned long wrongPid = 0)
+{
+    const auto ini = installedExecutable.getSiblingFile("startup-probe.ini").getFullPathName();
+    const auto set = [&](const wchar_t* key, const juce::String& value) {
+        return WritePrivateProfileStringW(L"StartupProbe", key, value.toWideCharPointer(), ini.toWideCharPointer()) != FALSE;
+    };
+    return set(L"AckPath", ackPath) && set(L"Mode", mode) && set(L"Version", version)
+        && set(L"WrongPid", juce::String(wrongPid)) && set(L"LifetimeMs", "4000");
+}
+
+class UpdateStartupScriptTest : public UpdateScriptTest {
+protected:
+    void SetUp() override
+    {
+        UpdateScriptTest::SetUp();
+        spec = diagnosticSpec();
+        const juce::File probe(DIRECTPIPE_TEST_STARTUP_PROBE_PATH);
+        ASSERT_TRUE(probe.existsAsFile());
+        const auto parts = juce::StringArray::fromTokens(probe.getVersion(), ".", "");
+        ASSERT_GE(parts.size(), 3);
+        spec.expectedVersion = parts[0] + "." + parts[1] + "." + parts[2];
+        spec.requireStartupAck = true;
+        spec.relaunchHostAfterUpdate = true;
+        spec.showInteractiveErrors = false;
+        spec.startupAttemptId = juce::Uuid().toString();
+        const juce::File receipt(spec.resultFilePath);
+        spec.startupAckFilePath = receipt.getSiblingFile(receipt.getFileNameWithoutExtension()
+            + "." + spec.startupAttemptId + ".startup.json").getFullPathName();
+        spec.startupAckTimeoutMs = 1200;
+        ASSERT_TRUE(juce::File(spec.currentExePath).replaceWithText("current known-good executable"));
+        ASSERT_TRUE(juce::File(spec.backupExePath).replaceWithText("previous known-good backup"));
+        ASSERT_TRUE(probe.copyFileTo(juce::File(spec.downloadedFilePath)));
+        candidateHash = juce::SHA256(juce::File(spec.downloadedFilePath)).toHexString();
+    }
+    ScriptRunResult run(const juce::String& mode)
+    {
+        EXPECT_TRUE(writeStartupProbeConfiguration(juce::File(spec.currentExePath), spec.startupAckFilePath,
+            mode, spec.expectedVersion, GetCurrentProcessId())); // Live but wrong executable identity.
+        return runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
+            testDir_.getChildFile("startup-update.bat"));
+    }
+    void expectStartupFailure(const juce::String& mode)
+    {
+        OwnedStartupProbeObservation observation(juce::File(spec.currentExePath));
+        const auto began = std::chrono::steady_clock::now();
+        const auto execution = run(mode);
+        ASSERT_TRUE(execution.started && execution.finished) << execution.output;
+        EXPECT_NE(0, execution.exitCode) << execution.output;
+        EXPECT_LT(std::chrono::steady_clock::now() - began, std::chrono::seconds(15));
+        const auto receipt = juce::JSON::parse(juce::File(spec.resultFilePath));
+        ASSERT_TRUE(receipt.isObject()) << execution.output;
+        EXPECT_FALSE(static_cast<bool>(receipt["success"]));
+        EXPECT_TRUE(static_cast<bool>(receipt["filesCommitted"]));
+        EXPECT_FALSE(static_cast<bool>(receipt["startupReady"]));
+        EXPECT_EQ(juce::String("startup-wait"), receipt["stage"].toString());
+        EXPECT_TRUE(receipt["error"].toString().isNotEmpty());
+        EXPECT_EQ(candidateHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+        EXPECT_EQ(juce::String("current known-good executable"), juce::File(spec.backupExePath).loadFileAsString());
+        EXPECT_EQ(juce::String("previous known-good backup"), juce::File(spec.previousBackupExePath).loadFileAsString());
+        EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    }
+    directpipe::update_detail::WindowsUpdateInstallSpec spec;
+    juce::String candidateHash;
+};
+
+TEST_F(UpdateStartupScriptTest, ActualDesktopLaunchAcknowledgementRemovesOnlyManagedBackups)
+{
+    const auto manual = testDir_.getChildFile("DirectPipe-4.0.0.manual-backup.exe");
+    ASSERT_TRUE(manual.replaceWithText("manual backup stays"));
+    OwnedStartupProbeObservation observation(juce::File(spec.currentExePath));
+    const auto execution = run("ready");
+    ASSERT_TRUE(execution.started && execution.finished) << execution.output;
+    EXPECT_EQ(0, execution.exitCode) << execution.output;
+    const auto ack = juce::JSON::parse(juce::File(spec.startupAckFilePath));
+    EXPECT_EQ(spec.startupAttemptId, ack["attemptId"].toString());
+    const auto receipt = juce::JSON::parse(juce::File(spec.resultFilePath));
+    EXPECT_TRUE(static_cast<bool>(receipt["success"]));
+    EXPECT_TRUE(static_cast<bool>(receipt["filesCommitted"]));
+    EXPECT_TRUE(static_cast<bool>(receipt["startupReady"]));
+    EXPECT_EQ(spec.startupAttemptId, receipt["startupAttemptId"].toString());
+    EXPECT_FALSE(juce::File(spec.backupExePath).exists());
+    EXPECT_FALSE(juce::File(spec.previousBackupExePath).exists());
+    EXPECT_EQ(juce::String("manual backup stays"), manual.loadFileAsString());
+    EXPECT_EQ(candidateHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+}
+
+TEST_F(UpdateStartupScriptTest, MissingAcknowledgementRetainsRecoveryWithoutRollingBackRunningCandidate) { expectStartupFailure("no-ack"); }
+TEST_F(UpdateStartupScriptTest, StaleAcknowledgementCannotConfirmStartup) { expectStartupFailure("stale-ack"); }
+TEST_F(UpdateStartupScriptTest, WrongAcknowledgedExecutableCannotConfirmStartup) { expectStartupFailure("wrong-path"); }
+TEST_F(UpdateStartupScriptTest, WrongAcknowledgedVersionCannotConfirmStartup) { expectStartupFailure("wrong-version"); }
+TEST_F(UpdateStartupScriptTest, AnotherLiveProcessCannotImpersonateCandidate) { expectStartupFailure("wrong-pid"); }
+TEST_F(UpdateStartupScriptTest, ExitedCandidateCannotConfirmStartup) { expectStartupFailure("dead-ack"); }
+TEST_F(UpdateStartupScriptTest, NegativeReadinessAcknowledgementRetainsRecovery) { expectStartupFailure("failed"); }
+
+TEST_F(UpdateStartupScriptTest, BlockedReadyReceiptKeepsBothBackupsDespiteValidLiveAcknowledgement)
+{
+    OwnedStartupProbeObservation observation(juce::File(spec.currentExePath));
+    const auto execution = run("block-receipt");
+    ASSERT_TRUE(execution.started && execution.finished) << execution.output;
+    EXPECT_NE(0, execution.exitCode) << execution.output;
+    const auto ack = juce::JSON::parse(juce::File(spec.startupAckFilePath));
+    EXPECT_EQ(spec.startupAttemptId, ack["attemptId"].toString());
+    EXPECT_TRUE(static_cast<bool>(ack["ready"]));
+    EXPECT_TRUE(juce::File(spec.resultFilePath + ".tmp").isDirectory());
+    EXPECT_EQ(candidateHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+    EXPECT_EQ(juce::String("current known-good executable"), juce::File(spec.backupExePath).loadFileAsString());
+    EXPECT_EQ(juce::String("previous known-good backup"), juce::File(spec.previousBackupExePath).loadFileAsString());
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    const auto retained = juce::JSON::parse(juce::File(spec.resultFilePath));
+    EXPECT_FALSE(static_cast<bool>(retained["startupReady"])); // Last durable state cannot falsely prove readiness.
+    EXPECT_TRUE(static_cast<bool>(retained["inProgress"]));
+    EXPECT_TRUE(juce::File(spec.logFilePath).loadFileAsString().contains("startup-cleanup"));
+}
+
+TEST_F(UpdateStartupScriptTest, RejectsMissingOrMalformedAttemptBeforeGeneratingInstaller)
+{
+    spec.startupAttemptId = "";
+    EXPECT_TRUE(directpipe::update_detail::buildWindowsHostUpdateScript(spec).isEmpty());
+    spec.startupAttemptId = juce::String::repeatedString("0", 32);
+    EXPECT_TRUE(directpipe::update_detail::buildWindowsHostUpdateScript(spec).isEmpty());
+    spec.startupAttemptId = juce::Uuid().toString();
+    spec.startupAckFilePath = testDir_.getChildFile("unrelated.json").getFullPathName();
+    EXPECT_TRUE(directpipe::update_detail::buildWindowsHostUpdateScript(spec).isEmpty());
+}
+#endif
+
+TEST_F(UpdateScriptTest, LockedCurrentPreservesPriorBackupAndRecordsFailure)
+{
+    const auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(juce::File(spec.downloadedFilePath)));
+    const auto lock = CreateFileW(current.getFullPathName().toWideCharPointer(),
+        GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(lock, INVALID_HANDLE_VALUE);
+    const auto run = runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
+                                      testDir_.getChildFile("locked-current.bat"));
+    CloseHandle(lock);
+    ASSERT_TRUE(run.started && run.finished) << run.output;
+    EXPECT_NE(0, run.exitCode);
+    EXPECT_EQ(juce::String("current known-good executable"), current.loadFileAsString());
+    EXPECT_EQ(juce::String("previous known-good backup"), backup.loadFileAsString());
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    EXPECT_TRUE(juce::File(spec.downloadedFilePath).existsAsFile());
+    const auto result = juce::JSON::parse(juce::File(spec.resultFilePath));
+    ASSERT_TRUE(result.isObject()) << run.output;
+    EXPECT_FALSE(static_cast<bool>(result["success"]));
+    EXPECT_EQ(juce::String("move-original"), result["stage"].toString());
+    EXPECT_TRUE(static_cast<bool>(result["rollbackSucceeded"]));
+    EXPECT_TRUE(result["error"].toString().isNotEmpty());
+    EXPECT_TRUE(juce::File(spec.logFilePath).loadFileAsString().contains("move-original"));
+}
+
+TEST_F(UpdateScriptTest, ReplacementFailureRestoresCurrentAndPriorBackupWithResult)
+{
+    const auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath), candidate(spec.downloadedFilePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(candidate));
+    const auto lock = CreateFileW(candidate.getFullPathName().toWideCharPointer(),
+        GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(lock, INVALID_HANDLE_VALUE);
+    const auto run = runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
+                                      testDir_.getChildFile("locked-candidate.bat"));
+    CloseHandle(lock);
+    ASSERT_TRUE(run.started && run.finished) << run.output;
+    EXPECT_NE(0, run.exitCode);
+    EXPECT_EQ(juce::String("current known-good executable"), current.loadFileAsString());
+    EXPECT_EQ(juce::String("previous known-good backup"), backup.loadFileAsString());
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    const auto result = juce::JSON::parse(juce::File(spec.resultFilePath));
+    ASSERT_TRUE(result.isObject()) << run.output;
+    EXPECT_EQ(juce::String("replace"), result["stage"].toString());
+    EXPECT_TRUE(static_cast<bool>(result["rollbackSucceeded"]));
+}
+
+TEST_F(UpdateScriptTest, InvalidCandidateRecordsValidationWithoutChangingBackups)
+{
+    auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(juce::File(spec.downloadedFilePath)));
+    spec.expectedVersion = "0.0.0";
+    const auto run = runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
+                                      testDir_.getChildFile("invalid-candidate.bat"));
+    ASSERT_TRUE(run.started && run.finished) << run.output;
+    EXPECT_NE(0, run.exitCode);
+    EXPECT_EQ(juce::String("current known-good executable"), current.loadFileAsString());
+    EXPECT_EQ(juce::String("previous known-good backup"), backup.loadFileAsString());
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    const auto result = juce::JSON::parse(juce::File(spec.resultFilePath));
+    ASSERT_TRUE(result.isObject()) << run.output;
+    EXPECT_EQ(juce::String("validate"), result["stage"].toString());
+    EXPECT_TRUE(result["error"].toString().containsIgnoreCase("version"));
+}
+
+TEST_F(UpdateScriptTest, SuccessfulHostOperationRecordsCommitAndSuccessFlag)
+{
+    const auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath), candidate(spec.downloadedFilePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(candidate));
+    const auto expectedHash = juce::SHA256(candidate).toHexString();
+    const auto run = runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
+                                      testDir_.getChildFile("successful-host.bat"));
+    ASSERT_TRUE(run.started && run.finished) << run.output;
+    EXPECT_EQ(0, run.exitCode) << run.output;
+    EXPECT_EQ(expectedHash, juce::SHA256(current).toHexString());
+    EXPECT_EQ(juce::String("current known-good executable"), backup.loadFileAsString());
+    EXPECT_EQ(spec.expectedVersion, juce::File(spec.updatedFlagPath).loadFileAsString().trim());
+    EXPECT_FALSE(juce::File(spec.previousBackupExePath).exists());
+    const auto result = juce::JSON::parse(juce::File(spec.resultFilePath));
+    ASSERT_TRUE(result.isObject()) << run.output;
+    EXPECT_TRUE(static_cast<bool>(result["success"]));
+    EXPECT_EQ(juce::String("complete"), result["stage"].toString());
+    EXPECT_TRUE(juce::File(spec.logFilePath).loadFileAsString().contains("complete"));
+}
+
+TEST_F(UpdateScriptTest, OwnedPidWaitTimesOutWithoutKillingOrInstalling)
+{
+    auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(juce::File(spec.downloadedFilePath)));
+    OwnedUpdaterSleepProcess target;
+    ASSERT_TRUE(target.start());
+    spec.processId = target.id(); spec.processWaitTimeoutMs = 250;
+    const auto batch = testDir_.getChildFile("wait-timeout.bat");
+    ASSERT_TRUE(batch.replaceWithText("@echo off\r\n"
+        + directpipe::update_detail::buildWindowsHostUpdateScript(spec) + "exit /b 0\r\n"));
+    juce::ChildProcess installer;
+    ASSERT_TRUE(installer.start("cmd.exe /d /c \"\"" + batch.getFullPathName() + "\"\""));
+    const bool bounded = installer.waitForProcessToFinish(6000);
+    const bool targetWasKeptAlive = target.running();
+    target.stop(); // Only the owned sleep fixture, after observing the bounded result.
+    if (!bounded) ASSERT_TRUE(installer.waitForProcessToFinish(15000));
+    const auto output = installer.readAllProcessOutput();
+    EXPECT_TRUE(bounded) << output;
+    EXPECT_TRUE(targetWasKeptAlive);
+    EXPECT_NE(0, installer.getExitCode()) << output;
+    EXPECT_EQ(juce::String("current known-good executable"), current.loadFileAsString());
+    EXPECT_EQ(juce::String("previous known-good backup"), backup.loadFileAsString());
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    const auto result = juce::JSON::parse(juce::File(spec.resultFilePath));
+    ASSERT_TRUE(result.isObject()) << output;
+    EXPECT_EQ(juce::String("wait"), result["stage"].toString());
+    EXPECT_TRUE(result["error"].toString().containsIgnoreCase("tim"));
+    EXPECT_TRUE(juce::File(spec.logFilePath).loadFileAsString().contains("wait"));
+}
+
+TEST_F(UpdateScriptTest, RollbackFailureRetainsBothRecoveryFilesAndReportsIt)
+{
+    const auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(juce::File(spec.downloadedFilePath)));
+    auto script = directpipe::update_detail::buildWindowsHostUpdateScript(spec);
+    script = script.replace("rem DIRECTPIPE_HOST_BEFORE_REPLACE",
+        "mkdir \"" + windowsPath(current) + "\"");
+    const auto run = runInstallScript(script, testDir_.getChildFile("rollback-failure.bat"));
+    ASSERT_TRUE(run.started && run.finished) << run.output;
+    EXPECT_NE(0, run.exitCode);
+    EXPECT_TRUE(current.isDirectory());
+    EXPECT_EQ(backup.loadFileAsString(), "current known-good executable");
+    EXPECT_EQ(juce::File(spec.previousBackupExePath).loadFileAsString(), "previous known-good backup");
+    EXPECT_TRUE(juce::File(spec.downloadedFilePath).existsAsFile());
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    const auto result = juce::JSON::parse(juce::File(spec.resultFilePath));
+    ASSERT_TRUE(result.isObject()) << run.output;
+    EXPECT_FALSE(static_cast<bool>(result["rollbackSucceeded"]));
+    EXPECT_FALSE(static_cast<bool>(result["currentRestored"]));
+    EXPECT_FALSE(static_cast<bool>(result["previousBackupRestored"]));
+    EXPECT_TRUE(result["recoveryPaths"].isArray());
+}
+
+TEST_F(UpdateScriptTest, WrongPackageChecksumPreservesFilesAndRecordsValidation)
+{
+    auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(juce::File(spec.downloadedFilePath)));
+    spec.expectedPackageSha256 = juce::String::repeatedString("0", 64);
+    const auto run = runInstallScript(directpipe::update_detail::buildWindowsHostUpdateScript(spec),
+                                      testDir_.getChildFile("wrong-checksum.bat"));
+    ASSERT_TRUE(run.started && run.finished) << run.output;
+    EXPECT_NE(0, run.exitCode);
+    EXPECT_EQ(current.loadFileAsString(), "current known-good executable");
+    EXPECT_EQ(backup.loadFileAsString(), "previous known-good backup");
+    EXPECT_TRUE(juce::File(spec.downloadedFilePath).existsAsFile());
+    const auto result = juce::JSON::parse(juce::File(spec.resultFilePath));
+    ASSERT_TRUE(result.isObject()) << run.output;
+    EXPECT_EQ(result["stage"].toString(), "validate");
+    EXPECT_TRUE(result["error"].toString().containsIgnoreCase("checksum"));
+}
+
+TEST_F(UpdateScriptTest, FullHostLauncherKeepsPercentAndUnicodePathsLiteral)
+{
+    ScopedUpdaterTestEnvironment environment(L"DP_UPDATER_PATH", L"expanded");
+    ASSERT_TRUE(environment.changed());
+    const auto directory = testDir_.getChildFile(
+        juce::String::fromUTF8(u8"O'Brien %DP_UPDATER_PATH% $& \uC74C\uC131"));
+    ASSERT_TRUE(directory.createDirectory());
+    auto spec = makeSpec(false);
+    spec.currentExePath = windowsPath(directory.getChildFile("DirectPipe.exe"));
+    spec.downloadedFilePath = windowsPath(directory.getChildFile("DirectPipe_update.exe"));
+    spec.stagedExePath = windowsPath(directory.getChildFile("DirectPipe_staged.exe"));
+    spec.backupExePath = windowsPath(directory.getChildFile("DirectPipe_backup.exe"));
+    spec.updateDirPath = windowsPath(directory.getChildFile("expanded"));
+    spec.resultFilePath = windowsPath(directory.getChildFile("result.json"));
+    spec.logFilePath = windowsPath(directory.getChildFile("update.log"));
+    spec.previousBackupExePath = windowsPath(directory.getChildFile("previous-backup.exe"));
+    spec.updatedFlagPath = windowsPath(directory.getChildFile("updated.flag"));
+    ASSERT_TRUE(juce::File(spec.currentExePath).replaceWithText("current known-good executable"));
+    ASSERT_TRUE(juce::File(spec.backupExePath).replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(juce::File(spec.downloadedFilePath)));
+    const auto expectedHash = juce::SHA256(juce::File(spec.downloadedFilePath)).toHexString();
+    const auto batch = directory.getChildFile("install.bat");
+    ASSERT_TRUE(batch.replaceWithText("@echo off\r\n"
+        + directpipe::update_detail::buildWindowsHostUpdateScript(spec)));
+    const auto powershell = juce::File(juce::SystemStats::getEnvironmentVariable(
+        "SystemRoot", "C:\\Windows")).getChildFile("System32/WindowsPowerShell/v1.0/powershell.exe");
+    const auto arguments = directpipe::update_detail::buildWindowsHostUpdateLauncherArguments(batch.getFullPathName());
+    ASSERT_TRUE(arguments.isNotEmpty());
+    juce::ChildProcess launcher;
+    ASSERT_TRUE(launcher.start("\"" + powershell.getFullPathName() + "\" " + arguments));
+    ASSERT_TRUE(launcher.waitForProcessToFinish(60000));
+    const auto output = launcher.readAllProcessOutput();
+    EXPECT_EQ(0, launcher.getExitCode()) << output;
+    EXPECT_EQ(expectedHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+    EXPECT_EQ(juce::File(spec.backupExePath).loadFileAsString(), "current known-good executable");
+    EXPECT_EQ(juce::File(spec.updatedFlagPath).loadFileAsString().trim(), spec.expectedVersion);
+    EXPECT_TRUE(static_cast<bool>(juce::JSON::parse(juce::File(spec.resultFilePath))["success"]));
+    EXPECT_TRUE(juce::File(spec.logFilePath).loadFileAsString().contains("complete"));
+    EXPECT_FALSE(testDir_.getChildFile("O'Brien expanded $& \uC74C\uC131").exists());
+}
+
+TEST_F(UpdateScriptTest, LateReceiptWriteFailureKeepsCommittedFilesAndReportsCompletion)
+{
+    const auto spec = diagnosticSpec();
+    const juce::File current(spec.currentExePath), backup(spec.backupExePath);
+    ASSERT_TRUE(current.replaceWithText("current known-good executable"));
+    ASSERT_TRUE(backup.replaceWithText("previous known-good backup"));
+    ASSERT_TRUE(copyVersionedTestExecutableTo(juce::File(spec.downloadedFilePath)));
+    const auto expected = juce::SHA256(juce::File(spec.downloadedFilePath)).toHexString();
+    auto script = directpipe::update_detail::buildWindowsHostUpdateScript(spec);
+    script = script.replace("rem DIRECTPIPE_HOST_BEFORE_COMPLETION_RESULT",
+        "mkdir \"" + (spec.resultFilePath + ".tmp").replace("%", "%%") + "\"");
+    const auto run = runInstallScript(script, testDir_.getChildFile("late-receipt-failure.bat"));
+    ASSERT_TRUE(run.started && run.finished) << run.output;
+    EXPECT_EQ(2, run.exitCode);
+    EXPECT_EQ(expected, juce::SHA256(current).toHexString());
+    EXPECT_EQ(backup.loadFileAsString(), "current known-good executable");
+    EXPECT_TRUE(juce::File(spec.updatedFlagPath).existsAsFile());
+    EXPECT_TRUE(static_cast<bool>(juce::JSON::parse(juce::File(spec.resultFilePath))["success"]));
+    EXPECT_TRUE(juce::File(spec.logFilePath).loadFileAsString().contains("files committed; completion needs attention"));
+}
 
 TEST_F(UpdateScriptTest, MissingStandaloneUpdatePreservesOriginalExecutable)
 {

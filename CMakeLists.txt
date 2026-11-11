@@ -7,7 +7,7 @@ if(CMAKE_HOST_APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
 endif()
 
-project(DirectPipe VERSION 4.4.0 LANGUAGES C CXX)
+project(DirectPipe VERSION 4.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,6 +47,9 @@ FetchContent_Declare(
 # Fetch JUCE if building host or receiver
 if(DIRECTPIPE_BUILD_HOST OR DIRECTPIPE_BUILD_RECEIVER)
     FetchContent_MakeAvailable(JUCE)
+    FetchContent_GetProperties(JUCE SOURCE_DIR DIRECTPIPE_JUCE_SOURCE_DIR)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/DirectPipeJuceEndpointIdentity.cmake")
+    directpipe_patch_juce_endpoint_identity("${DIRECTPIPE_JUCE_SOURCE_DIR}")
 
     # ─── RNNoise (noise suppression, BSD-3) ───
     add_library(rnnoise STATIC
@@ -130,6 +133,12 @@ if(DIRECTPIPE_BUILD_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
     enable_testing()
+    if(DIRECTPIPE_BUILD_HOST OR DIRECTPIPE_BUILD_RECEIVER)
+        add_test(NAME JuceEndpointIdentityGuard COMMAND "${CMAKE_COMMAND}"
+            "-DJUCE_SOURCE_DIR=${DIRECTPIPE_JUCE_SOURCE_DIR}"
+            "-DTEST_WORK_DIR=${CMAKE_BINARY_DIR}/juce-endpoint-guard-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/TestJuceEndpointIdentity.cmake")
+    endif()
 endif()
 
 # ─── Sub-projects ───

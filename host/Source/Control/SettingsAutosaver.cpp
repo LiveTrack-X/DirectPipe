@@ -91,6 +91,7 @@ juce::String exportNonPluginSettings(PresetManager& presetMgr,
     root->setProperty("outputs", juce::var(outputs.release()));
 
     root->setProperty("channelMode", engine.getChannelMode());
+    root->setProperty("monoInputEnabled", engine.isMonoInputEnabled());
     root->setProperty("ipcEnabled", engine.isIpcEnabled());
     root->setProperty(
         "outputMuted", engine.isOutputManuallyMuted());

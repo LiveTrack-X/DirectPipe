@@ -66,6 +66,60 @@ void renderProbeBlock(VSTChain& chain, juce::AudioBuffer<float>& buffer)
     audio.join();
 }
 
+// Fixed main/auxiliary layouts exercise actual graph audio connections rather
+// than mirroring the graph-builder implementation in a mock.
+class ChannelRoutingProbePlugin final : public juce::AudioPluginInstance {
+public:
+    ChannelRoutingProbePlugin(int inputs, int outputs, bool auxiliary = false)
+        : AudioPluginInstance(makeBuses(inputs, outputs, auxiliary)) {}
+
+    std::function<void(juce::AudioBuffer<float>&)> onRender;
+    void fillInPluginDescription(juce::PluginDescription& desc) const override
+    {
+        desc.name = getName();
+        desc.pluginFormatName = "Test";
+    }
+    const juce::String getName() const override { return "ChannelRoutingProbe"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        if (onRender) onRender(buffer);
+    }
+    bool hasEditor() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+
+private:
+    static BusesProperties makeBuses(int inputs, int outputs, bool auxiliary)
+    {
+        auto buses = BusesProperties()
+            .withInput("Main", juce::AudioChannelSet::canonicalChannelSet(inputs), inputs > 0)
+            .withOutput("Main", juce::AudioChannelSet::canonicalChannelSet(outputs), outputs > 0);
+        if (auxiliary)
+            buses = buses.withInput("Sidechain", juce::AudioChannelSet::mono())
+                         .withOutput("Auxiliary", juce::AudioChannelSet::mono());
+        return buses;
+    }
+};
+
+void renderRoutingBlock(VSTChain& chain, juce::AudioBuffer<float>& buffer)
+{
+    juce::FloatVectorOperations::fill(buffer.getWritePointer(0), 0.25f, buffer.getNumSamples());
+    juce::FloatVectorOperations::fill(buffer.getWritePointer(1), 0.75f, buffer.getNumSamples());
+    std::thread audio([&] { chain.processBlock(buffer, buffer.getNumSamples()); });
+    audio.join();
+}
+
 #if JUCE_WINDOWS
 bool renderAndCatchStructuredException(VSTChain& chain, juce::AudioBuffer<float>& buffer)
 {
@@ -113,8 +167,181 @@ protected:
         return probe;
     }
 
+    std::vector<ChannelRoutingProbePlugin*> setRoutingChain(
+        std::initializer_list<std::pair<int, int>> layouts, bool auxiliary = false)
+    {
+        std::vector<ChannelRoutingProbePlugin*> probes;
+        std::vector<VSTChain::PreloadedPlugin> entries;
+        for (auto [inputs, outputs] : layouts) {
+            auto instance = std::make_unique<ChannelRoutingProbePlugin>(inputs, outputs, auxiliary);
+            probes.push_back(instance.get());
+            VSTChain::PreloadedPlugin entry;
+            entry.request.name = instance->getName();
+            entry.instance = std::move(instance);
+            entries.push_back(std::move(entry));
+        }
+        EXPECT_TRUE(chain_->replaceChainWithPreloaded(std::move(entries), nullptr));
+        return probes;
+    }
+
     std::unique_ptr<VSTChain> chain_;
 };
+
+TEST_F(VSTChainTest, MonoOutputFeedsBothHostChannels)
+{
+    setRoutingChain({{1, 1}});
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderRoutingBlock(*chain_, buffer);
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
+        ASSERT_FLOAT_EQ(buffer.getSample(0, sample), 0.25f);
+        ASSERT_FLOAT_EQ(buffer.getSample(1, sample), 0.25f);
+    }
+}
+
+TEST_F(VSTChainTest, MonoOutputFeedsBothInputsOfFollowingStereoEffect)
+{
+    auto probes = setRoutingChain({{2, 2}, {1, 1}, {2, 2}});
+    probes.back()->onRender = [](juce::AudioBuffer<float>& buffer) {
+        EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+        EXPECT_FLOAT_EQ(buffer.getSample(1, 0), 0.25f);
+        buffer.applyGain(1, 0, buffer.getNumSamples(), -2.0f);
+    };
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(buffer.getSample(1, 0), -0.5f);
+}
+
+TEST_F(VSTChainTest, MonoInputStereoOutputKeepsGeneratedStereo)
+{
+    auto probes = setRoutingChain({{1, 2}});
+    probes.front()->onRender = [](juce::AudioBuffer<float>& buffer) {
+        buffer.copyFrom(1, 0, buffer.getReadPointer(0), buffer.getNumSamples(), -0.5f);
+    };
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(buffer.getSample(1, 0), -0.125f);
+}
+
+TEST_F(VSTChainTest, StereoRoutingPreservesDistinctChannels)
+{
+    setRoutingChain({{2, 2}, {2, 2}});
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(buffer.getSample(1, 0), 0.75f);
+}
+
+TEST_F(VSTChainTest, MonoBypassRestoresAndReconnectsStereoPath)
+{
+    setRoutingChain({{1, 1}});
+    juce::AudioBuffer<float> buffer(2, 512);
+    chain_->setPluginBypassed(0, true);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(buffer.getSample(1, 0), 0.75f);
+    chain_->setPluginBypassed(0, false);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(buffer.getSample(1, 0), 0.25f);
+}
+
+TEST_F(VSTChainTest, MonoMainBusesDoNotRouteAuxiliaryChannelsAsRightAudio)
+{
+    auto probes = setRoutingChain({{1, 1}}, true);
+    ASSERT_EQ(probes.front()->getTotalNumInputChannels(), 2);
+    ASSERT_EQ(probes.front()->getMainBusNumInputChannels(), 1);
+    probes.front()->onRender = [](juce::AudioBuffer<float>& buffer) {
+        EXPECT_FLOAT_EQ(buffer.getSample(1, 0), 0.0f); // Unconnected sidechain.
+        juce::FloatVectorOperations::fill(buffer.getWritePointer(1), 0.875f,
+                                          buffer.getNumSamples());
+    };
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(buffer.getSample(1, 0), 0.25f); // Main mono, not auxiliary output.
+}
+
+TEST_F(VSTChainTest, MonoRoutingSurvivesDevicePrepareAndReordering)
+{
+    setRoutingChain({{1, 1}, {2, 2}});
+    chain_->prepareToPlay(44100.0, 256);
+    ASSERT_TRUE(chain_->movePlugin(PluginIndex{0}, PluginIndex{1}));
+    juce::AudioBuffer<float> buffer(2, 256);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getSample(0, 0), 0.25f);
+    EXPECT_FLOAT_EQ(buffer.getSample(1, 0), 0.25f);
+}
+
+TEST_F(VSTChainTest, ZeroOutputProcessorCommitsSilentGraph)
+{
+    setRoutingChain({{2, 0}});
+    juce::AudioBuffer<float> buffer(2, 512);
+    renderRoutingBlock(*chain_, buffer);
+    EXPECT_FLOAT_EQ(buffer.getMagnitude(0, 512), 0.0f);
+}
+
+TEST_F(VSTChainTest, GFormVst2KeepsBothOutputChannels)
+{
+#if !JUCE_PLUGINHOST_VST
+    GTEST_SKIP() << "GForm reproduction requires the optional VST2 SDK.";
+#endif
+    const auto path = juce::SystemStats::getEnvironmentVariable("DIRECTPIPE_TEST_GFORM_VST2", {});
+    if (path.isEmpty())
+        GTEST_SKIP() << "Set DIRECTPIPE_TEST_GFORM_VST2 to an isolated GForm DLL.";
+    ASSERT_TRUE(juce::File(path).existsAsFile());
+    juce::String loadFailure;
+    chain_->onPluginLoadFailed = [&](const juce::String&, const juce::String& reason) {
+        loadFailure = reason;
+    };
+    ASSERT_EQ(chain_->addPlugin(path), 0) << loadFailure.toStdString();
+#if JUCE_WINDOWS
+    // The real app dispatches pending graph updates. In the old graph builder,
+    // a rejected final mono channel-1 connection left only an async rebuild;
+    // settle that update before checking the reported left-only symptom.
+    MSG message;
+    while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&message);
+        DispatchMessage(&message);
+    }
+#endif
+    const auto* slot = chain_->getPluginSlot(0);
+    ASSERT_NE(slot, nullptr);
+    const auto* processor = slot->getProcessor();
+    ASSERT_NE(processor, nullptr);
+    RecordProperty("main_inputs", processor->getMainBusNumInputChannels());
+    RecordProperty("main_outputs", processor->getMainBusNumOutputChannels());
+    RecordProperty("total_inputs", processor->getTotalNumInputChannels());
+    RecordProperty("total_outputs", processor->getTotalNumOutputChannels());
+
+    juce::AudioBuffer<float> buffer(2, 512);
+    double energy[2]{};
+    float maxChannelDifference = 0.0f;
+    for (int block = 0; block < 100; ++block) {
+        for (int sample = 0; sample < 512; ++sample) {
+            const float value = 0.2f * std::sin(juce::MathConstants<double>::twoPi
+                * 220.0 * (block * 512 + sample) / 48000.0);
+            buffer.setSample(0, sample, value);
+            buffer.setSample(1, sample, value);
+        }
+        std::thread audio([&] { chain_->processBlock(buffer, 512); });
+        audio.join();
+        for (int sample = 0; sample < 512; ++sample) {
+            const float left = buffer.getSample(0, sample);
+            const float right = buffer.getSample(1, sample);
+            ASSERT_TRUE(std::isfinite(left));
+            ASSERT_TRUE(std::isfinite(right));
+            energy[0] += left * left;
+            energy[1] += right * right;
+            maxChannelDifference = juce::jmax(maxChannelDifference, std::abs(left - right));
+        }
+    }
+    EXPECT_GT(energy[0], 0.01);
+    EXPECT_GT(energy[1], 0.01);
+    EXPECT_NEAR(energy[0], energy[1], 1.0e-6);
+    EXPECT_LT(maxChannelDifference, 1.0e-6f);
+}
 
 TEST_F(VSTChainTest, SuspendedGraphEmitsSilenceAndResumes)
 {

@@ -1,6 +1,6 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current source / 현재 소스: 4.4.0**
+> **Current source / 현재 소스: 4.5.0** — Exact-version build and package evidence is tracked in the [verification record / 검증 기록](RELEASE_4_5_0.md).
 > Historical v4.3.0 release results below are separate from [4.4.0 validation](MULTI_RECEIVER_4_4_0.md). / 아래 v4.3.0 검증 수치는 당시 기록이며 현재 소스의 검증과 구분합니다.
 
 > **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 전체 플랫폼 빌드·패키지·checksum·Windows unsigned 상태를 검증했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
@@ -71,6 +71,9 @@ sudo dnf install alsa-lib-devel jack-audio-connection-kit-devel \
 Downloaded automatically by CMake FetchContent: / CMake FetchContent로 자동 다운로드:
 
 - **JUCE 7.0.12** — Audio framework / 오디오 프레임워크
+- DirectPipe applies a small hash-guarded JUCE endpoint-ID extension during
+  configuration for the optional Windows microphone-level hold. Unknown
+  upstream source fails configuration. See [patch provenance and guard tests](../tools/cmake/JuceEndpointIdentity.md).
 - **Google Test 1.14.0** — Unit testing / 유닛 테스트
 
 ## Quick Build / 빠른 빌드

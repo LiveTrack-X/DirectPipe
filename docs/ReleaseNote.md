@@ -2,6 +2,83 @@
 
 > This is a user-facing release summary. For detailed developer change history, see [CHANGELOG.md](../CHANGELOG.md).
 
+## DirectPipe v4.5.0
+
+**2026-11-12**
+
+- **Input capture > Mono (single channel)** lists Analog 1, Analog 2 and other
+  driver-reported inputs separately. The selected input feeds both internal
+  L/R channels at unity before effects. Existing stereo-pair capture stays the
+  default; Channel Mode Mono still means averaging a selected pair.
+- **모노 입력으로 받기**를 선택하면 Analog 1·Analog 2 등 실제 입력 채널을
+  개별 선택할 수 있습니다. 선택 신호를 감쇠 없이 내부 L/R에 복제하며 기존
+  입력 쌍과 Mono/Stereo 처리 설정은 유지합니다.
+- **Keep Windows mic level at 100** is an optional, default-off control for
+  the exact selected Windows Audio shared/Low Latency Mode input. It corrects
+  that microphone's Windows level for all apps, including manual slider changes.
+  ASIO/exclusive and unsupported inputs show a disabled reason. Mute, boost and
+  DirectPipe gain stay unchanged; OFF stops corrections without restoring an
+  old value. 100 is the driver maximum, not guaranteed 0 dB.
+- **Windows 마이크 레벨 100 유지**는 기본 꺼짐이며, 정확히 식별한 선택
+  Windows Audio 공유·Low Latency 입력에만 적용합니다. 다른 앱과 수동 Windows
+  볼륨 변경에도 적용되며 ASIO·독점 모드 등은 비활성화 이유를 표시합니다.
+  음소거·부스트·내부 게인은 바꾸지 않고, 끄면 과거 값 복원 없이 보정을
+  중지합니다. 100은 드라이버의 최대값이며 반드시 0 dB를 뜻하지는 않습니다.
+- Mono VST outputs, including GVST GForm VST2, now feed both channels of the
+  next stereo effect and the final output. Effects that generate stereo keep
+  their stereo result. Input Mono still mixes the selected L/R before effects.
+- Settings and full-backup restore failures now identify the failed stage,
+  reason and what to check in both the dialog and log. Known incomplete rollback
+  is reported; async plug-in load errors remain in the log.
+- Windows host updates retain previous backups, bound the launching-process
+  wait and record stage/error/recovery information. See [update recovery](WINDOWS_UPDATE_RECOVERY.md).
+- Verified initial startup now precedes cleanup of known previous host EXEs.
+  Saved window/tray behavior is respected; failed or unconfirmed startup keeps
+  recovery files and reports the startup/cleanup stage.
+- Stream Deck dependencies and packaging tools are updated while retaining
+  the Node 20 runtime, Stream Deck 6.9 minimum, action identities and artwork.
+- 모노 VST 출력이 다음 스테레오 이펙트와 최종 출력의 양쪽 채널에 전달됩니다.
+  이후 이펙트가 만든 스테레오는 유지하며, 입력 Mono는 이펙트 전단에서 혼합합니다.
+- 설정·전체 백업 복원이 실패하면 단계·이유·확인할 항목을 오류창과 로그에
+  표시합니다. 확인된 복구 실패와 비동기 플러그인 로드 오류도 안내합니다.
+- Windows 업데이트는 본체 종료 대기를 제한하고 단계·복구 정보를 기록합니다.
+  초기 복원과 저장된 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며,
+  시작 미확인 시에는 복구 파일을 유지합니다. Stream Deck 의존성과 패키징
+  도구도 갱신하며 기존 실행 환경·액션·이미지는 유지합니다.
+
+Existing A–E/Auto presets, settings, accepted legacy backup formats, Mono/Stereo
+input meanings, Receiver/IPC formats and Stream Deck actions retain their
+existing behavior. Single-channel capture is opt-in; simultaneous independent
+input chains/mixing remain deferred. Old settings keep mic-level hold off;
+per-device choices are included in settings/full backups and preserved by
+chain-only A–E/Auto slots.
+
+기존 프리셋·설정·지원하던 백업 형식·Mono/Stereo 입력 의미·Receiver/IPC 형식·
+Stream Deck 액션을 유지합니다. 개별 모노 입력 선택은 직접 활성화하며, 여러
+입력의 동시 독립 체인·믹싱은 향후 범위입니다. 기존 설정에서는 마이크 레벨
+유지가 꺼져 있으며, 장치별 선택은 설정·전체 백업에 저장하고 체인 전용
+A–E/Auto 슬롯에서는 유지합니다.
+
+The first upgrade from an older version uses that installed updater. After a
+manual or host-only upgrade, use **Settings > Update Receiver...** to check
+existing Receivers. See the [usage guide](USER_GUIDE.md#windows-mic-level-hold)
+for mic-level controls and the [update recovery guide](WINDOWS_UPDATE_RECOVERY.md)
+for recovery steps.
+
+이전 버전에서 처음 갱신할 때는 기존 설치본의 업데이터가 실행됩니다. 수동·
+본체 전용 갱신 뒤에는 **Settings > Update Receiver...**에서 Receiver도
+확인하세요. 마이크 레벨 옵션과 복구 절차는 위 안내를 참조하세요.
+
+Exact-version checks and their limits are recorded in the
+[4.5.0 verification record](RELEASE_4_5_0.md). Mic-level tests use fake endpoints
+and do not change real microphone levels. Physical audio/listening, native
+chooser/OBS interaction and interactive UAC remain separate validation scopes.
+
+정확한 버전의 검증 결과와 한계는 [4.5.0 검증 기록](RELEASE_4_5_0.md)에서
+확인하세요. 마이크 레벨 테스트는 가짜 장치를 사용하며 실제 레벨을 변경하지
+않습니다. 실기기 오디오·청취, 네이티브 선택창·OBS 화면·대화형 UAC는 별도
+검증 범위입니다.
+
 ## DirectPipe v4.4.0
 
 **2026-09-24 Stream Deck package correction:** Performance Monitor now uses a

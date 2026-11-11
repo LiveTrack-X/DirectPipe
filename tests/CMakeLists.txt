@@ -82,6 +82,7 @@ if(DIRECTPIPE_BUILD_HOST)
         # Slice 2: Audio Engine
         test_output_router.cpp
         test_audio_engine.cpp
+        test_audio_settings.cpp
         test_audio_recorder.cpp
         test_monitor_output.cpp
         # Slice 3: Control Handlers
@@ -99,7 +100,9 @@ if(DIRECTPIPE_BUILD_HOST)
         test_platform.cpp
         test_shared_mem_fanout.cpp
         test_endpoint_change_watcher.cpp
+        test_windows_mic_level_keeper.cpp
         test_update_script.cpp
+        test_update_startup.cpp
         test_receiver_update.cpp
         # Host source files needed by tests
         ${CMAKE_SOURCE_DIR}/host/Source/Control/ActionDispatcher.cpp
@@ -115,6 +118,7 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Control/Log.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/PresetManager.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/SettingsExporter.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/AudioSettings.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/PresetSlotBar.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/PluginChainEditor.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/PluginScanner.cpp
@@ -130,8 +134,11 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinNoiseRemoval.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/PluginPreloadCache.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Platform/EndpointChangeWatcher.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Platform/WindowsMicLevelKeeper.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Platform/WindowsMicLevelBackend_windows.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/UpdateChecker.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/UpdateScript.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/UpdateStartupSupport.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/ReceiverUpdateSupport.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/FilterEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/NoiseRemovalEditPanel.cpp
@@ -170,6 +177,7 @@ if(DIRECTPIPE_BUILD_HOST)
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_PLUGINHOST_VST3=1
+        JUCE_PLUGINHOST_VST=$<BOOL:${DIRECTPIPE_HAS_VST2}>
         JUCE_DISPLAY_SPLASH_SCREEN=0
         DIRECTPIPE_ENABLE_TEST_ACCESS=1
     )
@@ -245,4 +253,16 @@ if(DIRECTPIPE_BUILD_HOST)
     gtest_discover_tests(directpipe-endpoint-watcher-tests
         TEST_PREFIX "EndpointWatcher."
     )
+endif()
+
+# Consoleless, audio-free executable used only by actual updater startup tests.
+if(WIN32 AND TARGET directpipe-host-tests)
+    configure_file(update_startup_probe.rc.in ${CMAKE_CURRENT_BINARY_DIR}/update_startup_probe.rc @ONLY)
+    add_executable(directpipe-update-startup-probe WIN32
+        update_startup_probe.cpp ${CMAKE_CURRENT_BINARY_DIR}/update_startup_probe.rc)
+    target_link_libraries(directpipe-update-startup-probe PRIVATE shell32)
+    target_compile_definitions(directpipe-update-startup-probe PRIVATE UNICODE _UNICODE NOMINMAX)
+    add_dependencies(directpipe-host-tests directpipe-update-startup-probe)
+    target_compile_definitions(directpipe-host-tests PRIVATE
+        DIRECTPIPE_TEST_STARTUP_PROBE_PATH="$<TARGET_FILE:directpipe-update-startup-probe>")
 endif()

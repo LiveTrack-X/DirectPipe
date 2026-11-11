@@ -8,6 +8,7 @@
 #include "UI/SettingsExporter.h"
 #include "Control/ControlMapping.h"
 #include "Util/AtomicFileIO.h"
+#include "Platform/WindowsMicLevelKeeper.h"
 
 #if JUCE_WINDOWS
 #include <windows.h>
@@ -16,6 +17,32 @@
 using namespace directpipe;
 
 namespace {
+
+class BackupMicBackend final : public WindowsMicLevelKeeper::Backend {
+public:
+    explicit BackupMicBackend(int& writes) : writes_(writes) {}
+    WindowsMicLevelKeeper::Resolution resolve(const WindowsMicLevelKeeper::InputContext& context) override
+    { return {WindowsMicLevelKeeper::State::ready, {context.endpointId, "Owned fake microphone"}, {}}; }
+    bool attach(const juce::String&, Callback, juce::String&) override { return true; }
+    bool readScalar(float& value, juce::String&) override { value = 0.45f; return true; }
+    bool setScalar100(juce::String&) override { ++writes_; return true; }
+    void detach() noexcept override {}
+private:
+    int& writes_;
+};
+
+class RestoreLogCapture final : public juce::Logger {
+public:
+    RestoreLogCapture() : previous_(juce::Logger::getCurrentLogger())
+    {
+        juce::Logger::setCurrentLogger(this);
+    }
+    ~RestoreLogCapture() override { juce::Logger::setCurrentLogger(previous_); }
+    void logMessage(const juce::String& message) override { messages += message + "\n"; }
+    juce::String messages;
+private:
+    juce::Logger* previous_;
+};
 
 #if JUCE_WINDOWS
 bool pumpMessagesUntil(const std::atomic<bool>& completed,
@@ -283,6 +310,39 @@ TEST_F(SettingsExporterTest, ExportAllOmitsActiveSlotAndPlugins) {
     EXPECT_FALSE(audio->hasProperty("plugins"));
 }
 
+TEST_F(SettingsExporterTest, MonoInputCaptureSurvivesSettingsAndFullBackup)
+{
+#if !JUCE_WINDOWS
+    GTEST_SKIP() << "Full restore fixture requires the Windows message pump.";
+#else
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    engine.setMonoInputEnabled(true);
+    engine.setChannelMode(2);
+    PresetManager manager(engine);
+    ControlMappingStore controls;
+    const auto settings = SettingsExporter::exportAll(manager, controls);
+    const auto parsed = juce::JSON::parse(settings);
+    ASSERT_TRUE(parsed["audioSettings"].hasProperty("monoInputEnabled"));
+    EXPECT_TRUE(static_cast<bool>(parsed["audioSettings"]["monoInputEnabled"]));
+    engine.setMonoInputEnabled(false);
+    ASSERT_TRUE(SettingsExporter::importAll(settings, manager, controls));
+    EXPECT_TRUE(engine.isMonoInputEnabled());
+
+    const auto full = SettingsExporter::exportFullBackup(manager, controls, true);
+    ASSERT_TRUE(full.isNotEmpty());
+    engine.setMonoInputEnabled(false);
+    std::atomic<bool> completed{false};
+    bool succeeded = false;
+    SettingsExporter::importFullBackupAsync(full, manager, controls, true,
+        [&](bool ok) { succeeded = ok; completed.store(true); });
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    EXPECT_TRUE(succeeded);
+    EXPECT_TRUE(engine.isMonoInputEnabled());
+    EXPECT_EQ(engine.getChannelMode(), 2);
+#endif
+}
+
 TEST_F(SettingsExporterTest, ImportAllPreservesCurrentActiveSlot) {
     AudioEngine engine;
     engine.getVSTChain().prepareToPlay(48000.0, 512);
@@ -304,7 +364,97 @@ TEST_F(SettingsExporterTest, ImportAllReturnsFalseWhenAudioSettingsInvalid) {
 
     auto json = makeExporterBackupJSON(juce::var("not-json-object"));
 
-    EXPECT_FALSE(SettingsExporter::importAll(json, presetManager, controlStore));
+    SettingsExporter::RestoreDiagnostics diagnostic;
+    EXPECT_FALSE(SettingsExporter::importAll(json, presetManager, controlStore, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "audio settings");
+    EXPECT_TRUE(diagnostic.nextCheck.containsIgnoreCase("backup"));
+    EXPECT_FALSE(diagnostic.message().contains("not-json-object"));
+}
+
+TEST_F(SettingsExporterTest, RestoreDiagnosticsIdentifyMalformedInputAndLegacyCompatibility) {
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+    SettingsExporter::RestoreDiagnostics diagnostic;
+    RestoreLogCapture log;
+
+    EXPECT_FALSE(SettingsExporter::importAll("{private-payload", presetManager, controlStore, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "JSON validation");
+    EXPECT_FALSE(diagnostic.message().contains("private-payload"));
+    EXPECT_TRUE(diagnostic.nextCheck.isNotEmpty());
+    EXPECT_TRUE(log.messages.contains("JSON validation"));
+    EXPECT_TRUE(log.messages.contains("Check:"));
+    EXPECT_FALSE(log.messages.contains("private-payload"));
+    EXPECT_FALSE(SettingsExporter::importAll("[]", presetManager, controlStore, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "backup format");
+    EXPECT_FALSE(SettingsExporter::importAll("{\"version\":0}", presetManager, controlStore, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "backup version");
+    // Keep the existing permissive positive-version and missing-platform rules.
+    EXPECT_TRUE(SettingsExporter::importAll("{\"version\":999}", presetManager, controlStore, &diagnostic));
+    EXPECT_TRUE(diagnostic.message().isEmpty());
+
+    EXPECT_FALSE(SettingsExporter::importAll(
+        "{\"version\":2,\"platform\":\"private-platform-payload\"}",
+        presetManager, controlStore, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "platform compatibility");
+    EXPECT_FALSE(diagnostic.message().contains("private-platform-payload"));
+    EXPECT_FALSE(log.messages.contains("private-platform-payload"));
+}
+
+TEST_F(SettingsExporterTest, FullRestoreDiagnosticsIdentifyUnstableRuntime) {
+    AudioEngine engine;
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+    auto diagnostic = std::make_shared<SettingsExporter::RestoreDiagnostics>();
+    bool completed = false;
+    SettingsExporter::importFullBackupAsync("{}", presetManager, controlStore, false,
+        [&](bool ok) { EXPECT_FALSE(ok); completed = true; }, diagnostic);
+    EXPECT_TRUE(completed);
+    EXPECT_EQ(diagnostic->stage, "runtime state");
+    EXPECT_TRUE(diagnostic->nextCheck.containsIgnoreCase("load"));
+}
+
+TEST_F(SettingsExporterTest, RestoreDiagnosticsReportIncompleteRollback) {
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+    SettingsExporter::RestoreDiagnostics diagnostic;
+    int restoreAttempts = 0;
+    presetManager.onImportAppSettings = [&](const juce::DynamicObject&) {
+        ++restoreAttempts;
+        return false; // The application hook also fails while restoring the snapshot.
+    };
+    RestoreLogCapture log;
+    EXPECT_FALSE(SettingsExporter::importAll(makeExporterBackupJSON(makeAudioSettings(-1, false)),
+                                              presetManager, controlStore, &diagnostic));
+    EXPECT_GE(restoreAttempts, 2);
+    EXPECT_EQ(diagnostic.stage, "audio settings");
+    EXPECT_TRUE(diagnostic.rollbackIncomplete);
+    EXPECT_TRUE(diagnostic.message().contains("could not be fully restored"));
+    EXPECT_TRUE(log.messages.contains("could not be fully restored"));
+}
+
+TEST_F(SettingsExporterTest, AsyncRestorePreservesSpecificCommitDiagnostic) {
+    AudioEngine engine;
+    PresetManager presetManager(engine);
+    ControlMappingStore controlStore;
+    ASSERT_TRUE(controlStore.save(ControlMappingStore::createDefaults()));
+    const auto file = ControlMappingStore::getDefaultConfigFile();
+    const auto blockedTemp = file.getSiblingFile(file.getFileName() + ".tmp");
+    ASSERT_TRUE(blockedTemp.createDirectory());
+    ASSERT_TRUE(blockedTemp.getChildFile("write-blocker").replaceWithText("blocked"));
+    auto json = juce::JSON::parse(makeExporterBackupJSON({}, makeControlConfig(12345)));
+    json.getDynamicObject()->removeProperty("audioSettings");
+    auto diagnostic = std::make_shared<SettingsExporter::RestoreDiagnostics>();
+    bool completed = false;
+    SettingsExporter::importFullBackupAsync(juce::JSON::toString(json), presetManager, controlStore,
+        true, [&](bool ok) { EXPECT_FALSE(ok); completed = true; }, diagnostic);
+    EXPECT_TRUE(completed);
+    EXPECT_EQ(diagnostic->stage, "control write");
+    EXPECT_TRUE(diagnostic->nextCheck.containsIgnoreCase("permission"));
+    EXPECT_FALSE(diagnostic->rollbackIncomplete);
 }
 
 TEST_F(SettingsExporterTest, ImportAllDoesNotApplyControlsWhenAudioSettingsInvalid) {
@@ -422,7 +572,10 @@ TEST_F(SettingsExporterTest, ImportAllRollsBackAudioWhenControlSaveFails) {
     incomingAudio.getDynamicObject()->setProperty("inputGain", 0.75);
     const auto json = makeExporterBackupJSON(incomingAudio, makeControlConfig(12345));
 
-    EXPECT_FALSE(SettingsExporter::importAll(json, presetManager, controlStore));
+    SettingsExporter::RestoreDiagnostics diagnostic;
+    EXPECT_FALSE(SettingsExporter::importAll(json, presetManager, controlStore, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "control write");
+    EXPECT_TRUE(diagnostic.nextCheck.containsIgnoreCase("permission"));
     EXPECT_FLOAT_EQ(engine.getInputGain(), 0.25f);
     EXPECT_EQ(controlStore.load().server.websocketPort, 9001);
 }
@@ -544,7 +697,10 @@ TEST_F(SettingsExporterTest, ImportFullBackupPrevalidatesSlotsBeforeWriting) {
     slots->setProperty("B", juce::var("not-a-slot-object"));
     auto json = makeFullRestoreJSON(juce::var(slots));
 
-    EXPECT_FALSE(SettingsExporter::importFullBackup(json, presetManager, controlStore, true));
+    SettingsExporter::RestoreDiagnostics diagnostic;
+    EXPECT_FALSE(SettingsExporter::importFullBackup(json, presetManager, controlStore, true, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "preset slots");
+    EXPECT_TRUE(diagnostic.reason.contains("B"));
 
     auto parsed = juce::JSON::parse(slotA.loadFileAsString());
     ASSERT_TRUE(parsed.isObject());
@@ -608,7 +764,10 @@ TEST_F(SettingsExporterTest, ImportFullBackupRollsBackWholeTransactionAfterLateS
     auto json = makeFullRestoreJSON(
         juce::var(slots), restoredAudio, makeControlConfig(12345));
 
-    EXPECT_FALSE(SettingsExporter::importFullBackup(json, presetManager, controlStore, true));
+    SettingsExporter::RestoreDiagnostics diagnostic;
+    EXPECT_FALSE(SettingsExporter::importFullBackup(json, presetManager, controlStore, true, &diagnostic));
+    EXPECT_EQ(diagnostic.stage, "slot write");
+    EXPECT_TRUE(diagnostic.reason.contains("B"));
 
     EXPECT_FLOAT_EQ(engine.getInputGain(), 0.25f);
     EXPECT_EQ(controlStore.load().server.websocketPort, 9001);
@@ -687,15 +846,18 @@ TEST_F(SettingsExporterTest, AsyncFullRestorePreparationFailurePreservesEverythi
 
     std::atomic<bool> completed{false};
     bool restored = true;
+    auto diagnostic = std::make_shared<SettingsExporter::RestoreDiagnostics>();
     SettingsExporter::importFullBackupAsync(
         json, presetManager, controlStore, true,
         [&](bool ok) {
             restored = ok;
             completed.store(true, std::memory_order_release);
-        });
+        }, diagnostic);
 
     ASSERT_TRUE(pumpMessagesUntil(completed));
     EXPECT_FALSE(restored);
+    EXPECT_EQ(diagnostic->stage, "audio and plug-in restore");
+    EXPECT_TRUE(diagnostic->nextCheck.containsIgnoreCase("plug-in"));
     EXPECT_FLOAT_EQ(engine.getInputGain(), 0.25f);
     EXPECT_EQ(controlStore.load().server.websocketPort, 9001);
     auto parsedA = juce::JSON::parse(slotA.loadFileAsString());
@@ -838,6 +1000,75 @@ TEST_F(SettingsExporterTest, FullBackupCarriesRecordingFolderThroughAppSettingsH
     GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
 #endif
     EXPECT_EQ(restoredFolder, expectedFolder);
+}
+
+TEST_F(SettingsExporterTest, MicEndpointPreferencesSurviveFullBackupChainOnlyAndRollback)
+{
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic full-backup message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine engine; engine.getVSTChain().prepareToPlay(48000.0, 512);
+    PresetManager manager(engine); ControlMappingStore controls;
+    int writes = 0;
+    WindowsMicLevelKeeper keeper(std::make_unique<BackupMicBackend>(writes), false);
+    keeper.updateInputContext({"Windows Audio", "Owned fake microphone", true, "capture-a"});
+    struct ResetHooks {
+        PresetManager& manager;
+        ~ResetHooks() { manager.onExportAppSettings = {}; manager.onImportAppSettings = {}; }
+    } reset{manager};
+    bool rejectOnce = false;
+    manager.onExportAppSettings = [&](juce::DynamicObject& root) {
+        root.setProperty("windowsMicLevelHold", WindowsMicLevelKeeper::serializePreferences(keeper.getPreferences()));
+    };
+    manager.onImportAppSettings = [&](const juce::DynamicObject& root) {
+        if (root.getProperty("type").toString() == "chain") return true;
+        keeper.setStartupReady(false);
+        WindowsMicLevelKeeper::Preferences parsed; juce::String error;
+        if (root.hasProperty("windowsMicLevelHold")
+            && !WindowsMicLevelKeeper::parsePreferences(root.getProperty("windowsMicLevelHold"), parsed, error)) return false;
+        if (!keeper.setPreferences(parsed, error)) return false;
+        if (rejectOnce) { rejectOnce = false; return false; }
+        return true;
+    };
+    WindowsMicLevelKeeper::Preferences expected, other;
+    expected.enabledEndpointIds = {"capture-a", "capture-b"}; other.enabledEndpointIds.add("capture-c");
+    juce::String error;
+    ASSERT_TRUE(keeper.setPreferences(expected, error));
+    const auto backup = SettingsExporter::exportFullBackup(manager, controls, true);
+    ASSERT_TRUE(backup.isNotEmpty());
+    const auto parsedBackup = juce::JSON::parse(backup);
+    WindowsMicLevelKeeper::Preferences exported;
+    ASSERT_TRUE(WindowsMicLevelKeeper::parsePreferences(
+        parsedBackup["audioSettings"]["windowsMicLevelHold"], exported, error)) << error;
+    EXPECT_EQ(expected.enabledEndpointIds, exported.enabledEndpointIds);
+
+    ASSERT_TRUE(keeper.setPreferences(other, error)); keeper.setStartupReady(true);
+    std::atomic<bool> complete{false}; bool restored = false;
+    SettingsExporter::importFullBackupAsync(backup, manager, controls, true,
+        [&](bool ok) { restored = ok; complete.store(true, std::memory_order_release); });
+    ASSERT_TRUE(pumpMessagesUntil(complete)); ASSERT_TRUE(restored);
+    EXPECT_EQ(expected.enabledEndpointIds, keeper.getPreferences().enabledEndpointIds);
+    WindowsMicLevelKeeperTestAccess::drain(keeper, 0);
+    WindowsMicLevelKeeperTestAccess::drain(keeper, 100);
+    EXPECT_EQ(0, writes);
+
+    auto chain = std::make_unique<juce::DynamicObject>();
+    chain->setProperty("version", 4); chain->setProperty("type", "chain");
+    chain->setProperty("plugins", juce::Array<juce::var>{});
+    chain->setProperty("windowsMicLevelHold", WindowsMicLevelKeeper::serializePreferences(other));
+    ASSERT_TRUE(manager.importFromJSON(juce::JSON::toString(juce::var(chain.release()))));
+    EXPECT_EQ(expected.enabledEndpointIds, keeper.getPreferences().enabledEndpointIds);
+
+    ASSERT_TRUE(keeper.setPreferences(other, error)); keeper.setStartupReady(true);
+    rejectOnce = true; complete.store(false); restored = true;
+    SettingsExporter::importFullBackupAsync(backup, manager, controls, true,
+        [&](bool ok) { restored = ok; complete.store(true, std::memory_order_release); });
+    ASSERT_TRUE(pumpMessagesUntil(complete)); EXPECT_FALSE(restored);
+    EXPECT_EQ(other.enabledEndpointIds, keeper.getPreferences().enabledEndpointIds);
+    WindowsMicLevelKeeperTestAccess::drain(keeper, 1000);
+    EXPECT_EQ(0, writes); // Rollback restores preferences without arming native work.
+#endif
 }
 
 TEST_F(SettingsExporterTest, CorruptControlsJsonRecovery) {

@@ -1,12 +1,12 @@
 node_modules/
+vendor/
 icons-src/
 scripts/
 *.log
 .git
 package-lock.json
-rollup.config.mjs
+.npmrc
 package.json
-eslint.config.mjs
 .sdignore
 src/actions/
 src/plugin.js

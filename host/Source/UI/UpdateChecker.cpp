@@ -23,6 +23,7 @@
 
 #include "UpdateChecker.h"
 #include "UpdateScript.h"
+#include "UpdateStartupSupport.h"
 
 #include <exception>
 
@@ -36,6 +37,13 @@ namespace {
     constexpr const char* kUpdateExe       = "DirectPipe_update.exe";
     constexpr const char* kBackupExe       = "DirectPipe_backup.exe";
     constexpr const char* kUpdatedFlag     = "_updated.flag";
+
+    juce::File hostUpdateResultFile()
+    {
+        return directpipe::update_detail::hostUpdateResultFileForInstall(
+            juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory),
+            juce::File::getSpecialLocation(juce::File::currentExecutableFile).getFullPathName());
+    }
 
     class ReceiverPlanDialog final : public juce::AlertWindow {
     public:
@@ -277,22 +285,215 @@ void UpdateChecker::reapFinishedDownloadThread()
 }
 #endif
 
-void UpdateChecker::cleanupPreviousUpdate()
+void UpdateChecker::cleanupPreviousUpdate(bool applicationReady, const juce::String& readinessReason)
 {
 #if JUCE_WINDOWS
-    auto exeDir = juce::File::getSpecialLocation(
-        juce::File::currentExecutableFile).getParentDirectory();
-    update_detail::cleanupTransientUpdateFiles(exeDir);
+    if (startupMaintenanceHandled_) return;
+    startupMaintenanceHandled_ = true;
+    const auto currentExe = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    const auto exeDir = currentExe.getParentDirectory();
+    const juce::String runningVersion(ProjectInfo::versionString);
+    const auto resultFile = hostUpdateResultFile();
+    const auto receiptText = resultFile.loadFileAsString();
+    const auto result = juce::JSON::parse(receiptText);
+    juce::String tokenError;
+    const auto attempt = update_detail::startupAttemptFromArguments(
+        juce::JUCEApplication::getCommandLineParameterArray(), tokenError);
+    const auto startupWarning = [&resultFile](const juce::String& detail) {
+        juce::Logger::writeToLog("[APP] Update startup: " + detail);
+        const auto reason = detail.replaceCharacters("\r\n", "  ").substring(0, 480);
+        const auto details = resultFile.existsAsFile()
+            ? resultFile.getFullPathName() : juce::String("Settings > log viewer");
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+            "Update Needs Attention", "Update startup or old executable cleanup could not be confirmed. "
+            "Retained backup files were kept.\nReason: " + reason
+            + "\nCheck the update log before retrying.\nDetails: " + details);
+    };
+    if (tokenError.isNotEmpty()) {
+        startupWarning(tokenError);
+        return;
+    }
+    if (attempt.isNotEmpty()) {
+        // The active installer still owns its pending receipt and all backups.
+        // Confirm this exact ready/failed startup before ordinary diagnostics.
+        juce::String error;
+        if (!update_detail::writeHostStartupAcknowledgement(resultFile, attempt, currentExe,
+                runningVersion, static_cast<unsigned long>(::GetCurrentProcessId()),
+                applicationReady, readinessReason, error))
+            startupWarning(error);
+        else {
+            juce::Logger::writeToLog("[APP] Update startup acknowledgement saved: " + readinessReason);
+            if (applicationReady) {
+                startupAttemptWaiting_ = attempt;
+                const int timeout = juce::jlimit(1000, 120000,
+                    static_cast<int>(result.getProperty("startupAckTimeoutMs", 60000)));
+                startupCompletionDeadlineMs_ = juce::Time::getMillisecondCounterHiRes() + timeout + 5000.0;
+                startTimer(250);
+            }
+        }
+        return;
+    }
 
     auto flagFile = exeDir.getChildFile(kUpdatedFlag);
-    if (flagFile.existsAsFile()) {
-        auto version = flagFile.loadFileAsString().trim();
-        flagFile.deleteFile();
-        if (onPostUpdateNotification)
-            onPostUpdateNotification(version);
+    const auto flagVersionText = flagFile.existsAsFile() ? flagFile.loadFileAsString().trim() : juce::String{};
+    if (!resultFile.exists()) {
+        const auto legacy = update_detail::cleanupLegacyUpdateExecutables(currentExe, runningVersion,
+            flagVersionText, resultFile, {}, applicationReady);
+        if (legacy.attempted && !legacy.complete) {
+            startupWarning(legacy.warning);
+            return;
+        }
     }
+    const auto decision = update_detail::classifyHostUpdateStartupReceipt(
+        result, currentExe.getFullPathName(), runningVersion);
+    // Never use unverified receipt state as permission to remove recovery EXEs.
+    // New-attempt cleanup belongs exclusively to the verified installer.
+
+    // Acknowledgement suppresses the dialog, not the evidence or recovery files.
+    // Do not replace a later updater's receipt while this warning is displayed.
+    const auto acknowledgeReceipt = [result, resultFile, receiptText, runningVersion,
+                                     stale = decision.stale]() {
+        if (resultFile.loadFileAsString() != receiptText) {
+            juce::Logger::writeToLog("[APP] Changed update result retained for the next startup");
+            return;
+        }
+        if (auto* root = result.getDynamicObject()) {
+            root->setProperty("attentionAcknowledged", true);
+            if (stale) root->setProperty("supersededByVersion", runningVersion);
+            juce::TemporaryFile temporary(resultFile);
+            if (!temporary.getFile().replaceWithText(juce::JSON::toString(result, true))
+                || !temporary.overwriteTargetFileWithTemporary())
+                juce::Logger::writeToLog("[APP] Could not acknowledge update result; diagnostic evidence retained");
+        }
+    };
+
+    const bool retainedExe = exeDir.getChildFile(kBackupExe).existsAsFile()
+        || exeDir.getChildFile(kUpdateExe).existsAsFile();
+    const auto acknowledgedValue = result.getProperty("attentionAcknowledged", false);
+    const bool acknowledged = acknowledgedValue.isBool() && static_cast<bool>(acknowledgedValue);
+    const bool unverifiedReceipt = resultFile.exists() && retainedExe
+        && (!decision.matchesInstall || decision.stale);
+    if (decision.showAttention || (unverifiedReceipt && !acknowledged)) {
+        const auto stage = result.getProperty("stage", "unknown").toString()
+            .replaceCharacters("\r\n", "  ").substring(0, 80);
+        const auto restartError = result.getProperty("relaunchError", "").toString().trim()
+            .replaceCharacters("\r\n", "  ").substring(0, 480);
+        auto reason = result.getProperty("error", "The update did not finish.").toString()
+            .replaceCharacters("\r\n", "  ").substring(0, 480);
+        if (reason.isEmpty()) reason = "The update was interrupted before it reported completion.";
+        const auto details = result.getProperty("logFilePath", resultFile.getFullPathName()).toString();
+        const bool installed = static_cast<bool>(result.getProperty("success", false));
+        const bool cleanupIncomplete = static_cast<bool>(result.getProperty("startupReady", false))
+            && !static_cast<bool>(result.getProperty("backupCleanupSucceeded", false))
+            && result.getProperty("error", "").toString().isNotEmpty();
+        const bool completionIncomplete = static_cast<bool>(result.getProperty("startupReady", false))
+            && static_cast<bool>(result.getProperty("backupCleanupSucceeded", false))
+            && result.getProperty("error", "").toString().isNotEmpty();
+        auto message = unverifiedReceipt
+            ? juce::String("Old update executables were kept because this startup's update receipt could not be verified.")
+            : cleanupIncomplete ? "The application started, but old executable cleanup was incomplete: " + reason
+            : completionIncomplete ? "Application startup was confirmed, but final update completion needs attention: " + reason
+            : installed && restartError.isNotEmpty()
+            ? "The executable was updated, but automatic restart did not complete: " + restartError
+            : "Previous update stopped at " + stage + ": " + reason;
+        if (!installed && restartError.isNotEmpty()) message += "\nRestart: " + restartError;
+        message += "\nCheck the update log and retained staging/backup files before retrying.\nDetails: " + details;
+        juce::Logger::writeToLog("[APP] " + message.replaceCharacter('\n', ' '));
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+            "Update Needs Attention", message, "OK", nullptr,
+            juce::ModalCallbackFunction::create([acknowledgeReceipt](int) { acknowledgeReceipt(); }));
+    } else if (decision.stale) {
+        const auto staleAcknowledged = result.getProperty("attentionAcknowledged", false);
+        if (!staleAcknowledged.isBool() || !static_cast<bool>(staleAcknowledged))
+            acknowledgeReceipt();
+    }
+
+    if (flagFile.existsAsFile()) {
+        const auto version = flagVersionText;
+        std::array<int, 3> flagParts{}, runningParts{};
+        juce::String flagVersion, canonicalRunningVersion;
+        const bool currentFlag = update_detail::parseStrictReleaseVersion(version, flagParts, flagVersion)
+            && update_detail::parseStrictReleaseVersion(runningVersion, runningParts, canonicalRunningVersion)
+            && flagParts == runningParts;
+        if (!decision.retainRecoveryFiles && !unverifiedReceipt && currentFlag && applicationReady) {
+            flagFile.deleteFile();
+            if (onPostUpdateNotification)
+                onPostUpdateNotification(flagVersion);
+        }
+    }
+#else
+    juce::ignoreUnused(applicationReady, readinessReason);
 #endif
 }
+
+#if JUCE_WINDOWS
+void UpdateChecker::pollStartupCompletion()
+{
+    if (startupAttemptWaiting_.isEmpty()) return;
+    const auto resultFile = hostUpdateResultFile();
+    const auto text = resultFile.loadFileAsString();
+    const auto result = juce::JSON::parse(text);
+    const auto current = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+    const auto receiptExe = result.getProperty("currentExePath", "").toString();
+    const bool recordedReady = static_cast<bool>(result.getProperty("startupReady", false));
+    const auto expectedAck = update_detail::startupAckFileForAttempt(resultFile, startupAttemptWaiting_);
+    const auto ackPath = result.getProperty("startupAckFilePath", "").toString();
+    std::array<int, 3> expected{}, running{};
+    juce::String canonical, installedVersion;
+    const bool matches = result.isObject()
+        && result.getProperty("startupAttemptId", "").toString() == startupAttemptWaiting_
+        && juce::File::isAbsolutePath(receiptExe) && juce::File(receiptExe) == current
+        && juce::File::isAbsolutePath(ackPath) && juce::File(ackPath) == expectedAck
+        && (!recordedReady || static_cast<juce::int64>(result.getProperty("startupPid", 0))
+            == static_cast<juce::int64>(::GetCurrentProcessId()))
+        && update_detail::parseStrictReleaseVersion(result.getProperty("expectedVersion", "").toString(), expected, canonical)
+        && update_detail::parseStrictReleaseVersion(ProjectInfo::versionString, running, installedVersion)
+        && expected == running;
+    const bool pending = static_cast<bool>(result.getProperty("inProgress", true));
+    if (!matches || pending) {
+        if (juce::Time::getMillisecondCounterHiRes() < startupCompletionDeadlineMs_) return;
+        startupAttemptWaiting_.clear();
+        juce::Logger::writeToLog("[APP] Application started; final updater confirmation timed out: " + resultFile.getFullPathName());
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+            "Update Needs Attention", "The application started, but final update confirmation did not finish. "
+            "Check the update log and keep any retained recovery files.\nDetails: " + resultFile.getFullPathName());
+        return;
+    }
+    startupAttemptWaiting_.clear();
+    const bool started = recordedReady;
+    if (started && static_cast<bool>(result.getProperty("success", false))
+        && static_cast<bool>(result.getProperty("backupCleanupSucceeded", false))) {
+        auto flag = current.getSiblingFile(kUpdatedFlag);
+        if (flag.existsAsFile()) flag.deleteFile();
+        juce::Logger::writeToLog("[APP] Updated application startup and executable cleanup confirmed: " + canonical);
+        if (onPostUpdateNotification) onPostUpdateNotification(canonical);
+        return;
+    }
+    const auto reason = result.getProperty("error", "The installer did not confirm completion.").toString()
+        .replaceCharacters("\r\n", "  ").substring(0, 480);
+    juce::Logger::writeToLog("[APP] Update finalization: " + reason);
+    // An unverified-start failure is already reported by the installer, which
+    // must also handle the case where no application can display anything.
+    if (!started) return;
+    const auto completionMessage = static_cast<bool>(result.getProperty("backupCleanupSucceeded", false))
+        ? "Application startup was confirmed, but final update completion needs attention: "
+        : "The application started, but old executable cleanup was incomplete: ";
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+        "Update Needs Attention", completionMessage + reason
+        + "\nCheck the update log and retained files.\nDetails: " + resultFile.getFullPathName(),
+        "OK", nullptr, juce::ModalCallbackFunction::create([result, resultFile, text](int) {
+            if (resultFile.loadFileAsString() != text) return;
+            if (auto* root = result.getDynamicObject()) {
+                root->setProperty("attentionAcknowledged", true);
+                juce::TemporaryFile temporary(resultFile);
+                if (!temporary.getFile().replaceWithText(juce::JSON::toString(result, true))
+                    || !temporary.overwriteTargetFileWithTemporary())
+                    juce::Logger::writeToLog("[APP] Cleanup warning acknowledgement could not be saved");
+            }
+        }));
+}
+#endif
+
 
 // ─── Check admission on caller; network worker posts message-thread results ──
 
@@ -426,7 +627,7 @@ void UpdateChecker::checkForUpdateImpl(bool receiverOnly)
                 if (!alive->load() || requestGeneration != updateCheckRequestGeneration_.load())
                     return;
                 maintenanceCheckPending_ = false;
-                stopTimer();
+                if (startupAttemptWaiting_.isEmpty()) stopTimer();
                 if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
                 maintenanceDialog_.reset();
                 latestVersion_ = canonicalReleaseVersion;
@@ -479,12 +680,15 @@ void UpdateChecker::checkForReceiverUpdate()
 void UpdateChecker::timerCallback()
 {
 #if JUCE_WINDOWS
+    if (!startupAttemptWaiting_.isEmpty()) pollStartupCompletion();
+    if (startupAttemptWaiting_.isEmpty() && !maintenanceCheckPending_ && companionProcess_ == nullptr)
+        stopTimer();
     if (maintenanceCheckPending_) {
         const auto status = getCheckStatus();
         if (status == UpdateCheckStatus::Checking) return;
         maintenanceCheckPending_ = false;
         receiverFlowActive_ = false;
-        stopTimer();
+        if (startupAttemptWaiting_.isEmpty()) stopTimer();
         if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
         maintenanceDialog_.reset();
         juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
@@ -498,7 +702,7 @@ void UpdateChecker::timerCallback()
         ::CloseHandle(static_cast<HANDLE>(companionProcess_));
         companionProcess_ = nullptr;
         receiverFlowActive_ = false;
-        stopTimer();
+        if (startupAttemptWaiting_.isEmpty()) stopTimer();
         if (maintenanceDialog_) maintenanceDialog_->exitModalState(0);
         maintenanceDialog_.reset();
         const auto result = juce::JSON::parse(companionResultFile_);
@@ -728,9 +932,12 @@ void UpdateChecker::performUpdate(bool receiverOnly,
     const bool companionUpdate = receiverOnly || !targets.empty();
     auto companionDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
                             .getChildFile("DirectPipe-update-" + juce::Uuid().toString());
+    const auto hostWorkDir = companionDir; // Caller-writable even for Program Files installations.
+    const auto hostInstallStageDir = currentExe.getParentDirectory()
+        .getChildFile(".dp-update-" + juce::Uuid().toString());
     auto updateDir = companionUpdate ? companionDir.getChildFile("expanded")
-                                    : currentExe.getParentDirectory().getChildFile(kUpdateDir);
-    auto batchFile = currentExe.getSiblingFile(kUpdateBatchFile);
+                                    : hostWorkDir.getChildFile("expanded");
+    auto batchFile = hostWorkDir.getChildFile(kUpdateBatchFile);
 
     // Show progress (indeterminate spinner)
     auto progressDlg = std::make_shared<std::unique_ptr<juce::AlertWindow>>(
@@ -762,7 +969,57 @@ void UpdateChecker::performUpdate(bool receiverOnly,
     const bool workerStarted = startDownloadWorker(
         [this, alive = alive_, downloadUrl, updateDir, batchFile, currentExe,
          version, isZip, currentProcessId, progressDlg, receiverOnly, targets,
-         companionUpdate, companionDir]() {
+         companionUpdate, companionDir, hostWorkDir, hostInstallStageDir]() {
+        const auto hostResultFile = hostUpdateResultFile();
+        const auto hostLogFile = hostWorkDir.getChildFile("update.log");
+        const auto reportHostFailure = [receiverOnly, hostResultFile, hostLogFile, version, currentExe](
+            const juce::String& stage, const juce::String& error) {
+            juce::Logger::writeToLog("[APP] Update " + stage + ": " + error);
+            if (receiverOnly) return;
+            hostLogFile.appendText("[update] " + stage + ": " + error + "\n");
+            auto data = std::make_unique<juce::DynamicObject>();
+            data->setProperty("success", false); data->setProperty("inProgress", false);
+            data->setProperty("stage", stage); data->setProperty("error", error);
+            data->setProperty("rollbackSucceeded", true); data->setProperty("expectedVersion", version);
+            data->setProperty("currentExePath", currentExe.getFullPathName());
+            data->setProperty("logFilePath", hostLogFile.getFullPathName());
+            juce::TemporaryFile temporary(hostResultFile);
+            if (temporary.getFile().replaceWithText(juce::JSON::toString(juce::var(data.release()))))
+                temporary.overwriteTargetFileWithTemporary();
+        };
+        const auto savePendingHostReceipt = [hostResultFile, hostLogFile, version, currentExe](
+                const update_detail::WindowsUpdateInstallSpec& spec) {
+            const auto privateAck = update_detail::startupAckFileForAttempt(hostResultFile, spec.startupAttemptId);
+            if (!spec.requireStartupAck || juce::File(spec.resultFilePath) != hostResultFile
+                || privateAck == juce::File{} || juce::File(spec.startupAckFilePath) != privateAck)
+                return false;
+            auto data = std::make_unique<juce::DynamicObject>();
+            data->setProperty("success", false); data->setProperty("inProgress", true);
+            data->setProperty("stage", "prepared"); data->setProperty("expectedVersion", version);
+            data->setProperty("currentExePath", currentExe.getFullPathName());
+            data->setProperty("logFilePath", hostLogFile.getFullPathName());
+            data->setProperty("requireStartupAck", true);
+            data->setProperty("startupAttemptId", spec.startupAttemptId);
+            data->setProperty("startupAckFilePath", privateAck.getFullPathName());
+            data->setProperty("startupAckTimeoutMs", spec.startupAckTimeoutMs);
+            data->setProperty("filesCommitted", false); data->setProperty("startupReady", false);
+            data->setProperty("backupCleanupSucceeded", false);
+            juce::TemporaryFile temporary(hostResultFile);
+            return temporary.getFile().replaceWithText(juce::JSON::toString(juce::var(data.release()), true))
+                && temporary.overwriteTargetFileWithTemporary();
+        };
+        if (!receiverOnly && (!hostResultFile.getParentDirectory().createDirectory()
+                                 || !hostWorkDir.createDirectory()
+                                 || !hostLogFile.replaceWithText("[update] download: " + version + "\n"))) {
+            reportHostFailure("preflight", "Could not create the update log/staging directory. Check write permissions and free space.");
+            juce::MessageManager::callAsync([alive, progressDlg] {
+                if (!alive->load()) return;
+                if (*progressDlg) (*progressDlg)->exitModalState(0);
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                    "Update Failed", "Could not prepare update diagnostics. DirectPipe was not changed. Check write permissions and free space.");
+            });
+            return;
+        }
         // Download the file
         juce::URL url(downloadUrl);
         int statusCode = 0;
@@ -772,6 +1029,7 @@ void UpdateChecker::performUpdate(bool receiverOnly,
                 .withStatusCode(&statusCode));
 
         if (!stream || statusCode != 200) {
+            reportHostFailure("download", "Could not download the update (HTTP " + juce::String(statusCode) + "). Retry or download manually.");
             juce::MessageManager::callAsync([alive, progressDlg]() {
                 if (!alive->load()) return;
                 if (*progressDlg)
@@ -788,12 +1046,13 @@ void UpdateChecker::performUpdate(bool receiverOnly,
         // Determine download target
         if (companionUpdate) companionDir.createDirectory();
         auto downloadFile = companionUpdate ? companionDir.getChildFile(kUpdateZip)
-            : (isZip ? currentExe.getSiblingFile(kUpdateZip) : currentExe.getSiblingFile(kUpdateExe));
+            : hostWorkDir.getChildFile(isZip ? kUpdateZip : kUpdateExe);
 
         // Write to file
         {
             juce::FileOutputStream output(downloadFile);
             if (!output.openedOk()) {
+                reportHostFailure("download-write", "Could not write the downloaded update. Check permissions, free space and file locks.");
                 juce::MessageManager::callAsync([alive, progressDlg]() {
                     if (!alive->load()) return;
                     if (*progressDlg)
@@ -820,6 +1079,7 @@ void UpdateChecker::performUpdate(bool receiverOnly,
 
         // Verify downloaded file — size check
         if (!downloadFile.existsAsFile() || downloadFile.getSize() < 100 * 1024) {
+            reportHostFailure("download", "The downloaded update was incomplete or too small. Retry the download.");
             downloadFile.deleteFile();
             juce::MessageManager::callAsync([alive, progressDlg]() {
                 if (!alive->load()) return;
@@ -855,7 +1115,8 @@ void UpdateChecker::performUpdate(bool receiverOnly,
             }
 
             auto failIntegrityCheck =
-                [downloadFile, alive, progressDlg](juce::String reason) mutable {
+                [downloadFile, alive, progressDlg, reportHostFailure](juce::String reason) mutable {
+                reportHostFailure("checksum", reason);
                 downloadFile.deleteFile();
                 juce::Logger::writeToLog("[APP] Update integrity verification failed: " + reason);
                 juce::MessageManager::callAsync([alive, progressDlg, reason]() mutable {
@@ -914,15 +1175,36 @@ void UpdateChecker::performUpdate(bool receiverOnly,
             spec.receiverTargets = targets;
             spec.skipHostUpdate = receiverOnly;
             spec.processId = currentProcessId;
-            spec.resultFilePath = companionDir.getChildFile("result.json").getFullPathName();
+            spec.resultFilePath = receiverOnly ? companionDir.getChildFile("result.json").getFullPathName()
+                                               : hostResultFile.getFullPathName();
             spec.updatedFlagPath = currentExe.getSiblingFile(kUpdatedFlag).getFullPathName();
             spec.relaunchHostAfterUpdate = !receiverOnly;
             spec.expectedPackageSha256 = expectedHash;
+            spec.requireStartupAck = !receiverOnly;
+            if (!receiverOnly) {
+                spec.logFilePath = hostLogFile.getFullPathName();
+                spec.startupAttemptId = juce::Uuid().toString();
+                spec.startupAckFilePath = update_detail::startupAckFileForAttempt(
+                    hostResultFile, spec.startupAttemptId).getFullPathName();
+                if (!savePendingHostReceipt(spec)) {
+                    reportHostFailure("preflight", "Could not save the paired host startup receipt. Check write permissions and file locks.");
+                    juce::MessageManager::callAsync([alive, progressDlg] {
+                        if (!alive->load()) return;
+                        if (*progressDlg) (*progressDlg)->exitModalState(0);
+                        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                            "Update Failed", "Could not prepare update startup confirmation. DirectPipe is still running; no files were replaced.");
+                    });
+                    return;
+                }
+            }
             // Use the same path rules as installation while this host is still
             // running. This child only extracts into the private download folder;
             // no elevation, installation writes, host wait, or relaunch occurs.
             auto preflightSpec = spec;
             preflightSpec.resultFilePath = companionDir.getChildFile("preflight-result.json").getFullPathName();
+            preflightSpec.requireStartupAck = false;
+            preflightSpec.startupAttemptId.clear();
+            preflightSpec.startupAckFilePath.clear();
             const auto preflightFile = companionDir.getChildFile("preflight.ps1");
             const auto preflightScript = update_detail::buildWindowsCompanionInstallPowerShell(preflightSpec, true);
             juce::String preparationError;
@@ -1026,50 +1308,47 @@ void UpdateChecker::performUpdate(bool receiverOnly,
                               .getFullPathName().replace("/", "\\");
         auto updateDirPath = updateDir.getFullPathName().replace("/", "\\");
 
-        juce::String script;
-        script << "@echo off\r\n";
-        script << "chcp 65001 > nul\r\n";
-        script << "echo.\r\n";
-        script << "echo  Updating DirectPipe to v" << version << " ...\r\n";
-        script << update_detail::buildWindowsUpdateWaitScript(currentProcessId);
-
-        auto flagPath = currentExe.getSiblingFile(kUpdatedFlag)
-                            .getFullPathName().replace("/", "\\");
-
-        auto stagedPath = currentExe.getSiblingFile(kUpdateExe)
-                              .getFullPathName().replace("/", "\\");
-        const auto installScript = update_detail::buildWindowsUpdateInstallScript({
-            currentPath,
-            downloadPath,
-            stagedPath,
-            backupPath,
-            updateDirPath,
-            version,
-            isZip,
-        });
-        if (installScript.isEmpty()) {
-            juce::Logger::writeToLog(
-                "[APP] Refusing to build updater script for an invalid expected version");
+        update_detail::WindowsUpdateInstallSpec hostSpec {
+            currentPath, downloadPath,
+            hostInstallStageDir.getChildFile(kUpdateExe).getFullPathName(), backupPath,
+            updateDirPath, version, isZip,
+        };
+        hostSpec.processId = currentProcessId;
+        hostSpec.resultFilePath = hostResultFile.getFullPathName();
+        hostSpec.logFilePath = hostLogFile.getFullPathName();
+        hostSpec.previousBackupExePath = hostInstallStageDir.getChildFile("previous-backup.exe").getFullPathName();
+        hostSpec.updatedFlagPath = currentExe.getSiblingFile(kUpdatedFlag).getFullPathName();
+        hostSpec.expectedPackageSha256 = expectedHash;
+        hostSpec.relaunchHostAfterUpdate = true; // Real updater retains the existing restart behavior.
+        hostSpec.requireStartupAck = true;
+        hostSpec.startupAttemptId = juce::Uuid().toString();
+        hostSpec.startupAckFilePath = update_detail::startupAckFileForAttempt(
+            hostResultFile, hostSpec.startupAttemptId).getFullPathName();
+        const auto operation = update_detail::buildWindowsHostUpdateScript(hostSpec);
+        if (operation.isEmpty()) {
+            reportHostFailure("prepare", "The host update plan was invalid. No installed files were changed.");
             juce::MessageManager::callAsync([alive, progressDlg]() {
                 if (!alive->load()) return;
-                if (*progressDlg)
-                    (*progressDlg)->exitModalState(0);
-                juce::AlertWindow::showMessageBoxAsync(
-                    juce::MessageBoxIconType::WarningIcon,
-                    "Update Failed",
-                    "The update executable identity could not be validated. "
-                    "DirectPipe was not changed.",
-                    "OK");
+                if (*progressDlg) (*progressDlg)->exitModalState(0);
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                    "Update Failed", "Could not prepare the update transaction. DirectPipe was not changed; check the update log.");
             });
             return;
         }
-        script << installScript;
-
-        script << update_detail::buildWindowsUpdateCompletionScript(
-            version, flagPath, currentPath);
-        script << "exit\r\n";
+        if (!savePendingHostReceipt(hostSpec)) {
+            reportHostFailure("preflight", "The update result could not be saved. Check write permissions, file locks and free space.");
+            juce::MessageManager::callAsync([alive, progressDlg]() {
+                if (!alive->load()) return;
+                if (*progressDlg) (*progressDlg)->exitModalState(0);
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                    "Update Failed", "Could not save update diagnostics. DirectPipe was not changed; check permissions and file locks.");
+            });
+            return;
+        }
+        const auto script = "@echo off\r\nchcp 65001 > nul\r\n" + operation;
 
         if (!batchFile.replaceWithText(script)) {
+            reportHostFailure("launch", "Could not create the update installer script. Check write permissions and file locks.");
             juce::Logger::writeToLog("[APP] Failed to create update installer script: "
                 + batchFile.getFullPathName());
             juce::MessageManager::callAsync([alive, progressDlg]() {
@@ -1085,11 +1364,30 @@ void UpdateChecker::performUpdate(bool receiverOnly,
             return;
         }
 
-        juce::MessageManager::callAsync([alive, batchFile, progressDlg]() {
+        juce::MessageManager::callAsync([alive, batchFile, progressDlg, reportHostFailure, currentExe]() {
             if (!alive->load()) return;
             if (*progressDlg)
                 (*progressDlg)->exitModalState(0);
-            if (!batchFile.startAsProcess()) {
+            const auto probe = currentExe.getParentDirectory()
+                .getChildFile(".DirectPipe-write-probe-" + juce::Uuid().toString()).getFullPathName();
+            HANDLE access = ::CreateFileW(probe.toWideCharPointer(), GENERIC_WRITE | DELETE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, CREATE_NEW,
+                FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+            const bool elevate = access == INVALID_HANDLE_VALUE;
+            if (access != INVALID_HANDLE_VALUE) ::CloseHandle(access);
+            const auto installerPath = batchFile.getFullPathName();
+            const auto powershell = juce::File::getSpecialLocation(juce::File::windowsSystemDirectory)
+                .getChildFile("WindowsPowerShell/v1.0/powershell.exe").getFullPathName();
+            const auto arguments = update_detail::buildWindowsHostUpdateLauncherArguments(installerPath);
+            SHELLEXECUTEINFOW launch{};
+            launch.cbSize = sizeof(launch);
+            launch.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+            launch.lpVerb = elevate ? L"runas" : L"open";
+            launch.lpFile = powershell.toWideCharPointer();
+            launch.lpParameters = arguments.toWideCharPointer();
+            launch.nShow = SW_HIDE;
+            if (!::ShellExecuteExW(&launch) || !launch.hProcess) {
+                reportHostFailure("launch", "Could not launch the update installer, or permission was cancelled. No installed files were changed.");
                 juce::AlertWindow::showMessageBoxAsync(
                     juce::MessageBoxIconType::WarningIcon,
                     "Update Failed",
@@ -1097,6 +1395,7 @@ void UpdateChecker::performUpdate(bool receiverOnly,
                     "OK");
                 return;
             }
+            ::CloseHandle(launch.hProcess);
             juce::JUCEApplication::getInstance()->systemRequestedQuit();
         });
         });

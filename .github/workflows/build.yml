@@ -97,6 +97,18 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test exact isolated Windows candidate API
+        shell: pwsh
+        run: |
+          node --test tools/test_api_parser.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/test_windows_candidate_api.ps1 `
+            -Candidate build/host/DirectPipe_artefacts/Release/DirectPipe.exe
+
       - name: Run Tests
         shell: pwsh
         run: |
@@ -111,6 +123,9 @@ jobs:
           name: DirectPipe-windows-test-results
           path: |
             build/test-results/ctest.xml
+            build/test-results/api.log
+            build/test-results/api-identity.json
+            build/test-results/directpipe.log*
             build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
           retention-days: 30
@@ -583,20 +598,25 @@ jobs:
       - name: Audit dependencies
         working-directory: com.directpipe.directpipe.sdPlugin
         run: |
-          npm audit --audit-level=high
-          npm audit --omit=dev --audit-level=high
+          npm audit
+          npm audit --omit=dev
 
       - name: Generate icons (SVG -> PNG)
         working-directory: com.directpipe.directpipe.sdPlugin
         run: npm run icons
 
+      - name: Check JavaScript syntax
+        working-directory: com.directpipe.directpipe.sdPlugin
+        run: npm run lint
+
       - name: Run tests
+        shell: bash
         working-directory: com.directpipe.directpipe.sdPlugin
         run: |
           mkdir -p ../dist
           npm test 2>&1 | tee ../dist/streamdeck-test.log
 
-      - name: Build (Rollup bundle)
+      - name: Build (Node 20 CommonJS bundle)
         working-directory: com.directpipe.directpipe.sdPlugin
         run: npm run build
 

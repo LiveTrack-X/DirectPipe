@@ -76,10 +76,10 @@ public:
         keeps the host running; it never downgrades a Receiver or kills its host. */
     void checkForReceiverUpdate();
 
-    /** Clean up transient update files and detect the post-update flag.
-     *  The known-good backup executable remains until the next update rotation.
-     *  Call once during startup. If a flag is found, onPostUpdateNotification is called. */
-    void cleanupPreviousUpdate();
+    /** Finalize update startup only after initial restore/preload and the saved
+        window/tray policy have settled. New installers receive an ACK and own
+        cleanup; old flag-only installers use verified legacy EXE cleanup. */
+    void cleanupPreviousUpdate(bool applicationReady, const juce::String& readinessReason);
 
     /** Message-thread host-update dialog. Windows Update Now opens the Receiver
         destination preview before download; other platforms offer the release page. */
@@ -156,6 +156,10 @@ private:
                              const juce::String& downloadUrl);
 
 #if JUCE_WINDOWS
+    bool startupMaintenanceHandled_ = false; // message thread, first settled startup only
+    juce::String startupAttemptWaiting_;
+    double startupCompletionDeadlineMs_ = 0.0;
+    void pollStartupCompletion();
     void prepareReceiverUpdate(bool receiverOnly, const juce::File& customFolder = {});
     void showReceiverUpdatePlan(bool receiverOnly, update_detail::ReceiverDiscoveryResult found);
     void runReceiverInspection(std::function<void()> task);

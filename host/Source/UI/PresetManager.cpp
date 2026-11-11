@@ -22,6 +22,7 @@
  */
 
 #include "PresetManager.h"
+#include "../Platform/WindowsMicLevelKeeper.h"
 #include "../Control/ControlMapping.h"
 #include "../Control/Log.h"
 #include "../Util/AtomicFileIO.h"
@@ -420,6 +421,7 @@ juce::String PresetManager::exportToJSON()
 
     // Channel mode (1=mono, 2=stereo)
     root->setProperty("channelMode", engine_.getChannelMode());
+    root->setProperty("monoInputEnabled", engine_.isMonoInputEnabled());
 
     // IPC output
     root->setProperty("ipcEnabled", engine_.isIpcEnabled());
@@ -453,6 +455,22 @@ bool PresetManager::isStructurallyValidPresetRoot(juce::DynamicObject* root)
     const int version = static_cast<int>(root->getProperty("version"));
     if (version < 1)
         return false;
+
+    if (root->hasProperty("monoInputEnabled")
+        && !root->getProperty("monoInputEnabled").isBool()) {
+        juce::Logger::writeToLog("[PRESET] Invalid mono input capture flag");
+        return false;
+    }
+
+    if (root->hasProperty("windowsMicLevelHold")) {
+        WindowsMicLevelKeeper::Preferences preferences;
+        juce::String error;
+        if (!WindowsMicLevelKeeper::parsePreferences(
+                root->getProperty("windowsMicLevelHold"), preferences, error)) {
+            juce::Logger::writeToLog("[PRESET] Invalid Windows microphone level preferences: " + error);
+            return false;
+        }
+    }
 
     if (!root->hasProperty("plugins"))
         return true;
@@ -558,6 +576,20 @@ bool PresetManager::importFromJSON(const juce::String& json)
     juce::String restoredAsioDevice;
     bool restoreDevicesAsAsio = false;
     bool outputNone = false;
+
+    // Capture is an explicit 4.5 opt-in, independent of the old Mono fold-down.
+    // Loading an older settings file restores legacy policy even if the current
+    // session opted in. Chain-only imports use their separate path unchanged.
+    const bool chainOnlyImport = root->getProperty("type").toString() == "chain";
+    const bool previousMonoInput = engine_.isMonoInputEnabled();
+    const bool restoresMonoInput = chainOnlyImport
+        ? previousMonoInput
+        : root->hasProperty("monoInputEnabled")
+            && static_cast<bool>(root->getProperty("monoInputEnabled"));
+    if (!chainOnlyImport)
+        // Keep a current singleton valid while SR/BS and devices are restored.
+        // Commit legacy readiness only after the target input layout is ready.
+        engine_.setMonoInputEnabled(previousMonoInput || restoresMonoInput);
 
     // Restore active slot (clamp to valid range: -1 to kNumSlots-1, i.e. -1 to 5)
     if (root->hasProperty("activeSlot")) {
@@ -746,7 +778,7 @@ bool PresetManager::importFromJSON(const juce::String& json)
                 root->getProperty("inputChannelMask"),
                 inputMaskValidationLimit);
             applySafeDefaultMask(inMask, inChCount);
-            if (restoresMonoChannelMode)
+            if (restoresMonoChannelMode && !restoresMonoInput)
                 migrateLegacyMonoChannelMask(inMask, reportedInChCount);
             setup.useDefaultInputChannels = false;
             setup.inputChannels = inMask;
@@ -800,6 +832,46 @@ bool PresetManager::importFromJSON(const juce::String& json)
     } else if (!canRestoreChannelMasks
                && (root->hasProperty("inputChannelMask") || root->hasProperty("outputChannelMask"))) {
         juce::Logger::writeToLog("[PRESET] Delaying ASIO channel mask restore until saved ASIO device is active");
+    }
+
+    if (!chainOnlyImport) {
+        const bool captureBindingUnavailable = !canRestoreChannelMasks
+            && (restoredAsioDevice.isNotEmpty() || root->hasProperty("inputChannelMask"));
+        bool commitCapturePolicy = !captureBindingUnavailable;
+        if (captureBindingUnavailable) {
+            // The saved ASIO device is not active. Do not change capture on a
+            // different current interface while its target mask is deferred.
+            engine_.setMonoInputEnabled(previousMonoInput);
+            if (previousMonoInput != restoresMonoInput)
+                reportRestoreFailure("Input capture restore delayed until the saved ASIO device is active; previous capture policy retained");
+        } else if (previousMonoInput && !restoresMonoInput) {
+            if (auto* device = engine_.getDeviceManager().getCurrentAudioDevice()) {
+                const auto active = device->getActiveInputChannels();
+                const int activeCount = active.countNumberOfSetBits();
+                const bool nativeMono = device->getInputChannelNames().size() == 1
+                    && activeCount == 1;
+                if (activeCount == 1 && !nativeMono) {
+                    // Old files without a mask must also leave a valid legacy
+                    // pair. Preserve already-valid noncontiguous selections.
+                    const auto result = engine_.setInputCaptureMode(
+                        false, active.findNextSetBit(0));
+                    if (!result) {
+                        commitCapturePolicy = false;
+                        reportRestoreFailure("Input capture restore failed: " + result.message
+                            + "; previous mono capture remains enabled");
+                    }
+                } else if (activeCount == 0) {
+                    juce::AudioDeviceManager::AudioDeviceSetup actual;
+                    engine_.getDeviceManager().getAudioDeviceSetup(actual);
+                    if (actual.inputDeviceName.isNotEmpty()) {
+                        commitCapturePolicy = false;
+                        reportRestoreFailure("Input capture restore failed: no active input channels; previous capture policy retained");
+                    }
+                }
+            }
+        }
+        if (commitCapturePolicy)
+            engine_.setMonoInputEnabled(restoresMonoInput);
     }
 
     // VST Chain load plugins (with fast-path for identical chain)

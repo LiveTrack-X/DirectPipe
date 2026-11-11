@@ -26,6 +26,7 @@
 #include "PresetManager.h"
 #include "../Control/ControlMapping.h"
 #include <functional>
+#include <memory>
 
 namespace directpipe {
 
@@ -39,6 +40,20 @@ namespace directpipe {
  */
 class SettingsExporter {
 public:
+    /** Per-restore feedback. Contains safe labels and advice, never backup payloads. */
+    struct RestoreDiagnostics {
+        juce::String stage;
+        juce::String reason;
+        juce::String nextCheck;
+        bool rollbackIncomplete = false;
+
+        void clear();
+        bool fail(const juce::String& failedStage, const juce::String& safeReason,
+                  const juce::String& check);
+        void markRollbackIncomplete();
+        juce::String message() const;
+    };
+
     /** Export settings only (audio, output, controls). No VST chain or slots. */
     static juce::String exportAll(PresetManager& presetManager,
                                    ControlMappingStore& controlStore);
@@ -46,7 +61,8 @@ public:
     /** Import settings only. VST chain and slots are left untouched. */
     static bool importAll(const juce::String& json,
                           PresetManager& presetManager,
-                          ControlMappingStore& controlStore);
+                          ControlMappingStore& controlStore,
+                          RestoreDiagnostics* diagnostics = nullptr);
 
     /** Export everything: settings + VST chain + all preset slots.
      *  runtimeStateIsStable must be false while a slot is loading, a partial
@@ -63,7 +79,8 @@ public:
     static bool importFullBackup(const juce::String& json,
                                   PresetManager& presetManager,
                                   ControlMappingStore& controlStore,
-                                  bool runtimeStateIsStableBeforeRestore);
+                                  bool runtimeStateIsStableBeforeRestore,
+                                  RestoreDiagnostics* diagnostics = nullptr);
 
     /** Transactional full restore. The VST chain remains live until all target
      *  processors are ready and disk/control changes can be committed. */
@@ -72,7 +89,8 @@ public:
         PresetManager& presetManager,
         ControlMappingStore& controlStore,
         bool runtimeStateIsStableBeforeRestore,
-        std::function<void(bool)> onComplete);
+        std::function<void(bool)> onComplete,
+        std::shared_ptr<RestoreDiagnostics> diagnostics = {});
 
     /** Returns the platform string for the current OS ("windows", "macos", "linux"). */
     static juce::String getCurrentPlatform();
@@ -98,13 +116,15 @@ public:
 
     /** Show async load FileChooser with platform check. importer(json) returns success. */
     static void showLoadDialog(const juce::String& filter,
-                                std::function<bool(const juce::String& json)> importer);
+                                std::function<bool(const juce::String& json)> importer,
+                                std::shared_ptr<RestoreDiagnostics> diagnostics = {});
 
     /** Show a load dialog for an importer that completes asynchronously. */
     static void showLoadDialogAsync(
         const juce::String& filter,
         std::function<void(const juce::String& json,
-                           std::function<void(bool)> onComplete)> importer);
+                           std::function<void(bool)> onComplete)> importer,
+        std::shared_ptr<RestoreDiagnostics> diagnostics = {});
 };
 
 } // namespace directpipe

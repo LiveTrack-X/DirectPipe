@@ -7,6 +7,10 @@
 
 ## Data Flow
 
+SettingsAutosaver includes optional `monoInputEnabled` capture policy alongside
+the existing Channel Mode and channel masks. PresetManager restores missing
+fields as legacy capture; quick-slot chain changes do not alter capture mode.
+
 ```
 External Input Sources
  |

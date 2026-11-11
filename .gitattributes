@@ -1,0 +1,3 @@
+# Preserve the byte-identical upstream utils 0.4.1 declaration (one trailing
+# space in LogLevel). Keep normal whitespace checks for every other file.
+/com.directpipe.directpipe.sdPlugin/vendor/elgato-utils/dist/logging/level.d.ts whitespace=-blank-at-eol

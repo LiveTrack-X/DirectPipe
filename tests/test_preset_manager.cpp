@@ -399,6 +399,86 @@ TEST_F(PresetManagerTest, MissingKeysRecovery) {
     EXPECT_TRUE(plugins.isVoid());
 }
 
+TEST_F(PresetManagerTest, MonoInputCaptureRoundTripsAndOldFilesKeepLegacyMode)
+{
+    AudioEngine engine;
+    PresetManager manager(engine);
+    EXPECT_FALSE(engine.isMonoInputEnabled());
+    ASSERT_TRUE(manager.importFromJSON(
+        R"({"version":4,"monoInputEnabled":true,"channelMode":2})"));
+    EXPECT_TRUE(engine.isMonoInputEnabled());
+    EXPECT_EQ(engine.getChannelMode(), 2);
+    const auto saved = juce::JSON::parse(manager.exportToJSON());
+    ASSERT_TRUE(saved.hasProperty("monoInputEnabled"));
+    EXPECT_TRUE(static_cast<bool>(saved["monoInputEnabled"]));
+
+    // A pre-4.5 file must reset capture to its legacy policy, even if loaded
+    // while the user currently has the new opt-in mode enabled.
+    engine.setMonoInputEnabled(true);
+    ASSERT_TRUE(manager.importFromJSON(R"({"version":4,"channelMode":1})"));
+    EXPECT_FALSE(engine.isMonoInputEnabled());
+    EXPECT_EQ(engine.getChannelMode(), 1);
+}
+
+TEST_F(PresetManagerTest, ExplicitMonoInputKeepsAnalogTwoMaskInsteadOfLegacyPairMigration)
+{
+    AudioEngine engine;
+    PresetManager manager(engine);
+    juce::BigInteger pair;
+    pair.setBit(0);
+    pair.setBit(1);
+    juce::BigInteger outputPair;
+    outputPair.setBit(2);
+    outputPair.setBit(3);
+    juce::AudioDeviceManager::AudioDeviceSetup applied;
+    manager.configureChannelMaskRestoreForTest(2, 4, pair, outputPair,
+        [&](const juce::AudioDeviceManager::AudioDeviceSetup& setup, const juce::String&) {
+            applied = setup;
+            return ActionResult::ok();
+        });
+
+    ASSERT_TRUE(manager.importFromJSON(R"({"version":4,"channelMode":1,
+        "monoInputEnabled":true,"inputChannelMask":[1],"outputChannelMask":[2]})"));
+    EXPECT_TRUE(engine.isMonoInputEnabled());
+    EXPECT_EQ(applied.inputChannels.countNumberOfSetBits(), 1);
+    EXPECT_TRUE(applied.inputChannels[1]);
+    EXPECT_EQ(applied.outputChannels.countNumberOfSetBits(), 2);
+    EXPECT_TRUE(applied.outputChannels[2]);
+    EXPECT_TRUE(applied.outputChannels[3]);
+
+    ASSERT_TRUE(manager.importFromJSON(R"({"version":4,"channelMode":1,
+        "inputChannelMask":[1],"outputChannelMask":[2]})"));
+    EXPECT_FALSE(engine.isMonoInputEnabled());
+    EXPECT_EQ(applied.inputChannels.countNumberOfSetBits(), 2);
+    EXPECT_TRUE(applied.inputChannels[0]);
+    EXPECT_TRUE(applied.inputChannels[1]);
+    EXPECT_TRUE(applied.outputChannels[2]);
+    EXPECT_TRUE(applied.outputChannels[3]);
+}
+
+TEST_F(PresetManagerTest, MonoInputCaptureRejectsMalformedFlagBeforeChangingPolicy)
+{
+    AudioEngine engine;
+    PresetManager manager(engine);
+    engine.setMonoInputEnabled(true);
+    const juce::String malformed = R"({"version":4,"monoInputEnabled":"not-a-boolean"})";
+    EXPECT_FALSE(PresetManager::isPresetJSONStructurallyValid(malformed));
+    EXPECT_FALSE(manager.importFromJSON(malformed));
+    EXPECT_TRUE(engine.isMonoInputEnabled());
+}
+
+TEST_F(PresetManagerTest, ChainOnlyImportDoesNotChangeMonoInputCapture)
+{
+    AudioEngine engine;
+    engine.getVSTChain().prepareToPlay(48000.0, 512);
+    engine.setMonoInputEnabled(true);
+    PresetManager manager(engine);
+    ASSERT_TRUE(manager.importChainFromJSON(R"({"version":4,"plugins":[]})"));
+    EXPECT_TRUE(engine.isMonoInputEnabled());
+    ASSERT_TRUE(manager.importFromJSON(R"({"version":4,"type":"chain","plugins":[]})"));
+    EXPECT_TRUE(engine.isMonoInputEnabled());
+}
+
 TEST_F(PresetManagerTest, NonContiguousChannelMaskJsonRoundtrip) {
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("version", 4);
@@ -1341,4 +1421,31 @@ TEST_F(PresetManagerTest, BackupFallbackMainValid) {
     auto content = loadFileWithBackupFallback(target);
     EXPECT_FALSE(content.isEmpty());
     EXPECT_TRUE(juce::JSON::parse(content).isObject());
+}
+
+TEST_F(PresetManagerTest, WindowsMicLevelSchemaRejectsMalformedOptionalField) {
+    EXPECT_TRUE(PresetManager::isPresetJSONStructurallyValid(
+        R"({"version":4,"windowsMicLevelHold":{"version":1,"enabledEndpointIds":["capture-a"]}})"));
+    for (const auto* json : {
+        R"({"version":4,"windowsMicLevelHold":true})",
+        R"({"version":4,"windowsMicLevelHold":{"version":2,"enabledEndpointIds":[]}})",
+        R"({"version":4,"windowsMicLevelHold":{"version":1,"enabledEndpointIds":"capture-a"}})",
+        R"({"version":4,"windowsMicLevelHold":{"version":1,"enabledEndpointIds":["capture-a","capture-a"]}})"}) {
+        EXPECT_FALSE(PresetManager::isPresetJSONStructurallyValid(json)) << json;
+    }
+}
+
+TEST_F(PresetManagerTest, InvalidWindowsMicPreferenceCannotMutateAudioOrReachAppHook) {
+    AudioEngine engine;
+    PresetManager manager(engine);
+    engine.setInputGain(0.35f);
+    bool hookCalled = false;
+    manager.onImportAppSettings = [&](const juce::DynamicObject&) {
+        hookCalled = true;
+        return true;
+    };
+    EXPECT_FALSE(manager.importFromJSON(
+        R"({"version":4,"inputGain":1.7,"windowsMicLevelHold":"enabled"})"));
+    EXPECT_FLOAT_EQ(engine.getInputGain(), 0.35f);
+    EXPECT_FALSE(hookCalled);
 }

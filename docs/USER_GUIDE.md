@@ -1,7 +1,7 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Guide Version 4.4.0 / 가이드 4.4.0** — [Download releases / 릴리즈 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases).
-> 4.3.0 자동 갱신은 본체만 교체합니다. 4.4.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. / The 4.3.0 updater replaces only the host; after launching 4.4.0, update existing Receivers from **Settings > Update Receiver...** too.
+> **Guide Version 4.5.0 / 가이드 4.5.0** — [Verification record / 검증 기록](RELEASE_4_5_0.md). [Public releases / 공개 릴리즈](https://github.com/LiveTrack-X/DirectPipe/releases).
+> 4.3.0 자동 갱신은 본체만 교체합니다. 새 본체 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. / The 4.3.0 updater replaces only the host; after launching the updated host, update existing Receivers from **Settings > Update Receiver...** too.
 
 ## 시작하기 / Getting Started
 
@@ -354,6 +354,42 @@ Audio 탭의 **Driver** 드롭다운에서 드라이버를 선택할 수 있습�
 >
 > **ASIO restore behavior (Windows)**: ASIO input/output restore as one duplex ASIO device. If the saved ASIO device is not visible at startup, DirectPipe waits for the saved device instead of opening another ASIO driver such as FL Studio ASIO or Realtek ASIO.
 
+<a id="windows-mic-level-hold"></a>
+
+### Windows 마이크 레벨 유지 / Windows Mic Level Hold
+
+Audio 탭에서 입력을 선택한 뒤 **Keep Windows mic level at 100**을 켜면 해당
+마이크의 Windows 입력 레벨 변경을 감지해 100으로 보정합니다. **기본 꺼짐**이며,
+실제로 열린 장치의 ID를 확인할 수 있는 **Windows Audio 공유 모드와 Low Latency
+Mode**에서만 사용할 수 있습니다. ASIO·독점 모드·DirectSound·다른 플랫폼이나
+장치 식별 실패 시에는 비활성화 이유가 표시됩니다.
+
+Select an input in Audio, then enable **Keep Windows mic level at 100** to
+correct changes to that microphone's Windows input level. It is **off by
+default** and supports **Windows Audio shared mode and Low Latency Mode** only
+when the opened endpoint is exactly identified. ASIO, exclusive mode,
+DirectSound, other platforms and unidentified inputs show a disabled reason.
+
+- 같은 마이크를 사용하는 **다른 앱에도 적용**됩니다. 켜져 있으면 Windows에서
+  직접 조절한 값도 100으로 돌아갑니다. 음소거·마이크 부스트·DirectPipe의 입력
+  게인은 바꾸지 않습니다. / This affects **every app using that microphone**.
+  Manual Windows slider changes are also corrected; mute, boost and DirectPipe
+  input gain are unchanged.
+- 끄거나 DirectPipe를 종료하면 보정을 중지하며 과거 볼륨을 복원하지 않습니다.
+  장치 연결 해제·전환 시에는 기존 연결을 중지하고, 별도로 선택하지 않은 다른
+  마이크에는 적용하지 않습니다. / Turning it off or closing DirectPipe stops
+  corrections without restoring an old level. Disconnecting or switching stops
+  the old binding; a different microphone requires its own opt-in.
+- 장치별 선택은 설정·전체 백업에 저장합니다. 기존 설정에는 자동으로 켜지지
+  않으며, 체인 전용 A–E/Auto 슬롯은 선택을 유지합니다. / Per-device choices are
+  saved in settings/full backups. Old settings remain off; chain-only A–E/Auto
+  slots preserve the current choices.
+
+100은 드라이버의 최대 레벨이며 반드시 0 dB·무증폭을 뜻하지 않습니다. 입력이
+과하면 이 옵션을 끄고 마이크의 게인·부스트를 확인하세요. / 100 is the driver's
+maximum, not guaranteed 0 dB or unity gain. If the input clips, disable the
+option and check the microphone's gain/boost.
+
 ### 샘플레이트 & 버퍼 크기 / Sample Rate & Buffer Size
 
 > **Audio 탭의 샘플레이트가 전체 시스템에 적용됩니다**: VST 체인, 모니터 출력, IPC(DirectPipe Receiver) 모두 이 값을 따릅니다. 모니터 출력은 메인 SR에 맞지 않으면 `SampleRateMismatch` 상태로 표시되고, 메인 샘플레이트를 바꾸거나 모니터 장치를 다시 선택할 때까지 중지 상태를 유지합니다.
@@ -395,10 +431,44 @@ Mismatched sample rates between DirectPipe, OBS, and Discord can cause **pitch s
 
 ### 채널 모드 / Channel Mode
 
+#### 하나의 아날로그 입력만 받기 / Capture one physical input
+
+**Input capture**는 기본값 **Stereo pair (existing)**을 유지합니다. 한 입력만
+받으려면 **Mono (single channel)**을 선택한 뒤 **Input Ch**에서 실제 장치의
+`Analog 1`, `Analog 2` 등 원하는 채널을 고릅니다. 선택한 신호를 감쇠 없이
+내부 L/R에 복제하여 효과 체인으로 보내며, 이후 효과가 만든 스테레오는 유지합니다.
+기존 **Channel Mode**의 Mono/Stereo 설정은 바뀌지 않습니다.
+
+**Input capture** defaults to **Stereo pair (existing)**. Select **Mono (single
+channel)**, then choose the actual driver channel under **Input Ch**, such as
+Analog 1 or Analog 2. That channel feeds internal L/R at unity before effects;
+later stereo effects stay stereo. The existing **Channel Mode** setting is
+independent and retains its saved value.
+
+예전 설정/백업에는 새 항목이 없어도 기존 입력 쌍과 Mono 혼합 방식으로 복원합니다.
+모노 입력 선택을 끄면 해당 채널이 속한 완전한 스테레오 쌍으로 돌아갑니다.
+짝이 없는 마지막 채널에서는 다른 채널을 고르거나 모노 입력을 유지하도록
+안내하며, 변경 실패 시 이전 선택을 유지합니다. 실제 1채널 장치는 예외로 지원합니다.
+/ Old settings/backups keep legacy capture when the new option is absent.
+Disabling mono capture returns to its containing complete pair. An unpaired
+last channel gives an error and keeps the old selection; genuine one-channel
+devices retain their existing exception. Unsupported driver changes fail with
+feedback. Physical-device behavior still requires verification on that device.
+
 - **Stereo** (기본값) — 입력 채널이 그대로 L/R로 통과 / Input channels pass through as-is
 - **Mono** — 선택한 입력 쌍의 L/R을 VST 체인 전에 평균하여 하나의 모노 신호로 만들고, 같은 신호를 내부 L/R에 복제합니다. 이후 VST 체인·메인 출력·모니터·IPC·녹음은 이 2채널 dual-mono 신호를 처리하며, 선택한 출력 쌍에도 같은 처리 결과를 보냅니다. 실제 1채널 장치는 감쇠 없이 해당 채널을 내부 L/R에 복제합니다. / Averages the selected input pair before the VST chain, duplicates the mono signal to internal L/R, and processes that two-channel dual-mono signal through the VST chain, main output, monitor, IPC, and recording. The processed L/R is sent to the selected output pair. A genuine one-channel device duplicates its single channel without attenuation.
 
 > 채널 모드는 신호 처리 방식입니다. 장치 복원/재연결 실패 시 DirectPipe는 특정 1채널을 강제하지 않고 드라이버 기본 채널로 재시도하므로, 모노 장치와 스테레오 장치가 각각 자기 기본 레이아웃으로 열릴 수 있습니다. / Channel mode is a signal-processing mode. During device restore/reconnect fallback, DirectPipe retries driver default channels instead of forcing a specific single channel, so mono and stereo devices can open with their native layouts.
+
+Mono는 **효과 처리 전 입력**에 적용합니다. 모노 출력 플러그인은 다음 스테레오
+단계와 최종 L/R에 같은 신호를 보내며, 이후 효과가 만든 스테레오는 유지합니다.
+Stereo 모드에서 모노 입력 플러그인은 L을 받습니다. 먼저 L/R을 합치려면 Mono를
+선택하세요. 이는 Analog 1과 2를 독립 소스로 분리하는 기능과는 다릅니다.
+/ Mono applies **before effects**. A mono-output plug-in feeds both channels of
+the next stereo stage or final output, while later stereo effects remain stereo.
+In Stereo mode a mono-input plug-in receives L; select Mono to average L/R first.
+The separate Input capture selector chooses one of those physical channels;
+it does not create simultaneous independent processing chains.
 
 ---
 
@@ -1161,6 +1231,23 @@ Save/load audio, output, and control settings as `.dpbackup` files. VST chain an
 - **Save Settings** → `.dpbackup` 파일로 저장 (설정만, 플랫폼 정보 포함) / Save to `.dpbackup` file (settings only, includes platform info)
 - **Load Settings** → `.dpbackup` 파일에서 복원 (설정만). **같은 OS끼리만 가능** — 다른 OS에서 만든 백업은 차단됨 / Restore from `.dpbackup` file (settings only). **Same OS only** — backups from a different OS are blocked
 
+#### 백업 복원에 실패한 경우 / When backup restore fails
+
+오류창과 로그에는 **실패 단계, 원인, 확인할 항목**이 표시됩니다. 파일 읽기,
+백업 내용/플랫폼 검사, 장치·플러그인 준비, 설정/슬롯 쓰기 중 어느 단계에서
+멈췄는지 확인하세요. 이미 다른 프리셋을 불러오는 중이면 완료 후 재시도합니다.
+이전 상태로의 복구가 완전하지 않은 경우 별도 경고가 표시되므로 현재 설정을
+확인한 뒤 다시 시도하세요. Settings의 **Export Log**로 진단을 저장할 수 있습니다.
+백업 JSON이나 플러그인 상태 원문을 새 진단 메시지에 기록하지 않습니다.
+
+The error dialog and log identify the **failed stage, reason and what to check**:
+file access, backup structure/platform, audio/plug-in preparation, or settings/
+slot writes. Wait for any current preset load to finish before retrying. An
+incomplete rollback is reported separately; inspect current settings before
+retrying. Use **Export Log** in Settings to save diagnostics. These diagnostics
+do not dump backup JSON or serialized plug-in state. Existing legacy backups
+keep the same acceptance rules; nonfatal device warnings remain warnings.
+
 ### 로그 뷰어 / Log Viewer
 
 앱의 모든 이벤트(오디오 엔진, 플러그인, WebSocket, HTTP 등)를 실시간으로 확인합니다.
@@ -1194,6 +1281,10 @@ View all app events (audio engine, plugins, WebSocket, HTTP, etc.) in real-time.
 DirectPipe는 실행 시 백그라운드에서 최신 공개 버전을 확인합니다. 설치 host가 같거나 더 최신이면 조용히 유지하며 downgrade하지 않습니다. / Checks the latest public release in the background on startup; stays quiet when the host is current/ahead and never downgrades.
 
 업데이트 버튼은 **공개 릴리즈**를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로 4.4.0을 실행한 다음 아래 **Settings > Update Receiver...** 절차로 기존 Receiver도 갱신하세요. 본체와 Receiver가 모두 4.4.0이어야 독립 다중 수신을 사용할 수 있습니다. / The updater uses **published releases**. **The 4.3.0 updater replaces only the host**; launch 4.4.0 and then update existing Receivers using **Settings > Update Receiver...** below. Independent reception requires both sides to be 4.4.0.
+
+4.5.0은 본체 종료 대기를 60초로 제한하고 실패 단계·이유·복구 파일을 로그에 기록합니다. 초기 복원과 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며, 시작 미확인 시에는 복구 파일을 보존합니다. 이전 설치본에서 넘어오는 첫 업데이트는 **이전 설치본의 업데이터**가 실행합니다. 멈춤이 발생하면 기존 EXE와 백업을 보존하고 [업데이트 진단·복구 안내](WINDOWS_UPDATE_RECOVERY.md)를 확인하세요. / Version 4.5.0 adds a 60-second host wait and persistent stage/error/recovery diagnostics. Verified previous EXEs are cleaned only after initial restore and window/tray startup confirmation; unconfirmed starts retain recovery files. The first upgrade from an older binary still uses its older updater. Keep existing EXE/backup files if it stops; see the recovery guide.
+
+정상 업데이트에서는 새 프로그램의 초기 설정·플러그인 로딩과 창/트레이 준비가 확인된 뒤 이전 본체 EXE를 정리합니다. **시작 시 트레이로 최소화** 설정이 켜져 있으면 창이 보이지 않아도 트레이 시작을 확인합니다. 시작을 확인하지 못하거나 복원·파일 정리가 실패하면 백업을 유지하고 단계·로그 위치를 안내합니다. 날짜가 붙은 수동 백업과 설정은 자동 정리 대상이 아닙니다. / After verified initial restore and window/tray startup, the updater removes only known previous host executables. Saved tray startup is respected. Failed or unconfirmed startup/cleanup retains recovery files and provides diagnostic details; dated manual backups and settings are preserved.
 
 1. **새 버전 발견** → 하단 credit 라벨에 **"NEW vX.Y.Z"** 주황색 표시 / **New version found** → orange **"NEW vX.Y.Z"** on credit label
 2. **라벨 클릭** → 업데이트 다이얼로그 / **Click label** → update dialog:

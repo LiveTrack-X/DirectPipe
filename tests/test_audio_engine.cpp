@@ -398,6 +398,35 @@ bool pumpMessagesUntil(const std::atomic<bool>& completed,
 }
 #endif
 
+class StereoFromMonoProbe final : public juce::AudioPluginInstance {
+public:
+    StereoFromMonoProbe() { setPlayConfigDetails(2, 2, 48000.0, 128); }
+    void fillInPluginDescription(juce::PluginDescription& desc) const override
+    {
+        desc.name = "StereoFromMonoProbe";
+        desc.pluginFormatName = "Test";
+    }
+    const juce::String getName() const override { return "StereoFromMonoProbe"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        buffer.copyFrom(1, 0, buffer.getReadPointer(0), buffer.getNumSamples(), -1.0f);
+    }
+    bool hasEditor() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+};
+
 } // namespace
 
 class AudioEngineTest : public ::testing::Test {
@@ -410,8 +439,195 @@ protected:
         engine_.reset();
     }
 
+    std::shared_ptr<ManagedFakeDeviceStats> prepareInputCaptureTest(int inputCount = 2)
+    {
+        auto stats = std::make_shared<ManagedFakeDeviceStats>();
+        stats->availableInputChannels = inputCount;
+        auto& manager = engine_->getAudioDeviceManagerForTest();
+        addManagedFakeDeviceType(manager, stats);
+        auto setup = managedDuplexSetup(stats->deviceName);
+        if (inputCount == 1)
+            setup.inputChannels.clearBit(1);
+        EXPECT_TRUE(manager.setAudioDeviceSetup(setup, true).isEmpty());
+        if (auto* device = manager.getCurrentAudioDevice()) {
+            juce::AudioIODeviceCallback& callback = *engine_;
+            callback.audioDeviceAboutToStart(device);
+        }
+        engine_->getSafetyLimiter().setEnabled(false);
+        engine_->setSafetyHeadroomEnabled(false);
+        return stats;
+    }
+
+    void expectCapturedStereo(const float* const* inputs, int inputCount,
+                              const std::vector<float>& expectedLeft,
+                              const std::vector<float>& expectedRight)
+    {
+        std::vector<float> left(expectedLeft.size(), -1.0f);
+        std::vector<float> right(expectedRight.size(), -1.0f);
+        float* outputs[] = {left.data(), right.data()};
+        juce::AudioIODeviceCallbackContext context;
+        std::thread audio([&] {
+            juce::AudioIODeviceCallback& callback = *engine_;
+            callback.audioDeviceIOCallbackWithContext(inputs, inputCount, outputs, 2,
+                static_cast<int>(left.size()), context);
+        });
+        audio.join();
+        for (size_t sample = 0; sample < left.size(); ++sample) {
+            EXPECT_NEAR(left[sample], expectedLeft[sample], 0.000001f);
+            EXPECT_NEAR(right[sample], expectedRight[sample], 0.000001f);
+        }
+    }
+
     std::unique_ptr<AudioEngine> engine_;
 };
+
+TEST_F(AudioEngineTest, SingleInputCaptureDefaultsToLegacyPairBehavior)
+{
+    prepareInputCaptureTest();
+    EXPECT_FALSE(engine_->isMonoInputEnabled());
+    engine_->setChannelMode(1);
+    std::vector<float> left{0.2f, 0.4f};
+    std::vector<float> right{0.6f, 0.8f};
+    const float* inputs[] = {left.data(), right.data()};
+    expectCapturedStereo(inputs, 2, {0.4f, 0.6f}, {0.4f, 0.6f});
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureDuplicatesPackedAnalogTwoAtUnity)
+{
+    prepareInputCaptureTest();
+    engine_->setMonoInputEnabled(true);
+    ASSERT_TRUE(engine_->setActiveInputChannels(1, 1));
+    engine_->setChannelMode(2);
+    std::vector<float> analogTwo{0.2f, 0.4f, 0.6f};
+    const float* inputs[] = {analogTwo.data()};
+    expectCapturedStereo(inputs, 1, analogTwo, analogTwo);
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureDuplicatesSparseAnalogTwoAtUnity)
+{
+    prepareInputCaptureTest();
+    engine_->setMonoInputEnabled(true);
+    ASSERT_TRUE(engine_->setActiveInputChannels(1, 1));
+    std::vector<float> analogTwo{0.3f, 0.5f};
+    const float* inputs[] = {nullptr, analogTwo.data(), nullptr};
+    expectCapturedStereo(inputs, 3, analogTwo, analogTwo);
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureOverridesLegacyFoldDownWithoutAveraging)
+{
+    prepareInputCaptureTest();
+    engine_->setMonoInputEnabled(true);
+    engine_->setChannelMode(1);
+    std::vector<float> first{0.2f, 0.4f};
+    std::vector<float> unrelated{0.8f, 1.0f};
+    const float* inputs[] = {first.data(), unrelated.data()};
+    expectCapturedStereo(inputs, 2, first, first);
+    EXPECT_EQ(engine_->getChannelMode(), 1);
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureTransactionSelectsAnalogTwo)
+{
+    prepareInputCaptureTest();
+    engine_->setChannelMode(1);
+    ASSERT_TRUE(engine_->setInputCaptureMode(true, 0));
+    ASSERT_TRUE(engine_->setInputCaptureMode(true, 1));
+    EXPECT_TRUE(engine_->isMonoInputEnabled());
+    EXPECT_EQ(engine_->getChannelMode(), 1);
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    engine_->getAudioDeviceManagerForTest().getAudioDeviceSetup(setup);
+    EXPECT_EQ(setup.inputChannels.countNumberOfSetBits(), 1);
+    EXPECT_TRUE(setup.inputChannels[1]);
+    EXPECT_EQ(setup.outputChannels.countNumberOfSetBits(), 2);
+}
+
+TEST_F(AudioEngineTest, SingleInputCapturePreservesStereoGeneratedAfterCapture)
+{
+    prepareInputCaptureTest();
+    engine_->setMonoInputEnabled(true);
+    engine_->setChannelMode(1);
+    VSTChain::PreloadedPlugin entry;
+    entry.request.name = "StereoFromMonoProbe";
+    entry.instance = std::make_unique<StereoFromMonoProbe>();
+    std::vector<VSTChain::PreloadedPlugin> entries;
+    entries.push_back(std::move(entry));
+    ASSERT_TRUE(engine_->getVSTChain().replaceChainWithPreloaded(std::move(entries), nullptr));
+    std::vector<float> selected{0.2f, 0.4f};
+    const float* inputs[] = {selected.data()};
+    expectCapturedStereo(inputs, 1, selected, {-0.2f, -0.4f});
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureTransactionReturnsToContainingPair)
+{
+    prepareInputCaptureTest(4);
+    ASSERT_TRUE(engine_->setInputCaptureMode(true, 3));
+    ASSERT_TRUE(engine_->setInputCaptureMode(false, 3));
+    EXPECT_FALSE(engine_->isMonoInputEnabled());
+    EXPECT_EQ(engine_->getChannelMode(), 2);
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    engine_->getAudioDeviceManagerForTest().getAudioDeviceSetup(setup);
+    EXPECT_EQ(setup.inputChannels.countNumberOfSetBits(), 2);
+    EXPECT_TRUE(setup.inputChannels[2]);
+    EXPECT_TRUE(setup.inputChannels[3]);
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureFailurePreservesPreviousModeAndMask)
+{
+    auto stats = prepareInputCaptureTest();
+    engine_->setMonoInputEnabled(true);
+    ASSERT_TRUE(engine_->setActiveInputChannels(1, 1));
+    stats->failInputFirstChannel = 0;
+    EXPECT_FALSE(engine_->setInputCaptureMode(false, 1));
+    EXPECT_TRUE(engine_->isMonoInputEnabled());
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    engine_->getAudioDeviceManagerForTest().getAudioDeviceSetup(setup);
+    EXPECT_EQ(setup.inputChannels.countNumberOfSetBits(), 1);
+    EXPECT_TRUE(setup.inputChannels[1]);
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureEnableFailureKeepsLegacyPair)
+{
+    auto stats = prepareInputCaptureTest();
+    stats->failInputFirstChannel = 1;
+    EXPECT_FALSE(engine_->setInputCaptureMode(true, 1));
+    EXPECT_FALSE(engine_->isMonoInputEnabled());
+    juce::AudioDeviceManager::AudioDeviceSetup setup;
+    engine_->getAudioDeviceManagerForTest().getAudioDeviceSetup(setup);
+    EXPECT_EQ(setup.inputChannels.countNumberOfSetBits(), 2);
+    EXPECT_TRUE(setup.inputChannels[0]);
+    EXPECT_TRUE(setup.inputChannels[1]);
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureRejectsUnpairedOddTailWithoutChangingMode)
+{
+    prepareInputCaptureTest(3);
+    engine_->setMonoInputEnabled(true);
+    ASSERT_TRUE(engine_->setActiveInputChannels(2, 1));
+    const auto result = engine_->setInputCaptureMode(false, 2);
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(result.message.containsIgnoreCase("pair"));
+    EXPECT_TRUE(engine_->isMonoInputEnabled());
+    EXPECT_EQ(engine_->getActiveInputChannelOffset(), 2);
+}
+
+TEST_F(AudioEngineTest, SingleInputCaptureAllowsNativeOneChannelLegacyMode)
+{
+    prepareInputCaptureTest(1);
+    engine_->setMonoInputEnabled(true);
+    ASSERT_TRUE(engine_->setInputCaptureMode(false, 0));
+    EXPECT_FALSE(engine_->isMonoInputEnabled());
+    EXPECT_EQ(engine_->getActiveInputChannelOffset(), 0);
+}
+
+TEST_F(AudioEngineTest, SingleInputCapturePolicySurvivesDeviceParameterChanges)
+{
+    prepareInputCaptureTest();
+    engine_->setMonoInputEnabled(true);
+    ASSERT_TRUE(engine_->setActiveInputChannels(1, 1));
+    ASSERT_TRUE(engine_->setBufferSize(256));
+    ASSERT_TRUE(engine_->setSampleRate(44100.0));
+    EXPECT_TRUE(engine_->isMonoInputEnabled());
+    EXPECT_EQ(engine_->getActiveInputChannelOffset(), 1);
+}
 
 TEST(LatencyMonitorTest, UsesReportedDeviceLatencyAndFallsBackPerDirection)
 {

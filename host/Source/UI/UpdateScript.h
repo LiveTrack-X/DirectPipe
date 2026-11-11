@@ -25,6 +25,14 @@ struct WindowsUpdateInstallSpec {
     juce::String updatedFlagPath;
     bool relaunchHostAfterUpdate = false;
     juce::String expectedPackageSha256;
+    int processWaitTimeoutMs = 60000;
+    juce::String logFilePath;
+    juce::String previousBackupExePath;
+    bool requireStartupAck = false;
+    juce::String startupAttemptId;
+    juce::String startupAckFilePath;
+    int startupAckTimeoutMs = 60000;
+    bool showInteractiveErrors = true;
 };
 
 /** Strictly parse vMAJOR.MINOR.PATCH/MAJOR.MINOR.PATCH and return a safe canonical value. */
@@ -33,13 +41,39 @@ bool parseStrictReleaseVersion(const juce::String& value,
                                juce::String& canonicalVersion);
 
 /** Wait only for the DirectPipe process that launched the updater. */
-juce::String buildWindowsUpdateWaitScript(unsigned long processId);
+juce::String buildWindowsUpdateWaitScript(unsigned long processId,
+                                         int timeoutMs = 60000,
+                                         const juce::String& resultFilePath = {},
+                                         const juce::String& logFilePath = {});
 
 /**
  * Builds the legacy host-only Windows batch install path (no Receiver targets).
  * Returns an empty string when expectedVersion is not strict MAJOR.MINOR.PATCH.
  */
 juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spec);
+
+/** Complete host-only BAT operation. Fixture callers leave relaunch disabled. */
+juce::String buildWindowsHostUpdateScript(const WindowsUpdateInstallSpec& spec);
+
+/** Literal-safe arguments for the system PowerShell launcher of a host BAT. */
+juce::String buildWindowsHostUpdateLauncherArguments(const juce::String& batchFilePath);
+
+/** Per-install receipt path. Windows executable identity ignores path case. */
+juce::File hostUpdateResultFileForInstall(const juce::File& userAppDataDirectory,
+                                         const juce::String& executablePath);
+
+struct HostUpdateStartupDecision {
+    bool matchesInstall = false;
+    bool stale = false;
+    bool retainRecoveryFiles = false;
+    bool showAttention = false;
+};
+
+/** Classify startup diagnostics without touching files or displaying a dialog.
+    Acknowledging attention suppresses repeat dialogs while preserving recovery. */
+HostUpdateStartupDecision classifyHostUpdateStartupReceipt(
+    const juce::var& receipt, const juce::String& currentExePath,
+    const juce::String& runningVersion);
 
 /** Standalone Windows PowerShell transaction for verified, strictly older Receiver
     targets and an optional host. Requires a hashed ZIP containing the host plus

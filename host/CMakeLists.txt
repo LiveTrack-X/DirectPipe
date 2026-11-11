@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "4.4.0"
+    VERSION "4.5.0"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -83,6 +83,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/UpdateChecker.cpp
     Source/UI/UpdateScript.h
     Source/UI/UpdateScript.cpp
+    Source/UI/UpdateStartupSupport.h
+    Source/UI/UpdateStartupSupport.cpp
     Source/UI/ReceiverUpdateSupport.h
     Source/UI/ReceiverUpdateSupport.cpp
     Source/UI/FilterEditPanel.h
@@ -119,6 +121,9 @@ target_sources(DirectPipe PRIVATE
     Source/Platform/PlatformAudio.h
     Source/Platform/EndpointChangeWatcher.h
     Source/Platform/EndpointChangeWatcher.cpp
+    Source/Platform/WindowsMicLevelKeeper.h
+    Source/Platform/WindowsMicLevelKeeper.cpp
+    Source/Platform/WindowsMicLevelBackend_windows.cpp
     Source/Platform/AutoStart.h
     Source/Platform/ProcessPriority.h
     Source/Platform/MultiInstanceLock.h

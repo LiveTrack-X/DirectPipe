@@ -120,7 +120,7 @@ else
   # README.md badge/link (optional -- may not have version badge)
   if [[ -f README.md ]]; then
     if grep -Eq "(version-|latest-v|v)[0-9]+\.[0-9]+\.[0-9]+" README.md 2>/dev/null; then
-      if grep -Eq "(latest|candidate|release)-v${CANONICAL}-" README.md 2>/dev/null; then
+      if grep -Eq "(version|latest|candidate|release)-v${CANONICAL}-" README.md 2>/dev/null; then
         pass "README.md badge"
       else
         fail "README.md badge"; VER_FAIL=$((VER_FAIL+1))
@@ -215,8 +215,8 @@ if $API_ONLY; then
     info "DirectPipe detected on port 8766"
     if ! verify_api_candidate_version "$CANONICAL"; then
       add_result "API Tests|FAIL:wrong candidate version"
-    elif command -v node &> /dev/null && [[ -f test_api.js ]]; then
-      if node test_api.js; then
+    elif command -v node &> /dev/null && [[ -f tools/test_api.js ]]; then
+      if node tools/test_api.js; then
         pass "API tests completed"
         add_result "API Tests|PASS"
       else
@@ -224,7 +224,7 @@ if $API_ONLY; then
         add_result "API Tests|FAIL"
       fi
     else
-      fail "node or test_api.js not found"
+      fail "node or tools/test_api.js not found"
       add_result "API Tests|FAIL"
     fi
   else
@@ -419,8 +419,8 @@ else
     info "DirectPipe detected on port 8766"
     if ! verify_api_candidate_version "$CANONICAL"; then
       add_result "API Tests|FAIL:wrong candidate version"
-    elif command -v node &> /dev/null && [[ -f test_api.js ]]; then
-      if node test_api.js; then
+    elif command -v node &> /dev/null && [[ -f tools/test_api.js ]]; then
+      if node tools/test_api.js; then
         pass "API tests"
         add_result "API Tests|PASS"
       else
@@ -428,7 +428,7 @@ else
         add_result "API Tests|FAIL"
       fi
     else
-      fail "node or test_api.js not found"
+      fail "node or tools/test_api.js not found"
       add_result "API Tests|FAIL"
     fi
   else

@@ -105,18 +105,24 @@ bool channelSelectionReady(bool configured,
                            bool useDefaultChannels,
                            const juce::BigInteger& requested,
                            const juce::BigInteger& active,
-                           int availableChannels)
+                           int availableChannels,
+                           bool allowSingleChannel = false)
 {
     if (!configured)
         return true;
 
     const int activeCount = active.countNumberOfSetBits();
-    const int requiredCount = availableChannels == 1 ? 1 : 2;
+    const int requiredCount = availableChannels == 1 || allowSingleChannel ? 1 : 2;
     if (useDefaultChannels)
         return activeCount >= requiredCount;
 
     if (!explicitMaskIsActive(requested, active))
         return false;
+
+    // Only explicit opt-in input capture relaxes the legacy pair requirement.
+    // Output readiness and old saved input modes retain the existing policy.
+    if (allowSingleChannel)
+        return requested.countNumberOfSetBits() >= 1;
 
     if (availableChannels == 1)
         return requested.countNumberOfSetBits() == 1;
@@ -1072,7 +1078,8 @@ bool AudioEngine::hasUsableActiveChannels(const juce::AudioDeviceManager::AudioD
                                                   setup.useDefaultInputChannels,
                                                   setup.inputChannels,
                                                   device->getActiveInputChannels(),
-                                                  device->getInputChannelNames().size());
+                                                  device->getInputChannelNames().size(),
+                                                  monoInputEnabled_.load(std::memory_order_relaxed));
     const bool outputReady = channelSelectionReady(outputConfigured,
                                                    setup.useDefaultOutputChannels,
                                                    setup.outputChannels,
@@ -2864,6 +2871,62 @@ juce::StringArray AudioEngine::getOutputChannelNames() const
     return {};
 }
 
+ActionResult AudioEngine::setInputCaptureMode(bool monoInputEnabled, int firstPhysicalChannel)
+{
+    const int availableInputs = getInputChannelNames().size();
+    if (firstPhysicalChannel < 0 || firstPhysicalChannel >= availableInputs)
+        return ActionResult::fail("Input channel is unavailable. Reconnect the input device and select an available channel.");
+
+    const int firstChannel = monoInputEnabled ? firstPhysicalChannel : (firstPhysicalChannel / 2) * 2;
+    const int channelCount = monoInputEnabled || availableInputs == 1 ? 1 : 2;
+    if (firstChannel + channelCount > availableInputs)
+        return ActionResult::fail("The selected input has no complete stereo pair. Keep mono capture or select a channel with a partner.");
+
+    juce::AudioDeviceManager::AudioDeviceSetup previousSetup;
+    deviceManager_.getAudioDeviceSetup(previousSetup);
+    const auto previousRecoveryState = captureDeviceRecoveryState();
+    const bool previousOutputNone = outputNone_.load(std::memory_order_relaxed);
+    const bool previousMonoInput = isMonoInputEnabled();
+    auto setup = previousSetup;
+    setup.useDefaultInputChannels = false;
+    setup.inputChannels.clear();
+    setup.inputChannels.setRange(firstChannel, channelCount, true);
+
+    // Keep an old mono mask valid until the target pair has opened. Enabling
+    // also needs mono readiness during the reopen; exact mask validation below
+    // still requires the requested one channel or complete pair.
+    setMonoInputEnabled(previousMonoInput || monoInputEnabled);
+    juce::String error;
+    {
+        AtomicGuard intentionalGuard(intentionalChange_);
+        error = deviceManager_.setAudioDeviceSetup(setup, true);
+    }
+    juce::AudioDeviceManager::AudioDeviceSetup appliedSetup;
+    deviceManager_.getAudioDeviceSetup(appliedSetup);
+    auto* device = deviceManager_.getCurrentAudioDevice();
+    const bool ready = error.isEmpty() && device
+        && device->getCurrentSampleRate() > 0.0
+        && device->getCurrentBufferSizeSamples() > 0
+        && hasUsableActiveChannels(appliedSetup, device, previousOutputNone)
+        && device->getActiveInputChannels() == setup.inputChannels;
+    if (!ready) {
+        setMonoInputEnabled(previousMonoInput);
+        if (error.isEmpty())
+            error = "the driver did not activate the requested input channels";
+        auto message = "Input capture change failed: " + error;
+        const auto restored = restorePreviousSetupAfterFailedChange(
+            previousSetup, previousOutputNone, previousRecoveryState, message,
+            "input-capture change");
+        if (restored)
+            Log::error("AUDIO", message);
+        return ActionResult::fail(message);
+    }
+    setMonoInputEnabled(monoInputEnabled);
+    Log::info("AUDIO", "Input capture: " + juce::String(monoInputEnabled ? "mono" : "pair")
+        + " first=" + juce::String(firstChannel) + " channels=" + juce::String(channelCount));
+    return ActionResult::ok();
+}
+
 ActionResult AudioEngine::setActiveInputChannels(int firstChannel, int numChannels)
 {
     if (firstChannel < 0 || numChannels <= 0)
@@ -3019,6 +3082,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     latencyMonitor_.markCallbackStart();
 
     const int chMode = channelMode_.load(std::memory_order_relaxed);
+    const bool monoInput = monoInputEnabled_.load(std::memory_order_relaxed);
     const float gain = inputGain_.load(std::memory_order_relaxed);
     const bool muted = muted_.load(std::memory_order_relaxed);
     const bool outputMuted = isOutputMuted();
@@ -3068,7 +3132,19 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // Input device lost use silence instead of fallback device input.
     // Work buffer already cleared above, so just skip the copy.
     if (!inputDeviceLost_.load(std::memory_order_relaxed)) {
-        if (chMode == 1) {
+        if (monoInput) {
+            // JUCE may pack active inputs or retain null physical positions.
+            // The active mask is the selection authority; copy its first valid
+            // callback channel at unity, never fold it with another input.
+            for (int ch = 0; ch < numInputChannels; ++ch) {
+                if (inputChannelData[ch] != nullptr) {
+                    buffer.copyFrom(0, 0, inputChannelData[ch], numSamples);
+                    break;
+                }
+            }
+            if (buffer.getNumChannels() > 1)
+                buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+        } else if (chMode == 1) {
             // Mono mode: average only the first two enabled device inputs into
             // internal channel 0 before the VST chain. A genuine one-channel
             // device is copied directly. Limiting the fold-down to the selected

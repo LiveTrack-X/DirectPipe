@@ -31,6 +31,8 @@
 
 namespace directpipe {
 
+class WindowsMicLevelKeeper;
+
 /**
  * @brief Unified audio settings panel.
  *
@@ -43,7 +45,8 @@ namespace directpipe {
 class AudioSettings : public juce::Component,
                       public juce::ChangeListener {
 public:
-    explicit AudioSettings(AudioEngine& engine);
+    explicit AudioSettings(AudioEngine& engine,
+                           WindowsMicLevelKeeper* micLevelKeeper = nullptr);
     ~AudioSettings() override;
 
     void paint(juce::Graphics& g) override;
@@ -75,7 +78,9 @@ private:
     // Callbacks
     void onDriverTypeChanged();
     void onInputDeviceChanged();
+    void onWindowsMicLevelChanged();
     void onOutputDeviceChanged();
+    void onInputCaptureModeChanged();
     void onInputChannelChanged();
     void onOutputChannelChanged();
     void onSampleRateChanged();
@@ -90,11 +95,15 @@ private:
     void rebuildBufferSizeList();
     void updateLatencyDisplay();
     void updateChannelModeDescription();
+    void updateWindowsMicInputContext();
+    void refreshWindowsMicLevel();
+    void suspendWindowsMicInput();
 
     bool isAsioMode() const;
 
     // ─── Data ───
     AudioEngine& engine_;
+    WindowsMicLevelKeeper* micLevelKeeper_ = nullptr; // Owned by MainComponent, outlives this panel.
 
     // Section title
     juce::Label titleLabel_{"", "Audio Settings"};
@@ -107,11 +116,17 @@ private:
     juce::Label inputLabel_{"", "Input:"};
     juce::ComboBox inputCombo_;
     int inputRecoveryPlaceholderId_ = 0;
+    juce::ToggleButton windowsMicLevelButton_{"Keep Windows mic level at 100"};
+    juce::Label windowsMicLevelStatusLabel_;
     juce::Label outputLabel_{"", "Output:"};
     juce::ComboBox outputCombo_;
     int outputRecoveryPlaceholderId_ = 0;
 
-    // ASIO channel selection (visible only in ASIO mode)
+    // Capture mode is independent of the legacy pre-effects Channel Mode.
+    juce::Label inputCaptureLabel_{"", "Input capture:"};
+    juce::ComboBox inputCaptureCombo_;
+
+    // ASIO keeps pair selection; other drivers expose input selection in mono capture.
     juce::Label inputChLabel_{"", "Input Ch:"};
     juce::ComboBox inputChCombo_;
     juce::Label outputChLabel_{"", "Output Ch:"};

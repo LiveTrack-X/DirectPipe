@@ -4,6 +4,46 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.5.0] - 2026-11-12
+
+Exact-version release checks and packaging are tracked in the
+[4.5.0 verification record](docs/RELEASE_4_5_0.md).
+
+### Added
+
+- Opt-in single-channel input capture: choose Analog 1 or Analog 2 (or the
+  driver's equivalent channel name), and feed it at unity to internal L/R before
+  effects. Existing pair capture remains the default; legacy Mono/Stereo input
+  mixing and saved presets keep their meaning. Stereo effects remain stereo.
+- Optional **Keep Windows mic level at 100** control, off by default and bound
+  to the exact selected WASAPI shared capture endpoint. It corrects changes to
+  that microphone's Windows level for every app, including manual slider
+  changes. ASIO/unsupported inputs are disabled with a reason; mute, boost and
+  DirectPipe gain are untouched. Turning it off stops corrections without
+  restoring an old level. Existing settings remain off; per-device choices
+  round-trip in settings/full backups and survive chain-only slot changes.
+
+### Fixed
+
+- Route mono VST outputs to both channels of the following stereo stage and
+  final output, including GVST GForm VST2. Preserve stereo effects, bypass,
+  existing input Mono/Stereo settings and saved presets. Route main buses only
+  and explicitly finish graph rebuilds when a processor has fewer channels.
+- Clarify that Mono input mixing happens before effects.
+- Explain settings/full-backup restore failures with the failed stage, reason
+  and next checks in dialogs and logs, including incomplete rollback warnings.
+  Preserve accepted legacy backup formats and record async plug-in load errors.
+- Harden Windows host updates with a bounded parent-process wait, retained
+  previous backups, verified rollback and persistent stage/error logs. Prepare
+  diagnostics in writable TEMP storage before requesting installation access.
+  Confirm the new app's initial restore and window/tray startup before removing
+  verified previous host EXEs; retain recovery files on unconfirmed startup.
+  See [update diagnosis and recovery](docs/WINDOWS_UPDATE_RECOVERY.md) for the
+  older-updater comparison and the limits of the historical incident evidence.
+- Update Stream Deck dependencies and build tooling, including sharp 0.35.5;
+  preserve the Node 20 runtime, Stream Deck 6.9 minimum, action identities and
+  artwork.
+
 ## [4.4.0] - 2026-09-20
 
 ### Stream Deck package correction - 2026-09-24

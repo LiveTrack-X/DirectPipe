@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/release-v4.4.0-blue?style=flat-square" alt="DirectPipe 4.4.0">
+  <img src="https://img.shields.io/badge/version-v4.5.0-blue?style=flat-square" alt="DirectPipe 4.5.0">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -22,13 +22,17 @@
 
 <h3 align="center">📖 <a href="docs/QUICKSTART.md">Quick Start</a> · <a href="docs/USER_GUIDE.md">User Guide</a> · <a href="#faq">FAQ</a> · 💬 <a href="https://litt.ly/livetrack">Contact</a></h3>
 
+> **4.5.0** — Adds opt-in single-channel capture and Windows mic-level hold at 100, fixes mono VST routing (including GForm), and improves backup/update recovery. Existing pair capture and saved settings stay compatible. [Verification record / 검증 기록](docs/RELEASE_4_5_0.md). / 기존 입력 쌍과 설정을 유지하며 Analog 1·2 등의 개별 입력 선택, 선택형 Windows 마이크 레벨 100 유지, 모노 VST 출력과 백업·업데이트 복구를 개선합니다.
+>
+> **Windows mic-level hold is off by default.** It affects the exact selected supported WASAPI shared input in all apps; manual Windows slider changes are corrected while enabled. ASIO is unsupported; mute and boost are unchanged. [Usage and limits](docs/USER_GUIDE.md#windows-mic-level-hold). / **Windows 마이크 레벨 유지는 기본 꺼짐**입니다. 정확히 식별한 선택 WASAPI 공유 입력에만 적용하며 다른 앱과 수동 Windows 볼륨 변경에도 영향을 줍니다. ASIO는 지원하지 않고 음소거·부스트는 바꾸지 않습니다. [사용법과 제한](docs/USER_GUIDE.md#windows-mic-level-hold).
+
 > **4.4.0** — Up to eight independent Receiver connections, plus one separate legacy Receiver, with existing A–E/Auto slots and OBS settings preserved. / A–E/Auto 슬롯과 OBS 설정을 유지하며 최대 8개의 독립 Receiver와 구형 Receiver 1개를 별도로 지원합니다. [Scope and validation / 변경 범위와 검증](docs/MULTI_RECEIVER_4_4_0.md).
 >
 > **Upgrading from 4.3.0 / 4.3.0에서 갱신할 때:** Its updater replaces only the host. After launching 4.4.0, use **Settings > Update Receiver...** to update existing Receiver installations too. / 4.3.0 업데이터는 본체만 교체합니다. 4.4.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신해야 독립 다중 수신을 사용할 수 있습니다.
 
 ## 다운로드 / Download
 
-- **Latest stable (최신 안정판)**: [v4.4.0 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental.
+- **Latest release (최신 공개 버전)**: [다운로드 / Download](https://github.com/LiveTrack-X/DirectPipe/releases/latest) — Windows stable, macOS beta, Linux experimental.
 
 
 <p align="center">

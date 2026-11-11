@@ -146,6 +146,13 @@ public:
     /** @brief Set which output channels are active (stereo pair starting at firstChannel). */
     [[nodiscard]] ActionResult setActiveOutputChannels(int firstChannel, int numChannels = 2);
 
+    /** Opt-in physical mono capture, separate from the legacy input fold-down.
+     *  The flag setter restores persistence policy only; UI changes must use
+     *  setInputCaptureMode() to update the active input mask transactionally. */
+    void setMonoInputEnabled(bool enabled) { monoInputEnabled_.store(enabled, std::memory_order_relaxed); }
+    bool isMonoInputEnabled() const { return monoInputEnabled_.load(std::memory_order_relaxed); }
+    [[nodiscard]] ActionResult setInputCaptureMode(bool monoInputEnabled, int firstPhysicalChannel);
+
     /** @brief Get the first active input channel index. */
     int getActiveInputChannelOffset() const;
     /** @brief Get the first active output channel index. */
@@ -434,6 +441,7 @@ private:
     std::atomic<float> safetyHeadroomdB_{-0.3f};        // [Message write, RT read]
     std::atomic<float> safetyHeadroomGain_{1.0f};       // [Message write, RT read] cached linear gain
     std::atomic<int> channelMode_{2};                   // [Message write, RT read]
+    std::atomic<bool> monoInputEnabled_{false};         // [Message write, RT read] Opt-in single active input to internal L/R
     std::atomic<bool> muted_{false};                    // [Message write, RT read]
     std::atomic<bool> inputMuted_{false};               // [Any thread write, RT read] Independent input mute: silences input, chain keeps running
     std::atomic<bool> outputMuted_{false};              // [Message write, RT read] Manual/settings mute intent only

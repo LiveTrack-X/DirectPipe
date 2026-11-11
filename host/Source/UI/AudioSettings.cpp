@@ -23,13 +23,15 @@
 
 #include "AudioSettings.h"
 #include "AudioSettingsPolicy.h"
+#include "../Platform/WindowsMicLevelKeeper.h"
 
 namespace directpipe {
 
 // ─── Construction / Destruction ─────────────────────────────────────────────
 
-AudioSettings::AudioSettings(AudioEngine& engine)
-    : engine_(engine)
+AudioSettings::AudioSettings(AudioEngine& engine,
+                             WindowsMicLevelKeeper* micLevelKeeper)
+    : engine_(engine), micLevelKeeper_(micLevelKeeper)
 {
     // ── Title ──
     titleLabel_.setFont(juce::Font(16.0f, juce::Font::bold));
@@ -68,18 +70,51 @@ AudioSettings::AudioSettings(AudioEngine& engine)
     styleCombo(inputCombo_);
     inputCombo_.onChange = [this] { onInputDeviceChanged(); };
 
+    windowsMicLevelButton_.setComponentID("windowsMicLevel100");
+    windowsMicLevelButton_.setName("Keep Windows mic level at 100");
+    windowsMicLevelButton_.setColour(juce::ToggleButton::textColourId, juce::Colour(kTextColour));
+    windowsMicLevelButton_.setColour(juce::ToggleButton::tickColourId, juce::Colour(kAccentColour));
+    windowsMicLevelButton_.setTooltip(
+        "Keeps the selected microphone's Windows input level at 100 for every app. "
+        "Manual Windows slider changes are corrected while enabled. "
+        "100 is the driver maximum, not guaranteed 0 dB. Mute and boost are unchanged.");
+    windowsMicLevelButton_.onClick = [this] { onWindowsMicLevelChanged(); };
+    addAndMakeVisible(windowsMicLevelButton_);
+    windowsMicLevelStatusLabel_.setComponentID("windowsMicLevelStatus");
+    windowsMicLevelStatusLabel_.setFont(juce::Font(11.0f));
+    windowsMicLevelStatusLabel_.setMinimumHorizontalScale(1.0f);
+    windowsMicLevelStatusLabel_.setColour(juce::Label::textColourId, juce::Colour(kDimTextColour));
+    addAndMakeVisible(windowsMicLevelStatusLabel_);
+
     // ── Output device ──
     styleLabel(outputLabel_);
     styleCombo(outputCombo_);
     outputCombo_.onChange = [this] { onOutputDeviceChanged(); };
 
-    // ── ASIO channel selection ──
+    // Capture selects hardware inputs; legacy Channel Mode still controls
+    // pre-effects fold-down and keeps its saved value when capture changes.
+    styleLabel(inputCaptureLabel_);
+    styleCombo(inputCaptureCombo_);
+    inputCaptureCombo_.setComponentID("inputCaptureMode");
+    inputCaptureCombo_.setName("Input capture");
+    inputCaptureCombo_.addItem("Stereo pair (existing)", 1);
+    inputCaptureCombo_.addItem("Mono (single channel)", 2);
+    inputCaptureCombo_.setTooltip(
+        "Stereo pair keeps the existing input routing. Mono receives one selected "
+        "hardware input and copies it to L/R before effects. Channel Mode remains separate.");
+    inputCaptureCombo_.onChange = [this] { onInputCaptureModeChanged(); };
+
+    // ── Hardware channel selection ──
     styleLabel(inputChLabel_);
     styleCombo(inputChCombo_);
+    inputChCombo_.setComponentID("inputChannel");
+    inputChCombo_.setName("Input channel");
+    inputChCombo_.setTextWhenNothingSelected("No input channels available");
     inputChCombo_.onChange = [this] { onInputChannelChanged(); };
 
     styleLabel(outputChLabel_);
     styleCombo(outputChCombo_);
+    outputChCombo_.setComponentID("outputChannel");
     outputChCombo_.onChange = [this] { onOutputChannelChanged(); };
 
     // ── Sample rate ──
@@ -145,6 +180,8 @@ AudioSettings::AudioSettings(AudioEngine& engine)
 
     // Listen for device changes
     engine_.getDeviceManager().addChangeListener(this);
+    if (micLevelKeeper_)
+        micLevelKeeper_->addChangeListener(this);
 
     // Refresh device list when combos are clicked (scan before popup opens)
     inputCombo_.addMouseListener(this, true);
@@ -156,6 +193,8 @@ AudioSettings::AudioSettings(AudioEngine& engine)
 
 AudioSettings::~AudioSettings()
 {
+    if (micLevelKeeper_)
+        micLevelKeeper_->removeChangeListener(this);
     inputCombo_.removeMouseListener(this);
     outputCombo_.removeMouseListener(this);
     engine_.getDeviceManager().removeChangeListener(this);
@@ -199,34 +238,44 @@ void AudioSettings::resized()
                           bounds.getWidth() - labelW - gap, rowH);
     y += rowH + gap;
 
+    windowsMicLevelButton_.setBounds(bounds.getX(), y, bounds.getWidth(), rowH);
+    y += rowH;
+    windowsMicLevelStatusLabel_.setBounds(bounds.getX() + 4, y,
+                                         bounds.getWidth() - 4, 30);
+    y += 30 + gap;
+
     // Output device (always visible)
     outputLabel_.setBounds(bounds.getX(), y, labelW, rowH);
     outputCombo_.setBounds(bounds.getX() + labelW + gap, y,
                            bounds.getWidth() - labelW - gap, rowH);
     y += rowH + gap;
 
-    // ASIO channel selection (only visible in ASIO mode)
+    // Capture mode stays visible even while the device is disconnected.
+    inputCaptureLabel_.setBounds(bounds.getX(), y, labelW, rowH);
+    inputCaptureCombo_.setBounds(bounds.getX() + labelW + gap, y,
+                                 bounds.getWidth() - labelW - gap, rowH);
+    y += rowH + gap;
+
+    // Non-ASIO input selection is exposed only after opting into mono capture.
     bool asio = isAsioMode();
-    if (asio) {
+    const bool showInputChannels = asio || engine_.isMonoInputEnabled();
+    inputChLabel_.setVisible(showInputChannels);
+    inputChCombo_.setVisible(showInputChannels);
+    if (showInputChannels) {
         inputChLabel_.setBounds(bounds.getX(), y, labelW, rowH);
         inputChCombo_.setBounds(bounds.getX() + labelW + gap, y,
                                 bounds.getWidth() - labelW - gap, rowH);
         y += rowH + gap;
+    }
 
+    // Output routing retains the existing ASIO-only pair selector.
+    outputChLabel_.setVisible(asio);
+    outputChCombo_.setVisible(asio);
+    if (asio) {
         outputChLabel_.setBounds(bounds.getX(), y, labelW, rowH);
         outputChCombo_.setBounds(bounds.getX() + labelW + gap, y,
                                  bounds.getWidth() - labelW - gap, rowH);
         y += rowH + gap;
-
-        inputChLabel_.setVisible(true);
-        inputChCombo_.setVisible(true);
-        outputChLabel_.setVisible(true);
-        outputChCombo_.setVisible(true);
-    } else {
-        inputChLabel_.setVisible(false);
-        inputChCombo_.setVisible(false);
-        outputChLabel_.setVisible(false);
-        outputChCombo_.setVisible(false);
     }
 
     // Sample Rate
@@ -305,12 +354,12 @@ void AudioSettings::refreshFromEngine()
     outputVolumeSlider_.setValue(
         static_cast<double>(engine_.getOutputRouter().getVolume(OutputRouter::Output::Main)) * 100.0,
         juce::dontSendNotification);
+    updateWindowsMicInputContext();
+    refreshWindowsMicLevel();
 
     // Update ASIO-specific visibility
     bool asio = isAsioMode();
     asioControlBtn_.setVisible(asio);
-    inputChLabel_.setVisible(asio);
-    inputChCombo_.setVisible(asio);
     outputChLabel_.setVisible(asio);
     outputChCombo_.setVisible(asio);
     resized();
@@ -318,13 +367,21 @@ void AudioSettings::refreshFromEngine()
 
 // ─── ChangeListener ─────────────────────────────────────────────────────────
 
-void AudioSettings::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
+void AudioSettings::changeListenerCallback(juce::ChangeBroadcaster* source)
 {
+    if (source == micLevelKeeper_) {
+        refreshWindowsMicLevel();
+        return;
+    }
     // Device manager changed — rebuild all lists (handles device plug/unplug)
     rebuildDeviceLists();
     rebuildSampleRateList();
     rebuildBufferSizeList();
+    updateChannelModeDescription();
     updateLatencyDisplay();
+    updateWindowsMicInputContext();
+    refreshWindowsMicLevel();
+    resized();
 
     // Sync output volume (may have changed via external control)
     double actualOutVol = static_cast<double>(engine_.getOutputRouter().getVolume(OutputRouter::Output::Main)) * 100.0;
@@ -353,6 +410,7 @@ void AudioSettings::onDriverTypeChanged()
     int id = driverCombo_.getSelectedId();
     auto types = engine_.getAvailableDeviceTypes();
     if (id >= 1 && id <= types.size()) {
+        suspendWindowsMicInput();
         auto result = engine_.setAudioDeviceType(types[id - 1]);
 
         // If switch failed, sync combo to actual current driver type
@@ -373,10 +431,10 @@ void AudioSettings::onDriverTypeChanged()
 
         bool asio = isAsioMode();
         asioControlBtn_.setVisible(asio);
-        inputChLabel_.setVisible(asio);
-        inputChCombo_.setVisible(asio);
         outputChLabel_.setVisible(asio);
         outputChCombo_.setVisible(asio);
+        updateWindowsMicInputContext();
+        refreshWindowsMicLevel();
         resized();
 
         if (onSettingsChanged) onSettingsChanged();
@@ -391,6 +449,7 @@ void AudioSettings::onInputDeviceChanged()
             inputCombo_.getSelectedId(), inputRecoveryPlaceholderId_))
         return;
 
+    suspendWindowsMicInput();
     if (isAsioMode()) {
         auto r = engine_.setAsioDevice(selectedText);
         if (!r) {
@@ -415,9 +474,7 @@ void AudioSettings::onInputDeviceChanged()
         }
     }
 
-    rebuildSampleRateList();
-    rebuildBufferSizeList();
-    updateLatencyDisplay();
+    refreshFromEngine();
 
     if (onSettingsChanged) onSettingsChanged();
 }
@@ -438,6 +495,7 @@ void AudioSettings::onOutputDeviceChanged()
     }
 
     if (isAsioMode()) {
+        suspendWindowsMicInput();
         auto r = engine_.setAsioDevice(selectedText);
         if (!r) {
             if (onError) onError(r.message);
@@ -464,10 +522,26 @@ void AudioSettings::onOutputDeviceChanged()
     if (engine_.isOutputNone())
         engine_.setOutputNone(false);
 
-    rebuildSampleRateList();
-    rebuildBufferSizeList();
-    updateLatencyDisplay();
+    refreshFromEngine();
 
+    if (onSettingsChanged) onSettingsChanged();
+}
+
+void AudioSettings::onInputCaptureModeChanged()
+{
+    const int selectedMode = inputCaptureCombo_.getSelectedId();
+    if (selectedMode != 1 && selectedMode != 2)
+        return;
+
+    const auto result = engine_.setInputCaptureMode(
+        selectedMode == 2, engine_.getActiveInputChannelOffset());
+    if (!result) {
+        if (onError) onError(result.message);
+        refreshFromEngine();
+        return;
+    }
+
+    refreshFromEngine();
     if (onSettingsChanged) onSettingsChanged();
 }
 
@@ -476,19 +550,23 @@ void AudioSettings::onInputChannelChanged()
     int id = inputChCombo_.getSelectedId();
     if (id < 1) return;
 
-    int firstChannel = (id - 1) * 2;  // pairs: 0-1, 2-3, 4-5, ...
+    const bool monoInput = engine_.isMonoInputEnabled();
+    int firstChannel = (id - 1) * (monoInput ? 1 : 2);
     int totalChannels = engine_.getInputChannelNames().size();
-    int numCh = audio_settings_detail::channelCountForSelectedPair(
-        firstChannel, totalChannels);
+    int numCh = monoInput
+        ? (firstChannel < totalChannels ? 1 : 0)
+        : audio_settings_detail::channelCountForSelectedPair(
+            firstChannel, totalChannels);
     if (numCh <= 0)
         return;
-    auto r = engine_.setActiveInputChannels(firstChannel, numCh);
+    auto r = engine_.setInputCaptureMode(monoInput, firstChannel);
     if (!r) {
         if (onError) onError(r.message);
-        rebuildChannelLists();
+        refreshFromEngine();
         return;
     }
 
+    refreshFromEngine();
     if (onSettingsChanged) onSettingsChanged();
 }
 
@@ -570,6 +648,59 @@ void AudioSettings::onOutputVolumeChanged()
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+void AudioSettings::updateWindowsMicInputContext()
+{
+    if (!micLevelKeeper_)
+        return;
+    const auto setup = engine_.getDeviceManager().getAudioDeviceSetup();
+    auto* device = engine_.getDeviceManager().getCurrentAudioDevice();
+    const bool active = device && device->isPlaying()
+        && !engine_.isInputDeviceLost()
+        && !device->getActiveInputChannels().isZero();
+    micLevelKeeper_->updateInputContext({ engine_.getCurrentDeviceType(),
+                                         setup.inputDeviceName, active,
+                                         active ? device->getWindowsInputEndpointId() : juce::String{} });
+}
+
+void AudioSettings::suspendWindowsMicInput()
+{
+    if (micLevelKeeper_)
+        micLevelKeeper_->updateInputContext({});
+}
+
+void AudioSettings::refreshWindowsMicLevel()
+{
+    const auto status = micLevelKeeper_ ? micLevelKeeper_->getStatus()
+        : WindowsMicLevelKeeper::Status{};
+    windowsMicLevelButton_.setToggleState(status.enabled, juce::dontSendNotification);
+    windowsMicLevelButton_.setEnabled(micLevelKeeper_ && (status.canEnable || status.enabled));
+    const auto detail = micLevelKeeper_ ? status.message
+        : juce::String("Windows microphone level control is unavailable.");
+    const auto message = status.canEnable || status.enabled
+        ? "Applies to this mic in all apps. " + detail : detail;
+    windowsMicLevelStatusLabel_.setText(message.substring(0, 240), juce::dontSendNotification);
+    windowsMicLevelStatusLabel_.setTooltip(message);
+}
+
+void AudioSettings::onWindowsMicLevelChanged()
+{
+    if (!micLevelKeeper_) {
+        refreshWindowsMicLevel();
+        return;
+    }
+    juce::String error;
+    if (!micLevelKeeper_->setEnabledForCurrentEndpoint(
+            windowsMicLevelButton_.getToggleState(), error)) {
+        refreshWindowsMicLevel();
+        if (onError && error.isNotEmpty())
+            onError(error);
+        return;
+    }
+    refreshWindowsMicLevel();
+    if (onSettingsChanged)
+        onSettingsChanged();
+}
 
 bool AudioSettings::isAsioMode() const
 {
@@ -670,40 +801,51 @@ void AudioSettings::rebuildDeviceLists()
             outputCombo_.setSelectedId(outputIdOffset, juce::dontSendNotification);
     }
 
-    // Rebuild ASIO channel lists if applicable
-    if (isAsioMode())
-        rebuildChannelLists();
+    rebuildChannelLists();
 }
 
 void AudioSettings::rebuildChannelLists()
 {
-    // Input channels (stereo pairs)
+    const bool monoInput = engine_.isMonoInputEnabled();
+    inputCaptureCombo_.setSelectedId(monoInput ? 2 : 1, juce::dontSendNotification);
+
     inputChCombo_.clear(juce::dontSendNotification);
     auto inNames = engine_.getInputChannelNames();
-    const int inPairs = inNames.size() == 1 ? 1 : inNames.size() / 2;
+    const bool recoveringInput = audio_settings_detail::needsRecoveryPlaceholder(
+        audio_settings_detail::DeviceDirection::Input, isAsioMode(),
+        engine_.isInputDeviceLost(), engine_.isOutputAutoMuted());
+    const bool canSelectInput = !inNames.isEmpty() && !recoveringInput;
+    inputCaptureCombo_.setEnabled(canSelectInput);
+    inputChCombo_.setEnabled(canSelectInput);
 
-    for (int i = 0; i < inPairs; ++i) {
-        int ch1 = i * 2;
-        int ch2 = ch1 + 1;
-        juce::String label;
-        if (ch2 < inNames.size())
-            label = inNames[ch1] + " + " + inNames[ch2];
-        else
-            label = inNames[ch1];
-        inputChCombo_.addItem(label, i + 1);
+    if (monoInput) {
+        // Combo IDs map directly to physical index + 1, including an odd tail.
+        for (int channel = 0; channel < inNames.size(); ++channel)
+            inputChCombo_.addItem(inNames[channel], channel + 1);
+    } else {
+        const int inPairs = inNames.size() == 1 ? 1 : inNames.size() / 2;
+        for (int pair = 0; pair < inPairs; ++pair) {
+            const int first = pair * 2;
+            const auto label = first + 1 < inNames.size()
+                ? inNames[first] + " + " + inNames[first + 1]
+                : inNames[first];
+            inputChCombo_.addItem(label, pair + 1);
+        }
     }
-    // Also add individual channels for mono use
-    if (inNames.size() == 0) {
+    if (inNames.isEmpty() && !monoInput)
         inputChCombo_.addItem("1-2", 1);
-    }
 
     // Select current input channel offset
     int inOffset = engine_.getActiveInputChannelOffset();
-    const int desiredInputId = inOffset >= 0 ? (inOffset / 2) + 1 : 0;
+    const int desiredInputId = inOffset >= 0
+        ? inOffset / (monoInput ? 1 : 2) + 1 : 0;
     if (desiredInputId > 0 && desiredInputId <= inputChCombo_.getNumItems())
         inputChCombo_.setSelectedId(desiredInputId, juce::dontSendNotification);
     else if (inputChCombo_.getNumItems() > 0)
         inputChCombo_.setSelectedId(1, juce::dontSendNotification);
+    inputChCombo_.setTooltip(monoInput
+        ? "One hardware input copied to L/R before effects: " + inputChCombo_.getText()
+        : "Input pair before Channel Mode processing: " + inputChCombo_.getText());
 
     // Output channels (stereo pairs)
     outputChCombo_.clear(juce::dontSendNotification);
@@ -781,13 +923,17 @@ void AudioSettings::updateLatencyDisplay()
 
 void AudioSettings::updateChannelModeDescription()
 {
-    if (stereoButton_.getToggleState()) {
+    if (engine_.isMonoInputEnabled()) {
         channelModeDescLabel_.setText(
-            "Stereo: Input channels pass through as-is (L/R)",
+            "One input copied to L/R before effects",
+            juce::dontSendNotification);
+    } else if (stereoButton_.getToggleState()) {
+        channelModeDescLabel_.setText(
+            "Input pair passes to effects as L/R",
             juce::dontSendNotification);
     } else {
         channelModeDescLabel_.setText(
-            "Mono: Mix L+R to mono, output to both channels",
+            "Input pair mixed to mono before effects",
             juce::dontSendNotification);
     }
 }

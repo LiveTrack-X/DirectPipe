@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
 
 #if JUCE_WINDOWS
 #include <Windows.h>
@@ -108,6 +109,39 @@ TEST(CompanionUpdatePlanTest, RejectsUnsafeVersionsMissingIntegrityAndNewerTarge
 #if JUCE_WINDOWS && defined(DIRECTPIPE_TEST_RECEIVER_VST2_PATH) && defined(DIRECTPIPE_TEST_RECEIVER_VST3_PATH) && defined(DIRECTPIPE_TEST_HOST_PATH)
 
 struct PowerShellResult { bool started = false; bool finished = false; int exitCode = -1; juce::String output; };
+class OwnedReceiverUpdateSleepProcess {
+public:
+    ~OwnedReceiverUpdateSleepProcess() { stop(); }
+    bool start()
+    {
+        const auto executable = juce::File(juce::SystemStats::getEnvironmentVariable(
+            "SystemRoot", "C:\\Windows")).getChildFile("System32/WindowsPowerShell/v1.0/powershell.exe");
+        const auto text = "\"" + executable.getFullPathName()
+            + "\" -NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 30\"";
+        std::wstring command(text.toWideCharPointer());
+        STARTUPINFOW startup{}; startup.cb = sizeof(startup);
+        if (!CreateProcessW(executable.getFullPathName().toWideCharPointer(), command.data(),
+                            nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+                            &startup, &process_)) return false;
+        CloseHandle(process_.hThread); process_.hThread = nullptr;
+        return true;
+    }
+    unsigned long id() const { return process_.dwProcessId; }
+    bool running() const
+    {
+        DWORD code = 0;
+        return process_.hProcess && GetExitCodeProcess(process_.hProcess, &code) && code == STILL_ACTIVE;
+    }
+    void stop()
+    {
+        if (!process_.hProcess) return;
+        if (running()) TerminateProcess(process_.hProcess, 0);
+        WaitForSingleObject(process_.hProcess, 5000);
+        CloseHandle(process_.hProcess); process_.hProcess = nullptr;
+    }
+private:
+    PROCESS_INFORMATION process_{};
+};
 PowerShellResult runPowerShell(const juce::File& scriptFile, const juce::String& text)
 {
     PowerShellResult result;
@@ -311,6 +345,132 @@ TEST_F(ReceiverTransactionTest, PathPreflightDoesNotWaitForOrReplaceRunningHost)
     EXPECT_TRUE(installed.findChildFiles(juce::File::findFilesAndDirectories, false, ".dp-*").isEmpty());
     EXPECT_TRUE(root.findChildFiles(juce::File::findDirectories, false, "directpipe-stage-*").isEmpty());
 }
+
+TEST_F(ReceiverTransactionTest, LaunchingHostWaitIsBoundedWithoutTerminatingIt)
+{
+    OwnedReceiverUpdateSleepProcess target;
+    ASSERT_TRUE(target.start());
+    spec.skipHostUpdate = false;
+    spec.processId = target.id();
+    spec.processWaitTimeoutMs = 250;
+    const auto beforeHost = juce::SHA256(juce::File(spec.currentExePath)).toHexString();
+    const auto script = root.getChildFile("bounded-parent-wait.ps1");
+    ASSERT_TRUE(script.replaceWithText(buildWindowsCompanionInstallPowerShell(spec), false, true));
+    juce::ChildProcess installer;
+    ASSERT_TRUE(installer.start(juce::StringArray{"powershell.exe", "-NoProfile", "-NonInteractive",
+        "-ExecutionPolicy", "Bypass", "-File", script.getFullPathName()}));
+    const bool bounded = installer.waitForProcessToFinish(6000);
+    const bool parentStillAlive = target.running();
+    target.stop(); // Only this newly-created test fixture is terminated.
+    if (!bounded) ASSERT_TRUE(installer.waitForProcessToFinish(15000));
+    const auto output = installer.readAllProcessOutput();
+    EXPECT_TRUE(bounded) << output;
+    EXPECT_TRUE(parentStillAlive);
+    EXPECT_NE(0, installer.getExitCode()) << output;
+    EXPECT_EQ(beforeHost, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+    EXPECT_EQ(older, installedVersion("DirectPipe Receiver.dll"));
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+    EXPECT_FALSE(static_cast<bool>(result()["success"]));
+    EXPECT_EQ(result()["stage"].toString(), "wait");
+    EXPECT_TRUE(result()["error"].toString().containsIgnoreCase("timed out"));
+}
+
+#if defined(DIRECTPIPE_TEST_STARTUP_PROBE_PATH)
+class PairedStartupProbeObservation {
+public:
+    explicit PairedStartupProbeObservation(juce::File executable) : executable_(std::move(executable)) {}
+    ~PairedStartupProbeObservation()
+    {
+        const auto metadata = executable_.getSiblingFile("startup-probe.pid");
+        for (int i = 0; i < 150 && !metadata.existsAsFile(); ++i) Sleep(20);
+        const DWORD pid = static_cast<DWORD>(metadata.loadFileAsString().getIntValue());
+        if (!pid) return;
+        const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+        if (!process) return;
+        wchar_t path[32768]{}; DWORD length = 32768;
+        if (QueryFullProcessImageNameW(process, 0, path, &length)
+            && juce::String(path).equalsIgnoreCase(executable_.getFullPathName()))
+            EXPECT_EQ(WAIT_OBJECT_0, WaitForSingleObject(process, 6500));
+        CloseHandle(process);
+    }
+private:
+    juce::File executable_;
+};
+
+class PairedStartupScriptTest : public ReceiverTransactionTest {
+protected:
+    void SetUp() override
+    {
+        ReceiverTransactionTest::SetUp();
+        ASSERT_FALSE(HasFatalFailure());
+        const juce::File probe(DIRECTPIPE_TEST_STARTUP_PROBE_PATH);
+        ASSERT_TRUE(probe.copyFileTo(package.getChildFile("DirectPipe.exe")));
+        // Even the verified-rollback restart path must never execute the real
+        // app. Both old and new host identities are this no-audio stand-in.
+        ASSERT_TRUE(probe.copyFileTo(juce::File(spec.currentExePath)));
+        ASSERT_TRUE(makeOlderFixture(juce::File(spec.currentExePath), version, older));
+        makeArchive(); ASSERT_FALSE(HasFatalFailure());
+        spec.skipHostUpdate = false; spec.relaunchHostAfterUpdate = true;
+        spec.requireStartupAck = true; spec.showInteractiveErrors = false;
+        spec.startupAttemptId = juce::Uuid().toString(); spec.startupAckTimeoutMs = 1200;
+        const juce::File receipt(spec.resultFilePath);
+        spec.startupAckFilePath = receipt.getSiblingFile(receipt.getFileNameWithoutExtension()
+            + "." + spec.startupAttemptId + ".startup.json").getFullPathName();
+        ASSERT_TRUE(juce::File(spec.backupExePath).replaceWithText("prior host backup"));
+        oldHostHash = juce::SHA256(juce::File(spec.currentExePath)).toHexString();
+        newHostHash = juce::SHA256(package.getChildFile("DirectPipe.exe")).toHexString();
+    }
+    void configure(const juce::String& mode)
+    {
+        const auto ini = installed.getChildFile("startup-probe.ini").getFullPathName();
+        const auto set = [&](const wchar_t* key, const juce::String& value) {
+            return WritePrivateProfileStringW(L"StartupProbe", key, value.toWideCharPointer(), ini.toWideCharPointer()) != FALSE;
+        };
+        ASSERT_TRUE(set(L"AckPath", spec.startupAckFilePath));
+        ASSERT_TRUE(set(L"Mode", mode)); ASSERT_TRUE(set(L"Version", spec.expectedVersion));
+        ASSERT_TRUE(set(L"LifetimeMs", "4000"));
+    }
+    juce::String oldHostHash, newHostHash;
+};
+
+TEST_F(PairedStartupScriptTest, ActualDesktopLaunchAcknowledgementCleansHostRecoveryOnly)
+{
+    configure("ready"); ASSERT_FALSE(HasFatalFailure());
+    PairedStartupProbeObservation observation(juce::File(spec.currentExePath));
+    const auto execution = install();
+    ASSERT_TRUE(execution.started && execution.finished) << execution.output;
+    EXPECT_EQ(0, execution.exitCode) << execution.output;
+    EXPECT_TRUE(static_cast<bool>(result()["startupReady"]));
+    EXPECT_TRUE(static_cast<bool>(result()["filesCommitted"]));
+    EXPECT_EQ(spec.startupAttemptId, result()["startupAttemptId"].toString());
+    EXPECT_EQ(newHostHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+    EXPECT_FALSE(juce::File(spec.backupExePath).exists());
+    EXPECT_TRUE(installed.getChildFile("DirectPipe Receiver.dll.directpipe-backup").existsAsFile());
+    EXPECT_TRUE(installed.getChildFile("DirectPipe Receiver.vst3.directpipe-backup").isDirectory());
+    EXPECT_EQ(version, installedVersion("DirectPipe Receiver.dll"));
+}
+
+TEST_F(PairedStartupScriptTest, MissingAcknowledgementKeepsCommittedPairAndHostRecovery)
+{
+    configure("no-ack"); ASSERT_FALSE(HasFatalFailure());
+    PairedStartupProbeObservation observation(juce::File(spec.currentExePath));
+    const auto execution = install();
+    ASSERT_TRUE(execution.started && execution.finished) << execution.output;
+    EXPECT_NE(0, execution.exitCode) << execution.output;
+    EXPECT_FALSE(static_cast<bool>(result()["success"]));
+    EXPECT_TRUE(static_cast<bool>(result()["filesCommitted"]));
+    EXPECT_FALSE(static_cast<bool>(result()["startupReady"]));
+    EXPECT_EQ(juce::String("startup-wait"), result()["stage"].toString());
+    EXPECT_EQ(newHostHash, juce::SHA256(juce::File(spec.currentExePath)).toHexString());
+    EXPECT_EQ(oldHostHash, juce::SHA256(juce::File(spec.backupExePath)).toHexString());
+    bool foundPriorHost = false;
+    for (const auto& retained : installed.findChildFiles(juce::File::findFiles, false, ".dp-p-*"))
+        foundPriorHost = foundPriorHost || retained.loadFileAsString() == "prior host backup";
+    EXPECT_TRUE(foundPriorHost);
+    EXPECT_EQ(version, installedVersion("DirectPipe Receiver.dll")); // No rollback beneath running candidate.
+    EXPECT_FALSE(juce::File(spec.updatedFlagPath).exists());
+}
+#endif
 
 TEST_F(ReceiverTransactionTest, ShortArchiveParentUsesCanonicalExtractionBoundary)
 {

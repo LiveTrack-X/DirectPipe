@@ -1,0 +1,11 @@
+/**
+ * Formats the specified string, replacing placeholders with their associated arguments.
+ * @example Formatting
+ * format("Hello {0}", "world") // "Hello world"
+ * @example Escaping braces
+ * format("Escaped {{0}}") // "Escaped {0}"
+ * @param format Source format string.
+ * @param args Arguments used to replace placeholders.
+ * @returns The formatted string.
+ */
+export declare function format(format: string, ...args: unknown[]): string;

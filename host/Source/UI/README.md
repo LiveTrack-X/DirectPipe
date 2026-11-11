@@ -7,6 +7,11 @@
 
 ## 컴포넌트 계층 구조 (Component Hierarchy)
 
+AudioSettings의 Input capture는 기존 Channel Mode와 별개입니다. 기본 pair
+목록을 유지하고, Mono (single channel) 선택 시 실제 입력명을 개별 표시합니다.
+모드/채널 변경은 엔진 트랜잭션을 사용하며 실패 시 컨트롤을 이전 상태로 복구하고
+설정 저장 콜백을 실행하지 않습니다. 출력 pair 선택은 기존 의미를 유지합니다.
+
 ```
 MainComponent                           ← 최상위 윈도우 컴포넌트
 ├── inputMeter_ (LevelMeter)            ← 입력 레벨 미터
@@ -51,12 +56,13 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `PluginScanner.h/cpp` | Out-of-process VST 스캐너 다이얼로그 (디렉토리 관리, 프로그레스, 검색/정렬) |
 | `PresetManager.h/cpp` | 프리셋 저장/로드 + 퀵 슬롯 A-E. 활성 슬롯 import는 파일군·runtime snapshot을 보존하고 성공 뒤 커밋, 실패 시 롤백 |
 | `PresetSlotBar.h/cpp` | A-E 프리셋 슬롯 버튼 (5개). Auto 슬롯(index 5)은 별도 Auto 버튼과 연동되며 A-E 순환에서 제외. 우클릭 컨텍스트 메뉴 |
-| `SettingsExporter.h/cpp` | 설정 내보내기/가져오기 — `.dpbackup` / `.dpfullbackup`, recording-folder 포함, 크로스-OS 및 부분 복원 오류 보고 |
+| `SettingsExporter.h/cpp` | 설정 내보내기/가져오기 — `.dpbackup` / `.dpfullbackup`, operation별 RestoreDiagnostics(단계·원인·다음 확인·불완전 rollback), 기존 형식/트랜잭션 유지 |
 | `StatusUpdater.h/cpp` | 30Hz UI/WebSocket 상태 업데이트. main은 드라이버 입력·출력 지연(미보고 방향은 한 버퍼) + 활성 chain PDC. monitor는 입력 지연 + PDC + adaptive queue target + monitor 출력 장치 지연이며 main 출력 지연을 더하지 않음. 콜백 실행시간은 별도 CPU/XRun 지표 |
 | `StreamDeckTab.h/cpp` | WebSocket/HTTP 서버 상태 표시 + Start/Stop 토글 |
 | `UpdateChecker.h/cpp` | GitHub 공개 릴리스 확인, Windows Receiver 설치 경로 미리보기/사용 중 확인, 다운로드·설치 진행. 시작 시 같거나 낮은 host 릴리스는 알리지 않음. v4.2.0+ asset은 exact-name SHA-256을 fail-closed 검증 |
 | `ReceiverUpdateSupport.h/cpp` | 표준/등록/선택한 VST 경로의 기존 Receiver 탐색, DLL 실행 없는 PE/제품/버전 검사, exact-file Restart Manager·접근 검사. 같은/상위 버전은 교체 대상에서 제외 |
-| `UpdateScript.h/cpp` | Receiver 대상이 있는 PowerShell companion transaction 및 기존 host-only batch 경로 생성. staging, identity/hash/lock 재확인, 백업과 실패 시 rollback 지원 |
+| `UpdateScript.h/cpp` | Receiver PowerShell transaction 및 host-only BAT 생성. 60초 부모/시작 확인 대기, 같은 볼륨 staging, identity/hash/lock 검증, 준비 ACK의 실제 PID/image·해시 확인과 영구 기록 후 알려진 host 백업 정리. 시작 미확인은 rollback 없이 복구 파일 보존 |
+| `UpdateStartupSupport.h/cpp` | 초기 복원·창/트레이 준비 후 attempt-bound ACK 작성. 구형 flag 방식은 실제 PE/product/version·SHA와 배타 파일 핸들로 정확한 EXE만 정리. caller/설치기 역할 및 완료 알림 분리 |
 | `FilterEditPanel.h/cpp` | 내장 Filter 설정 패널 (AudioProcessorEditor). HPF/LPF 프리셋 + 커스텀 슬라이더 |
 | `NoiseRemovalEditPanel.h/cpp` | 내장 Noise Removal 설정 패널. 강도 프리셋 (약/중/강) + VAD 임계값 |
 | `AGCEditPanel.h/cpp` | 내장 Auto Gain 설정 패널. LUFS 타겟 슬라이더 + 실시간 측정 + 고급 설정 |
@@ -117,7 +123,7 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | Receiver 사용 중으로 업데이트 중단 | 표시된 OBS/오디오 앱을 직접 종료 → Retry. Later는 보류. 확인 불가 경로도 자동 덮어쓰지 않음 | `UpdateChecker.cpp` |
 | 플러그인 스캔 크래시 | Out-of-process 자식 프로세스 확인 → dead man's pedal → blacklist | `PluginScanner.cpp` |
 | 설정 저장 안 됨 | settingsAutosaver_ dirty 플래그 → cooldown 카운터 → atomicWriteFile 성공 여부 | `SettingsAutosaver.cpp` |
-| 백업 복원 실패 | 플랫폼 호환성 체크 → isPlatformCompatible() → JSON 파싱 에러 | `SettingsExporter.cpp` |
+| 백업 복원 실패 | 오류창/로그의 단계·원인·다음 확인 및 rollback 상태 확인; legacy 허용 조건 유지 | `SettingsExporter.cpp`, `MainComponent.cpp` |
 
 ---
 

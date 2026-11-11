@@ -225,7 +225,8 @@ bool restoreFileSnapshots(const std::vector<FileSnapshot>& snapshots)
 
 bool propertyIsObjectIfPresent(const juce::DynamicObject& root,
                                const juce::Identifier& property,
-                               const char* label)
+                               const char* label,
+                               SettingsExporter::RestoreDiagnostics& diagnostic)
 {
     if (!root.hasProperty(property))
         return true;
@@ -233,8 +234,8 @@ bool propertyIsObjectIfPresent(const juce::DynamicObject& root,
     if (root.getProperty(property).isObject())
         return true;
 
-    Log::warn("APP", juce::String("Invalid ") + label + " in settings backup");
-    return false;
+    return diagnostic.fail(label, "The backup section must be an object.",
+                           "Use an intact backup exported by DirectPipe; this section is malformed.");
 }
 
 bool isIntegralInRange(const juce::var& value, juce::int64 minimum, juce::int64 maximum)
@@ -353,8 +354,28 @@ bool presetFileFamilyExists(const juce::File& file)
         || file.withFileExtension(file.getFileExtension() + ".backup").existsAsFile();
 }
 
+bool parseBackup(const juce::String& json, juce::var& parsed,
+                 SettingsExporter::RestoreDiagnostics& diagnostic)
+{
+    if (juce::JSON::parse(json, parsed).failed())
+        return diagnostic.fail("JSON validation", "The backup is empty, incomplete or invalid JSON.",
+                               "Select the original backup or export it again; do not edit its contents manually.");
+    const auto* root = parsed.getDynamicObject();
+    if (root == nullptr)
+        return diagnostic.fail("backup format", "The backup root must be an object.",
+                               "Select a DirectPipe settings or full backup file.");
+    if (static_cast<int>(root->getProperty("version")) < 1)
+        return diagnostic.fail("backup version", "The backup has no valid positive version.",
+                               "Check that this is an intact DirectPipe backup and export it again if possible.");
+    if (!SettingsExporter::isPlatformCompatible(json))
+        return diagnostic.fail("platform compatibility", "The backup was exported on a different operating system.",
+                               "Restore on the same operating system as the exporting computer.");
+    return true;
+}
+
 bool buildSlotRestorePlan(const juce::DynamicObject& slots,
-                          std::vector<SlotRestoreEntry>& plan)
+                          std::vector<SlotRestoreEntry>& plan,
+                          SettingsExporter::RestoreDiagnostics& diagnostic)
 {
     plan.clear();
     plan.reserve(PresetManager::kNumSlots);
@@ -367,15 +388,15 @@ bool buildSlotRestorePlan(const juce::DynamicObject& slots,
         if (slots.hasProperty(entry.key)) {
             auto slotVar = slots.getProperty(entry.key);
             if (!slotVar.isObject()) {
-                Log::warn("APP", "Invalid slot object in full backup: " + entry.key);
-                return false;
+                return diagnostic.fail("preset slots", "Slot " + entry.key + " is not an object.",
+                                       "Use an intact full backup or re-export the affected slot.");
             }
 
             entry.presentInBackup = true;
             entry.json = juce::JSON::toString(slotVar, true);
             if (!PresetManager::isChainJSONStructurallyValid(entry.json)) {
-                Log::warn("APP", "Invalid slot JSON in full backup: " + entry.key);
-                return false;
+                return diagnostic.fail("preset slots", "Slot " + entry.key + " has invalid chain data.",
+                                       "Use an intact full backup; check the slot's plug-in list and saved state.");
             }
         }
 
@@ -385,7 +406,77 @@ bool buildSlotRestorePlan(const juce::DynamicObject& slots,
     return true;
 }
 
+bool readBackupFile(const juce::File& file, juce::String& json,
+                    SettingsExporter::RestoreDiagnostics& diagnostic)
+{
+    diagnostic.clear();
+    if (!file.existsAsFile())
+        return diagnostic.fail("backup file", "The selected backup file is no longer available.",
+                               "Check the file location, reconnect its drive or select the backup again.");
+    juce::FileInputStream stream(file);
+    if (!stream.openedOk())
+        return diagnostic.fail("file read", "The selected backup could not be opened.",
+                               "Check read permissions, file locks and whether the drive is connected.");
+    json = stream.readEntireStreamAsString();
+    if (stream.getStatus().failed() || stream.getPosition() < stream.getTotalLength())
+        return diagnostic.fail("file read", "The selected backup could not be read completely.",
+                               "Check the drive and read permissions, then copy the intact backup to a local folder.");
+    if (json.trim().isEmpty())
+        return diagnostic.fail("backup file", "The selected backup is empty.",
+                               "Select a nonempty backup or export it again from the source computer.");
+    if (!SettingsExporter::isPlatformCompatible(json))
+        return diagnostic.fail("platform compatibility", "The backup was exported on a different operating system.",
+                               "Restore on the same operating system as the exporting computer.");
+    return true;
+}
+
+void showRestoreFailure(SettingsExporter::RestoreDiagnostics& diagnostic)
+{
+    if (diagnostic.stage.isEmpty())
+        diagnostic.fail("restore result", "DirectPipe could not restore this backup completely.",
+                        "Open the log and check the earlier audio, plug-in and file errors before retrying.");
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                         "Import Failed", diagnostic.message());
+}
+
 } // namespace
+
+void SettingsExporter::RestoreDiagnostics::clear()
+{
+    stage.clear();
+    reason.clear();
+    nextCheck.clear();
+    rollbackIncomplete = false;
+}
+
+bool SettingsExporter::RestoreDiagnostics::fail(const juce::String& failedStage,
+                                               const juce::String& safeReason,
+                                               const juce::String& check)
+{
+    stage = failedStage;
+    reason = safeReason;
+    nextCheck = check;
+    Log::warn("APP", message().replaceCharacter('\n', ' '));
+    return false;
+}
+
+void SettingsExporter::RestoreDiagnostics::markRollbackIncomplete()
+{
+    rollbackIncomplete = true;
+    Log::warn("APP", message().replaceCharacter('\n', ' '));
+}
+
+juce::String SettingsExporter::RestoreDiagnostics::message() const
+{
+    juce::String result;
+    if (stage.isNotEmpty())
+        result = "Restore failed at " + stage + ": " + reason;
+    if (nextCheck.isNotEmpty())
+        result += "\nCheck: " + nextCheck;
+    if (rollbackIncomplete)
+        result += "\nPrevious settings could not be fully restored. Check audio settings, controls and preset slots before continuing.";
+    return result;
+}
 
 juce::String SettingsExporter::getCurrentPlatform()
 {
@@ -460,32 +551,25 @@ juce::String SettingsExporter::exportAll(PresetManager& presetManager,
 
 bool SettingsExporter::importAll(const juce::String& json,
                                   PresetManager& presetManager,
-                                  ControlMappingStore& controlStore)
+                                  ControlMappingStore& controlStore,
+                                  RestoreDiagnostics* diagnostics)
 {
+    RestoreDiagnostics localDiagnostic;
+    auto& diagnostic = diagnostics != nullptr ? *diagnostics : localDiagnostic;
+    diagnostic.clear();
     juce::Logger::writeToLog("[PRESET] Import: tier=backup, platform=" + getCurrentPlatform());
-    auto parsed = juce::JSON::parse(json);
-    if (!parsed.isObject()) return false;
-
-    auto* root = parsed.getDynamicObject();
-    if (!root) return false;
-
-    int version = root->getProperty("version");
-    if (version < 1) return false;
-
-    // Block cross-platform backup restore
-    auto backupPlatform = getBackupPlatform(json);
-    if (!isPlatformCompatible(json)) {
-        Log::warn("APP", "Cross-platform backup restore blocked: " + backupPlatform);
+    juce::var parsed;
+    if (!parseBackup(json, parsed, diagnostic))
         return false;
-    }
+    auto* root = parsed.getDynamicObject();
 
-    if (!propertyIsObjectIfPresent(*root, "audioSettings", "audioSettings")
-        || !propertyIsObjectIfPresent(*root, "controlConfig", "controlConfig"))
+    if (!propertyIsObjectIfPresent(*root, "audioSettings", "audio settings", diagnostic)
+        || !propertyIsObjectIfPresent(*root, "controlConfig", "control settings", diagnostic))
         return false;
     if (root->hasProperty("controlConfig")
         && !isValidControlConfig(root->getProperty("controlConfig"))) {
-        Log::warn("APP", "Invalid controlConfig schema in settings backup");
-        return false;
+        return diagnostic.fail("control settings", "The control configuration has invalid fields.",
+                               "Check the backup's hotkey, MIDI and server settings, or export it again.");
     }
 
     const bool hasAudioSettings = root->hasProperty("audioSettings");
@@ -496,8 +580,11 @@ bool SettingsExporter::importAll(const juce::String& json,
     if (hasControlConfig) {
         stagedControlJson = juce::JSON::toString(root->getProperty("controlConfig"), false);
         auto tempFile = juce::File::createTempFile("dpctrl");
-        if (!tempFile.replaceWithText(stagedControlJson))
-            return false;
+        if (!tempFile.replaceWithText(stagedControlJson)) {
+            tempFile.deleteFile();
+            return diagnostic.fail("control staging", "A temporary control configuration could not be written.",
+                                   "Check temporary-folder permissions, free disk space and file locks.");
+        }
         stagedControlConfig = controlStore.load(tempFile);
         tempFile.deleteFile();
     }
@@ -506,12 +593,14 @@ bool SettingsExporter::importAll(const juce::String& json,
     if (hasAudioSettings) {
         audioSnapshot = presetManager.exportToJSON();
         if (!PresetManager::isPresetJSONStructurallyValid(audioSnapshot))
-            return false;
+            return diagnostic.fail("audio snapshot", "Current audio settings could not be saved for rollback.",
+                                   "Wait for the current load to finish and retry with a stable plug-in chain.");
     }
 
     std::vector<FileSnapshot> controlSnapshots;
     if (hasControlConfig && !captureControlConfigSnapshots(controlSnapshots))
-        return false;
+        return diagnostic.fail("control snapshot", "Current control files could not be read for rollback.",
+                               "Check configuration-folder read permissions and file locks.");
 
     auto rollbackImport = [&]() {
         bool rollbackOk = true;
@@ -522,10 +611,11 @@ bool SettingsExporter::importAll(const juce::String& json,
         return rollbackOk;
     };
 
-    auto failImport = [&](const juce::String& reason) {
-        Log::warn("APP", reason + "; rolling back settings import");
+    auto failImport = [&](const juce::String& stage, const juce::String& reason,
+                          const juce::String& nextCheck) {
+        diagnostic.fail(stage, reason, nextCheck);
         if (!rollbackImport())
-            Log::warn("APP", "Settings import rollback incomplete");
+            diagnostic.markRollbackIncomplete();
         return false;
     };
 
@@ -536,14 +626,15 @@ bool SettingsExporter::importAll(const juce::String& json,
             stripSettingsOnlyPresetState(*audioObj);
         auto audioJson = juce::JSON::toString(audioSettings, false);
         if (!presetManager.importFromJSON(audioJson)) {
-            Log::warn("APP", "Failed to import audio settings from backup");
-            return failImport("Failed to import audio settings from backup");
+            return failImport("audio settings", "Audio or application settings could not be restored.",
+                              "Check the backup format and earlier audio-device or application-settings log entries.");
         }
     }
 
     // Import control config
     if (hasControlConfig && !controlStore.save(stagedControlConfig))
-        return failImport("Failed to import control config from backup");
+        return failImport("control write", "The restored control configuration could not be saved.",
+                          "Check configuration-folder write permissions, free disk space and file locks.");
 
     // Preset slots NOT imported — managed independently via slots A-E
     // (v1 backups with presetSlots are intentionally ignored)
@@ -624,37 +715,30 @@ juce::String SettingsExporter::exportFullBackup(PresetManager& presetManager,
 bool SettingsExporter::importFullBackup(const juce::String& json,
                                           PresetManager& presetManager,
                                           ControlMappingStore& controlStore,
-                                          bool runtimeStateIsStableBeforeRestore)
+                                          bool runtimeStateIsStableBeforeRestore,
+                                          RestoreDiagnostics* diagnostics)
 {
+    RestoreDiagnostics localDiagnostic;
+    auto& diagnostic = diagnostics != nullptr ? *diagnostics : localDiagnostic;
+    diagnostic.clear();
     if (!runtimeStateIsStableBeforeRestore) {
-        Log::warn("APP", "Full backup restore blocked while runtime state is unstable");
-        return false;
+        return diagnostic.fail("runtime state", "The current plug-in chain is loading or partially restored.",
+                               "Wait for the load to finish or load a complete slot before restoring the backup.");
     }
 
     juce::Logger::writeToLog("[PRESET] Import: tier=full, platform=" + getCurrentPlatform());
-    auto parsed = juce::JSON::parse(json);
-    if (!parsed.isObject()) return false;
-
-    auto* root = parsed.getDynamicObject();
-    if (!root) return false;
-
-    int version = root->getProperty("version");
-    if (version < 1) return false;
-
-    // Block cross-platform backup restore
-    auto backupPlatform = getBackupPlatform(json);
-    if (!isPlatformCompatible(json)) {
-        Log::warn("APP", "Cross-platform backup restore blocked: " + backupPlatform);
+    juce::var parsed;
+    if (!parseBackup(json, parsed, diagnostic))
         return false;
-    }
+    auto* root = parsed.getDynamicObject();
 
-    if (!propertyIsObjectIfPresent(*root, "audioSettings", "audioSettings")
-        || !propertyIsObjectIfPresent(*root, "controlConfig", "controlConfig"))
+    if (!propertyIsObjectIfPresent(*root, "audioSettings", "audio settings", diagnostic)
+        || !propertyIsObjectIfPresent(*root, "controlConfig", "control settings", diagnostic))
         return false;
     if (root->hasProperty("controlConfig")
         && !isValidControlConfig(root->getProperty("controlConfig"))) {
-        Log::warn("APP", "Invalid controlConfig schema in full backup");
-        return false;
+        return diagnostic.fail("control settings", "The control configuration has invalid fields.",
+                               "Check the backup's hotkey, MIDI and server settings, or export it again.");
     }
 
     const bool hasAudioSettings = root->hasProperty("audioSettings");
@@ -663,9 +747,8 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
     if (hasAudioSettings) {
         auto* audioRoot = root->getProperty("audioSettings").getDynamicObject();
         if (audioRoot && audioRoot->hasProperty("plugins")) {
-            Log::warn("APP",
-                "Synchronous full restore blocked for plug-in backups; use transactional async restore");
-            return false;
+            return diagnostic.fail("restore method", "This backup contains a plug-in chain and needs asynchronous restoration.",
+                                   "Use Full Restore in DirectPipe settings to restore this backup.");
         }
     }
 
@@ -674,29 +757,31 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
     if (hasPresetSlots) {
         auto* slots = root->getProperty("presetSlots").getDynamicObject();
         if (!slots) {
-            Log::warn("APP", "Invalid presetSlots in full backup");
-            return false;
+            return diagnostic.fail("preset slots", "The slot section must be an object.",
+                                   "Use an intact full backup or export its slots again.");
         }
-        if (!buildSlotRestorePlan(*slots, slotPlan))
+        if (!buildSlotRestorePlan(*slots, slotPlan, diagnostic))
             return false;
     }
 
     std::vector<FileSnapshot> slotSnapshots;
     if (hasPresetSlots && !captureSlotRestoreSnapshots(slotPlan, slotSnapshots))
-        return false;
+        return diagnostic.fail("slot snapshot", "Current preset slot files could not be read for rollback.",
+                               "Check the Slots folder's read permissions and file locks.");
 
     juce::String audioSnapshot;
     if (hasAudioSettings) {
         audioSnapshot = presetManager.exportToJSON();
         if (!juce::JSON::parse(audioSnapshot).isObject()) {
-            Log::warn("APP", "Failed to snapshot current audio settings");
-            return false;
+            return diagnostic.fail("audio snapshot", "Current audio settings could not be saved for rollback.",
+                                   "Wait for the current load to finish and retry with a stable plug-in chain.");
         }
     }
 
     std::vector<FileSnapshot> controlSnapshots;
     if (hasControlConfig && !captureControlConfigSnapshots(controlSnapshots))
-        return false;
+        return diagnostic.fail("control snapshot", "Current control files could not be read for rollback.",
+                               "Check configuration-folder read permissions and file locks.");
 
     auto rollbackImport = [&]() {
         bool rollbackOk = true;
@@ -725,10 +810,12 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
         return rollbackOk;
     };
 
-    auto failImport = [&](const juce::String& reason) {
-        Log::warn("APP", reason + "; rolling back full backup import");
+    auto failImport = [&](const juce::String& stage, const juce::String& reason,
+                          const juce::String& nextCheck) {
+        if (diagnostic.stage.isEmpty())
+            diagnostic.fail(stage, reason, nextCheck);
         if (!rollbackImport())
-            Log::warn("APP", "Full backup import rollback incomplete");
+            diagnostic.markRollbackIncomplete();
         return false;
     };
 
@@ -736,7 +823,8 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
     if (hasAudioSettings) {
         auto audioJson = juce::JSON::toString(root->getProperty("audioSettings"), false);
         if (!presetManager.importFromJSON(audioJson))
-            return failImport("Failed to import audio settings from full backup");
+            return failImport("audio settings", "Audio or application settings could not be restored.",
+                              "Check the backup format and earlier audio-device or application-settings log entries.");
     }
 
     // Import control config
@@ -745,12 +833,14 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
         auto tempFile = juce::File::createTempFile("dpctrl");
         if (!tempFile.replaceWithText(controlJson)) {
             tempFile.deleteFile();
-            return failImport("Failed to stage control config from full backup");
+            return failImport("control staging", "A temporary control configuration could not be written.",
+                              "Check temporary-folder permissions, free disk space and file locks.");
         }
         auto config = controlStore.load(tempFile);
         if (!controlStore.save(config)) {
             tempFile.deleteFile();
-            return failImport("Failed to import control config from full backup");
+            return failImport("control write", "The restored control configuration could not be saved.",
+                              "Check configuration-folder write permissions, free disk space and file locks.");
         }
         tempFile.deleteFile();
     }
@@ -765,25 +855,29 @@ bool SettingsExporter::importFullBackup(const juce::String& json,
             if (!entry.presentInBackup) {
                 if (!deleteSlotRestoreFileFamily(entry.slotIndex)) {
                     ok = false;
-                    Log::warn("APP", "Failed to clear missing slot file: " + slotFile.getFileName());
+                    diagnostic.fail("slot write", "Slot " + entry.key + " could not be cleared.",
+                                    "Check Slots-folder write permissions and locked preset files.");
                 }
                 continue;
             }
 
             if (!atomicWriteFile(slotFile, entry.json)) {
                 ok = false;
-                Log::warn("APP", "Failed to restore slot file: " + slotFile.getFileName());
+                diagnostic.fail("slot write", "Slot " + entry.key + " could not be written.",
+                                "Check Slots-folder write permissions, free disk space and file locks.");
                 continue;
             }
 
             if (!deleteSlotRestoreBackups(entry.slotIndex)) {
                 ok = false;
-                Log::warn("APP", "Failed to clear slot restore backups: " + slotFile.getFileName());
+                diagnostic.fail("slot write", "Old restore files for slot " + entry.key + " could not be cleared.",
+                                "Check Slots-folder write permissions and locked preset files.");
             }
         }
 
         if (!ok)
-            return failImport("Full backup slot restore failed");
+            return failImport("slot write", "Preset slots could not be restored completely.",
+                              "Check Slots-folder write permissions, free disk space and file locks.");
 
         presetManager.refreshSlotOccupancy();
         presetManager.loadSlotNames();
@@ -800,34 +894,46 @@ void SettingsExporter::importFullBackupAsync(
     PresetManager& presetManager,
     ControlMappingStore& controlStore,
     bool runtimeStateIsStableBeforeRestore,
-    std::function<void(bool)> onComplete)
+    std::function<void(bool)> onComplete,
+    std::shared_ptr<RestoreDiagnostics> diagnostics)
 {
-    auto complete = [onComplete = std::move(onComplete)](bool ok) mutable {
+    if (!diagnostics)
+        diagnostics = std::make_shared<RestoreDiagnostics>();
+    diagnostics->clear();
+    auto complete = [diagnostics, onComplete = std::move(onComplete)](bool ok) mutable {
+        if (!ok && diagnostics->stage.isEmpty())
+            diagnostics->fail("audio and plug-in restore",
+                              "The audio settings or plug-in transaction could not be completed.",
+                              "Check earlier device and plug-in errors in the log; verify plug-in installation, OS/architecture and saved state.");
         if (onComplete)
             onComplete(ok);
     };
 
     if (!runtimeStateIsStableBeforeRestore) {
-        Log::warn("APP", "Full backup restore blocked while runtime state is unstable");
+        diagnostics->fail("runtime state", "The current plug-in chain is loading or partially restored.",
+                          "Wait for the load to finish or load a complete slot before restoring the backup.");
         complete(false);
         return;
     }
 
     juce::Logger::writeToLog(
         "[PRESET] Import: tier=full-transactional, platform=" + getCurrentPlatform());
-    const auto parsed = juce::JSON::parse(json);
+    juce::var parsed;
+    if (!parseBackup(json, parsed, *diagnostics)) {
+        complete(false);
+        return;
+    }
     auto* root = parsed.getDynamicObject();
-    if (!root || static_cast<int>(root->getProperty("version")) < 1
-        || !isPlatformCompatible(json)
-        || !propertyIsObjectIfPresent(*root, "audioSettings", "audioSettings")
-        || !propertyIsObjectIfPresent(*root, "controlConfig", "controlConfig")) {
+    if (!propertyIsObjectIfPresent(*root, "audioSettings", "audio settings", *diagnostics)
+        || !propertyIsObjectIfPresent(*root, "controlConfig", "control settings", *diagnostics)) {
         complete(false);
         return;
     }
 
     if (root->hasProperty("controlConfig")
         && !isValidControlConfig(root->getProperty("controlConfig"))) {
-        Log::warn("APP", "Invalid controlConfig schema in full backup");
+        diagnostics->fail("control settings", "The control configuration has invalid fields.",
+                          "Check the backup's hotkey, MIDI and server settings, or export it again.");
         complete(false);
         return;
     }
@@ -840,7 +946,8 @@ void SettingsExporter::importFullBackupAsync(
     if (hasAudioSettings) {
         audioJson = juce::JSON::toString(root->getProperty("audioSettings"), false);
         if (!PresetManager::isPresetJSONStructurallyValid(audioJson)) {
-            Log::warn("APP", "Invalid audioSettings schema in full backup");
+            diagnostics->fail("audio settings", "The audio settings or saved plug-in list are malformed.",
+                              "Select an intact full backup or export it again; check saved plug-in state.");
             complete(false);
             return;
         }
@@ -849,7 +956,13 @@ void SettingsExporter::importFullBackupAsync(
     std::vector<SlotRestoreEntry> slotPlan;
     if (hasPresetSlots) {
         auto* slots = root->getProperty("presetSlots").getDynamicObject();
-        if (!slots || !buildSlotRestorePlan(*slots, slotPlan)) {
+        if (!slots) {
+            diagnostics->fail("preset slots", "The slot section must be an object.",
+                              "Use an intact full backup or export its slots again.");
+            complete(false);
+            return;
+        }
+        if (!buildSlotRestorePlan(*slots, slotPlan, *diagnostics)) {
             complete(false);
             return;
         }
@@ -857,6 +970,8 @@ void SettingsExporter::importFullBackupAsync(
 
     std::vector<FileSnapshot> slotSnapshots;
     if (hasPresetSlots && !captureSlotRestoreSnapshots(slotPlan, slotSnapshots)) {
+        diagnostics->fail("slot snapshot", "Current preset slot files could not be read for rollback.",
+                          "Check the Slots folder's read permissions and file locks.");
         complete(false);
         return;
     }
@@ -868,6 +983,8 @@ void SettingsExporter::importFullBackupAsync(
         auto tempFile = juce::File::createTempFile("dpctrl");
         if (!tempFile.replaceWithText(controlJson)) {
             tempFile.deleteFile();
+            diagnostics->fail("control staging", "A temporary control configuration could not be written.",
+                              "Check temporary-folder permissions, free disk space and file locks.");
             complete(false);
             return;
         }
@@ -877,6 +994,8 @@ void SettingsExporter::importFullBackupAsync(
 
     std::vector<FileSnapshot> controlSnapshots;
     if (hasControlConfig && !captureControlConfigSnapshots(controlSnapshots)) {
+        diagnostics->fail("control snapshot", "Current control files could not be read for rollback.",
+                          "Check configuration-folder read permissions and file locks.");
         complete(false);
         return;
     }
@@ -884,11 +1003,11 @@ void SettingsExporter::importFullBackupAsync(
     auto* presetManagerPtr = &presetManager;
     auto* controlStorePtr = &controlStore;
     auto commitExternalState =
-        [hasControlConfig, stagedControlConfig, controlStorePtr,
+        [diagnostics, hasControlConfig, stagedControlConfig, controlStorePtr,
          hasPresetSlots, slotPlan]() mutable {
             if (hasControlConfig && !controlStorePtr->save(stagedControlConfig)) {
-                Log::warn("APP", "Failed to import control config from full backup");
-                return false;
+                return diagnostics->fail("control write", "The restored control configuration could not be saved.",
+                                         "Check configuration-folder write permissions, free disk space and file locks.");
             }
 
             if (hasPresetSlots) {
@@ -896,18 +1015,16 @@ void SettingsExporter::importFullBackupAsync(
                     const auto slotFile = PresetManager::getSlotFile(entry.slotIndex);
                     if (!entry.presentInBackup) {
                         if (!deleteSlotRestoreFileFamily(entry.slotIndex)) {
-                            Log::warn("APP", "Failed to clear missing slot file: "
-                                + slotFile.getFileName());
-                            return false;
+                            return diagnostics->fail("slot write", "Slot " + entry.key + " could not be cleared.",
+                                                     "Check Slots-folder write permissions and locked preset files.");
                         }
                         continue;
                     }
 
                     if (!atomicWriteFile(slotFile, entry.json)
                         || !deleteSlotRestoreBackups(entry.slotIndex)) {
-                        Log::warn("APP", "Failed to restore slot file family: "
-                            + slotFile.getFileName());
-                        return false;
+                        return diagnostics->fail("slot write", "Slot " + entry.key + " or its restore files could not be written.",
+                                                 "Check Slots-folder write permissions, free disk space and file locks.");
                     }
                 }
             }
@@ -915,7 +1032,7 @@ void SettingsExporter::importFullBackupAsync(
         };
 
     auto rollbackExternalState =
-        [hasPresetSlots, slotSnapshots, hasControlConfig, controlSnapshots,
+        [diagnostics, hasPresetSlots, slotSnapshots, hasControlConfig, controlSnapshots,
          presetManagerPtr]() mutable {
             bool ok = true;
             if (hasPresetSlots && !restoreFileSnapshots(slotSnapshots))
@@ -927,6 +1044,8 @@ void SettingsExporter::importFullBackupAsync(
                 presetManagerPtr->loadSlotNames();
                 presetManagerPtr->clearPreloadCache();
             }
+            if (!ok)
+                diagnostics->markRollbackIncomplete();
             return ok;
         };
 
@@ -993,79 +1112,60 @@ void SettingsExporter::showSaveDialog(const juce::String& defaultFilename,
 }
 
 void SettingsExporter::showLoadDialog(const juce::String& filter,
-                                       std::function<bool(const juce::String& json)> importer)
+                                       std::function<bool(const juce::String& json)> importer,
+                                       std::shared_ptr<RestoreDiagnostics> diagnostics)
 {
+    if (!diagnostics)
+        diagnostics = std::make_shared<RestoreDiagnostics>();
     auto chooser = std::make_shared<juce::FileChooser>(
         "Load",
         juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
         filter);
     chooser->launchAsync(juce::FileBrowserComponent::openMode |
                          juce::FileBrowserComponent::canSelectFiles,
-                         [chooser, importer](const juce::FileChooser& fc) {
+                         [chooser, importer, diagnostics](const juce::FileChooser& fc) {
         auto file = fc.getResult();
-        if (!file.existsAsFile()) return;
-        auto json = file.loadFileAsString();
-        if (!isPlatformCompatible(json)) {
-            auto backupPlatform = getBackupPlatform(json);
-            juce::AlertWindow::showMessageBoxAsync(
-                juce::MessageBoxIconType::WarningIcon,
-                "Platform Mismatch",
-                "This backup was created on " + backupPlatform + ".\n"
-                "Backup/restore is only supported between the same OS.");
-            juce::Logger::writeToLog("[APP] Platform mismatch: backup=" + backupPlatform
-                + " current=" + getCurrentPlatform());
+        if (file == juce::File())
+            return; // Cancellation is not an import failure.
+        juce::String json;
+        if (!readBackupFile(file, json, *diagnostics)) {
+            showRestoreFailure(*diagnostics);
             return;
         }
-        if (!importer(json)) {
-            Log::warn("APP", "Settings import failed");
-            juce::AlertWindow::showMessageBoxAsync(
-                juce::MessageBoxIconType::WarningIcon,
-                "Import Failed",
-                "DirectPipe could not restore this backup completely. "
-                "The previous settings were preserved where possible.");
-        }
+        if (!importer(json))
+            showRestoreFailure(*diagnostics);
     });
 }
 
 void SettingsExporter::showLoadDialogAsync(
     const juce::String& filter,
     std::function<void(const juce::String& json,
-                       std::function<void(bool)> onComplete)> importer)
+                       std::function<void(bool)> onComplete)> importer,
+    std::shared_ptr<RestoreDiagnostics> diagnostics)
 {
+    if (!diagnostics)
+        diagnostics = std::make_shared<RestoreDiagnostics>();
     auto chooser = std::make_shared<juce::FileChooser>(
         "Load",
         juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
         filter);
     chooser->launchAsync(juce::FileBrowserComponent::openMode |
                          juce::FileBrowserComponent::canSelectFiles,
-                         [chooser, importer = std::move(importer)](
+                         [chooser, diagnostics, importer = std::move(importer)](
                              const juce::FileChooser& fc) mutable {
         const auto file = fc.getResult();
-        if (!file.existsAsFile())
-            return;
-
-        const auto json = file.loadFileAsString();
-        if (!isPlatformCompatible(json)) {
-            const auto backupPlatform = getBackupPlatform(json);
-            juce::AlertWindow::showMessageBoxAsync(
-                juce::MessageBoxIconType::WarningIcon,
-                "Platform Mismatch",
-                "This backup was created on " + backupPlatform + ".\n"
-                "Backup/restore is only supported between the same OS.");
-            juce::Logger::writeToLog("[APP] Platform mismatch: backup="
-                + backupPlatform + " current=" + getCurrentPlatform());
+        if (file == juce::File())
+            return; // Cancellation is not an import failure.
+        juce::String json;
+        if (!readBackupFile(file, json, *diagnostics)) {
+            showRestoreFailure(*diagnostics);
             return;
         }
 
-        importer(json, [](bool ok) {
+        importer(json, [diagnostics](bool ok) {
             if (ok)
                 return;
-            Log::warn("APP", "Settings import failed");
-            juce::AlertWindow::showMessageBoxAsync(
-                juce::MessageBoxIconType::WarningIcon,
-                "Import Failed",
-                "DirectPipe could not restore this backup completely. "
-                "The previous settings and plug-in chain were preserved where possible.");
+            showRestoreFailure(*diagnostics);
         });
     });
 }

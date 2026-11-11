@@ -87,6 +87,24 @@ results are recorded separately.
 
 ---
 
+## Native routing and backup diagnostics
+
+The host tests enable VST2 hosting when the optional SDK is available, matching
+the app. Set `DIRECTPIPE_TEST_GFORM_VST2` to an isolated official GForm DLL, then
+run `directpipe-host-tests.exe --gtest_filter=VSTChainTest.GFormVst2KeepsBothOutputChannels`.
+It records JUCE main/total bus counts and renders dual-mono input at 48 kHz,
+checking finite, nonzero, matching L/R output. Without the SDK or environment
+variable this one test skips. The remaining routing probes are self-contained.
+This software harness does not open an audio device or prove WASAPI/VB-Cable,
+listening or the reporter's exact binary/settings. Plug-in binaries are not
+bundled or redistributed. Existing presets and control suites must still pass.
+
+The native `SettingsExporterTest.*` suite separately covers settings/full-backup
+failure diagnostics, preserved legacy acceptance, safe log messages, rollback
+failure reporting and async diagnostic precedence. It runs without importing an
+owner backup or opening a native file chooser. Dialog interaction/read failures
+require a separate manual check; do not treat fixture results as that evidence.
+
 ## 자동 테스트 (test_api.js)
 
 ### 요구사항
