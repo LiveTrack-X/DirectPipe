@@ -353,13 +353,33 @@ jobs:
           grep -Eq '^CMAKE_OSX_DEPLOYMENT_TARGET:[A-Z_]+=10\.15$' build/_deps/juce-build/tools/CMakeCache.txt
 
       - name: Build
+        id: macos_build
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
       - name: Run Tests
+        id: macos_tests
         run: |
           mkdir -p build/test-results
           ctest --test-dir build --output-on-failure --timeout 120 \
             --output-junit test-results/ctest.xml
+
+      - name: Repeat snapshot recovery in fresh processes
+        id: macos_snapshot_repeat
+        timeout-minutes: 5
+        run: |
+          if ! ctest --test-dir build --output-on-failure --timeout 120 \
+              --no-tests=error --repeat until-fail:25 \
+              -R '^AudioEngineTest\.SavedDriverSnapshotDoesNotUseAReplacementEndpoint$' \
+              > build/test-results/snapshot-repeat.log 2>&1; then
+            cat build/test-results/snapshot-repeat.log
+            exit 1
+          fi
+          echo "Snapshot recovery regression: 25 fresh processes passed"
+
+      - name: Capture native snapshot diagnostics after test failure
+        if: failure() && steps.macos_build.outcome == 'success' && (steps.macos_tests.outcome == 'failure' || steps.macos_snapshot_repeat.outcome == 'failure')
+        timeout-minutes: 3
+        run: bash tools/test_macos_snapshot_lldb.sh
 
       - name: Upload macOS test evidence
         if: always()
@@ -368,6 +388,8 @@ jobs:
           name: DirectPipe-macOS-test-results
           path: |
             build/test-results/ctest.xml
+            build/test-results/snapshot-repeat.log
+            build/test-results/macos-snapshot-diagnostic/
             build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
           retention-days: 30

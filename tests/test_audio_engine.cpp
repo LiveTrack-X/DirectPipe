@@ -136,6 +136,8 @@ private:
 
 struct ManagedFakeDeviceStats {
     std::vector<std::pair<int, int>> openAttempts;
+    int stopCalls = 0;
+    int destroyCalls = 0;
     juce::StringArray openedDeviceNames;
     juce::StringArray openRequestLog;
     juce::String typeName { "Recovery Test" };
@@ -176,6 +178,8 @@ public:
           stats_(std::move(stats))
     {
     }
+
+    ~ManagedFakeAudioIODevice() override { ++stats_->destroyCalls; }
 
     juce::StringArray getOutputChannelNames() override
     {
@@ -280,6 +284,8 @@ public:
 
     void stop() override
     {
+        if (playing_)
+            ++stats_->stopCalls;
         if (playing_ && callback_)
             callback_->audioDeviceStopped();
         playing_ = false;
@@ -479,8 +485,58 @@ protected:
         }
     }
 
+    // Console tests use JUCE's message-loop classes without JUCEApplication.
+    // Initialize on the test/message thread and outlive every engine object.
+    juce::ScopedJuceInitialiser_GUI juceInitialiser_;
     std::unique_ptr<AudioEngine> engine_;
 };
+
+TEST_F(AudioEngineTest, ShutdownClosesAndDetachesCallbacksBeforeEngineWasInitialized)
+{
+    // Clean up while all engine members still exist, even if a RED/setup
+    // assertion returns early with the legacy callback still registered.
+    struct CallbackCleanup {
+        AudioEngine& engine;
+        ~CallbackCleanup()
+        {
+            auto& manager = engine.getAudioDeviceManagerForTest();
+            manager.removeAudioCallback(&engine);
+            manager.closeAudioDevice();
+        }
+    } cleanup { *engine_ };
+    auto first = std::make_shared<ManagedFakeDeviceStats>();
+    first->typeName = "Shutdown First Fake";
+    first->deviceName = "Shutdown First Device";
+    auto& manager = engine_->getAudioDeviceManagerForTest();
+    addManagedFakeDeviceType(manager, first);
+    ASSERT_TRUE(manager.setAudioDeviceSetup(
+        managedDuplexSetup(first->deviceName), true).isEmpty());
+
+    auto target = std::make_shared<ManagedFakeDeviceStats>();
+    target->typeName = "Shutdown Target Fake";
+    target->deviceName = "Shutdown Target Device";
+    addManagedFakeDeviceType(manager, target, false);
+    // This public operation attaches the engine's callback without initialize().
+    ASSERT_TRUE(engine_->setAudioDeviceType(target->typeName));
+    ASSERT_FALSE(engine_->isRunning());
+    ASSERT_TRUE(engine_->getVSTChain().isStable());
+    const auto stopsBefore = target->stopCalls;
+    const auto destroysBefore = target->destroyCalls;
+
+    engine_->shutdown();
+    EXPECT_GT(target->stopCalls, stopsBefore);
+    EXPECT_GT(target->destroyCalls, destroysBefore);
+    EXPECT_EQ(manager.getCurrentAudioDevice(), nullptr);
+    EXPECT_FALSE(engine_->getVSTChain().isStable());
+
+    // Reopening the fake manager must not call a shutdown engine back into
+    // graph preparation. This detects a callback left attached after close.
+    const auto reopen = manager.setAudioDeviceSetup(
+        managedDuplexSetup(target->deviceName, 48000.0, 256), true);
+    EXPECT_TRUE(reopen.isEmpty());
+    EXPECT_FALSE(engine_->getVSTChain().isStable());
+
+}
 
 TEST_F(AudioEngineTest, InputGainClampsFiniteValuesBeforeAudioProcessing)
 {

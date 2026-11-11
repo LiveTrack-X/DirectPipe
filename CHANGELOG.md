@@ -33,6 +33,10 @@ Exact-version release checks and packaging are tracked in the
   chain is idle/unprepared. Merge those changes into the preserved complete
   saved plug-in chain, or write a recovery sidecar without replacing chain
   files. Keep the full save pending and resume it after the chain is prepared.
+- Save startup confirmation on otherwise valid long Windows paths using a
+  short sibling temporary filename and an atomic commit.
+- Close device callbacks and audio resources even when initial audio
+  initialization failed and a device was selected later during recovery.
 - Route mono VST outputs to both channels of the following stereo stage and
   final output, including GVST GForm VST2. Preserve stereo effects, bypass,
   existing input Mono/Stereo settings and saved presets. Route main buses only

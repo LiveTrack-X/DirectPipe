@@ -41,8 +41,9 @@ and the [mic option guide](USER_GUIDE.md#windows-mic-level-hold).
 | Check | Observed result |
 | --- | --- |
 | Windows Release build | App, Receiver VST2/VST3, tests and audio-free startup probe passed |
-| Final full CTest | 778 registrations: 775 passed, 3 skipped, 0 failed; 349.01 seconds |
-| Final engine/gain/state/mic/UI/autosave/backup focused run | 235/235 passed; 23.706 seconds |
+| Final full CTest | 782 registrations: 779 passed, 3 skipped, 0 failed; 340.64 seconds |
+| Final engine/mic/UI/autosave/backup focused run | 211/211 passed; 25.812 seconds |
+| Startup ACK/path/desktop launch focused run | 28/28 passed, including three new long-path/alias/diagnostic regressions; 81.755 seconds |
 | Official GForm VST2 host-graph rendering | 1.2 and 3.1 each passed with explicit DLL paths |
 | JUCE endpoint extension guard | Clean, idempotent, mixed and unknown-source/no-partial-write passed |
 | Windows ZIP extraction | All four hashes matched outside the checkout; three PE binaries AMD64/version 4.5.0/unsigned; no portable flag/probe |
@@ -114,6 +115,27 @@ Azure mirror DNS failures, so CI uses official Ubuntu mirrors and bounded,
 fail-on-index-error APT operations. Exact-source CI must independently revalidate
 these build changes; a passed local check is not that result.
 
+Windows CI also exposed nested temporary-basename expansion when saving a
+startup ACK. A controlled 248-character valid ACK and short/long TEMP aliases
+reproduced three failures locally. The ACK now uses one short sibling temporary,
+checked write/flush/close, and an atomic Windows commit without replacing prior
+evidence. The audio-free probe canonicalizes existing directory identities;
+its TEMP containment is unchanged and bounded diagnostics identify failures.
+All 28 startup cases passed after these corrections. This was an unreleased
+4.5.0 handshake defect, not a proven cause of the owner's old 4.4.0 incident.
+
+One earlier macOS full-suite run crashed in the saved-driver snapshot fixture.
+The same universal fixture then passed 25 fresh processes without reproducing
+that crash; no native crash stack or definitive root cause was obtained. The
+console test fixture now follows JUCE's explicit GUI/message initialization
+contract. A separate controlled regression proved that pre-initialization device
+recovery could retain callbacks past shutdown; shutdown now always detaches and
+closes its owned device before member destruction. This fixes that independently
+confirmed lifecycle defect without asserting causality for the one-off crash.
+Final macOS CI requires the full suite and 25 fresh-process repetitions; either
+failure blocks publication and gathers native diagnostics. Physical field
+acceptance remains separate.
+
 ## Stream Deck dependencies
 
 SDK 2.0.1, Stream Deck 6.9 minimum, Node 20 runtime, action identities and artwork
@@ -128,8 +150,8 @@ No finding is waived/hidden; Marketplace submission/review is separate.
 
 | Local preparation artifact | SHA-256 |
 | --- | --- |
-| Windows ZIP, 12,600,506 bytes | 09f0603e71ff5068b173f390bff8c3f9852af92c10c1159ba737728f81b205ce |
-| Host EXE, 13,660,672 bytes | 8e2f2642c7c4fb1d5c90a8941ff1bc80a5ed16d14c8a04e79fed843a3920cfec |
+| Windows ZIP, 12,600,585 bytes | ba86e249bf4935d39d6adb8ca99bbbd03a207a5e3692cbf00ec4d0f9cbbe3bd0 |
+| Host EXE, 13,661,696 bytes | 379301a58e47799fdbd487ba6e90875ba5c8a066cf7dbd426402e2205598dd5f |
 | Stream Deck package, 154,426 bytes | e01ec5e1a7e5de46faa4f8ccf970dfe7f464e4da1ad2209d540e84068feca447 |
 
 Raw evidence: `build/release-4.5.0-publication-evidence/` and

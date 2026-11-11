@@ -43,6 +43,10 @@
 - Verified initial startup now precedes cleanup of known previous host EXEs.
   Saved window/tray behavior is respected; failed or unconfirmed startup keeps
   recovery files and reports the startup/cleanup stage.
+- Windows startup confirmation uses a short temporary filename and atomic
+  commit so otherwise valid long paths do not fail from extra name expansion.
+- Device callbacks and audio resources close even after initial audio startup
+  failed and recovery selected a device later.
 - Stream Deck dependencies and packaging tools are updated while retaining
   the Node 20 runtime, Stream Deck 6.9 minimum, action identities and artwork.
 - 모노 VST 출력이 다음 스테레오 이펙트와 최종 출력의 양쪽 채널에 전달됩니다.
@@ -60,6 +64,10 @@
   초기 복원과 저장된 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며,
   시작 미확인 시에는 복구 파일을 유지합니다. Stream Deck 의존성과 패키징
   도구도 갱신하며 기존 실행 환경·액션·이미지는 유지합니다.
+- Windows 시작 확인은 짧은 임시 파일과 원자적 확정을 사용해, 유효하지만 긴
+  경로에서 추가 파일명 확장 때문에 저장이 실패하는 문제를 수정합니다.
+- 초기 오디오 시작이 실패한 뒤 복구 과정에서 장치를 선택한 경우에도 종료 시
+  장치 콜백과 오디오 자원을 정리합니다.
 
 Existing A–E/Auto presets, settings, accepted legacy backup formats, Mono/Stereo
 input meanings, Receiver/IPC formats and Stream Deck actions retain their

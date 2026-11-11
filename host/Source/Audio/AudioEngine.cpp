@@ -351,7 +351,7 @@ AudioEngine::~AudioEngine()
 {
     // Device callbacks can queue message-thread work even before initialize()
     // marks the engine as running (tests and partial-start failure paths do
-    // this). Invalidate every queued callback before shutdown's early return.
+    // this). Invalidate every queued callback before shutdown and member destruction.
     alive_->store(false, std::memory_order_release);
     shutdown();
 }
@@ -506,8 +506,8 @@ bool AudioEngine::initialize()
 
 void AudioEngine::shutdown()
 {
-    if (!running_) return;
-
+    // A recovery or driver selection can attach callbacks before initialize()
+    // sets running_. Always detach while all engine members are still alive.
     alive_->store(false);
     endpointChangeWatcher_.stop();
     running_ = false;

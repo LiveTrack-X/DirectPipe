@@ -105,6 +105,15 @@ Receiver만 갱신하는 동안 DirectPipe 본체는 계속 실행됩니다.
   복구 파일을 기록합니다. 초기 복원과 저장된 창/트레이 시작 정책 적용 뒤
   새 본체의 시작을 확인합니다. 시작 실패·미확인 시 복구 파일을 유지하며,
   시작 후 정리 실패와 최종 완료 기록 오류를 구분합니다.
+- **Long Windows startup-confirmation paths:** a short sibling temporary
+  filename and atomic commit avoid extra path-length growth on valid paths.
+- **긴 Windows 시작 확인 경로:** 짧은 임시 파일명과 원자적 확정을 사용해,
+  유효한 경로가 추가 파일명 확장 때문에 저장되지 않는 문제를 수정합니다.
+- **Audio cleanup after failed startup:** callbacks and audio resources close
+  even when initial audio initialization failed and recovery selected a device
+  later.
+- **초기 시작 실패 뒤 오디오 정리:** 오디오 초기화가 실패한 뒤 복구 과정에서
+  장치를 선택한 경우에도 종료 시 콜백과 오디오 자원을 정리합니다.
 - **Verified old-EXE cleanup:** known previous host EXEs are removed after a
   verified successful start. Locks, unknown identities or changed files are
   reported and retained. Date-suffixed manual backups and settings are preserved.
