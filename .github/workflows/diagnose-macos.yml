@@ -1,0 +1,76 @@
+name: Diagnose macOS fake-device snapshot
+
+# Diagnostic only: this workflow never packages or publishes release assets.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  snapshot-backtrace:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore optional VST2 SDK
+        env:
+          VST2_SDK_B64: ${{ secrets.VST2_SDK_B64 }}
+        run: |
+          if [ -n "$VST2_SDK_B64" ]; then
+            mkdir -p thirdparty/VST2_SDK/pluginterfaces/vst2.x
+            echo "$VST2_SDK_B64" | base64 -d | tar xz -C thirdparty/VST2_SDK/
+            test -f thirdparty/VST2_SDK/pluginterfaces/vst2.x/aeffect.h
+            echo "VST2 SDK restored"
+          else
+            echo "VST2 SDK secret not set; diagnostic omits VST2 format support."
+          fi
+
+      - name: Configure optimized arm64 host tests with line tables
+        run: |
+          mkdir -p build/test-results
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 \
+            -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-O3 -gline-tables-only -DNDEBUG" \
+            -DDIRECTPIPE_BUILD_HOST=ON \
+            -DDIRECTPIPE_BUILD_RECEIVER=OFF \
+            -DDIRECTPIPE_BUILD_TESTS=ON 2>&1 | tee build/test-results/configure.log
+          grep -E '^CMAKE_OSX_(ARCHITECTURES|DEPLOYMENT_TARGET):' build/CMakeCache.txt
+          grep -Eq '^CMAKE_OSX_DEPLOYMENT_TARGET:[A-Z_]+=10\.15$' build/_deps/juce-build/tools/CMakeCache.txt
+
+      - name: Build only host-test target
+        id: build
+        run: |
+          cmake --build build --config Release --target directpipe-host-tests -j2 \
+            2>&1 | tee build/test-results/build.log
+
+      - name: Run exact fake-device regression
+        id: regression
+        timeout-minutes: 3
+        run: |
+          cd build/tests
+          directpipe-host-tests_artefacts/Release/directpipe-host-tests \
+            --gtest_filter=AudioEngineTest.SavedDriverSnapshotDoesNotUseAReplacementEndpoint \
+            2>&1 | tee ../test-results/snapshot-plain.log
+
+      - name: Collect LLDB backtrace after regression failure
+        if: failure() && steps.build.outcome == 'success' && steps.regression.outcome == 'failure'
+        timeout-minutes: 3
+        run: bash tools/test_macos_snapshot_lldb.sh
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-snapshot-diagnostic-${{ github.run_id }}
+          path: build/test-results/
+          if-no-files-found: warn
+          retention-days: 14
