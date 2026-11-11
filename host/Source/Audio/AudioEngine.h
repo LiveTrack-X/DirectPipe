@@ -142,7 +142,8 @@ public:
     juce::StringArray getInputChannelNames() const;
     juce::StringArray getOutputChannelNames() const;
 
-    /** @brief Set which input channels are active (stereo pair starting at firstChannel). */
+    /** @brief Select contiguous inputs from firstChannel; defaults to a pair,
+     *  with numChannels=1 for an explicit single physical input. */
     [[nodiscard]] ActionResult setActiveInputChannels(int firstChannel, int numChannels = 2);
     /** @brief Set which output channels are active (stereo pair starting at firstChannel). */
     [[nodiscard]] ActionResult setActiveOutputChannels(int firstChannel, int numChannels = 2);

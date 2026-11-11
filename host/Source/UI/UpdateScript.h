@@ -52,7 +52,8 @@ juce::String buildWindowsUpdateWaitScript(unsigned long processId,
  */
 juce::String buildWindowsUpdateInstallScript(const WindowsUpdateInstallSpec& spec);
 
-/** Complete host-only BAT operation. Fixture callers leave relaunch disabled. */
+/** Complete host-only BAT operation. Install-only fixtures disable relaunch;
+ *  startup fixtures enable it only for owned, audio-free probe executables. */
 juce::String buildWindowsHostUpdateScript(const WindowsUpdateInstallSpec& spec);
 
 /** Literal-safe arguments for the system PowerShell launcher of a host BAT. */

@@ -3149,7 +3149,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
             // internal channel 0 before the VST chain. A genuine one-channel
             // device is copied directly. Limiting the fold-down to the selected
             // pair prevents unrelated active driver channels from entering the
-            // signal and avoids a +3 dB boost for identical L/R input.
+            // signal and avoids increasing gain when combining identical L/R.
             int validInputChannels = 0;
             for (int ch = 0; ch < numInputChannels && validInputChannels < 2; ++ch) {
                 if (inputChannelData[ch] != nullptr) {
