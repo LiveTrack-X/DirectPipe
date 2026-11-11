@@ -225,9 +225,31 @@ bool writeHostStartupAcknowledgement(const juce::File& receiptFile,
     data->setProperty("pid", static_cast<juce::int64>(processId));
     data->setProperty("ready", ready);
     data->setProperty("reason", reason.replaceCharacters("\r\n", "  ").substring(0, 480));
-    juce::TemporaryFile temporary(acknowledgement);
-    if (!temporary.getFile().replaceWithText(juce::JSON::toString(juce::var(data.release()), true))
-        || !temporary.overwriteTargetFileWithTemporary())
+    // The receipt key and attempt already make the ACK basename long. JUCE's
+    // replaceWithText would add another target-derived temporary basename, so
+    // write one short sibling directly and close it before the atomic commit.
+    const auto temporaryPath = acknowledgement.getParentDirectory().getNonexistentChildFile(
+        ".dp-ack-" + juce::Uuid().toString(), ".tmp", false);
+    juce::TemporaryFile temporary(acknowledgement, temporaryPath);
+    bool written = false;
+    {
+        juce::FileOutputStream output(temporary.getFile());
+        if (output.openedOk()) {
+            written = output.writeText(juce::JSON::toString(juce::var(data.release()), true), false, false, "\n");
+            output.flush();
+            written = written && output.getStatus().wasOk();
+        }
+    }
+    if (!written || acknowledgement.exists())
+        return reject("The application started, but its update confirmation could not be saved. Check folder permissions and file locks.");
+#if JUCE_WINDOWS
+    // Do not replace evidence if another writer won this attempt's ACK path.
+    const bool committed = ::MoveFileExW(temporary.getFile().getFullPathName().toWideCharPointer(),
+        acknowledgement.getFullPathName().toWideCharPointer(), MOVEFILE_WRITE_THROUGH) != FALSE;
+#else
+    const bool committed = temporary.overwriteTargetFileWithTemporary();
+#endif
+    if (!committed)
         return reject("The application started, but its update confirmation could not be saved. Check folder permissions and file locks.");
     return true;
 }

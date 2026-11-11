@@ -267,6 +267,125 @@ TEST(StartupUpdateSupportTest, IncompleteRestoreWritesNegativeAckWithReason)
     EXPECT_TRUE(files.backup.existsAsFile());
 }
 
+TEST(StartupUpdateSupportTest, LongValidAckPathCommitsWithoutExpandingTemporaryBasename)
+{
+    StartupFiles files;
+    const auto shortReceipt = files.directory.getChildFile("receipt.json");
+    const int padding = 248 - startupAckFileForAttempt(shortReceipt, files.attempt).getFullPathName().length() - 1;
+    ASSERT_GT(padding, 0);
+    files.result = files.directory.getChildFile(juce::String::repeatedString("p", padding)).getChildFile("receipt.json");
+    ASSERT_EQ(files.expectedAck().getFullPathName().length(), 248);
+    ASSERT_TRUE(files.prepare());
+    ASSERT_TRUE(files.saveReceipt(files.pendingReceipt()));
+    juce::String error;
+    ASSERT_TRUE(writeHostStartupAcknowledgement(files.result, files.attempt, files.current,
+        "4.5.0", 1234, true, "startup ready", error)) << error.toStdString();
+    const auto written = files.expectedAck().loadFileAsString();
+    const auto ack = juce::JSON::parse(written);
+    EXPECT_EQ(ack["attemptId"].toString(), files.attempt);
+    EXPECT_TRUE(static_cast<bool>(ack["ready"]));
+    EXPECT_FALSE(writeHostStartupAcknowledgement(files.result, files.attempt, files.current,
+        "4.5.0", 1234, false, "cannot replace evidence", error));
+    EXPECT_EQ(files.expectedAck().loadFileAsString(), written);
+    EXPECT_TRUE(files.backup.existsAsFile());
+}
+
+#if JUCE_WINDOWS && defined(DIRECTPIPE_TEST_STARTUP_PROBE_PATH)
+namespace {
+class ScopedStartupProbeTemp {
+public:
+    explicit ScopedStartupProbeTemp(const juce::String& temporary) : temp_(read(L"TEMP")), tmp_(read(L"TMP"))
+    {
+        changed_ = SetEnvironmentVariableW(L"TEMP", temporary.toWideCharPointer()) != FALSE
+            && SetEnvironmentVariableW(L"TMP", temporary.toWideCharPointer()) != FALSE;
+    }
+    ~ScopedStartupProbeTemp()
+    {
+        SetEnvironmentVariableW(L"TEMP", temp_.empty() ? nullptr : temp_.c_str());
+        SetEnvironmentVariableW(L"TMP", tmp_.empty() ? nullptr : tmp_.c_str());
+    }
+    bool changed() const { return changed_; }
+private:
+    static std::wstring read(const wchar_t* name)
+    {
+        const auto length = GetEnvironmentVariableW(name, nullptr, 0);
+        if (!length) return {};
+        std::vector<wchar_t> value(length);
+        GetEnvironmentVariableW(name, value.data(), length);
+        return value.data();
+    }
+    std::wstring temp_, tmp_;
+    bool changed_ = false;
+};
+
+juce::String longStartupProbeDirectory(const juce::File& directory)
+{
+    std::vector<wchar_t> value(32768);
+    const auto length = GetLongPathNameW(directory.getFullPathName().toWideCharPointer(), value.data(), static_cast<DWORD>(value.size()));
+    return length > 0 && length < value.size() ? juce::String(value.data()) : juce::String{};
+}
+
+bool configureOwnedStartupProbe(const juce::File& executable, const juce::String& ack)
+{
+    const auto ini = executable.getSiblingFile("startup-probe.ini").getFullPathName();
+    return WritePrivateProfileStringW(L"StartupProbe", L"AckPath", ack.toWideCharPointer(), ini.toWideCharPointer()) != FALSE
+        && WritePrivateProfileStringW(L"StartupProbe", L"LifetimeMs", L"0", ini.toWideCharPointer()) != FALSE;
+}
+}
+
+TEST(StartupUpdateSupportTest, ProbeAcceptsShortAliasInsideCanonicalTemporaryDirectory)
+{
+    StartupFiles files;
+    ASSERT_TRUE(files.prepare());
+    const auto longDirectory = longStartupProbeDirectory(files.directory);
+    ASSERT_TRUE(longDirectory.isNotEmpty());
+    std::vector<wchar_t> alias(32768);
+    const auto aliasLength = GetShortPathNameW(longDirectory.toWideCharPointer(), alias.data(), static_cast<DWORD>(alias.size()));
+    ASSERT_GT(aliasLength, 0u);
+    const juce::String shortDirectory(alias.data());
+    if (shortDirectory.equalsIgnoreCase(longDirectory))
+        GTEST_SKIP() << "This test volume does not provide a distinct 8.3 directory alias";
+    const auto executable = files.directory.getChildFile("owned-startup-probe.exe");
+    ASSERT_TRUE(juce::File(DIRECTPIPE_TEST_STARTUP_PROBE_PATH).copyFileTo(executable));
+    const auto acknowledgement = juce::File(shortDirectory).getChildFile("alias.startup.json");
+    ASSERT_TRUE(configureOwnedStartupProbe(executable, acknowledgement.getFullPathName()));
+    ScopedStartupProbeTemp temporary(longDirectory);
+    ASSERT_TRUE(temporary.changed());
+    juce::ChildProcess child;
+    ASSERT_TRUE(child.start(juce::StringArray { executable.getFullPathName(), "--directpipe-update-attempt=" + files.attempt }));
+    ASSERT_TRUE(child.waitForProcessToFinish(5000));
+    EXPECT_EQ(child.getExitCode(), 0);
+    const auto ack = juce::JSON::parse(acknowledgement);
+    EXPECT_EQ(ack["attemptId"].toString(), files.attempt);
+    EXPECT_TRUE(static_cast<bool>(ack["ready"]));
+    EXPECT_TRUE(executable.getSiblingFile("startup-probe.diagnostic.txt").loadFileAsString().contains("exit=0"));
+}
+
+TEST(StartupUpdateSupportTest, ProbeRejectsTemporaryPrefixSiblingAndRecordsOwnedDiagnostic)
+{
+    StartupFiles files;
+    ASSERT_TRUE(files.prepare());
+    const auto allowed = files.directory.getChildFile("allowed");
+    const auto outside = files.directory.getChildFile("allowed-other/outside.startup.json");
+    ASSERT_TRUE(allowed.createDirectory());
+    ASSERT_TRUE(outside.getParentDirectory().createDirectory());
+    ASSERT_TRUE(outside.replaceWithText("outside marker"));
+    const auto executable = allowed.getChildFile("owned-startup-probe.exe");
+    ASSERT_TRUE(juce::File(DIRECTPIPE_TEST_STARTUP_PROBE_PATH).copyFileTo(executable));
+    ASSERT_TRUE(configureOwnedStartupProbe(executable, outside.getFullPathName()));
+    const auto longAllowed = longStartupProbeDirectory(allowed);
+    ASSERT_TRUE(longAllowed.isNotEmpty());
+    ScopedStartupProbeTemp temporary(longAllowed);
+    ASSERT_TRUE(temporary.changed());
+    juce::ChildProcess child;
+    ASSERT_TRUE(child.start(juce::StringArray { executable.getFullPathName(), "--directpipe-update-attempt=" + files.attempt }));
+    ASSERT_TRUE(child.waitForProcessToFinish(5000));
+    EXPECT_EQ(child.getExitCode(), 3);
+    EXPECT_EQ(outside.loadFileAsString(), "outside marker");
+    EXPECT_TRUE(executable.getSiblingFile("startup-probe.diagnostic.txt").loadFileAsString().contains("reason=ack-outside-temp"));
+}
+#endif
+
 TEST(StartupUpdateSupportTest, MissingWrongOrForeignAttemptCannotWriteAck)
 {
     StartupFiles files;
