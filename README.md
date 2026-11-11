@@ -28,7 +28,7 @@
 
 > **4.4.0** — Up to eight independent Receiver connections, plus one separate legacy Receiver, with existing A–E/Auto slots and OBS settings preserved. / A–E/Auto 슬롯과 OBS 설정을 유지하며 최대 8개의 독립 Receiver와 구형 Receiver 1개를 별도로 지원합니다. [Scope and validation / 변경 범위와 검증](docs/MULTI_RECEIVER_4_4_0.md).
 >
-> **Upgrading from 4.3.0 / 4.3.0에서 갱신할 때:** Its updater replaces only the host. After launching 4.4.0, use **Settings > Update Receiver...** to update existing Receiver installations too. / 4.3.0 업데이터는 본체만 교체합니다. 4.4.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신해야 독립 다중 수신을 사용할 수 있습니다.
+> **Upgrading from 4.3.0 / 4.3.0에서 갱신할 때:** Its updater replaces only the host. After launching 4.5.0, use **Settings > Update Receiver...** to update existing Receiver installations too. The first upgrade uses the updater in your installed version; see [update recovery](docs/WINDOWS_UPDATE_RECOVERY.md). / 4.3.0 업데이터는 본체만 교체합니다. 4.5.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. 첫 갱신은 기존 설치본의 업데이터를 사용합니다. [업데이트 복구 안내](docs/WINDOWS_UPDATE_RECOVERY.md)를 참고하세요.
 
 ## 다운로드 / Download
 
@@ -253,7 +253,7 @@ External Control:
 - **상태 바** — 총 추정 레이턴시(드라이버 보고 입력·출력 지연, 미보고 방향은 1버퍼 대체 + 활성 플러그인 체인 보고 PDC), CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 콜백 처리시간은 CPU/XRun 진단에만 사용하며 총 지연에 중복 합산하지 않습니다. 하드웨어 루프백 실측값은 아니며 Receiver/OBS 버퍼는 별도입니다. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: total estimated latency (driver-reported input/output latency, with a one-buffer fallback per unreported direction, plus active plugin-chain reported PDC), CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. Callback execution time remains a CPU/XRun diagnostic and is not double-counted as path latency. This is not a hardware loopback measurement; Receiver/OBS buffering is separate. Auto-fade notifications
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 검증 → 교체 → 재시작. Windows의 **Settings > Update Receiver...**에서는 오래된 Receiver만 별도로 갱신하며 정확한 경로를 먼저 표시합니다. 사용 중이면 OBS 등을 직접 종료한 뒤 Retry / Verified in-app host updates, plus explicit Windows Receiver-only maintenance with exact path preview and Retry/Later for in-use plugins
 
-  업데이트 대상은 공개 릴리즈입니다. **4.3.0에서 처음 갱신하면 본체만 교체**되므로 4.4.0 실행 후 Settings에서 Receiver도 갱신하세요. SHA-256 검사는 패키지 일치 여부를 확인하며 코드 서명을 대신하지 않습니다. / Updates use published releases. **The 4.3.0 updater replaces only the host**; launch 4.4.0 and update the Receiver from Settings. SHA-256 verifies package integrity and does not replace code signing.
+  업데이트 대상은 공개 릴리즈입니다. **4.3.0에서 처음 갱신하면 본체만 교체**되므로 4.5.0 실행 후 Settings에서 Receiver도 갱신하세요. SHA-256 검사는 패키지 일치 여부를 확인하며 코드 서명을 대신하지 않습니다. / Updates use published releases. **The 4.3.0 updater replaces only the host**; launch 4.5.0 and update the Receiver from Settings. SHA-256 verifies package integrity and does not replace code signing.
 - **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Windows: Malgun Gothic, macOS: Apple SD Gothic Neo, Linux: Noto Sans CJK KR — Korean/Chinese/Japanese device names rendered correctly with platform-specific CJK font support
 - **다크 테마** — Custom JUCE LookAndFeel
 - **포터블 모드** — exe 옆에 [`portable.flag`](tools/portable.flag) 파일 배치 시 설정을 `./config/`에 저장. 다중 인스턴스 지원: 일반 모드와 포터블을 동시에 실행하면 포터블은 "Audio Only" 모드로 동작 (외부 제어 충돌 방지). 트레이/타이틀 바에 모드 표시 ([상세 설명](docs/USER_GUIDE.md#포터블-모드--portable-mode)) — Place [`portable.flag`](tools/portable.flag) next to exe to store config in `./config/`. Multi-instance support: running portable alongside normal mode puts portable in "Audio Only" mode (prevents external control conflicts). Mode shown in tray/title bar ([details](docs/USER_GUIDE.md#포터블-모드--portable-mode))
@@ -387,6 +387,8 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - **[Quick Start](docs/QUICKSTART.md) — USB 마이크 5분 설정 가이드 / 5-minute USB mic setup guide**
 - [Platform Guide](docs/PLATFORM_GUIDE.md) — 플랫폼별 가이드 (Windows/macOS/Linux) / Platform-specific setup, features, and limitations
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
+- [4.5.0 Verification](docs/RELEASE_4_5_0.md) — 정확 소스 CI·공개 파일·검증 한계 / Exact-source CI, public files and evidence limits
+- [4.5.0 Documentation Audit](docs/DOCUMENTATION_AUDIT_4_5_0.md) — 현재 문서·주석 정합성 / Current documentation and comment review
 - [4.4.0 Changes and Validation](docs/MULTI_RECEIVER_4_4_0.md) — 독립 Receiver·프리셋 수정·업데이트와 검증 범위 / Independent Receivers, preset fixes, upgrade workflow and validation scope
 - [Auto Design](docs/AUTO_DESIGN.md) — [Auto] 설계 원칙 및 파라미터 근거 / Auto chain design principles, parameter rationale
 - [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety
@@ -1089,7 +1091,7 @@ DirectPipe는 **인앱 업데이트 알림**을 지원합니다. 새 버전이 �
 **Windows**: "Update Now" 버튼으로 자동 다운로드 → exe 교체 → 재시작. v4.2.0 이후 릴리즈는 정확히 일치하는 `checksums.sha256` 항목과 SHA-256을 필수 확인하며, metadata가 없거나 읽지 못하거나 불일치하면 fail-closed로 중단합니다.
 **macOS/Linux**: "View on GitHub" 버튼으로 릴리즈 페이지에서 수동 다운로드.
 
-**4.4.0 Receiver 업데이트**: 4.3.0 업데이터는 본체만 교체합니다. 4.4.0을 실행한 뒤 Windows **Settings > Update Receiver...**에서 Receiver의 설치 경로·버전을 확인하고 갱신하세요. 사용자 경로는 **Choose Folder...**로 선택하고, OBS 등이 사용 중이면 직접 종료한 뒤 **Retry** 또는 **Later**를 선택합니다. Receiver만 갱신할 때 DirectPipe는 계속 실행되며, 같은 버전과 더 최신 설치본은 덮어쓰지 않습니다.
+**4.5.0 Receiver 업데이트**: 4.3.0 업데이터는 본체만 교체합니다. 4.5.0을 실행한 뒤 Windows **Settings > Update Receiver...**에서 Receiver의 설치 경로·버전을 확인하고 갱신하세요. 사용자 경로는 **Choose Folder...**로 선택하고, OBS 등이 사용 중이면 직접 종료한 뒤 **Retry** 또는 **Later**를 선택합니다. Receiver만 갱신할 때 DirectPipe는 계속 실행되며, 같은 버전과 더 최신 설치본은 덮어쓰지 않습니다.
 
 브라우저 수동 다운로드는 Windows 인앱 checksum 검사 범위 밖입니다.
 
@@ -1102,7 +1104,7 @@ DirectPipe includes **in-app update notification**. When a newer version is avai
 **Windows**: Click "Update Now" for auto-download → replace exe → restart. Releases v4.2.0 and later require an exact readable `checksums.sha256` entry and matching SHA-256; missing, unreadable, or mismatched metadata fails closed.
 **macOS/Linux**: Click "View on GitHub" to manually download from the release page.
 
-**Receiver upkeep in 4.4.0**: The 4.3.0 updater replaces only the host. After launching 4.4.0, open Windows **Settings > Update Receiver...** to review and update existing Receivers too. Use **Choose Folder...** for custom folders. Close OBS or another using app yourself before **Retry**, or choose **Later**. Receiver-only updates keep DirectPipe running and preserve same/newer installations.
+**Receiver upkeep in 4.5.0**: The 4.3.0 updater replaces only the host. After launching 4.5.0, open Windows **Settings > Update Receiver...** to review and update existing Receivers too. Use **Choose Folder...** for custom folders. Close OBS or another using app yourself before **Retry**, or choose **Later**. Receiver-only updates keep DirectPipe running and preserve same/newer installations.
 
 Manual browser downloads are outside the Windows in-app checksum check.
 

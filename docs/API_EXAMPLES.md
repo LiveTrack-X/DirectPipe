@@ -1173,10 +1173,11 @@ AutoHotkey로 커스텀 핫키:
 | `auto_slot_active` | bool | **Deprecated** — `active_slot == 5`에서 자동 파생. 하위 호환용. |
 | `slot_names` | array | 슬롯 이름 배열 (6개: A-E + Auto, 빈 문자열 = 이름 없음) |
 | `preset` | string | 현재 프리셋 이름 |
-| `latency_ms` | number | 메인 총 추정 레이턴시: 입력·출력 버퍼 추정 + 콜백 실행시간 + 활성 chain 보고 PDC (하드웨어 루프백 및 Receiver/OBS 버퍼 제외) |
-| `monitor_latency_ms` | number | 메인 총 추정값 + 모니터 장치 버퍼 추정값 (모니터 비활성 시 0) |
+| `latency_ms` | number | 드라이버가 보고한 입력·출력 지연(미보고 방향은 1버퍼 대체) + 활성 chain PDC. 콜백 실행시간은 별도 진단이며 하드웨어 루프백·Receiver/OBS 버퍼는 제외 / driver I/O latency + active-chain PDC |
+| `monitor_latency_ms` | number | 입력 장치 지연 + 활성 chain PDC + adaptive monitor queue target + 모니터 출력 장치 지연. 메인 출력 장치 지연은 제외하며 비활성·사용 불가 시 0 / separate monitor-route estimate |
 | `level_db` | number | 입력 레벨 (dBFS) |
 | `cpu_percent` | number | 오디오 CPU 사용률 (%) |
+| `audio_running` | bool | 초기화된 엔진과 현재 playing 장치가 모두 있을 때 true / initialized engine plus a playing current device |
 | `sample_rate` | number | 샘플레이트 (Hz) |
 | `buffer_size` | number | 버퍼 크기 (samples) |
 | `xrun_count` | number | 60초 롤링 윈도우 XRun 카운트 |

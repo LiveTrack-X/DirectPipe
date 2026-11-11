@@ -1,8 +1,9 @@
 # DirectPipe 테스트 가이드
 
-> **4.4.0 검증 / Validation**: 자동 회귀 검사와 실제 DLL·OBS 필터 엔진·업데이트
-> helper·POSIX core의 격리 실행 결과는 [검증 기록](docs/MULTI_RECEIVER_4_4_0.md)에
-> 구분합니다. 아래 수동 체크리스트가 모두 완료됐다는 뜻은 아닙니다.
+> **4.5.0 검증 / Validation**: 현재 자동·격리 실행 결과와 미확인 범위는
+> [4.5.0 검증 기록](docs/RELEASE_4_5_0.md)에서 확인합니다. 이전 다중 Receiver의
+> [4.4.0 검증 기록](docs/MULTI_RECEIVER_4_4_0.md)은 당시 체크포인트로 보존합니다.
+> 아래 수동 체크리스트가 모두 완료됐다는 뜻은 아닙니다.
 > / Automated and isolated runtime evidence does not imply that every manual
 > checklist item, OBS frontend, device, listening or interactive UAC check passed.
 
@@ -11,7 +12,7 @@
 릴리스 전에 아래 3단계를 순서대로 실행합니다.
 Run the following 3 steps in order before each release.
 
-### Step 1: 자동 릴리즈 게이트 / Automated release gates (~3-5분)
+### Step 1: 자동 릴리즈 게이트 / Automated release gates
 
 ```bash
 # 1) Version/release metadata, UTF-8, and patch hygiene
@@ -20,21 +21,37 @@ python tools/check_text_integrity.py --repo-root .
 git diff --check
 (cd com.directpipe.directpipe.sdPlugin && npm audit && npm audit --omit=dev)
 
-# 2) Start the exact newly built DirectPipe candidate, then verify its API.
-#    The script rejects a process on port 8766 whose ProductVersion differs
-#    from the canonical CMake version. Close the candidate after this passes.
-bash tools/pre-release-test.sh --api-only
-
-# 3) With DirectPipe closed, build and run automated non-API suites.
+# 2) Build and run non-API suites with this build-directory candidate stopped.
 bash tools/pre-release-test.sh --skip-api
 ctest --test-dir build --build-config Release --output-on-failure
+
+# 3) Check the API client/parser without contacting a DirectPipe instance.
+node --test tools/test_api_parser.test.js
 ```
+
+Windows의 정확한 후보 API 게이트는 빌드 후 별도 PowerShell 단계로 실행합니다.
+격리된 CI 실행과 동일하게 새 포터블 설정을 만들고, 자신이 시작한 프로세스의
+HTTP/WebSocket PID와 버전을 확인한 뒤 그 프로세스만 종료합니다.
+/ After the build, run the exact Windows candidate API gate in a separate PowerShell step:
+
+```powershell
+./tools/test_windows_candidate_api.ps1 `
+  -Candidate build/host/DirectPipe_artefacts/Release/DirectPipe.exe
+```
+
+8765/8766 포트가 이미 사용 중이거나 후보 폴더에 설정이 있으면 이 helper는
+검사를 거부합니다. 다른 설치본을 대신 검사하거나 기존 앱을 자동 종료하지
+않습니다. 필수 플러그인·슬롯·설정·녹음 폴더 검사는 사라지면 실패하며,
+정확한 후보가 `audio_running=false`를 보고할 때 녹음 샘플 진행 검사만 건너뜁니다.
+이 경우에도 제어·파일·유한값 검사는 필수이고, 실제 녹음 오디오를 검증했다고
+보고하지 않습니다. CI의 TEMP 정렬 도우미는 Windows Actions 전용이며 로컬에서
+실행할 단계가 아닙니다.
 
 수행 항목:
 - App/Receiver/Stream Deck/package-lock/current release docs/versioned release body version consistency
 - UTF-8 text integrity and `git diff --check`
 - Stream Deck full and production-only dependency audit (0 vulnerabilities required)
-- Exact-candidate API integration tests (`test_api.js`, HTTP port 8766)
+- Exact-candidate API integration tests (`tools/test_api.js`, HTTP 8766 / WebSocket 8765)
 - Release build
 - Google Test unit tests (core + host + actual Receiver processor + focused endpoint watcher)
 - Full CTest registration/integration pass
@@ -49,9 +66,9 @@ results are recorded separately.
 
 옵션: `--skip-build`, `--skip-api`, `--api-only`, `--version-only`
 
-> `bash tools/pre-release-test.sh`를 인자 없이 실행하면 Windows에서 실행 중인 candidate와 EXE relink가 충돌할 수 있습니다. 위 순서대로 `--api-only` 검증 후 candidate를 종료하고 `--skip-api`를 실행합니다.
+> `bash tools/pre-release-test.sh`를 인자 없이 실행하면 Windows에서 실행 중인 candidate와 EXE relink가 충돌할 수 있습니다. 먼저 후보를 빌드한 뒤 위 격리 API helper를 사용합니다. 기존 후보를 직접 실행한 수동 검사는 `--api-only`로 분리하고, 그 후보를 종료한 뒤 다시 빌드합니다.
 >
-> A one-shot invocation without arguments can conflict with relinking a running Windows executable. Run `--api-only` against the exact candidate, close it, then run `--skip-api` as shown above.
+> Build before using the isolated Windows API helper. For manual API-only runs, close that candidate before rebuilding; a one-shot invocation can conflict with relinking a running executable.
 
 ### Step 2: GUI 대시보드 + AI 코드 리뷰
 
@@ -89,6 +106,11 @@ results are recorded separately.
 
 ## Native routing and backup diagnostics
 
+4.5.0의 개별 입력·기존 Mono fold-down·설정 호환성은 fake-device/graph 회귀
+검사로 구분합니다. Windows mic-level hold 테스트도 가짜 endpoint를 사용하며
+실제 마이크 레벨을 변경하지 않습니다. 현재 결과와 한계는
+[4.5.0 검증 기록](docs/RELEASE_4_5_0.md)을 기준으로 확인합니다.
+
 The host tests enable VST2 hosting when the optional SDK is available, matching
 the app. Set `DIRECTPIPE_TEST_GFORM_VST2` to an isolated official GForm DLL, then
 run `directpipe-host-tests.exe --gtest_filter=VSTChainTest.GFormVst2KeepsBothOutputChannels`.
@@ -105,23 +127,25 @@ failure reporting and async diagnostic precedence. It runs without importing an
 owner backup or opening a native file chooser. Dialog interaction/read failures
 require a separate manual check; do not treat fixture results as that evidence.
 
-## 자동 테스트 (test_api.js)
+## 자동 테스트 (tools/test_api.js)
 
 ### 요구사항
-- Node.js 18+
-- DirectPipe.exe 실행 중 (HTTP API port 8766, WebSocket port 8765)
+- Node.js 20/22 검증; 번들 플러그인의 target은 Node 20 / Node 20/22 verified; the bundled plugin targets Node 20
+- 릴리스 게이트는 위 Windows 격리 helper 사용 / Use the isolated helper above for the release gate
+- 직접 실행하는 수동 검사만 별도의 테스트용 DirectPipe 후보가 실행 중이어야 함 (HTTP 8766, WebSocket 8765)
 
 ### 실행
 ```bash
-node test_api.js
+# Manual mode only: use a test candidate whose state may be changed/restored.
+node tools/test_api.js
 ```
 
 ### 동작 방식
 1. 시작 시 현재 상태(볼륨, 슬롯, 뮤트, IPC, 바이패스 등) 스냅샷 저장
-2. 섹션별 체크 항목을 순차 실행 (현재 `test_api.js` 기준 약 33개 섹션, 114개 체크)
+2. 33개 섹션의 현재 체크 항목을 순차 실행합니다. 실제 개수·필수 fixture 검사·SKIP 사유는 `tools/test_api.js` 실행 로그가 기준입니다.
 3. 테스트 완료 또는 에러 시 자동으로 원래 상태 복원 (`try/finally`)
 
-### 테스트 섹션 (33개)
+### 테스트 섹션 (33개, 이전 체크 수 스냅샷 / historical count snapshot)
 | # | 섹션 | 체크 수 |
 |---|------|---------|
 | 1 | Volume Control | 9 |
@@ -158,13 +182,13 @@ node test_api.js
 | 32 | Volume Precision | 2 |
 | 33 | Panic During Operations | 3 |
 
-> 참고: 위 숫자는 문서 작성 시점 기준입니다. 실제 실행에서는 환경(플러그인 유무, 장치 상태, SKIP 조건, 반복 실행 횟수)에 따라 PASS/SKIP 수치가 달라질 수 있습니다.
+> 위 숫자는 이전 문서 작성 시점의 스냅샷으로 보존합니다. 4.5.0에서는 acceptance·실제 상태·fixture·WebSocket 검사가 추가됐으므로 현재 총합은 실행 로그와 [검증 기록](docs/RELEASE_4_5_0.md)을 확인합니다.
 >
-> Note: The numbers above reflect the document snapshot. Actual PASS/SKIP counts may vary by environment (plugin availability, device state, skip conditions, rerun loops).
+> Counts above are historical, not the current release gate total. Isolated mode fails missing required coverage; only explicitly unavailable audio sample progression can skip.
 
 ### 주의사항
 - 플러그인이 로드된 상태(슬롯 A에 플러그인 있음)에서 실행해야 모든 항목이 PASS
-- 플러그인 없으면 관련 항목 SKIP 처리
+- 직접 실행하는 수동 모드에서는 플러그인 없는 선택적 검사가 SKIP될 수 있으나, 격리 릴리스 fixture의 필수 항목 누락은 실패입니다.
 - 앱 시작 직후에는 초기화 시간 필요 — 5초 이상 대기 후 실행
 - Ctrl+C로 중단하면 상태 복원 안 됨 — 수동 복원 필요
 
@@ -304,11 +328,11 @@ node test_api.js
 78. Receiver 버퍼 사이즈 변경(5단계) → 반영 확인
 79. SR 불일치 시 Receiver에 경고 표시
 
-#### 4.4.0 독립 수신 / Independent reception
+#### 독립 수신 (4.4.0에서 도입, 4.5.0 유지) / Independent reception
 
-- [ ] 본체와 Receiver 모두 4.4.0인지 확인하고 같은 샘플레이트로 두 OBS 소스 또는
+- [ ] 현재 4.5.0 본체와 Receiver를 사용하고 같은 샘플레이트로 두 OBS 소스 또는
   OBS/DAW에 동시에 연결합니다. 두 곳에서 같은 처리 음성을 정상 수신해야 합니다.
-  / With both ends on 4.4.0 and matching sample rates, verify the same processed
+  / With both ends on 4.5.0 and matching sample rates, verify the same processed
   audio arrives at two OBS sources or OBS/DAW instances simultaneously.
 - [ ] 한 Receiver만 뮤트·정지·재연결하고 다른 Receiver가 계속 수신하는지 확인합니다.
   오래 정지한 쪽을 재개했을 때 묵은 음성이 재생되지 않아야 합니다.
@@ -328,9 +352,9 @@ node test_api.js
 
 #### Receiver 갱신 / Receiver upkeep (Windows)
 
-- [ ] 4.3.0의 본체 전용 갱신 후 4.4.0을 실행하고 **Settings > Update Receiver...**로
+- [ ] 4.3.0의 본체 전용 갱신 후 현재 4.5.0을 실행하고 **Settings > Update Receiver...**로
   별도 Receiver 갱신이 가능한지 확인합니다. / Verify the two-step migration from
-  the 4.3.0 host-only updater to 4.4.0 Receiver maintenance.
+  the 4.3.0 host-only updater to 4.5.0 Receiver maintenance.
 - [ ] **Settings > Update Receiver...**에서 설치 경로·버전과 `Choose Folder...`
   검색 결과를 확인합니다. 현재/더 최신 설치본은 갱신 대상에서 제외합니다.
   / Verify discovered/custom-folder targets and preservation of current/newer copies.
@@ -344,10 +368,10 @@ node test_api.js
   bundle resources and rejection of unsupported transaction paths before host exit.
 
 온라인 갱신은 공개 릴리즈를 사용합니다. **4.3.0 업데이터로 처음 갱신하면 본체만
-교체**되므로 4.4.0 실행 후 **Settings > Update Receiver...**로 Receiver도 갱신해야
+교체**되므로 현재 4.5.0 실행 후 **Settings > Update Receiver...**로 Receiver도 갱신해야
 합니다. 실제 설치·청취·UAC 검증은 격리된 helper/OBS 엔진 검사와 별도입니다.
 / Online maintenance uses published releases. **Updating from 4.3.0 replaces only
-the host**; launch 4.4.0 and update the Receiver from Settings too. Isolated helper
+the host**; launch 4.5.0 and update the Receiver from Settings too. Isolated helper
 and OBS-engine results do not mark installation, listening or UAC checks complete.
 
 ### 설정 내보내기/가져오기

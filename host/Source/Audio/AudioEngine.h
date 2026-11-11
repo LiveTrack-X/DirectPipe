@@ -145,7 +145,7 @@ public:
     /** @brief Select contiguous inputs from firstChannel; defaults to a pair,
      *  with numChannels=1 for an explicit single physical input. */
     [[nodiscard]] ActionResult setActiveInputChannels(int firstChannel, int numChannels = 2);
-    /** @brief Set which output channels are active (stereo pair starting at firstChannel). */
+    /** @brief Select contiguous outputs from firstChannel; defaults to a pair. */
     [[nodiscard]] ActionResult setActiveOutputChannels(int firstChannel, int numChannels = 2);
 
     /** Opt-in physical mono capture, separate from the legacy input fold-down.

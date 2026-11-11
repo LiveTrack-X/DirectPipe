@@ -1,5 +1,11 @@
 # [Auto] 설계 문서 — Design Principles & Parameter Rationale
 
+> **4.5.0 compatibility:** Optional single-channel capture feeds internal L/R
+> before this chain. **Keep Windows mic level at 100** is a separate, default-off
+> device preference; choosing Auto does not enable or reset it. AutoGain and the
+> system input level remain separate controls. / 개별 입력 선택은 Auto 체인 전단에
+> 적용되며, Auto 선택은 별도의 Windows 마이크 레벨 유지 옵션을 변경하지 않습니다.
+
 > DirectPipe의 [Auto] 버튼은 "VST를 모르는 사용자도 한 번에 깨끗하고 안정적인 마이크 베이스라인"을 목표로 설계되었습니다.
 > 이 문서는 Auto 체인의 구성 원칙, 순서의 기술적 근거, 포함하지 않은 처리와 그 이유, 모든 파라미터의 선택 근거를 기록합니다.
 

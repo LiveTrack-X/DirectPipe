@@ -4,8 +4,72 @@ Date: 2026-11-12 (Asia/Seoul)
 
 This records software verification and its limits. Publication uses the exact
 version tag through [Build & Release](https://github.com/LiveTrack-X/DirectPipe/actions/workflows/build.yml).
+The [documentation and comment audit](DOCUMENTATION_AUDIT_4_5_0.md) records the
+current-document follow-up separately from the frozen binary source.
 Public artifacts/checksums belong to the [4.5.0 release](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.5.0);
 the local artifacts below are independently packaged preparation evidence.
+
+## Published source and independent verification
+
+Published **2026-11-11 18:48:07 UTC / 2026-11-12 03:48:07 KST**, as the latest
+non-draft, non-prerelease release. [Final CI 43078129309](https://github.com/LiveTrack-X/DirectPipe/actions/runs/43078129309)
+passed every build/test/package/publication job at exact source
+`89db71239ff6607f3a7e5561dce682ac298804bc`. Annotated tag object
+`910b10dd50ccb84bb8d1b0774f2bff6256d2d13d` peels to that commit and remains fixed.
+Later documentation/comment-only follow-ups do not change these binary assets.
+
+| Final exact-source gate | Observed result |
+| --- | --- |
+| Windows CTest | 782 registrations: 780 passed, 2 skipped, 0 failed; 344.47 seconds |
+| Windows exact candidate API | 127 passed, 0 failed, 1 explicitly skipped sample-progression check because `audio_running=false`; both listener PIDs verified; graceful shutdown |
+| macOS CTest | 703 registrations: 667 passed, 36 skipped, 0 failed |
+| macOS snapshot repetition | 25 fresh processes passed, separately from the full CTest count |
+| Linux CTest | 703 registrations: 667 passed, 36 skipped, 0 failed |
+| Stream Deck | Node 20 build/tests, full and production audits, icon check, official validation and packaging passed |
+| Independent public files | All 5 normal downloads and all 5 separate no-Authorization downloads match the exact CI bytes, GitHub asset digests and four-payload checksum manifest |
+
+The three formerly failing Windows desktop-startup cases individually passed:
+normal managed-backup cleanup, blocked ready-receipt preservation and paired
+host/Receiver cleanup. The CI-only TEMP alignment is the controlled fix described
+below; production launch code and the probe's strict containment were unchanged.
+Windows CTest skips the generic JUCE-message-loop concurrency case and optional
+external GForm discovery. macOS/Linux skips additionally include Windows-only
+coverage. Explicit local real-GForm 1.2/3.1 runs remain separate evidence.
+
+The Windows API-tested host SHA-256 is
+`e92813a5346e44d5b19345bf35f77fdf8e819b3fcaa0d3931117da02c1f960ab`, exactly
+matching the packaged host. All three Windows PE binaries are AMD64, file/product
+version 4.5.0 and **NotSigned**. Linux ELF64 x86_64 and Receiver factories/module
+versions were checked. macOS native CI verified all four bundles, universal
+arm64/x86_64 slices, outer/helper 10.15 deployment targets, DMG validity and
+read-only mounted payload equality; this is not a Windows DMG mount or a test
+on physical macOS 10.15 hardware.
+
+| Public asset | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `DirectPipe-v4.5.0-Linux.tar.gz` | 16,453,632 | `ca9909fa8e590b4fec6c5572d8b3b3110840cfa56423c73229a20ef12179906b` |
+| `DirectPipe-v4.5.0-Windows.zip` | 12,252,472 | `87e21ea149b52e22a9ac014de3ca6211d31c34d6a7163b1bffb67a3c84d8a778` |
+| `DirectPipe-v4.5.0-macOS.dmg` | 37,858,900 | `0716b2fc3c5ace1d593ba3bbe601e831d5e38931c05b03b71aa1dab63cbb247a` |
+| `checksums.sha256` | 396 | `796af142a3c8a345718971f54fd8a3c612e0bcde417f0198061ee055f7639b66` |
+| `com.directpipe.directpipe.streamDeckPlugin` | 155,715 | `2913d7796ceacbc931beb2b3bc3d8266b151c2beea40013472a32a1f8f3c0508` |
+
+The final bilingual release body explicitly preserves native one-input devices
+when describing the multi-input complete-pair rule. Its current/versioned copies
+match SHA-256 `5a0a4a14f66611665aa9743f89ca1731fc0127a151e78d982c58c1521f3d0162`;
+the notes-only clarification preserved all five asset IDs, sizes and digests.
+The [discussion 8 reply](https://github.com/LiveTrack-X/DirectPipe/discussions/8#discussioncomment-19548936)
+was posted after public-file verification and independently fetched to confirm
+its content, author and discussion identity.
+
+The prior 4.4.0 release body, tag and five assets were rechecked unchanged.
+The user's running 4.4.0 process and installed/current-backup EXE hashes were
+preserved; this release work did not upgrade that live installation.
+
+Raw exact-run reports are under
+`build/release-4.5.0-publication-evidence/verification/final-43078129309/`:
+`ci-assets.json`, `macos-native.json`, `public-downloads-final-notes.json`,
+`anonymous-downloads-final-notes.json` and the evidence inventory. Earlier failed/cancelled
+attempts are retained as ineligible evidence and do not satisfy these gates.
 
 ## Behavior and compatibility
 
@@ -130,7 +194,8 @@ TEMP at its existing session subdirectory. The harness now validates the current
 user known folder and exact current session, then aligns only its process
 TEMP/TMP to that existing directory. The same launch matrix passed afterward;
 the probe's strict owned-TEMP guard and production updater were unchanged.
-This diagnostic success does not replace the pending full release workflow.
+This diagnostic success does not replace the complete exact-source release gate;
+its final result is recorded separately from this controlled comparison.
 
 One earlier macOS full-suite run crashed in the saved-driver snapshot fixture.
 The same universal fixture then passed 25 fresh processes without reproducing

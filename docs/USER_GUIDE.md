@@ -218,7 +218,7 @@ Check the Receiver plugin GUI for:
 
 | 표시 / Indicator | 의미 / Meaning |
 |---|---|
-| 🟢 **Connected** | 4.4.0 독립 큐에 연결 / Connected to a 4.4.0 independent queue |
+| 🟢 **Connected** | 독립 큐에 연결 / Connected to an independent queue |
 | 🟢 **Connected (v1)** | 구형 단일 수신 경로. 해당 경로에는 Receiver 하나만 사용 / Legacy path; use one Receiver on that path |
 | 🔴 **Connecting...** | 독립 슬롯을 확보하고 본체의 첫 오디오 처리를 기다림 / Slot claimed; waiting for the producer's first processing call |
 | 🔴 **Receiver limit** | 독립 슬롯 8개 사용 중. 사용하지 않는 필터를 언로드하거나 해당 호스트 종료 / All eight slots are in use; unload an unused filter or close its host |
@@ -1276,11 +1276,11 @@ View all app events (audio engine, plugins, WebSocket, HTTP, etc.) in real-time.
 
 ## 인앱 업데이트 / In-App Update
 
-> The Receiver workflow below requires host 4.4.0. Earlier version-specific validation remains historical; see [4.4.0 changes and validation](MULTI_RECEIVER_4_4_0.md). / 아래 Receiver 갱신 절차에는 본체 4.4.0이 필요하며, 앞의 과거 버전 검증 이력과 구분합니다.
+> The Receiver workflow below requires host 4.4.0 or later. Earlier version-specific validation remains historical; see [4.4.0 changes and validation](MULTI_RECEIVER_4_4_0.md). / 아래 Receiver 갱신 절차에는 본체 4.4.0 이상이 필요하며, 앞의 과거 버전 검증 이력과 구분합니다.
 
 DirectPipe는 실행 시 백그라운드에서 최신 공개 버전을 확인합니다. 설치 host가 같거나 더 최신이면 조용히 유지하며 downgrade하지 않습니다. / Checks the latest public release in the background on startup; stays quiet when the host is current/ahead and never downgrades.
 
-업데이트 버튼은 **공개 릴리즈**를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로 4.4.0을 실행한 다음 아래 **Settings > Update Receiver...** 절차로 기존 Receiver도 갱신하세요. 본체와 Receiver가 모두 4.4.0이어야 독립 다중 수신을 사용할 수 있습니다. / The updater uses **published releases**. **The 4.3.0 updater replaces only the host**; launch 4.4.0 and then update existing Receivers using **Settings > Update Receiver...** below. Independent reception requires both sides to be 4.4.0.
+업데이트 버튼은 **공개 릴리즈**를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로 4.5.0을 실행한 다음 아래 **Settings > Update Receiver...** 절차로 기존 Receiver도 갱신하세요. 현재 릴리즈의 본체·Receiver 4.5.0 조합을 사용하세요. 독립 수신은 4.4.0에서 도입되었으며 구형 연결의 호환 경로는 유지합니다. / The updater uses **published releases**. **The 4.3.0 updater replaces only the host**; launch 4.5.0 and then update existing Receivers using **Settings > Update Receiver...** below. Use the current 4.5.0 host/Receiver pair; independent reception was introduced in 4.4.0 and the legacy compatibility path remains available.
 
 4.5.0은 본체 종료 대기를 60초로 제한하고 실패 단계·이유·복구 파일을 로그에 기록합니다. 초기 복원과 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며, 시작 미확인 시에는 복구 파일을 보존합니다. 이전 설치본에서 넘어오는 첫 업데이트는 **이전 설치본의 업데이터**가 실행합니다. 멈춤이 발생하면 기존 EXE와 백업을 보존하고 [업데이트 진단·복구 안내](WINDOWS_UPDATE_RECOVERY.md)를 확인하세요. / Version 4.5.0 adds a 60-second host wait and persistent stage/error/recovery diagnostics. Verified previous EXEs are cleaned only after initial restore and window/tray startup confirmation; unconfirmed starts retain recovery files. The first upgrade from an older binary still uses its older updater. Keep existing EXE/backup files if it stops; see the recovery guide.
 
@@ -1433,13 +1433,13 @@ If the main audio device and monitor device have different sample rates, monitor
 
 ### DirectPipe Receiver에서 끊김 / Receiver audio crackling
 
-4.4.0 본체와 Receiver는 최대 8개를 독립 연결합니다. 기존 필터·프리셋·Buffer
+4.5.0 본체와 Receiver는 최대 8개를 독립 연결합니다. 기존 필터·프리셋·Buffer
 설정은 유지됩니다. `Connected (v1)`은 구형 방식이므로 Receiver 하나만 사용하세요.
 `Receiver limit`이면 사용하지 않는 Receiver 필터를 제거·언로드하거나 해당 호스트 앱을 종료하면 자동으로 다시 연결합니다. 편집 창만 닫아서는 슬롯이 해제되지 않습니다.
 `Connecting...`은 본체의 첫 오디오 처리를 기다리는 상태일 수 있습니다(패닉 뮤트 포함).
 한 수신기의 정지·복귀는 다른 수신기를 막지 않으며, 넘친 큐는 복귀할 때 비웁니다.
 
-New 4.4.0 host/Receiver pairs support eight independent connections. `Connected
+Current 4.5.0 host/Receiver pairs support eight independent connections. `Connected
 (v1)` retains the old single-reader restriction. At `Receiver limit`, unload an
 unused Receiver filter or close its host app; closing only the editor does not release a slot. The waiting connection retries automatically. `Connecting...`
 can mean waiting for the host's first audio block, including while panic-muted.

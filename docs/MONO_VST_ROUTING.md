@@ -1,8 +1,15 @@
 # Mono VST routing verification
 
-Date: 2026-11-11
-Status: Local source correction; not a published release or hardware acceptance
+Checkpoint date: 2026-11-11; context reviewed 2026-11-12
+Status: Historical local mono-fix checkpoint; final 4.5.0 evidence is linked below, with hardware acceptance separate
 Baseline: 599ef9e8ac8a3b19cb9cd7a1aa060f321b3437f3
+
+Current 4.5.0 context: this file preserves the mono-routing correction's local
+checkpoint and counts. The later release also implements explicit single-channel
+input capture (Analog 1, Analog 2, etc.); concurrent independent microphone
+chains/mixing remain future scope. See the [current verification record](RELEASE_4_5_0.md)
+and [input capture guide](USER_GUIDE.md) for current behavior and limits.
+Nothing in this historical checkpoint marks physical listening or hardware checks complete.
 
 ## Defect and correction
 
@@ -22,9 +29,10 @@ Input Mono still averages selected L/R before effects. A mono-input effect
 still takes channel 0; it does not sum two identical inputs at double gain.
 Saved input modes, device/channel settings, A-E/Auto presets, control identities
 and output destinations retain their existing meanings. No persistence format,
-Receiver/IPC protocol or Stream Deck action changed. Analog 1/2 independent
-source support remains a separate future proposal, with explicit opt-in and
-legacy-setting preservation required.
+Receiver/IPC protocol or Stream Deck action changed at this checkpoint. Individual
+Analog 1/2 source selection was then a separate proposal; 4.5.0 later implements
+that opt-in selection while preserving legacy settings. Multiple concurrent
+independent chains/mixing remain outside the release.
 
 ## Actual GForm reproduction
 

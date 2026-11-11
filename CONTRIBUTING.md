@@ -40,13 +40,15 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## 테스트 / Testing
 
-- 현재 4.4.0 미공개 후보는 core/host/Receiver/endpoint CTest 648개 등록 중
-  646 통과·2 건너뜀·실패 0, Stream Deck 22/22를 확인했습니다. 현재 근거는
-  [후보 보고서](docs/MULTI_RECEIVER_4_4_0.md), 아래 v4.3.0 수치는 과거 릴리즈 기록입니다.
-  / Current 4.4.0 local validation is separate from the historical v4.3.0 release below.
+- 현재 4.5.0의 로컬·정확 소스 CI·공개 파일 검증과 미확인 범위는
+  [검증 기록](docs/RELEASE_4_5_0.md)을 기준으로 확인합니다. Windows mic-level
+  hold 검사는 fake endpoint를 사용하며 실제 마이크 레벨을 바꾸지 않습니다.
+  / Current results belong to the exact 4.5.0 verification record; historical
+  [4.4.0 evidence](docs/MULTI_RECEIVER_4_4_0.md) and the v4.3.0 counts below stay separate.
 
 - Google Test 기반 v4.3.0은 core, host, focused endpoint의 로컬 Windows Release CTest 등록 582개를 완료했습니다(580 통과, 환경 의존 2 건너뜀, 실패 0). 정확 태그 CI run `30701998763`과 공개 자산·checksum·Windows 신원 검증도 통과했으며 확정 결과는 `docs/ReleaseNote.md`에 기록합니다. / v4.3.0 completed 582 local Windows Release CTest registrations across core, host, and focused endpoint suites (580 passed, 2 environment-dependent skips, 0 failed). Exact-tag CI run `30701998763` and public-asset, checksum, and Windows-identity verification also passed; final results are recorded in `docs/ReleaseNote.md`.
 - `tools/pre-release-test.sh` — `--version-only` metadata gate, exact candidate `--api-only`, candidate 종료 후 `--skip-api` Release build/core/host/endpoint/Stream Deck 검증 / `--version-only` metadata gate, exact-candidate `--api-only`, then `--skip-api` Release build/core/host/endpoint/Stream Deck verification after closing the candidate (Windows Git Bash)
+- `tools/test_windows_candidate_api.ps1` — 빌드 후 격리 포터블 후보·필수 API coverage·HTTP/WebSocket PID 확인. 사용 중인 포트나 다른 앱을 대신 사용하지 않습니다. / Build first, then verify an owned isolated candidate with required API coverage and both listener PIDs; see [testing sequence](TESTING.md).
 - `tools/pre-release-dashboard.html` — 수동 테스트 대시보드 / Manual test dashboard
 
 ## 버그 리포트 / Bug Reports

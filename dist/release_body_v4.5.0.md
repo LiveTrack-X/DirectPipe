@@ -42,12 +42,14 @@ Receiver만 갱신하는 동안 DirectPipe 본체는 계속 실행됩니다.
 
 - **Single-channel input capture:** **Input capture > Mono (single channel)**
   lists the driver's individual input names. The selected channel feeds both
-  internal L/R channels at its original level before effects. Returning to pair
-  capture selects its complete pair; an unpaired final channel is reported.
+  internal L/R channels at its original level before effects. On multi-input devices, returning to pair
+  capture selects a complete pair and reports an unpaired final channel. Native
+  single-input devices keep their existing one-channel behavior.
 - **개별 모노 입력:** **Input capture > Mono (single channel)**에서 실제 장치
   채널 하나를 선택합니다. 이펙트 전단의 내부 L/R에 같은 신호를 감쇠 없이
-  전달하며, 입력 쌍으로 돌아갈 때는 해당 채널을 포함한 완전한 쌍을 사용합니다.
-  짝이 없는 마지막 채널은 오류로 안내합니다.
+  전달합니다. 다중 입력 장치에서 입력 쌍으로 돌아갈 때는 완전한 쌍을 사용하고,
+  짝이 없는 마지막 채널은 오류로 안내합니다. 원래 입력이 하나인 장치의 기존
+  동작은 유지합니다.
 - **Optional Windows mic-level hold:** **Keep Windows mic level at 100**
   maintains the selected Windows Audio shared/Low Latency Mode input's Windows
   level for all apps.

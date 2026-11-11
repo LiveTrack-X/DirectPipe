@@ -1159,7 +1159,7 @@ legacy-format acceptance, warnings and transaction ordering remain unchanged.
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.4.0",
+  "appVersion": "4.5.0",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1182,7 +1182,7 @@ legacy-format acceptance, warnings and transaction ordering remain unchanged.
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.4.0",
+  "appVersion": "4.5.0",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */
@@ -1271,8 +1271,8 @@ If OBS or another app uses a target, **Retry / Later** lets the user finish the
 session and close that app manually. No automatic app termination occurs.
 Receiver-only maintenance leaves DirectPipe running. Routine startup behavior
 stays quiet when no newer host exists. The 4.3.0 updater replaces only the host;
-after launching 4.4.0, use **Settings > Update Receiver...** to update Receivers
-too. / 4.3.0 최초 자동 갱신은 본체만 교체하므로 4.4.0 실행 후 Settings에서
+after launching 4.5.0, use **Settings > Update Receiver...** to update Receivers
+too. / 4.3.0 최초 자동 갱신은 본체만 교체하므로 4.5.0 실행 후 Settings에서
 Receiver도 갱신해야 합니다. See [4.4.0 scope](MULTI_RECEIVER_4_4_0.md).
 
 host가 최신이어도 Settings에서 Receiver만 명시적으로 확인합니다. 사용자 폴더와
@@ -1394,7 +1394,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×216 UI, 연결·한도·호환/SR 경고 / Connection, limit, compatibility and SR status
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.4.0.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.5.0.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

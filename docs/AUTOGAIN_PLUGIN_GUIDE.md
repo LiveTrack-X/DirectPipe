@@ -170,7 +170,7 @@ build-autogain:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-14, ubuntu-24.04]
+        os: [windows-latest, macos-15, ubuntu-24.04]
 ```
 
 ## 핵심 변경 포인트 / Key Changes Summary

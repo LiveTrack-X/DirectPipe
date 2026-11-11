@@ -1,9 +1,13 @@
 # Quick Start: USB 마이크 설정 가이드 / USB Mic Setup Guide
 
-> **4.4.0 안내 / Version 4.4.0:** 독립 다중 수신에는 본체와 Receiver 모두 4.4.0이 필요합니다.
-> 4.3.0 자동 갱신은 본체만 교체하므로, 갱신 뒤 **Settings > Update Receiver...**를 실행하세요.
-> / Independent reception requires both host and Receiver 4.4.0. The 4.3.0 updater
-> replaces only the host; then use **Settings > Update Receiver...**.
+> **4.5.0 안내 / Version 4.5.0:** 본체와 Receiver를 함께 갱신하세요. 4.4.0에서
+> 도입한 독립 다중 Receiver는 유지됩니다. 첫 4.5.0 갱신에는 현재 설치된 구형
+> 업데이터가 사용되므로, 구형 본체 전용 갱신이나 수동 교체 뒤에는
+> **Settings > Update Receiver...**에서 Receiver도 확인하세요.
+> / Update the host and Receiver together. Independent reception from 4.4.0
+> remains available. The first upgrade uses your installed older updater; after
+> an older host-only or manual update, review **Settings > Update Receiver...**.
+> 소프트웨어 검증과 실기기 미확인 범위: [4.5.0 검증 기록 / Verification record](RELEASE_4_5_0.md).
 
 > USB 마이크 사용자를 위한 5분 온보딩 가이드. 자세한 내용은 [User Guide](USER_GUIDE.md) 참조.
 >
@@ -42,6 +46,18 @@
    - Linux: `ALSA` 또는 / or `JACK`
 2. **Input**: USB 마이크 선택 (예: `Microphone (Blue Yeti)`) / Select your USB mic
 3. 왼쪽 **INPUT** 미터가 움직이면 마이크 인식 성공 / If the left **INPUT** meter moves, mic is working
+
+기존 입력 쌍이 기본값입니다. Analog 1·Analog 2 같은 개별 채널을 선택하려면
+**Input capture > Mono (single channel)**에서 입력 하나를 고릅니다. 선택한
+신호는 이펙트 전단의 내부 L/R에 같은 레벨로 전달되며, 기존 **Channel Mode**
+설정과는 별도입니다. 실제 1채널 USB 마이크는 기존 기본 설정으로 사용할 수
+있습니다. / Pair capture stays the default; opt into **Mono (single channel)**
+for one hardware input. Genuine one-channel USB devices retain their existing behavior.
+
+Windows의 **Keep Windows mic level at 100**은 기본 꺼짐인 별도 옵션이며,
+지원 입력의 시스템 전체 레벨에 영향을 줍니다. 자동으로 켜지지 않습니다.
+지원 범위와 한계는 [Windows 마이크 레벨 안내](USER_GUIDE.md#windows-mic-level-hold)를
+확인하세요. / The optional system-wide Windows mic-level hold defaults off.
 
 > **왜 Driver를 선택하나요?** DirectPipe는 운영체제의 오디오 시스템(드라이버)을 통해 마이크에 접근합니다. 대부분의 경우 기본값이 자동 선택되어 있으니, Input에서 마이크만 고르면 됩니다.
 >
@@ -141,11 +157,11 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 4. DirectPipe와 OBS의 샘플레이트를 같게 설정하고 Receiver 연결 상태를 확인합니다.
    / Match the host and OBS sample rates and check the Receiver connection status.
 
-본체와 Receiver가 모두 4.4.0이면 최대 8개가 같은 처리 음성을 독립적으로 받습니다.
+현재 4.5.0 본체와 Receiver는 4.4.0에서 도입한 최대 8개의 독립 수신을 유지합니다.
 구형 본체에 연결한 새 Receiver의 `Connected (v1)`은 기존 단일 수신 제한을 뜻합니다.
 Windows의 기존 Receiver는 **Settings > Update Receiver...**에서 경로·버전을 확인하고
 갱신할 수 있습니다. 사용 중인 OBS는 직접 종료한 뒤 **Retry**, 또는 **Later**를 선택합니다.
-/ Both ends on 4.4.0 support eight independent receivers of the same processed
+/ Both ends on 4.5.0 retain eight independent receivers of the same processed
 stream. `Connected (v1)` on an older host retains its single-reader restriction.
 Windows **Settings > Update Receiver...** previews existing copies; close OBS
 manually before **Retry**, or choose **Later**. Online upkeep follows public releases.

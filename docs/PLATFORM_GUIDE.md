@@ -4,10 +4,11 @@ DirectPipe는 Windows, macOS, Linux를 지원합니다. 플랫폼에 따라 기�
 
 DirectPipe supports Windows, macOS, and Linux. Features, setup, and release maturity vary by platform.
 
-> **현재 소스 / Current source: 4.4.0.** Windows 자동·격리 실행 검증과 Linux/WSL2
-> POSIX core 검증을 구분합니다. 전체 앱 빌드/배포와 실기기 확인은 별도입니다.
-> / Windows software/runtime checks and Linux/WSL2 core checks have separate
-> scopes; neither proves hardware behavior. See [4.4.0 validation](MULTI_RECEIVER_4_4_0.md).
+> **현재 소스 / Current source: 4.5.0.** 플랫폼별 정확한 빌드·검사·공개 파일 확인은
+> [4.5.0 검증 기록](RELEASE_4_5_0.md)에 구분합니다. 소프트웨어 검사는 실제 장치·
+> 드라이버·청취 검증을 대신하지 않습니다. / Exact-source platform builds, tests and
+> public-download verification are recorded separately from physical-device and
+> listening acceptance. [4.4.0 기록 / Historical record](MULTI_RECEIVER_4_4_0.md).
 
 ---
 
@@ -15,15 +16,18 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 
 | 플랫폼 / Platform | 릴리즈 상태 / Release status | 빌드/배포 상태 / Build & distribution | 검증 메모 / Validation notes |
 |---|---|---|---|
-| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release 및 CI `windows-latest` ZIP | v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 공개 자산 5개, 네 payload checksum, 실행 파일 4.3.0/unsigned 신원을 확인했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
-| **macOS 10.15+ universal** | 베타 / Beta | CI `macos-14` DMG | CMake/CI 빌드 경로와 CoreAudio 구현은 유지. 실기기 오디오 검증 범위는 제한적. |
+| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release 및 CI `windows-latest` ZIP | 정확한 실행 파일·Receiver 버전과 서명 상태, API·업데이트 fixture 결과는 4.5.0 검증 기록 참조. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
+| **macOS 10.15+ universal** | 베타 / Beta | CI `macos-15`, arm64 + x86_64 DMG | 전체 CTest, snapshot 25회 반복, 10.15 배포 대상과 native mount/파일 일치를 별도 검증합니다. 실기기 오디오 확인은 별도입니다. |
 | **Linux x86_64** | 실험적 / Experimental | CI `ubuntu-24.04` tar.gz | ALSA/JACK 경로는 유지. 배포판/데스크톱/오디오 서버 조합별 편차가 있을 수 있음. |
 | **Stream Deck plugin** | 별도 크로스 플랫폼 패키지 / Separate cross-platform package | CI `ubuntu-latest` `.streamDeckPlugin` | Manifest 기준 Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
 
-> 위 표는 공개 v4.3.0 기준의 지원·배포 이력입니다. "지원"은 소스/CI 빌드 경로와
-> 플랫폼 구현 존재를 의미하며, 4.4.0 검증은 위 링크와 구분합니다.
-> / The table records the published v4.3.0 support baseline. Source/CI availability
-> does not establish 4.4.0 release or hardware validation.
+> 위 표는 현재 빌드 경로와 플랫폼 성숙도입니다. 해당 릴리즈의 통과 여부와 공개
+> 파일 신원은 검증 기록을 확인하세요. / Source/CI availability alone does not prove
+> a successful release or hardware acceptance; consult the exact release record.
+>
+> 과거 v4.3.0 기준은 582개 중 580개 통과·2개 환경 건너뜀·실패 0개와 CI
+> `30701998763`, 공개 파일 5개·payload checksum 4개·unsigned 4.3.0 신원 확인입니다.
+> / These counts preserve the historical v4.3.0 checkpoint, not current results.
 
 > **Windows 시작 라우팅**: 선행 장치 손실이 없는 유효한 시작은 v4.2.0과 같이 Windows가 실제 선택한 기본 드라이버·입력·출력을 채택합니다. 실제 장치 손실 뒤에는 저장 target을 유지하고 해당 장치로 복구합니다. 이후의 설정 복원이나 수동 선택은 지연 callback보다 우선하며 `CABLE Input`을 포함한 특정 장치명은 고정하지 않습니다. / **Windows startup routing**: a valid start with no preceding device loss adopts the driver, input, and output actually selected by Windows, matching v4.2.0. After a real loss, saved targets remain authoritative for recovery. A later settings restore or manual selection wins over deferred callbacks, and no device name including `CABLE Input` is hard-coded.
 
@@ -42,6 +46,8 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 | **다중 인스턴스** | Named Mutex | InterProcessLock | InterProcessLock |
 | **시스템 트레이** | O | O (macOS 메뉴바) | O (DE 지원 시) |
 | **자동 업데이트** | O (인앱 다운로드+재시작) | 알림만 (GitHub 링크) | 알림만 (GitHub 링크) |
+| **개별 입력 하나 → 내부 L/R / Single physical input** | 선택형 / Opt-in | 선택형 / Opt-in | 선택형 / Opt-in |
+| **Windows 마이크 레벨 100 유지 / Mic-level hold** | 기본 OFF; WASAPI Shared/Low Latency만 / Default OFF | - | - |
 | **Receiver VST2** | .dll | .vst (bundle) | .so |
 | **Receiver VST3** | .vst3 | .vst3 (bundle) | .vst3 |
 | **Receiver AU** | - | .component | - |
@@ -58,6 +64,13 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 - **Windows Audio (Exclusive Mode)** — 독점 모드, 다른 앱 사운드 차단
 - **DirectSound** — 레거시, 사용 비추천
 - **ASIO** — 전문 오디오 인터페이스용, 최저 지연
+
+**Keep Windows mic level at 100**은 정확히 식별한 선택 공유 입력에만 적용하는
+장치별 옵션입니다. 다른 앱과 Windows 슬라이더에도 영향을 주며 ASIO·독점 모드·
+DirectSound는 지원하지 않습니다. mute·boost·DirectPipe 내부 gain은 바꾸지 않습니다.
+/ This per-endpoint option affects the selected supported Windows input system-wide,
+including manual slider changes. It leaves mute, boost and internal gain unchanged.
+See [usage and limits](USER_GUIDE.md#windows-mic-level-hold).
 
 > **ASIO SR/BS 정책**: ASIO 장치는 SR(샘플레이트)/BS(버퍼 크기)를 전역으로 소유합니다 — 장치를 공유하는 모든 앱에 영향을 줍니다. DirectPipe는 ASIO 시작/복원 시 저장된 BS를 강제하지 않고 실제 BS를 수용하지만, 저장 파일에 명시된 SR(예: 48k)이 있고 드라이버가 다른 SR(예: 44.1k)을 보고하면 그 SR을 다음 복원 대상으로 덮어쓰지 않습니다. ASIO 컨트롤 패널에서 BS를 변경하면 DirectPipe 설정에 자동으로 반영됩니다. WASAPI/CoreAudio/ALSA는 앱별 SR/BS이므로 저장된 값이 안전하게 적용됩니다 (다른 앱에 영향 없음).
 >
@@ -95,9 +108,9 @@ Close apps manually when prompted; Receiver-only maintenance keeps DirectPipe ru
 Protected destinations may require UAC. Current/newer installed copies are preserved.
 
 온라인 갱신은 공개 릴리즈를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로
-4.4.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요.
+4.5.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요.
 / Online updates use published releases. **The 4.3.0 updater replaces only the
-host**; after launching 4.4.0, use **Settings > Update Receiver...** too.
+host**; after launching 4.5.0, use **Settings > Update Receiver...** too.
 
 ### Receiver 설치 / Receiver Installation
 
@@ -108,10 +121,10 @@ host**; after launching 4.4.0, use **Settings > Update Receiver...** too.
 VST3: `DirectPipe Receiver.vst3`를 VST3 폴더에 복사:
 - `C:\Program Files\Common Files\VST3\`
 
-본체와 Receiver 모두 4.4.0이면 같은 처리 음성을 최대 8곳에 독립적으로 전송합니다.
+본체와 Receiver 모두 4.5.0이면 같은 처리 음성을 최대 8곳에 독립적으로 전송합니다.
 구형 Receiver는 legacy 연결 하나, 구형 본체에 연결한 새 Receiver는 단일 수신
 제약을 유지합니다. DirectPipe와 수신 앱의 샘플레이트는 같아야 합니다.
-/ Both ends on 4.4.0 support eight independent receivers. One legacy Receiver
+/ Both ends on 4.5.0 support eight independent receivers. One legacy Receiver
 can coexist; fallback to an older host remains single-reader. Sample rates must match.
 
 ---

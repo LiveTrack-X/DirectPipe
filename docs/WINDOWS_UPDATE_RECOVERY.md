@@ -160,5 +160,6 @@ Receiver installations. Avoid overwriting a loaded Receiver; close its using
 application before Receiver maintenance. A fresh-folder host can confirm the
 download without deleting the previous installation.
 
-No real installation, UAC approval, DirectPipe GUI launch or public release was performed
-by this work. See the verification record for exact automated results and limits.
+The controlled legacy/startup fixtures did not change the user's installation,
+approve UAC or establish real DirectPipe GUI/device acceptance. Publication and
+public-file verification are separate results in the verification record.

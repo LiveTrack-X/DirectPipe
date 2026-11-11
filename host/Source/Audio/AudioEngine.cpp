@@ -600,8 +600,8 @@ ActionResult AudioEngine::setInputDevice(const juce::String& deviceName)
     // Ensure input channels are active (JUCE may clear them after output device change)
     if (setup.inputChannels.isZero()) {
         setup.useDefaultInputChannels = false;
-        // Physical routing stays a stereo pair in both processing modes.
-        // Mono is produced from that pair at the start of the audio callback.
+        // Restore a default pair when the driver cleared the input mask.
+        // Mono/Stereo DSP mode and explicit capture selection are separate.
         setup.inputChannels.setRange(0, 2, true);
     }
 

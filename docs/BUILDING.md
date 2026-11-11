@@ -257,8 +257,8 @@ checking the known-folder identity and exact current session. The diagnostic
 matrix confirmed that the desktop shell and caller otherwise used different
 TEMP roots under the same SID/session. This leaves the probe's strict containment
 guard and production updater unchanged; it does not change system TEMP settings.
-The corrected harness matrix passed; the next complete release workflow remains
-an independent gate.
+The corrected harness matrix passed; the complete exact-source release workflow
+remains an independent gate. Consult the verification record for its result.
 
 macOS release CI must pass the full CTest suite and then the exact saved-driver
 snapshot regression in **25 fresh processes** (`ctest --repeat until-fail:25

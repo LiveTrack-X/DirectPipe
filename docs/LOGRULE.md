@@ -17,6 +17,30 @@ This document defines the format, principles, and rules for DirectPipe log files
 
 Portable mode (all platforms): `./config/directpipe.log`
 
+### 4.5.0 restore and update diagnostics / 복원·업데이트 진단
+
+Settings/full-backup failures add a stage, reason and next check to the dialog
+and `[APP]` warning (`Restore failed at ...`, `Check: ...`). An incomplete
+rollback is reported separately; inspect the retained files and current state
+before retrying. These messages do not contain the complete backup payload.
+See [stage-specific checks](BACKUP_RESTORE_DIAGNOSTICS.md).
+
+Windows update completion also has a per-install receipt under
+`%AppData%/DirectPipe/update-results/`, plus the updater's named temporary log.
+Replacement, relaunch, startup readiness and backup cleanup are distinct stages.
+An error retains recovery evidence; a successful file replacement alone does
+not prove that the new app is ready. The first upgrade still uses the installed
+older helper. See [update diagnosis and recovery](WINDOWS_UPDATE_RECOVERY.md).
+
+The optional mic-level keeper performs correction outside audio callbacks. A
+native notification cleanup failure logs an `[APP]` message, retains inert
+references until exit and requires an application restart before holding levels
+again. Do not add a log for every audio callback or level notification.
+
+설정·전체 백업 오류의 단계·원인·다음 확인 항목과 rollback 미완료 경고를 함께
+확인하세요. 업데이트 파일 교체, 재실행, 준비 확인, 이전 EXE 정리는 별도 단계입니다.
+로그는 진단 근거이며 실제 장치·플러그인 문제의 완전한 재현을 보장하지 않습니다.
+
 - 앱 시작 시 이전 로그를 `.prev`로 이동, 새 로그 시작 / On app start, move previous log to `.prev` and start a new log
 - 매 로그 라인 즉시 flush — 크래시 시에도 마지막 로그까지 보존 / Each log line is flushed immediately — preserves logs up to the last line even on crash
 
