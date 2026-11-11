@@ -79,6 +79,23 @@ Receiver만 갱신하는 동안 DirectPipe 본체는 계속 실행됩니다.
   plug-in load failures remain visible in the error messages or log.
 - **백업 복원 안내:** 설정·전체 백업을 복원하지 못하면 실패 단계·이유·확인할
   항목을 표시합니다. 불완전한 복구와 비동기 플러그인 로드 오류도 안내합니다.
+- **Input-gain limits:** relative controls stay within the documented 0.0–2.0
+  range. Non-finite values are ignored, retaining the last valid gain.
+- **입력 게인 범위:** 증감 제어를 문서의 0.0–2.0 범위로 제한하고 NaN·무한대
+  값은 무시해 마지막 정상 게인을 유지합니다.
+- **Autosave without audio:** controls/app settings save while no audio device
+  is available and the chain is idle/unprepared. Changes merge into the preserved
+  complete saved plug-in chain, or use a recovery sidecar without replacing
+  chain files. A full save remains pending and resumes after preparation.
+- **오디오 없는 상태의 자동 저장:** 장치 없이 체인이 준비되지 않은 유휴
+  상태에서도 제어·앱 설정을 저장합니다. 완전한 저장 체인을 보존해 설정만
+  병합하거나 체인 파일을 교체하지 않는 복구 파일에 기록합니다. 전체 저장은
+  보류 상태로 유지하고 체인 준비 뒤 재개합니다.
+- **Explicit audio state:** additive `audio_running` API telemetry lets clients
+  check audio state without treating default sample-rate values as proof of a
+  running stream.
+- **오디오 실행 상태:** API의 `audio_running` 항목으로 기본 샘플레이트 값만
+  보고 실행 중이라고 추정하지 않고 오디오 상태를 직접 확인합니다.
 - **Windows updater recovery:** waits are bounded to the launching host, with
   stage/error logs and retained recovery files. Startup confirmation checks the
   updated application's identity after initial restore and its saved window/tray

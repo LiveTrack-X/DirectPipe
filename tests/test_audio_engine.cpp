@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <thread>
 #include "Audio/AudioEngine.h"
 
@@ -480,6 +481,51 @@ protected:
 
     std::unique_ptr<AudioEngine> engine_;
 };
+
+TEST_F(AudioEngineTest, InputGainClampsFiniteValuesBeforeAudioProcessing)
+{
+    prepareInputCaptureTest();
+    engine_->setChannelMode(2);
+    std::vector<float> left{0.2f, -0.4f};
+    std::vector<float> right{-0.1f, 0.3f};
+    const float* inputs[] = {left.data(), right.data()};
+
+    for (const float valid : {0.0f, 0.75f, 2.0f}) {
+        engine_->setInputGain(valid);
+        EXPECT_FLOAT_EQ(engine_->getInputGain(), valid);
+    }
+
+    engine_->setInputGain(2.3f);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 2.0f);
+    expectCapturedStereo(inputs, 2, {0.4f, -0.8f}, {-0.2f, 0.6f});
+
+    engine_->setInputGain(-0.4f);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.0f);
+    expectCapturedStereo(inputs, 2, {0.0f, 0.0f}, {0.0f, 0.0f});
+
+    engine_->setInputGain((std::numeric_limits<float>::max)());
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 2.0f);
+    engine_->setInputGain(std::numeric_limits<float>::lowest());
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.0f);
+}
+
+TEST_F(AudioEngineTest, InputGainIgnoresNonFiniteValuesWithoutCorruptingAudio)
+{
+    prepareInputCaptureTest();
+    engine_->setChannelMode(2);
+    std::vector<float> left{0.2f, -0.4f};
+    std::vector<float> right{-0.1f, 0.3f};
+    const float* inputs[] = {left.data(), right.data()};
+    engine_->setInputGain(0.75f);
+
+    for (const float invalid : {std::numeric_limits<float>::quiet_NaN(),
+                               std::numeric_limits<float>::infinity(),
+                               -std::numeric_limits<float>::infinity()}) {
+        engine_->setInputGain(invalid);
+        EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.75f);
+        expectCapturedStereo(inputs, 2, {0.15f, -0.3f}, {-0.075f, 0.225f});
+    }
+}
 
 TEST_F(AudioEngineTest, SingleInputCaptureDefaultsToLegacyPairBehavior)
 {

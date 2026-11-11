@@ -63,6 +63,7 @@ static uint32_t quickControlHash(const AppState& s)
     h = h * 31u + static_cast<uint32_t>(s.monitorLost);
     h = h * 31u + static_cast<uint32_t>(s.sampleRate);
     h = h * 31u + static_cast<uint32_t>(s.bufferSize);
+    h = h * 31u + static_cast<uint32_t>(s.audioRunning);
     hashFloat(s.outputVolume);
     h = h * 31u + static_cast<uint32_t>(s.xrunCount);
     h = h * 31u + static_cast<uint32_t>(s.limiterEnabled);
@@ -221,6 +222,7 @@ std::string StateBroadcaster::toJSON() const
     data->setProperty("cpu_percent", static_cast<double>(state.cpuPercent));
     data->setProperty("sample_rate", state.sampleRate);
     data->setProperty("buffer_size", state.bufferSize);
+    data->setProperty("audio_running", state.audioRunning);
     data->setProperty("channel_mode", state.channelMode);
     data->setProperty("monitor_enabled", state.monitorEnabled);
     data->setProperty("active_slot", state.activeSlot);

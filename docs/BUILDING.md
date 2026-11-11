@@ -11,7 +11,7 @@
 | Platform | Release status | CI target | Audio backend | Notes |
 |---|---|---|---|---|
 | Windows 10/11 x64 | Stable release / 안정 릴리즈 | `windows-latest` | WASAPI Shared/Low Latency/Exclusive, ASIO when SDK is available | v4.3.0 passed local Release validation, exact-tag CI run `30701998763`, and public asset/checksum/identity verification. CI requires unsigned binaries because no trusted signing secrets are configured; no real-device claim. |
-| macOS 10.15+ universal | Beta / 베타 | `macos-14` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
+| macOS 10.15+ universal | Beta / 베타 | `macos-15` | CoreAudio | CI-generated DMG; ad-hoc signed, not treated as fully field-validated. |
 | Linux x86_64 | Experimental / 실험적 | `ubuntu-24.04` | ALSA, JACK | CI-generated tarball; desktop/audio-device behavior can vary by distro. |
 | Stream Deck plugin | Separate cross-platform package / 별도 크로스 플랫폼 패키지 | `ubuntu-latest` | WebSocket/UDP control client | Manifest targets Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
 
@@ -71,9 +71,10 @@ sudo dnf install alsa-lib-devel jack-audio-connection-kit-devel \
 Downloaded automatically by CMake FetchContent: / CMake FetchContent로 자동 다운로드:
 
 - **JUCE 7.0.12** — Audio framework / 오디오 프레임워크
-- DirectPipe applies a small hash-guarded JUCE endpoint-ID extension during
-  configuration for the optional Windows microphone-level hold. Unknown
-  upstream source fails configuration. See [patch provenance and guard tests](../tools/cmake/JuceEndpointIdentity.md).
+- DirectPipe applies hash-guarded JUCE endpoint-ID and native bootstrap-target
+  extensions during configuration. The bootstrap passes the configured macOS
+  deployment target to juceaide, preserving 10.15 compatibility on newer build
+  hosts. Unknown upstream source fails configuration. See [patch provenance and guard tests](../tools/cmake/JuceEndpointIdentity.md).
 - **Google Test 1.14.0** — Unit testing / 유닛 테스트
 
 ## Quick Build / 빠른 빌드

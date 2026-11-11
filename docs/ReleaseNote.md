@@ -30,6 +30,14 @@
 - Settings and full-backup restore failures now identify the failed stage,
   reason and what to check in both the dialog and log. Known incomplete rollback
   is reported; async plug-in load errors remain in the log.
+- Relative input-gain controls stay within the documented 0.0–2.0 range;
+  non-finite values are ignored and retain the last valid gain.
+- Controls/app settings autosave even without an audio device while the chain
+  is idle/unprepared. Changes merge into the preserved complete saved plug-in
+  chain, or use a recovery sidecar without replacing chain files. A full save
+  remains pending and resumes after preparation.
+- Additive `audio_running` API telemetry exposes audio state explicitly;
+  default sample-rate values alone no longer imply a running stream.
 - Windows host updates retain previous backups, bound the launching-process
   wait and record stage/error/recovery information. See [update recovery](WINDOWS_UPDATE_RECOVERY.md).
 - Verified initial startup now precedes cleanup of known previous host EXEs.
@@ -41,6 +49,13 @@
   이후 이펙트가 만든 스테레오는 유지하며, 입력 Mono는 이펙트 전단에서 혼합합니다.
 - 설정·전체 백업 복원이 실패하면 단계·이유·확인할 항목을 오류창과 로그에
   표시합니다. 확인된 복구 실패와 비동기 플러그인 로드 오류도 안내합니다.
+- 입력 게인 증감은 문서의 0.0–2.0 범위로 제한하고, NaN·무한대 값은 무시해
+  마지막 정상 게인을 유지합니다.
+- 오디오 장치 없이 체인이 준비되지 않은 유휴 상태에서도 제어·앱 설정을
+  자동 저장합니다. 완전한 저장 체인을 보존해 설정만 병합하거나 체인 파일을
+  교체하지 않는 복구 파일에 기록하며, 전체 저장은 체인 준비 뒤 재개합니다.
+- API에 `audio_running`을 추가해 기본 샘플레이트 값만으로 실행 중이라고
+  판단하지 않고 오디오 상태를 직접 확인할 수 있습니다.
 - Windows 업데이트는 본체 종료 대기를 제한하고 단계·복구 정보를 기록합니다.
   초기 복원과 저장된 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며,
   시작 미확인 시에는 복구 파일을 유지합니다. Stream Deck 의존성과 패키징

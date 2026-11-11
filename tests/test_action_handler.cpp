@@ -3,6 +3,7 @@
 
 #include <JuceHeader.h>
 #include <gtest/gtest.h>
+#include <limits>
 #include "Audio/AudioEngine.h"
 #include "Audio/VSTChain.h"
 #include "UI/PresetManager.h"
@@ -56,6 +57,61 @@ protected:
     std::unique_ptr<PresetSlotBar>     slotBar_;
     std::unique_ptr<ActionHandler>     handler_;
 };
+
+TEST_F(ActionHandlerTest, InputGainAdjustClampsAndSynchronizesAtBothBounds) {
+    std::vector<float> synchronized;
+    handler_->onInputGainSync = [&](float value) { synchronized.push_back(value); };
+    ActionEvent event;
+    event.action = Action::InputGainAdjust;
+    event.floatParam = 5.0f; // Five steps are +0.5 linear gain.
+
+    engine_->setInputGain(1.8f);
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 2.0f);
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 2.0f);
+
+    engine_->setInputGain(0.1f);
+    event.floatParam = -5.0f;
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.0f);
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.0f);
+
+    event.floatParam = 5.0f;
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.5f);
+    ASSERT_EQ(synchronized.size(), 5u);
+    EXPECT_FLOAT_EQ(synchronized[0], 2.0f);
+    EXPECT_FLOAT_EQ(synchronized[1], 2.0f);
+    EXPECT_FLOAT_EQ(synchronized[2], 0.0f);
+    EXPECT_FLOAT_EQ(synchronized[3], 0.0f);
+    EXPECT_FLOAT_EQ(synchronized[4], 0.5f);
+}
+
+TEST_F(ActionHandlerTest, SetInputVolumeSynchronizesAcceptedEngineGain) {
+    std::vector<float> synchronized;
+    handler_->onInputGainSync = [&](float value) { synchronized.push_back(value); };
+    ActionEvent event;
+    event.action = Action::SetVolume;
+    event.stringParam = "input";
+
+    event.floatParam = 2.5f;
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 2.0f);
+    event.floatParam = -0.5f;
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.0f);
+    engine_->setInputGain(0.75f);
+    event.floatParam = std::numeric_limits<float>::quiet_NaN();
+    handler_->handle(event);
+    EXPECT_FLOAT_EQ(engine_->getInputGain(), 0.75f);
+
+    ASSERT_EQ(synchronized.size(), 3u);
+    EXPECT_FLOAT_EQ(synchronized[0], 2.0f);
+    EXPECT_FLOAT_EQ(synchronized[1], 0.0f);
+    EXPECT_FLOAT_EQ(synchronized[2], 0.75f);
+}
 
 // Test 1: Panic mute engage — engine becomes muted, callback fired
 TEST_F(ActionHandlerTest, PanicMuteEngage) {

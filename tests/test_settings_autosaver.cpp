@@ -262,6 +262,62 @@ TEST_F(SettingsAutosaverTest, SaveNowSkipsDuringLoading) {
     EXPECT_EQ(file.loadFileAsString(), original);
 }
 
+TEST_F(SettingsAutosaverTest, IdleUnpreparedAudioSavesControlsAndPreservesCompletePlugins) {
+    const auto file = getAutoSaveFile();
+    const juce::String original = R"json({"version":4,"inputGain":1.0,
+        "plugins":[{"name":"PreservedPlugin","path":"C:/plugins/preserved.vst3","bypassed":false}]})json";
+    ASSERT_TRUE(file.replaceWithText(original));
+    const auto originalOnDisk = file.loadFileAsString();
+    engine_->getVSTChain().releaseResources();
+    ASSERT_FALSE(engine_->isRunning());
+    ASSERT_FALSE(engine_->getVSTChain().isStable());
+    partialLoad_ = true;
+    engine_->setInputGain(0.75f);
+    presetMgr_->onExportAppSettings = [](juce::DynamicObject& root) {
+        root.setProperty("startMinimizedToTray", true);
+    };
+
+    // An actual load transition must still defer even without an audio device.
+    loadingSlot_ = true;
+    autosaver_->markDirty();
+    for (int i = 0; i < 40; ++i) autosaver_->tick();
+    EXPECT_EQ(file.loadFileAsString(), originalOnDisk);
+    loadingSlot_ = false;
+    autosaver_->markDirty();
+    for (int i = 0; i < 30; ++i) autosaver_->tick();
+
+    const auto saved = juce::JSON::parse(file.loadFileAsString());
+    ASSERT_TRUE(saved.isObject());
+    EXPECT_DOUBLE_EQ(static_cast<double>(saved["inputGain"]), 0.75);
+    EXPECT_TRUE(static_cast<bool>(saved["startMinimizedToTray"]));
+    EXPECT_EQ(juce::JSON::toString(saved["plugins"]),
+              juce::JSON::toString(juce::JSON::parse(original)["plugins"]));
+    EXPECT_FALSE(SettingsAutosaver::getShutdownRecoveryFile().existsAsFile());
+}
+
+TEST_F(SettingsAutosaverTest, IdleUnpreparedAudioUsesSidecarAndRetriesFullSaveAfterPrepare) {
+    const auto file = getAutoSaveFile();
+    ASSERT_TRUE(file.deleteFile());
+    engine_->getVSTChain().releaseResources();
+    engine_->setInputGain(0.65f);
+    autosaver_->markDirty();
+    for (int i = 0; i < 30; ++i) autosaver_->tick();
+    EXPECT_FALSE(file.existsAsFile());
+    const auto recovery = SettingsAutosaver::getShutdownRecoveryFile();
+    ASSERT_TRUE(recovery.existsAsFile());
+    const auto pending = juce::JSON::parse(recovery.loadFileAsString());
+    ASSERT_TRUE(pending.isObject());
+    EXPECT_NEAR(static_cast<double>(pending["inputGain"]), 0.65, 0.0001);
+    EXPECT_FALSE(pending.hasProperty("plugins"));
+
+    // No further user edit is needed to resume the complete save.
+    engine_->getVSTChain().prepareToPlay(48000.0, 512);
+    for (int i = 0; i < 160; ++i) autosaver_->tick();
+    ASSERT_TRUE(file.existsAsFile());
+    EXPECT_NEAR(static_cast<double>(juce::JSON::parse(file.loadFileAsString())["inputGain"]), 0.65, 0.0001);
+    EXPECT_FALSE(recovery.existsAsFile());
+}
+
 TEST_F(SettingsAutosaverTest, ShutdownFlushMergesSettingsWithoutReplacingCompletePlugins) {
     auto file = getAutoSaveFile();
     const juce::String original = R"json({

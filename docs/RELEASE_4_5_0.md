@@ -30,7 +30,9 @@ the local artifacts below are independently packaged preparation evidence.
   stays suspended through initial restore and incomplete rollback.
 
 The exact ID comes from a minimal hash-guarded extension of pinned JUCE 7.0.12,
-without default/name/audio-session inference. The backend verifies active capture
+without default/name/audio-session inference. A guarded official JUCE build
+backport also passes the macOS deployment target to its native bootstrap tool,
+preventing a host-OS default from overriding the intended 10.15 minimum. The backend verifies active capture
 identity before binding and writing. See [patch provenance](../tools/cmake/JuceEndpointIdentity.md)
 and the [mic option guide](USER_GUIDE.md#windows-mic-level-hold).
 
@@ -39,8 +41,8 @@ and the [mic option guide](USER_GUIDE.md#windows-mic-level-hold).
 | Check | Observed result |
 | --- | --- |
 | Windows Release build | App, Receiver VST2/VST3, tests and audio-free startup probe passed |
-| Full CTest | 770 registrations: 767 passed, 3 skipped, 0 failed; 347.85 seconds |
-| Mic/UI/preset/autosave/full-backup focused run | 142/142 passed; 5.322 seconds |
+| Full CTest before the additional CI fixes | 770 registrations: 767 passed, 3 skipped, 0 failed; 347.85 seconds |
+| Final engine/gain/state/mic/UI/autosave/backup focused run | 235/235 passed; 23.706 seconds |
 | Official GForm VST2 host-graph rendering | 1.2 and 3.1 each passed with explicit DLL paths |
 | JUCE endpoint extension guard | Clean, idempotent, mixed and unknown-source/no-partial-write passed |
 | Windows ZIP extraction | All four hashes matched outside the checkout; three PE binaries AMD64/version 4.5.0/unsigned; no portable flag/probe |
@@ -48,7 +50,7 @@ and the [mic option guide](USER_GUIDE.md#windows-mic-level-hold).
 | Stream Deck Node tests | 28/28 passed; Node 20 and Node 22 verified |
 | Stream Deck syntax/icons/official validation/pack | Passed; 22 action/category PNG references and 10 action identities retained |
 | Full and production npm audits | 0 findings each; no audit suppression |
-| API parser/accepted-response regressions | 8/8 passed, including owned ephemeral TCP fixture |
+| API parser/accepted-response regressions | 9/9 passed, including owned ephemeral TCP fixture |
 | Version/text/patch/structural checks | 15 version paths; UTF-8 integrity; clean patch; strict Doctor 0 errors/0 warnings |
 
 CTest skipped concurrent-dispatch environment coverage, optional GForm discovery,
@@ -63,8 +65,9 @@ occupied HTTP/WebSocket ports, verifies both listener PIDs belong to its newly
 created process, uses fresh portable fixtures, and only shuts down that process.
 HTTP acceptance/resulting state and real WebSocket delivery are checked; protocol
 failures fail the gate. Only recorded-sample progression may skip when the exact
-candidate logs audio-device initialization failure; control/file/API checks remain
-mandatory. The installed 4.4.0 was rejected as evidence and was not interrupted.
+candidate reports typed `audio_running=false` (initialized engine and a driver
+reporting playback are required for true); control/file/API checks remain
+mandatory. Default sample-rate values do not establish active audio. The installed 4.4.0 was rejected as evidence and was not interrupted.
 
 ## Update startup and recovery
 
@@ -90,6 +93,27 @@ retroactively replace it. Install-only comparison mechanically rendered frozen
 old app. The owner's historical restart failure remains unconfirmed. The saved
 minimized-to-tray preference was inspected unchanged and does not prove its cause.
 
+## Additional CI-discovered corrections
+
+The first actual Windows API run exposed an obsolete test route, two gain-bound
+failures, zero recording samples without a device, and indefinitely deferred
+settings saves. Relative input gain now clamps to the documented 0..2 interval;
+NaN/infinity retain the prior valid value and UI sync reflects the accepted gain.
+Idle, unprepared audio now saves non-plugin controls/app preferences by merging
+with a complete saved chain or using the recovery sidecar, while retaining a
+pending full-chain save. Loading transitions still defer and existing plugin
+states are preserved. Eight new native regressions first failed, then passed.
+The master-bypass test now uses the documented toggle route and exact acceptance
+proof. Only physical sample progression skips when explicit runtime state says
+there is no playing audio; control, persistence and WAV creation stay mandatory.
+
+macOS14 runner retirement required macOS15. Its SDK exposed missing deployment-
+target forwarding to juceaide, repaired with the guarded upstream backport and
+an inner-cache10.15 CI assertion. Linux dependency installation encountered
+Azure mirror DNS failures, so CI uses official Ubuntu mirrors and bounded,
+fail-on-index-error APT operations. Exact-source CI must independently revalidate
+these build changes; a passed local check is not that result.
+
 ## Stream Deck dependencies
 
 SDK 2.0.1, Stream Deck 6.9 minimum, Node 20 runtime, action identities and artwork
@@ -104,13 +128,14 @@ No finding is waived/hidden; Marketplace submission/review is separate.
 
 | Local preparation artifact | SHA-256 |
 | --- | --- |
-| Windows ZIP, 12,600,043 bytes | 89109befa70cd0887e18865841b5cadd49b122eccc95c0482d3a4958afb10de4 |
-| Host EXE, 13,660,160 bytes | ff8c336a6fe08cffb9cfb4199bcc627b57bd871b25bd4a56f083acf423fc2289 |
+| Windows ZIP, 12,600,506 bytes | 09f0603e71ff5068b173f390bff8c3f9852af92c10c1159ba737728f81b205ce |
+| Host EXE, 13,660,672 bytes | 8e2f2642c7c4fb1d5c90a8941ff1bc80a5ed16d14c8a04e79fed843a3920cfec |
 | Stream Deck package, 154,426 bytes | e01ec5e1a7e5de46faa4f8ccf970dfe7f464e4da1ad2209d540e84068feca447 |
 
 Raw evidence: `build/release-4.5.0-publication-evidence/` and
 `dist/release-4.5.0-publication-20261111/`; previous checkpoints are retained.
-Local packages originate from a reviewed tree based on 599ef9e and are not
+Local packages originate from reviewed release preparation based on 599ef9e
+and subsequent scoped fixes; they are not
 claimed byte-identical to hosted builds. SDK-generated VST3 moduleinfo has
 trailing commas; version fields were checked as text, not strict JSON.
 

@@ -235,6 +235,21 @@ void SettingsAutosaver::tick()
     }
 
     if (--cooldown_ == 0) {
+        // A stopped, unprepared graph can remain idle indefinitely when no
+        // device is available. Persist controls without replacing the last
+        // complete plug-in chain, but retain dirty state for a later full save.
+        auto* currentDevice = engine_.getDeviceManager().getCurrentAudioDevice();
+        const bool audioPlaying = engine_.isRunning()
+            && currentDevice != nullptr && currentDevice->isPlaying();
+        if (!audioPlaying && !loadingSlot_.load()
+            && !engine_.getVSTChain().isLoading()
+            && !engine_.getVSTChain().isStable()) {
+            const bool saved = persistNonPluginSettings("Idle audio");
+            cooldown_ = saved ? kMissingChainInitialRetryTicks : 10;
+            deferCount_ = 0;
+            return;
+        }
+
         // Defer save if chain is in transitional state (async loading or not yet prepared)
         if (loadingSlot_.load() || !engine_.getVSTChain().isStable()) {
             if (++deferCount_ >= kMaxDeferCount) {
@@ -346,11 +361,19 @@ bool SettingsAutosaver::flushForShutdown()
         return true;
     }
 
+    const bool saved = persistNonPluginSettings("Shutdown");
+    if (saved)
+        dirty_ = false;
+    return saved;
+}
+
+bool SettingsAutosaver::persistNonPluginSettings(const juce::String& context)
+{
     const auto nonPluginJSON =
         exportNonPluginSettings(presetMgr_, engine_);
     if (!isValidNonPluginSettings(nonPluginJSON)) {
         juce::Logger::writeToLog(
-            "[PRESET] Shutdown settings flush failed: current non-plugin settings are invalid");
+            "[PRESET] " + context + " settings flush failed: current non-plugin settings are invalid");
         return false;
     }
 
@@ -365,26 +388,24 @@ bool SettingsAutosaver::flushForShutdown()
             && atomicWriteFile(settingsFile, merged)) {
             clearShutdownRecoveryFamily(
                 getShutdownRecoveryFile());
-            dirty_ = false;
             juce::Logger::writeToLog(
-                "[PRESET] Shutdown settings merged with preserved complete plugin chain");
+                "[PRESET] " + context + " settings merged with preserved complete plugin chain");
             return true;
         }
 
         juce::Logger::writeToLog(
-            "[PRESET] Shutdown merge could not update the full preset; falling back to recovery sidecar");
+            "[PRESET] " + context + " merge could not update the full preset; falling back to recovery sidecar");
     }
 
     const auto recoveryFile = getShutdownRecoveryFile();
     if (!atomicWriteFile(recoveryFile, nonPluginJSON)) {
         juce::Logger::writeToLog(
-            "[PRESET] Shutdown settings flush failed: recovery sidecar could not be written");
+            "[PRESET] " + context + " settings flush failed: recovery sidecar could not be written");
         return false;
     }
 
-    dirty_ = false;
     juce::Logger::writeToLog(
-        "[PRESET] Shutdown settings saved to recovery sidecar; plugin chain files were left unchanged");
+        "[PRESET] " + context + " settings saved to recovery sidecar; plugin chain files were left unchanged");
     return true;
 }
 

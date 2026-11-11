@@ -459,6 +459,8 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
         s.cpuPercent = static_cast<float>(monitor.getCpuUsagePercent());
         s.sampleRate = monitor.getSampleRate();
         s.bufferSize = monitor.getBufferSize();
+        auto* audioDevice = engine_.getDeviceManager().getCurrentAudioDevice();
+        s.audioRunning = engine_.isRunning() && audioDevice != nullptr && audioDevice->isPlaying();
         s.channelMode = engine_.getChannelMode();
         s.monitorEnabled = router.isEnabled(OutputRouter::Output::Monitor);
         {

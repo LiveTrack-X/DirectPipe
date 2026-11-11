@@ -22,9 +22,17 @@ Exact-version release checks and packaging are tracked in the
   DirectPipe gain are untouched. Turning it off stops corrections without
   restoring an old level. Existing settings remain off; per-device choices
   round-trip in settings/full backups and survive chain-only slot changes.
+- Add `audio_running` API telemetry so clients can check audio state explicitly
+  instead of treating default sample-rate values as proof of a running stream.
 
 ### Fixed
 
+- Clamp relative input-gain controls to the documented 0.0–2.0 range and ignore
+  non-finite values, retaining the last valid gain.
+- Autosave controls/app settings when no audio device is available and the
+  chain is idle/unprepared. Merge those changes into the preserved complete
+  saved plug-in chain, or write a recovery sidecar without replacing chain
+  files. Keep the full save pending and resume it after the chain is prepared.
 - Route mono VST outputs to both channels of the following stereo stage and
   final output, including GVST GForm VST2. Preserve stereo effects, bypass,
   existing input Mono/Stereo settings and saved presets. Route main buses only

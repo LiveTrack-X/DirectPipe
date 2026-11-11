@@ -330,6 +330,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
     "cpu_percent": 3.1,
     "sample_rate": 48000,
     "buffer_size": 128,
+    "audio_running": true,
     "channel_mode": 2,
     "monitor_enabled": true,
     "active_slot": 0,
@@ -380,6 +381,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
 | `cpu_percent` | number | Audio CPU usage % / 오디오 CPU 사용률 |
 | `sample_rate` | number | Sample rate (Hz) / 샘플레이트 |
 | `buffer_size` | number | Buffer size (samples) / 버퍼 크기 |
+| `audio_running` | boolean | Audio engine initialized and its current device reports playing. False when startup failed, no current device exists, or the driver is stopped. Configured sample rate/buffer size alone do not prove running audio; this flag does not prove sample progression. / 오디오 엔진 초기화 및 현재 드라이버 재생 상태 |
 | `xrun_count` | number | XRun count in rolling 60s window / 60초 롤링 윈도우 XRun 카운트 |
 | `channel_mode` | number | 1=Mono, 2=Stereo (default: 2) |
 | `monitor_enabled` | boolean | Monitor output enabled / 모니터 출력 활성화 |

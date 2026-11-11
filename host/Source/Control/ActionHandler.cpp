@@ -233,7 +233,7 @@ void ActionHandler::handle(const ActionEvent& event)
             } else if (event.stringParam == "input") {
                 if (engine_.isMuted()) break;
                 engine_.setInputGain(event.floatParam);
-                if (onInputGainSync) onInputGainSync(event.floatParam);
+                if (onInputGainSync) onInputGainSync(engine_.getInputGain());
                 if (onDirty) onDirty();
             } else if (event.stringParam == "output") {
                 if (engine_.isMuted()) break;

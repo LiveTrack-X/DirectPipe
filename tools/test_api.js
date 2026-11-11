@@ -67,11 +67,12 @@ function isStateBroadcast(message) {
   return message?.type === 'state' && data !== null && typeof data === 'object' && !Array.isArray(data)
     && Array.isArray(data.plugins) && data.volumes !== null && typeof data.volumes === 'object'
     && ['input', 'output', 'monitor'].every(name => Number.isFinite(data.volumes[name]))
+    && typeof data.audio_running === 'boolean'
     && Number.isInteger(data.active_slot);
 }
-function canSkipCheck(name, environment = process.env) {
-  return !environment.DIRECTPIPE_TEST_CONFIG_DIR
-    || (name === 'Recorded audio sample progression' && environment.DIRECTPIPE_TEST_NO_AUDIO === '1');
+function canSkipCheck(name, environment = process.env, state) {
+  if (name === 'Recorded audio sample progression') return state?.audio_running === false;
+  return !environment.DIRECTPIPE_TEST_CONFIG_DIR;
 }
 function recordingDirectoryCandidates(environment = process.env) {
   const candidates = [environment.DIRECTPIPE_TEST_RECORDING_DIR];
@@ -84,8 +85,8 @@ function recordingDirectoryCandidates(environment = process.env) {
   }
   return candidates.filter(Boolean);
 }
-function skipped(name, reason) {
-  if (!canSkipCheck(name)) {
+function skipped(name, reason, state) {
+  if (!canSkipCheck(name, process.env, state)) {
     check(name + ' required by isolated fixture: ' + reason, true, false);
     return;
   }
@@ -314,7 +315,7 @@ if (require.main === module) (async () => {
       // Restore master bypass
       s = await getState();
       if (s.master_bypassed !== initialState.masterBypassed) {
-        await api('/bypass/master');
+        checkAccepted('Restore master bypass', await api('/bypass/master/toggle'), 'master_bypass');
         await sleep(400);
       }
 
@@ -552,14 +553,14 @@ if (require.main === module) (async () => {
   check('IPC restored', beforeIpc, s.ipc_enabled);
 
   // ──── TEST 8: Master Bypass ────
-  console.log('\n--- TEST 8: Master Bypass (2 checks) ---');
+  console.log('\n--- TEST 8: Master Bypass (4 checks) ---');
   s = await getState();
   const beforeBypass = s.master_bypassed;
-  await api('/bypass/master');
+  checkAccepted('Master bypass toggle', await api('/bypass/master/toggle'), 'master_bypass');
   await sleep(400);
   s = await getState();
   check('Master bypass toggled', !beforeBypass, s.master_bypassed);
-  await api('/bypass/master');
+  checkAccepted('Master bypass restore', await api('/bypass/master/toggle'), 'master_bypass');
   await sleep(400);
   s = await getState();
   check('Master bypass restored', beforeBypass, s.master_bypassed);
@@ -589,16 +590,19 @@ if (require.main === module) (async () => {
   check('Plugin param bad index rejected', 400, r.code);
 
   // ──── TEST 10: Recording ────
-  console.log('\n--- TEST 10: Recording (3 checks) ---');
+  console.log('\n--- TEST 10: Recording (5 checks) ---');
   await api('/recording/toggle');
   await sleep(500);
   s = await getState();
   check('Recording started', true, s.recording);
   await sleep(2000);
   s = await getState();
-  if (process.env.DIRECTPIPE_TEST_NO_AUDIO === '1') {
+  check('Recording audio_running is boolean', true, typeof s.audio_running === 'boolean');
+  check('Recording sample duration is finite and nonnegative', true,
+    Number.isFinite(s.recording_seconds) && s.recording_seconds >= 0);
+  if (s.audio_running === false) {
     skipped('Recorded audio sample progression',
-      'exact candidate log reports audio device initialization failure; no recorded-audio proof');
+      'exact candidate reports audio_running=false; no recorded-audio proof', s);
   } else {
     check('Recording duration > 0', true, s.recording_seconds > 0);
   }
@@ -648,10 +652,11 @@ if (require.main === module) (async () => {
   check('Auto-save triggered within 2.5s', true, afterMod > beforeMod);
 
   // ──── TEST 13: Device State ────
-  console.log('\n--- TEST 13: Device State (4 checks) ---');
+  console.log('\n--- TEST 13: Device State (6 checks) ---');
   s = await getState();
   check('Sample rate is finite and > 0', true, Number.isFinite(s.sample_rate) && s.sample_rate > 0);
   check('Buffer size is a positive integer', true, Number.isInteger(s.buffer_size) && s.buffer_size > 0);
+  check('Audio running is boolean', true, typeof s.audio_running === 'boolean');
   check('Recording duration is finite and nonnegative', true, Number.isFinite(s.recording_seconds) && s.recording_seconds >= 0);
   check('Channel mode valid', true, [1, 2].includes(s.channel_mode));
   check('Device not lost', false, s.device_lost);
@@ -662,7 +667,7 @@ if (require.main === module) (async () => {
   const requiredFields = [
     'plugins', 'volumes', 'master_bypassed', 'muted', 'output_muted',
     'input_muted', 'preset', 'latency_ms', 'monitor_latency_ms',
-    'cpu_percent', 'sample_rate', 'buffer_size', 'channel_mode',
+    'cpu_percent', 'sample_rate', 'buffer_size', 'audio_running', 'channel_mode',
     'monitor_enabled', 'active_slot', 'recording', 'recording_seconds',
     'ipc_enabled', 'device_lost', 'monitor_lost'
   ];

@@ -38,6 +38,7 @@
 #include "../Platform/EndpointChangeWatcher.h"
 
 #include <atomic>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <memory>
@@ -173,7 +174,13 @@ public:
     void setChannelMode(int channels);
     int getChannelMode() const { return channelMode_.load(std::memory_order_relaxed); }
 
-    void setInputGain(float gain) { inputGain_.store(gain, std::memory_order_relaxed); }
+    // Keep every input path within the UI/API range; invalid values retain the
+    // last valid gain instead of reaching the real-time audio multiplication.
+    void setInputGain(float gain)
+    {
+        if (std::isfinite(gain))
+            inputGain_.store(juce::jlimit(0.0f, 2.0f, gain), std::memory_order_relaxed);
+    }
     float getInputGain() const { return inputGain_.load(std::memory_order_relaxed); }
 
     /** Final global output trim after Safety Guard (dB, default -0.3). */

@@ -347,6 +347,10 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 \
             -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
           grep -E '^CMAKE_OSX_(ARCHITECTURES|DEPLOYMENT_TARGET):' build/CMakeCache.txt
+          # JUCE's native bootstrap must inherit the target too; otherwise a
+          # macOS 15 helper build can reject APIs available to the 10.15 app.
+          grep -E '^CMAKE_OSX_DEPLOYMENT_TARGET:' build/_deps/juce-build/tools/CMakeCache.txt
+          grep -Eq '^CMAKE_OSX_DEPLOYMENT_TARGET:[A-Z_]+=10\.15$' build/_deps/juce-build/tools/CMakeCache.txt
 
       - name: Build
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
@@ -463,9 +467,22 @@ jobs:
           ref: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '' && format('refs/tags/{0}', github.event.inputs.release_tag)) || github.ref }}
 
       - name: Install system dependencies
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          # The runner's Azure mirror has produced prolonged DNS failures.
+          # Keep Ubuntu's signed repositories, using the official mirror.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          for name in ('/etc/apt/sources.list', '/etc/apt/sources.list.d/ubuntu.sources', '/etc/apt/apt-mirrors.txt'):
+              path = Path(name)
+              if path.is_file():
+                  text = path.read_text()
+                  path.write_text(text.replace('azure.archive.ubuntu.com', 'archive.ubuntu.com'))
+          PY
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 install -y \
             libasound2-dev \
             libjack-jackd2-dev \
             libfreetype-dev \

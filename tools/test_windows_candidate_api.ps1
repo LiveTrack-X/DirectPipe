@@ -47,10 +47,8 @@ $taskSettings | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $t
 @{recordingFolder=$taskRecordingDirectory} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskConfigDirectory 'recording-config.json') -Encoding utf8
 $taskPreviousConfigHint = $env:DIRECTPIPE_TEST_CONFIG_DIR
 $taskPreviousRecordingHint = $env:DIRECTPIPE_TEST_RECORDING_DIR
-$taskPreviousNoAudioHint = $env:DIRECTPIPE_TEST_NO_AUDIO
 $env:DIRECTPIPE_TEST_CONFIG_DIR = $taskConfigDirectory
 $env:DIRECTPIPE_TEST_RECORDING_DIR = $taskRecordingDirectory
-$env:DIRECTPIPE_TEST_NO_AUDIO = $null
 $taskProcess = $null
 $taskApiExit = -1
 $taskGraceful = $false
@@ -81,14 +79,6 @@ try {
     }
     if (-not $taskReady) { throw 'Exact candidate API did not become ready within 60 seconds.' }
     $taskIdentity.httpAndWebSocketPidVerified = $true
-    $taskCandidateLog = Join-Path $taskConfigDirectory 'directpipe.log'
-    if ((Test-Path -LiteralPath $taskCandidateLog) -and
-        (Select-String -LiteralPath $taskCandidateLog -SimpleMatch '[AUDIO] Device manager init failed:' -Quiet)) {
-        # Skip only callback-driven sample progression with explicit candidate
-        # evidence. Control/API behavior remains mandatory on a no-device runner.
-        $env:DIRECTPIPE_TEST_NO_AUDIO = '1'
-        $taskIdentity.audioDeviceInitializationFailed = $true
-    } else { $taskIdentity.audioDeviceInitializationFailed = $false }
     & bash tools/pre-release-test.sh --api-only 2>&1 | Tee-Object -FilePath (Join-Path $taskEvidence 'api.log')
     $taskApiExit = $LASTEXITCODE
     $taskIdentity.apiExit = $taskApiExit
@@ -116,13 +106,12 @@ public static class DirectPipeApiFixtureQuit {
     }
     $taskIdentity.gracefulShutdown = $taskGraceful
     $taskIdentity | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskEvidence 'api-identity.json') -Encoding utf8
-    foreach ($taskLogName in @('directpipe.log', 'directpipe.log.1')) {
+    foreach ($taskLogName in @('directpipe.log', 'directpipe.log.prev')) {
         $taskLog = Join-Path $taskDirectory ('config/' + $taskLogName)
         if (Test-Path -LiteralPath $taskLog) { Copy-Item -LiteralPath $taskLog -Destination (Join-Path $taskEvidence $taskLogName) }
     }
     Pop-Location
     $env:DIRECTPIPE_TEST_CONFIG_DIR = $taskPreviousConfigHint
     $env:DIRECTPIPE_TEST_RECORDING_DIR = $taskPreviousRecordingHint
-    $env:DIRECTPIPE_TEST_NO_AUDIO = $taskPreviousNoAudioHint
 }
 if ($taskApiExit -ne 0) { exit 1 }

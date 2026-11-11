@@ -62,6 +62,7 @@ struct AppState {
     float cpuPercent = 0.0f;
     double sampleRate = 48000.0;
     int bufferSize = 480;
+    bool audioRunning = false;  // Engine initialized and current driver reports playing.
     int channelMode = 2;  // 1 = Mono, 2 = Stereo (matches AudioEngine default)
     bool monitorEnabled = false;
     int activeSlot = 0;   // Quick preset slot index: 0=A, 1=B, 2=C, 3=D, 4=E, 5=Auto, -1=none

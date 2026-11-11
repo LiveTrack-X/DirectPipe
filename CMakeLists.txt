@@ -34,6 +34,9 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # ─── JUCE (via FetchContent) ───
 include(FetchContent)
+include("${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/DirectPipeJuceEndpointIdentity.cmake")
+set(DIRECTPIPE_JUCE_PATCH_SCRIPT
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/DirectPipeJuceEndpointIdentity.cmake")
 
 option(DIRECTPIPE_BUILD_RECEIVER "Build Receiver plugin" ON)
 
@@ -42,13 +45,26 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
     GIT_TAG 7.0.12
     GIT_SHALLOW TRUE
+    PATCH_COMMAND "${CMAKE_COMMAND}"
+        "-DDIRECTPIPE_JUCE_SOURCE_DIR=<SOURCE_DIR>"
+        -P "${DIRECTPIPE_JUCE_PATCH_SCRIPT}"
 )
 
 # Fetch JUCE if building host or receiver
 if(DIRECTPIPE_BUILD_HOST OR DIRECTPIPE_BUILD_RECEIVER)
+    # A source override or an existing populated checkout can bypass download
+    # patch steps. Patch it before JUCE configures/builds its nested juceaide.
+    FetchContent_GetProperties(JUCE SOURCE_DIR directpipe_existing_juce)
+    if(FETCHCONTENT_SOURCE_DIR_JUCE)
+        set(directpipe_existing_juce "${FETCHCONTENT_SOURCE_DIR_JUCE}")
+    elseif(NOT directpipe_existing_juce AND EXISTS "${FETCHCONTENT_BASE_DIR}/juce-src/CMakeLists.txt")
+        set(directpipe_existing_juce "${FETCHCONTENT_BASE_DIR}/juce-src")
+    endif()
+    if(directpipe_existing_juce AND EXISTS "${directpipe_existing_juce}/CMakeLists.txt")
+        directpipe_patch_juce_endpoint_identity("${directpipe_existing_juce}")
+    endif()
     FetchContent_MakeAvailable(JUCE)
     FetchContent_GetProperties(JUCE SOURCE_DIR DIRECTPIPE_JUCE_SOURCE_DIR)
-    include("${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake/DirectPipeJuceEndpointIdentity.cmake")
     directpipe_patch_juce_endpoint_identity("${DIRECTPIPE_JUCE_SOURCE_DIR}")
 
     # ─── RNNoise (noise suppression, BSD-3) ───

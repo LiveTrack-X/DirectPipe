@@ -62,7 +62,7 @@ public:
      */
     [[nodiscard]] bool flushForShutdown();
 
-    /** Recovery sidecar used only when shutdown cannot safely update the full preset. */
+    /** Recovery sidecar when shutdown or idle audio cannot safely update the full preset. */
     static juce::File getShutdownRecoveryFile();
 
     /** Remove the recovery sidecar and its atomic-write siblings (Factory Reset). */
@@ -87,6 +87,10 @@ public:
     std::function<void()> onFlushLogs;
 
 private:
+    // Persists controls/app preferences without serializing a transitional
+    // chain. Caller decides whether a complete-chain save remains pending.
+    bool persistNonPluginSettings(const juce::String& context);
+
     PresetManager& presetMgr_;
     AudioEngine& engine_;
     std::atomic<bool>& loadingSlot_;

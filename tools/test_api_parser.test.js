@@ -56,9 +56,9 @@ test('async API acceptance requires exact 202 and typed accepted action proof', 
 
 test('state broadcast requires an actual state object with core typed fields', () => {
   assert.equal(typeof isStateBroadcast, 'function');
-  const data = { plugins: [], volumes: { input: 1, output: 1, monitor: 1 }, active_slot: 0 };
+  const data = { plugins: [], volumes: { input: 1, output: 1, monitor: 1 }, active_slot: 0, audio_running: false };
   assert.equal(isStateBroadcast({ type: 'state', data }), true);
-  for (const invalid of [null, [], {}, { ...data, plugins: null }, { ...data, volumes: null }, { ...data, active_slot: '0' }]) {
+  for (const invalid of [null, [], {}, { ...data, plugins: null }, { ...data, volumes: null }, { ...data, active_slot: '0' }, { ...data, audio_running: undefined }, { ...data, audio_running: 'false' }]) {
     assert.equal(isStateBroadcast({ type: 'state', data: invalid }), false);
   }
 });
@@ -69,8 +69,16 @@ test('isolated fixture cannot silently skip lost plugins or settings files', () 
   assert.equal(canSkipCheck('Plugin bypass', isolated), false);
   assert.equal(canSkipCheck('Settings file check', isolated), false);
   assert.equal(canSkipCheck('Recorded audio sample progression', isolated), false);
-  assert.equal(canSkipCheck('Recorded audio sample progression', { ...isolated, DIRECTPIPE_TEST_NO_AUDIO: '1' }), true);
+  assert.equal(canSkipCheck('Recorded audio sample progression', { ...isolated, DIRECTPIPE_TEST_NO_AUDIO: '1' }), false);
   assert.equal(canSkipCheck('Plugin bypass', {}), true);
+});
+
+test('recorded sample progression skips only an explicit false runtime audio state', () => {
+  const isolated = { DIRECTPIPE_TEST_CONFIG_DIR: 'owned-config' };
+  assert.equal(canSkipCheck('Recorded audio sample progression', isolated, { audio_running: false }), true);
+  for (const invalid of [undefined, {}, { audio_running: true }, { audio_running: 0 }, { audio_running: 'false' }, { audio_running: null }]) {
+    assert.equal(canSkipCheck('Recorded audio sample progression', isolated, invalid), false);
+  }
 });
 
 test('isolated recording proof never falls back to owner profile directories', () => {

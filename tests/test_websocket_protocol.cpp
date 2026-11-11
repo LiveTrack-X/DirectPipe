@@ -638,6 +638,36 @@ TEST_F(StateSerializationTest, StateContainsAudioParams) {
     EXPECT_EQ(static_cast<int>(data->getProperty("channel_mode")), 2);
 }
 
+TEST_F(StateSerializationTest, AudioRunningSerializesTypedActualStateInsteadOfSampleRateDefaults) {
+    for (const bool running : {false, true, false}) {
+        broadcaster->updateState([running](AppState& state) {
+            state.audioRunning = running;
+        });
+        const auto parsed = juce::JSON::parse(juce::String(broadcaster->toJSON()));
+        auto* data = parsed.getProperty("data", {}).getDynamicObject();
+        ASSERT_NE(data, nullptr);
+        ASSERT_TRUE(data->hasProperty("audio_running"));
+        EXPECT_TRUE(data->getProperty("audio_running").isBool());
+        EXPECT_EQ(static_cast<bool>(data->getProperty("audio_running")), running);
+        EXPECT_DOUBLE_EQ(static_cast<double>(data->getProperty("sample_rate")), 48000.0);
+    }
+}
+
+TEST_F(StateSerializationTest, AudioRunningChangesBroadcastImmediatelyWithoutOtherStateChanges) {
+    juce::MessageManager::getInstance();
+    struct Listener final : StateListener {
+        void onStateChanged(const AppState& state) override { observed.push_back(state.audioRunning); }
+        std::vector<bool> observed;
+    } listener;
+    broadcaster->addListener(&listener);
+    broadcaster->updateState([](AppState&) {});
+    broadcaster->updateState([](AppState& state) { state.audioRunning = true; });
+    broadcaster->updateState([](AppState& state) { state.audioRunning = false; });
+    broadcaster->updateState([](AppState& state) { state.audioRunning = false; });
+    broadcaster->removeListener(&listener);
+    EXPECT_EQ(listener.observed, (std::vector<bool>{false, true, false}));
+}
+
 TEST_F(StateSerializationTest, StateContainsSafetyLimiterHeadroomFields) {
     broadcaster->updateState([](AppState& state) {
         state.limiterEnabled = true;
