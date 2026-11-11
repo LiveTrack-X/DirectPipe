@@ -41,7 +41,7 @@ and the [mic option guide](USER_GUIDE.md#windows-mic-level-hold).
 | Check | Observed result |
 | --- | --- |
 | Windows Release build | App, Receiver VST2/VST3, tests and audio-free startup probe passed |
-| Full CTest before the additional CI fixes | 770 registrations: 767 passed, 3 skipped, 0 failed; 347.85 seconds |
+| Final full CTest | 778 registrations: 775 passed, 3 skipped, 0 failed; 349.01 seconds |
 | Final engine/gain/state/mic/UI/autosave/backup focused run | 235/235 passed; 23.706 seconds |
 | Official GForm VST2 host-graph rendering | 1.2 and 3.1 each passed with explicit DLL paths |
 | JUCE endpoint extension guard | Clean, idempotent, mixed and unknown-source/no-partial-write passed |

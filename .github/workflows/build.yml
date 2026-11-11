@@ -469,28 +469,51 @@ jobs:
       - name: Install system dependencies
         timeout-minutes: 8
         run: |
-          # The runner's Azure mirror has produced prolonged DNS failures.
-          # Keep Ubuntu's signed repositories, using the official mirror.
+          required=(libasound2-dev libjack-jackd2-dev libfreetype-dev libx11-dev
+                    libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev)
+          missing=()
+          for package in "${required[@]}"; do
+            state=$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)
+            if [ "$state" != 'install ok installed' ]; then
+              missing+=("$package")
+            else
+              dpkg-query -W -f='${Package} ${Version}\n' "$package"
+            fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "All required development packages are installed; native CMake checks remain mandatory."
+            exit 0
+          fi
+
+          # Ubuntu host DNS has failed on hosted runners. Select a reachable
+          # archive transport; APT still verifies Ubuntu's signed metadata.
           sudo python3 - <<'PY'
           from pathlib import Path
+          import re
+          from urllib.request import urlopen
+          chosen = None
+          for base in ('https://archive.ubuntu.com/ubuntu', 'https://mirrors.edge.kernel.org/ubuntu', 'https://mirrors.kernel.org/ubuntu'):
+              try:
+                  with urlopen(base + '/dists/noble/InRelease', timeout=15) as response:
+                      if response.status == 200 and response.read(1):
+                          chosen = base
+                          break
+              except Exception as error:
+                  print(f'Archive transport unavailable: {base}: {error}', flush=True)
+          if chosen is None:
+              raise SystemExit('No reachable Ubuntu archive transport; refusing stale-index installation.')
+          print(f'Using Ubuntu archive transport: {chosen}', flush=True)
           for name in ('/etc/apt/sources.list', '/etc/apt/sources.list.d/ubuntu.sources', '/etc/apt/apt-mirrors.txt'):
               path = Path(name)
               if path.is_file():
                   text = path.read_text()
-                  path.write_text(text.replace('azure.archive.ubuntu.com', 'archive.ubuntu.com'))
+                  text = re.sub(r'https?://(?:azure\.archive|archive|security)\.ubuntu\.com/ubuntu/?', chosen + '/', text)
+                  path.write_text(text)
           PY
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 \
             -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any update
           sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 \
-            -o Acquire::https::Timeout=20 install -y \
-            libasound2-dev \
-            libjack-jackd2-dev \
-            libfreetype-dev \
-            libx11-dev \
-            libxrandr-dev \
-            libxinerama-dev \
-            libxcursor-dev \
-            libgl-dev
+            -o Acquire::https::Timeout=20 install -y "${missing[@]}"
 
       - name: Restore VST2 SDK
         env:
