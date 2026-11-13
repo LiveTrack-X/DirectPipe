@@ -232,3 +232,25 @@ the four build jobs inherited a skipped optional tag-preparation ancestor.
 This is not a full validation pass. Explicit non-cancelled/text-success guards
 were added to all four build jobs so CI-only/PR runs execute their complete
 checks. The release run still requires all four validated artifacts.
+
+
+### Cross-platform preflight and release orchestration
+
+The complete macOS preflight ran 725 tests and exposed one stale HTTP
+performance-latency assertion: RNNoise now correctly reports 1440 samples at
+48 kHz, so the API fixture with two 480-sample device buffers must report
+50 ms (20 ms device I/O + 30 ms active-chain PDC). Both expectations were
+corrected in 71f78e5. The Linux compiler also required an explicit juce::int64
+conversion of the release-asset size; that portability correction is in
+241251a. Neither failed preflight is counted as a successful release gate.
+
+Local shell and browser execution became unavailable because Windows execution
+received incompatible Unix permission-root paths. Connected GitHub operations
+remain available. A narrowly scoped, one-time main-push workflow dispatches
+the existing exact-tag Build & Release workflow, waits for its full result,
+and verifies the public release and all five nonempty assets. It does not
+publish around a failed build. The owner additionally authorized removing
+the three current non-main branches after publication; every recorded branch
+head must remain unchanged and be an ancestor of main before any ref is removed.
+The v4.5.1 source tag is retained. Hardware listening/device acceptance remains
+distinct from synthetic and hosted-runner checks.

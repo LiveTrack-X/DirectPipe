@@ -123,10 +123,10 @@ TEST_F(BuiltinNoiseRemovalTest, StateRoundtrip) {
 
 // FIFO + vendored RNNoise delay, plus conversion at non-native rates.
 TEST_F(BuiltinNoiseRemovalTest, LatencyReport) {
-    // 48kHz — active processing, FIFO latency
+    // 48kHz — FIFO buffering plus intrinsic model delay
     EXPECT_EQ(nr.getLatencySamples(), 1440);
 
-    // Non-48kHz — FIFO plus input/output conversion
+    // Non-48kHz — FIFO, intrinsic model delay and input/output conversion
     BuiltinNoiseRemoval nr44;
     nr44.prepareToPlay(44100.0, 512);
     EXPECT_EQ(nr44.getLatencySamples(), 1448);

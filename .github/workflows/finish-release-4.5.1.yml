@@ -1,0 +1,118 @@
+name: Finish authorized v4.5.1 release
+
+# One-time release orchestration; retries verify the same immutable source.
+# Triggered only when this file is explicitly updated on main.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/finish-release-4.5.1.yml']
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: finish-release-4.5.1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'LiveTrack-X/DirectPipe'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Dispatch and verify exact release source
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO=LiveTrack-X/DirectPipe
+          TAG=v4.5.1
+          test "$(sed -nE 's/^project\(DirectPipe VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)" = 4.5.1
+          PUBLISHED=$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq '.isDraft == false' 2>/dev/null || true)
+          if [ "$PUBLISHED" = true ]; then
+            test "$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')" = "$EXPECTED_SHA"
+          else
+            test "$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')" = "$EXPECTED_SHA"
+            gh workflow run build.yml --repo "$REPO" --ref main -f release_tag="$TAG"
+          fi
+          RUN_ID=""
+          for attempt in {1..30}; do
+            RUN_ID=$(gh api "repos/$REPO/actions/workflows/build.yml/runs?event=workflow_dispatch&head_sha=$EXPECTED_SHA&per_page=10" --jq '.workflow_runs | sort_by(.created_at) | last | .id // empty')
+            [ -n "$RUN_ID" ] && break
+            sleep 5
+          done
+          test -n "$RUN_ID"
+          echo "Release build: https://github.com/$REPO/actions/runs/$RUN_ID"
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 30
+          test "$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')" = "$EXPECTED_SHA"
+          gh release view "$TAG" --repo "$REPO" --json isDraft,tagName,assets,url > release.json
+          python3 - <<'PY'
+          import json
+          release = json.load(open('release.json'))
+          assert release['isDraft'] is False and release['tagName'] == 'v4.5.1'
+          expected = {'DirectPipe-v4.5.1-Windows.zip', 'DirectPipe-v4.5.1-macOS.dmg',
+                      'DirectPipe-v4.5.1-Linux.tar.gz', 'com.directpipe.directpipe.streamDeckPlugin',
+                      'checksums.sha256'}
+          assert {asset['name'] for asset in release['assets']} == expected
+          assert all(asset['size'] > 0 for asset in release['assets'])
+          print(release['url'])
+          PY
+          mkdir public-assets
+          gh release download "$TAG" --repo "$REPO" --dir public-assets
+          (cd public-assets && sha256sum --strict --check checksums.sha256)
+          python3 - <<'PY'
+          import json, pathlib, tarfile, zipfile
+          root = pathlib.Path('public-assets')
+          with zipfile.ZipFile(root / 'DirectPipe-v4.5.1-Windows.zip') as package:
+              assert package.testzip() is None
+              names = set(package.namelist())
+              for required in ('DirectPipe.exe', 'DirectPipe Receiver.dll',
+                               'DirectPipe Receiver.vst3/Contents/x86_64-win/DirectPipe Receiver.vst3'):
+                  assert required in names, required
+          with tarfile.open(root / 'DirectPipe-v4.5.1-Linux.tar.gz') as package:
+              names = {name.removeprefix('./') for name in package.getnames()}
+              assert 'DirectPipe' in names
+              assert any(name.endswith('.vst3/Contents/x86_64-linux/DirectPipe Receiver.so') for name in names)
+          with zipfile.ZipFile(root / 'com.directpipe.directpipe.streamDeckPlugin') as package:
+              assert package.testzip() is None
+              manifests = [name for name in package.namelist() if name.endswith('/manifest.json')]
+              assert len(manifests) == 1
+              assert json.loads(package.read(manifests[0]))['Version'] == '4.5.1.0'
+          print('Public downloads: all SHA-256 checks and package identities passed')
+          PY
+          echo 'published=true' >> "$GITHUB_OUTPUT"
+      - name: Remove only reviewed branches after publication
+        if: steps.dispatch.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO=LiveTrack-X/DirectPipe
+          BRANCHES_JSON=$(gh api "repos/$REPO/branches?per_page=100")
+          # Never discard a branch that has moved since the owner's review.
+          while read -r branch expected; do
+            actual=$(jq -r --arg name "$branch" '.[] | select(.name == $name) | .commit.sha' <<< "$BRANCHES_JSON")
+            [ -n "$actual" ] || continue
+            test "$actual" = "$expected"
+            test "$(gh api "repos/$REPO/compare/$expected...main" --jq '.behind_by')" = 0
+            test "$(gh api "repos/$REPO/compare/$expected...main" --jq '.merge_base_commit.sha')" = "$expected"
+          done <<'BRANCHES'
+          codex/receiver-multi-client-4-4-0 f9861c0b120711b5da6bc45a12a7b5c56607dc35
+          codex/release-4.5.0 bca449916351a436284816f3555f7e43641a70e7
+          codex/release-4.5.1 71f78e5ac9c5ec66c06bbc8f09bdde2cc4f1ead9
+          BRANCHES
+          # Complete all ancestry checks before deleting the first ref.
+          for branch in codex/receiver-multi-client-4-4-0 codex/release-4.5.0 codex/release-4.5.1; do
+            if jq -e --arg name "$branch" '.[] | select(.name == $name)' <<< "$BRANCHES_JSON" > /dev/null; then
+              gh api --method DELETE "repos/$REPO/git/refs/heads/$branch"
+            fi
+          done
+          gh api "repos/$REPO/branches?per_page=100" --jq '.[].name'
