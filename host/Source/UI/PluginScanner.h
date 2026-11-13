@@ -29,6 +29,14 @@
 
 namespace directpipe {
 
+namespace plugin_scan {
+/** Apply scanner output without letting a targeted install erase the global cache.
+    A nonempty managed root allows successful scans to retire only old managed
+    DPWIM cache entries of the same VST3 identity; plugin files/instances stay intact. */
+void applyResults(juce::KnownPluginList& cached, const juce::XmlElement& results,
+                  bool targeted, const juce::File& managedDpwimRoot = {});
+}
+
 /**
  * @brief Content component for the plugin scanner dialog.
  *
@@ -44,6 +52,8 @@ class PluginScannerComponent : public juce::Component,
 public:
     explicit PluginScannerComponent(VSTChain& vstChain);
     ~PluginScannerComponent() override;
+    /** Scan one explicitly installed bundle directory using the existing child scanner. */
+    void scanDirectory(const juce::File& directory);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -83,6 +93,7 @@ private:
     juce::ProgressBar* progressBar_ = nullptr;
     double scanProgress_ = 0.0;
     bool scanning_ = false;
+    bool targetedScan_ = false;  // Message-thread setup; immutable while a scan runs.
 
     // Plugin list
     juce::KnownPluginList scannedPlugins_;

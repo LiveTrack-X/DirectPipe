@@ -15,7 +15,7 @@ juce_add_plugin(DirectPipeReceiver
     PLUGIN_MANUFACTURER_CODE DPip
     PLUGIN_CODE DPRx
     FORMATS ${RECEIVER_FORMATS}
-    VERSION "4.5.0"
+    VERSION "4.5.1"
     PRODUCT_NAME "DirectPipe Receiver"
     COMPANY_NAME "DirectPipe"
     IS_SYNTH FALSE

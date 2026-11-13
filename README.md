@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/version-v4.5.0-blue?style=flat-square" alt="DirectPipe 4.5.0">
+  <img src="https://img.shields.io/badge/version-v4.5.1-blue?style=flat-square" alt="DirectPipe 4.5.1">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -22,7 +22,7 @@
 
 <h3 align="center">📖 <a href="docs/QUICKSTART.md">Quick Start</a> · <a href="docs/USER_GUIDE.md">User Guide</a> · <a href="#faq">FAQ</a> · 💬 <a href="https://litt.ly/livetrack">Contact</a></h3>
 
-> **4.5.0** — Adds opt-in single-channel capture and Windows mic-level hold at 100, fixes mono VST routing (including GForm), and improves backup/update recovery. Existing pair capture and saved settings stay compatible. [Verification record / 검증 기록](docs/RELEASE_4_5_0.md). / 기존 입력 쌍과 설정을 유지하며 Analog 1·2 등의 개별 입력 선택, 선택형 Windows 마이크 레벨 100 유지, 모노 VST 출력과 백업·업데이트 복구를 개선합니다.
+> **4.5.1** — Adds internal RNNoise sample-rate conversion and independent input/output L/R meters, fixes stale activity warnings and reported processing latency. [Verification and remaining gates / 검증·남은 게이트](docs/RELEASE_4_5_1.md). Published 4.5.0 remains unchanged. / 기존 공개 4.5.0은 그대로 유지합니다.
 >
 > **Windows mic-level hold is off by default.** It affects the exact selected supported WASAPI shared input in all apps; manual Windows slider changes are corrected while enabled. ASIO is unsupported; mute and boost are unchanged. [Usage and limits](docs/USER_GUIDE.md#windows-mic-level-hold). / **Windows 마이크 레벨 유지는 기본 꺼짐**입니다. 정확히 식별한 선택 WASAPI 공유 입력에만 적용하며 다른 앱과 수동 Windows 볼륨 변경에도 영향을 줍니다. ASIO는 지원하지 않고 음소거·부스트는 바꾸지 않습니다. [사용법과 제한](docs/USER_GUIDE.md#windows-mic-level-hold).
 
@@ -69,8 +69,10 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
 **[DPWIM 프로젝트·소스·빌드 안내 보기 →](https://github.com/LiveTrack-X/DPWIM)**
 
 <p align="center">
-  <img src="docs/images/main-ui.png" alt="DirectPipe Main UI" width="700">
+  <img src="docs/images/main-ui.png" alt="DirectPipe earlier-version UI illustration" width="700">
 </p>
+
+Earlier-version illustration / 이전 버전 화면 예시. Version 4.5.1 adds separate L/R meter bars and RNNoise processing status.
 
 **DirectPipe는 누구를 위한 건가요? / Who is DirectPipe for?**
 
@@ -189,9 +191,10 @@ External Control:
 - **3가지 출력 경로** — Main Output (Audio 탭 장치) + Monitor Output (Output 탭, 별도 오디오 장치로 헤드폰 모니터링) + VST Output (DirectPipe Receiver → OBS/DAW) — Three output paths: main, monitor headphones (via separate audio device), VST output to OBS/DAW
 - **Mono / Stereo** 채널 모드 — Mono는 선택한 2개 입력을 VST 체인 전에 평균하여 하나의 신호로 만든 뒤 내부 L/R에 복제하고, 처리된 L/R을 선택한 2개 출력으로 보냅니다. 실제 1채널 장치는 해당 채널을 그대로 내부 L/R에 복제합니다. — Mono averages the selected two inputs before the VST chain, duplicates that signal to internal L/R, and sends the processed L/R to the selected two outputs. A genuine one-channel device duplicates its single channel without attenuation.
 - **입력 게인** — 0.0x~2.0x 범위, 기본값 1.0x (unity gain) — Input gain 0.0x-2.0x, default 1.0x
-- **실시간 레벨 미터** — 입력(좌) / 출력(우) RMS 미터, dB 로그 스케일 — Input/output RMS meters with dB log scale
+- **실시간 L/R 레벨 미터** — 입력·출력 각각 독립 L/R RMS와 피크 홀드, dB 로그 스케일. 입력은 Mono 혼합·복제 전 캡처 채널에 게인·입력 뮤트를 반영, 출력은 최종 보호 후/목적지 볼륨·뮤트 전 — Independent L/R bars: input capture before Mono conversion with gain/mute applied, output after protection
+- **RNNoise 샘플레이트 지원** — 내장 노이즈 제거는 8-192 kHz를 내부 48 kHz로 변환하며, 48 kHz는 기존 경로를 유지합니다. 상태와 전체 처리 지연을 표시합니다 — Internal conversion supports 8-192 kHz; native 48 kHz avoids conversion. Receiver still requires matching sample rates
 - **Safety Guard** — VST 체인 이후 전역 샘플-피크 가드(legacy API/action name: SafetyLimiter). zero-latency runtime, instant attack + smooth release + hard clamp, 기본 ceiling -0.3 dBFS — Global sample-peak guard after VST chain (legacy API/action name: SafetyLimiter). Zero-latency runtime with instant attack + smooth release + hard clamp, default ceiling -0.3 dBFS
-- **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter) — VST 플러그인과 함께 체인에 삽입 가능. [Auto] 버튼(입력 게인 옆 특수 프리셋 슬롯)으로 3개 모두 한 번에 추가 — Filter, Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter) insertable alongside VST plugins. [Auto] button (special preset slot next to input gain) adds all 3 at once
+- **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter). Auto configures these three. Windows에서는 바로 아래 `Install DPWIM...`으로 별도 DPWIM VST3를 설치·업데이트할 수 있습니다. DPWIM은 빌트인이나 Auto 구성 요소가 아닙니다. [설치와 사용법 / Setup](docs/DPWIM_WINDOWS_SETUP.md)
 - **Clock Drift Compensation** — IPC uses bidirectional drift handling with hysteresis dead-band, and Monitor output trims stale ring-buffer frames when independent device clocks drift apart (auto buffer management helps reduce clicks/pops and prevents monitor latency from growing over time) / IPC는 히스테리시스 데드 밴드를 포함한 양방향 클록 드리프트 보상을 사용하고, Monitor 출력은 독립 장치 클록이 벌어질 때 오래된 링 버퍼 프레임을 정리합니다 (자동 버퍼 관리로 끊김/팝을 완화하고 모니터 지연 누적을 제한)
 
 ### 외부 제어 / External Control
@@ -387,8 +390,9 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - **[Quick Start](docs/QUICKSTART.md) — USB 마이크 5분 설정 가이드 / 5-minute USB mic setup guide**
 - [Platform Guide](docs/PLATFORM_GUIDE.md) — 플랫폼별 가이드 (Windows/macOS/Linux) / Platform-specific setup, features, and limitations
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
-- [4.5.0 Verification](docs/RELEASE_4_5_0.md) — 정확 소스 CI·공개 파일·검증 한계 / Exact-source CI, public files and evidence limits
-- [4.5.0 Documentation Audit](docs/DOCUMENTATION_AUDIT_4_5_0.md) — 현재 문서·주석 정합성 / Current documentation and comment review
+- [4.5.1 Verification](docs/RELEASE_4_5_1.md) — 이번 버전 검증·제한사항 / Version evidence and limitations
+- [4.5.1 Documentation Audit](docs/DOCUMENTATION_AUDIT_4_5_1.md) — 현재 문서·주석 정합성 / Current documentation and comment review
+- [Published 4.5.0 Verification](docs/RELEASE_4_5_0.md) — 이전 공개 버전 기록 / Previous published-release evidence
 - [4.4.0 Changes and Validation](docs/MULTI_RECEIVER_4_4_0.md) — 독립 Receiver·프리셋 수정·업데이트와 검증 범위 / Independent Receivers, preset fixes, upgrade workflow and validation scope
 - [Auto Design](docs/AUTO_DESIGN.md) — [Auto] 설계 원칙 및 파라미터 근거 / Auto chain design principles, parameter rationale
 - [Architecture](docs/ARCHITECTURE.md) — 시스템 설계 / System design, data flow, thread safety

@@ -24,6 +24,7 @@
 
 #include <JuceHeader.h>
 #include "../Audio/VSTChain.h"
+#include "DpwimInstaller.h"
 
 namespace directpipe {
 
@@ -97,12 +98,14 @@ private:
     friend class PluginRowComponent;
 
     void showAddPluginMenu();
-    void openScannerDialog();
+    void openScannerDialog(const juce::File& directoryToScan = {});
+    void installDpwim();
     void addPluginFromDescription(const juce::PluginDescription& desc);
     void addPluginFromFile();
     void removeSelectedPlugin();
 
     VSTChain& vstChain_;
+    dpwim::Installer dpwimInstaller_;
 
     juce::ListBox pluginList_{"VST Chain"};
     juce::ToggleButton limiterButton_{"Safety Guard"};
@@ -118,7 +121,7 @@ private:
      * @brief Custom row component with drag-and-drop, Edit/Bypass/Remove buttons.
      */
     class PluginRowComponent : public juce::Component,
-                               public juce::DragAndDropTarget {
+                               public juce::DragAndDropTarget, private juce::Timer {
     public:
         PluginRowComponent(PluginChainEditor& owner, int rowIndex);
         void resized() override;
@@ -141,6 +144,8 @@ private:
         bool dragOver_ = false;
 
         juce::Label nameLabel_;
+        juce::Label statusLabel_;
+        void timerCallback() override { update(rowIndex_); }
         juce::TextButton editButton_{"Edit"};
         juce::ToggleButton bypassButton_{"Bypass"};
         juce::TextButton removeButton_{"X"};

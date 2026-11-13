@@ -32,22 +32,26 @@ BuiltinNoiseRemoval::~BuiltinNoiseRemoval()
 
 void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    hostSampleRate_ = sampleRate;
-
-    // TODO(DP-NOISE-RESAMPLE-0001): Add RT-safe conversion around RNNoise.
-    // Until then, non-48kHz input is intentionally passed through.
+    mode_.store(Mode::Inactive, std::memory_order_release);
+    hostSampleRate_.store(sampleRate, std::memory_order_relaxed);
     needsResampling_.store(sampleRate != 48000.0, std::memory_order_relaxed);
-
-    // Surface the intentional passthrough state for diagnosis.
-    if (needsResampling_.load(std::memory_order_relaxed)) {
-        juce::Logger::writeToLog("WRN [AUDIO] BuiltinNoiseRemoval: sample rate "
-            + juce::String(sampleRate) + "Hz -- noise removal INACTIVE (requires 48kHz)");
+    if (!std::isfinite(sampleRate) || sampleRate < 8000.0 || sampleRate > 192000.0) {
+        destroyRNNoise();
+        setLatencySamples(0);
+        mode_.store(Mode::UnsupportedRate, std::memory_order_release);
+        return;
     }
 
     // Create RNNoise denoise states
     destroyRNNoise();
     rnnL_ = rnnoise_create(nullptr);
     rnnR_ = rnnoise_create(nullptr);
+    if (!rnnL_ || !rnnR_) {
+        destroyRNNoise();
+        setLatencySamples(0);
+        mode_.store(Mode::Unavailable, std::memory_order_release);
+        return;
+    }
 
     juce::Logger::writeToLog("[AUDIO] BuiltinNoiseRemoval: prepareToPlay SR="
         + juce::String(sampleRate) + " BS=" + juce::String(samplesPerBlock)
@@ -56,14 +60,15 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
         + " needsResampling=" + juce::String(needsResampling_.load() ? "YES" : "NO"));
 
     // Pass 1 can enqueue a complete host callback before Pass 2 drains any
-    // output. Keep enough room for the declared 480-sample delay plus frame
+    // output. Keep enough room for the 480-sample FIFO priming plus frame
     // rounding on callbacks up to the supported 4096-sample maximum. The
     // allocation happens only here, never on the RT thread.
     const int provisionedBlockSize = (std::max)(kMaxSupportedBlockSize,
                                                  (std::max)(1, samplesPerBlock));
-    const size_t outputCapacity = static_cast<size_t>(
-        (std::max)(kMinimumOutputFifoCapacity,
-                   provisionedBlockSize + 2 * kRNNFrameSize));
+    const size_t requiredCapacity = (std::max)(static_cast<size_t>(kMinimumOutputFifoCapacity),
+        static_cast<size_t>(provisionedBlockSize) + 2 * kRNNFrameSize);
+    size_t outputCapacity = 1;
+    while (outputCapacity < requiredCapacity) outputCapacity *= 2;
 
     inputFifoL_.assign(kRNNFrameSize, 0.0f);
     inputFifoR_.assign(kRNNFrameSize, 0.0f);
@@ -84,20 +89,15 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
     holdCounterL_ = 0;
     holdCounterR_ = 0;
 
-    // Recalculate SR-dependent time constants
+    // Gate time constants use the internal processing rate, not the host rate.
     // holdSamples_: 300ms hold time in samples (prevents choppy gating between words)
     // gateSmooth_: 20ms exponential smoothing coefficient (prevents audible gate clicks)
-    holdSamples_ = static_cast<int>(sampleRate * 0.300);  // 300ms regardless of SR
-    gateSmooth_ = static_cast<float>(std::exp(-1.0 / (sampleRate * 0.020)));  // 20ms time constant
+    holdSamples_ = 14400; // Gate operates on 48 kHz RNNoise frames, even when converted.
+    gateSmooth_ = static_cast<float>(std::exp(-1.0 / (48000.0 * 0.020)));
 
-    // Warm up RNNoise with silent frames so it learns the noise floor faster.
-    //
-    // NOTE: RNNoise's internal RNN state starts uninitialized. Without warmup,
-    // the first few real audio frames produce noisy/distorted output as the
-    // network "calibrates." 5 silent frames (~50ms at 48kHz) give the model
-    // enough context to establish a baseline noise floor estimate.
-    // Combined with the gate starting CLOSED (gateGainL_ = 0.0f above),
-    // this ensures zero audible artifacts on startup.
+    // Advance zero-initialized recurrent/filter state using five silent frames
+    // outside rendering. FIFO priming and the initially closed gate reduce
+    // startup transients; they do not guarantee artifact-free hardware startup.
     {
         float silent[kRNNFrameSize] = {};
         float dummy[kRNNFrameSize];
@@ -107,26 +107,40 @@ void BuiltinNoiseRemoval::prepareToPlay(double sampleRate, int samplesPerBlock)
         }
     }
 
-    // The seeded zero frame above makes the active path's physical delay match
-    // the value reported to AudioProcessorGraph. Non-48kHz is a true passthrough
-    // and therefore must report zero latency.
-    setLatencySamples(needsResampling_.load(std::memory_order_relaxed)
-                          ? 0
-                          : kRNNFrameSize);
+    if (needsResampling()) {
+        const double ratio = sampleRate / 48000.0;
+        const int conversionDelay = static_cast<int>(std::ceil(
+            StreamingSincResampler::kHalfLength * (1.0 + ratio))) + 2;
+        for (auto& channel : conversion_) {
+            channel.to48k.prepare(sampleRate, 48000.0);
+            channel.from48k.prepare(48000.0, sampleRate);
+            channel.output.assign(static_cast<size_t>(conversionDelay + 64), 0.0f);
+            channel.read = 0;
+            channel.write = static_cast<size_t>(conversionDelay);
+            channel.queued = static_cast<size_t>(conversionDelay);
+        }
+        setLatencySamples(conversionDelay + static_cast<int>(std::ceil(
+            (kRNNFrameSize + kRNNAlgorithmDelay) * ratio)));
+        mode_.store(Mode::Resampled, std::memory_order_release);
+    } else {
+        // Reporting includes RNNoise's own two-frame delay. No audio is added.
+        setLatencySamples(kRNNFrameSize + kRNNAlgorithmDelay);
+        mode_.store(Mode::Native48k, std::memory_order_release);
+    }
 }
 
 void BuiltinNoiseRemoval::releaseResources()
 {
+    mode_.store(Mode::Inactive, std::memory_order_release);
     destroyRNNoise();
+    setLatencySamples(0);
 }
 
 // ─── processBlock  [RT audio thread] ────────────────────────────
 
 void BuiltinNoiseRemoval::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    // If RNNoise was not created (should not happen) or resampling is needed
-    // but not yet implemented, pass audio through unchanged.
-    if (rnnL_ == nullptr || needsResampling_.load(std::memory_order_relaxed))
+    if (!isActive())
         return;
 
     const int numSamples  = buffer.getNumSamples();
@@ -134,6 +148,12 @@ void BuiltinNoiseRemoval::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 
     if (numSamples == 0)
         return;
+
+    if (getMode() == Mode::Resampled) {
+        for (int channel = 0; channel < juce::jmin(2, numChannels); ++channel)
+            processConvertedChannel(buffer.getWritePointer(channel), numSamples, channel);
+        return;
+    }
 
     // Channel 0 (Left / mono)
     if (numChannels > 0) {
@@ -154,23 +174,72 @@ void BuiltinNoiseRemoval::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     }
 }
 
+juce::String BuiltinNoiseRemoval::getStatusText() const
+{
+    switch (getMode()) {
+        case Mode::Native48k: return "Active: native 48 kHz";
+        case Mode::Resampled: {
+            const auto rate = juce::String(hostSampleRate_.load(std::memory_order_relaxed) / 1000.0, 1);
+            return "Active: " + rate + " -> 48 -> " + rate + " kHz";
+        }
+        case Mode::UnsupportedRate: return "Inactive: unsupported rate (8-192 kHz)";
+        case Mode::Unavailable: return "Inactive: RNNoise unavailable";
+        default: return "Inactive: audio not prepared";
+    }
+}
+
+void BuiltinNoiseRemoval::processConvertedChannel(float* samples, int count, int channel)
+{
+    auto& c = conversion_[channel];
+    for (int i = 0; i < count; ++i) {
+        // Consume this input before writing its output; no later sample is touched.
+        c.to48k.push(samples[i]);
+        while (c.to48k.canRead()) {
+            float value = c.to48k.read();
+            if (channel == 0)
+                processChannel(&value, &value, 1, rnnL_, inputFifoL_, inputFifoWriteL_,
+                    outputFifoL_, outputFifoReadL_, outputFifoWriteL_, gateGainL_, holdCounterL_);
+            else
+                processChannel(&value, &value, 1, rnnR_, inputFifoR_, inputFifoWriteR_,
+                    outputFifoR_, outputFifoReadR_, outputFifoWriteR_, gateGainR_, holdCounterR_);
+            c.from48k.push(value);
+            while (c.from48k.canRead()) {
+                const float output = c.from48k.read();
+                jassert(c.queued < c.output.size());
+                if (c.queued < c.output.size()) {
+                    c.output[c.write] = output;
+                    c.write = (c.write + 1) % c.output.size();
+                    ++c.queued;
+                }
+            }
+        }
+        jassert(c.queued > 0);
+        if (c.queued > 0) {
+            samples[i] = c.output[c.read];
+            c.read = (c.read + 1) % c.output.size();
+            --c.queued;
+        } else {
+            samples[i] = 0.0f;
+        }
+    }
+}
+
 // ─── Per-channel FIFO + RNNoise processing ──────────────────────
 //
 // This is the core processing function, called once per channel per processBlock.
 //
 // ## 2-Pass Architecture (critical for correctness)
 //
-// IMPORTANT: `in` and `out` may point to the SAME buffer (JUCE AudioProcessorGraph
-// in-place optimization). If we read from `in[i]` and write to `out[i]` in the
-// same loop, we corrupt unread input samples.
+// `in` and `out` may alias. This native callback path stages all input before
+// draining its output; the converted path invokes it with one consumed sample
+// at a time. Neither path overwrites input that is still needed.
 //
 // Solution: 2-pass approach:
 //   Pass 1: Read ALL input samples into inputFifo. Process complete frames through
 //           RNNoise and store results in outputFifo. Never touch `out` buffer.
 //   Pass 2: Copy processed samples from outputFifo to `out` buffer.
 //
-// This guarantees all input is consumed before any output is written, regardless
-// of whether `in` and `out` alias.
+// This call consumes its input before writing any output, including scalar calls.
 //
 // ## Data Flow
 //
@@ -189,11 +258,11 @@ void BuiltinNoiseRemoval::processChannel(
     // Gate smoothing coefficient (gateSmooth_): controls how fast the gate opens/closes.
     // Derivation: for a 20ms time constant at sample rate SR:
     //   gateSmooth_ = exp(-1 / (SR * 0.020))
-    //   At 48kHz: exp(-1/960) ≈ 0.9990, at 44.1kHz: exp(-1/882) ≈ 0.9989
+    //   At the internal 48 kHz rate: exp(-1/960) ≈ 0.9990.
     //
     // The 20ms time constant avoids audible gate clicks between words while
     // remaining short enough for natural speech transitions.
-    // Recalculated from sample rate in prepareToPlay (member variable gateSmooth_).
+    // Configured at the internal rate in prepareToPlay (gateSmooth_).
 
     // IMPORTANT: RNNoise was trained on int16 audio data (range [-32767, +32767]).
     // JUCE provides float audio in [-1.0, +1.0]. We MUST scale up before processing
@@ -240,8 +309,8 @@ void BuiltinNoiseRemoval::processChannel(
             // runtime-sized FIFO capacity.
             // This ring buffer approach avoids the need for a linear reset of read/write
             // positions (which would require coordination). The modulo wrap is safe because
-            // The capacity need not be a power of two; modulo works for
-            // any capacity as long as (write - read) never exceeds that capacity.
+            // A power-of-two capacity divides the uint32_t counter range, so
+            // modulo ring positions remain continuous across counter wrap.
             // uint32_t wraparound is handled correctly: the drain comparison uses
             // (write - read) > 0u instead of read < write, so unsigned modular
             // subtraction gives the correct count even after UINT32_MAX wraparound

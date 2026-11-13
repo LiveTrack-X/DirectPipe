@@ -581,3 +581,8 @@ ws.on("message", (data) => {
     console.log("State:", JSON.parse(data));
 });
 ```
+
+DPWIM remains an external plugin (`plugins[].type` = `vst`). Install DPWIM is a
+Windows UI action only. Auto actions still add Filter + NoiseRemoval + AutoGain.
+Input UI meters are pre-Mono capture with gain/mute; scalar API input remains
+post-Mono. [Setup](DPWIM_WINDOWS_SETUP.md).

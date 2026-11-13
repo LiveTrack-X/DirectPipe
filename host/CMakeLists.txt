@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "4.5.0"
+    VERSION "4.5.1"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -51,6 +51,8 @@ target_sources(DirectPipe PRIVATE
     Source/UI/PluginChainEditor.cpp
     Source/UI/PluginScanner.h
     Source/UI/PluginScanner.cpp
+    Source/UI/DpwimInstaller.h
+    Source/UI/DpwimInstaller.cpp
     Source/UI/LevelMeter.h
     Source/UI/LevelMeter.cpp
     Source/UI/PresetManager.h

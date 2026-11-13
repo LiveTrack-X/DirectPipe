@@ -47,7 +47,7 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `ControlSettingsPanel.h/cpp` | Hotkey/MIDI/StreamDeck 서브탭을 감싸는 슬림 탭 컨테이너 (~75줄) |
 | `DirectPipeLookAndFeel.h/cpp` | 다크 테마 룩앤필 + CJK 폰트 렌더링 (플랫폼별 폰트 선택) |
 | `HotkeyTab.h/cpp` | 단축키 바인딩 탭 — 액션-키 매핑, [Set] 녹음, 드래그 앤 드롭 순서 변경 |
-| `LevelMeter.h/cpp` | 실시간 오디오 레벨 미터 (RMS + 피크 홀드 + 클리핑) |
+| `LevelMeter.h/cpp` | StereoLevelMeter가 기존 영역에서 L/R LevelMeter를 조합. 각 채널 독립 RMS 스무딩·피크 홀드·클리핑 표시 |
 | `LogPanel.h/cpp` | 실시간 로그 뷰어 + 유지보수 (백업/복원/팩토리 리셋, Windows `Update Receiver...`) + DirectPipeLogger |
 | `MidiTab.h/cpp` | MIDI 디바이스 선택 + CC/Note 매핑 + [Learn] 모드 + 3단계 플러그인 파라미터 팝업 |
 | `NotificationBar.h/cpp` | 비침입 상태바 알림 (빨강/주황/보라), 자동 페이드 3-8초 |
@@ -192,8 +192,9 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
   롤백하고 사용자에게 알린다.
 
 ### 4. LevelMeter RT→Message 스레드 경계
-- `setLevel()`은 `atomic<float>`에 쓰는 RT-safe setter다. 현재 호스트는 StatusUpdater의
-  message-thread tick에서 engine level을 읽어 이 setter에 전달한다.
+- `LevelMeter::setLevel()`은 atomic setter다. 현재 호스트는 StatusUpdater의
+  message-thread tick에서 좌우 engine level을 읽어 `StereoLevelMeter::setLevels()`로
+  전달하고 각 child meter의 독립 상태를 갱신한다.
 - `tick()`/`paint()`는 메시지 스레드에서 읽는다.
 - **atomic이 아닌 멤버(`displayLevel_`, `peakLevel_` 등)는 메시지 스레드 전용** — RT 스레드에서 접근 금지.
 
@@ -216,3 +217,10 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 - 컴포넌트 계층 구조가 변경될 때 (탭 추가/삭제, 부모-자식 관계 변경) 계층 트리 업데이트
 - 스레드 모델이 변경될 때 (새 스레드 도입, atomic 추가, 락 변경) 스레드 모델 테이블 업데이트
 - DANGER ZONE 관련 코드 수정 시 해당 항목 업데이트 + .h/.cpp WARNING 주석 확인
+
+## DPWIM installer
+
+Windows shows Install DPWIM directly below Built-in. `DpwimInstaller` owns an
+asynchronous optional external VST3 install/update; completion is lifetime
+guarded. Open Plugin List scans the installed directory in the existing child
+scanner. DPWIM uses its own external plugin editor. [Setup](../../../docs/DPWIM_WINDOWS_SETUP.md).

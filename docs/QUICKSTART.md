@@ -1,13 +1,13 @@
 # Quick Start: USB 마이크 설정 가이드 / USB Mic Setup Guide
 
-> **4.5.0 안내 / Version 4.5.0:** 본체와 Receiver를 함께 갱신하세요. 4.4.0에서
+> **4.5.1 안내 / Version 4.5.1:** 본체와 Receiver를 함께 갱신하세요. 4.4.0에서
 > 도입한 독립 다중 Receiver는 유지됩니다. 첫 4.5.0 갱신에는 현재 설치된 구형
 > 업데이터가 사용되므로, 구형 본체 전용 갱신이나 수동 교체 뒤에는
 > **Settings > Update Receiver...**에서 Receiver도 확인하세요.
 > / Update the host and Receiver together. Independent reception from 4.4.0
 > remains available. The first upgrade uses your installed older updater; after
 > an older host-only or manual update, review **Settings > Update Receiver...**.
-> 소프트웨어 검증과 실기기 미확인 범위: [4.5.0 검증 기록 / Verification record](RELEASE_4_5_0.md).
+> 소프트웨어 검증과 미확인 범위: [4.5.1 검증 / Verification](RELEASE_4_5_1.md).
 
 > USB 마이크 사용자를 위한 5분 온보딩 가이드. 자세한 내용은 [User Guide](USER_GUIDE.md) 참조.
 >
@@ -88,7 +88,7 @@ Audio 탭 / Audio Tab
 1. 왼쪽 상단 입력 게인 옆의 **[Auto]** 버튼 클릭 / Click the **[Auto]** button next to the input gain slider (top-left)
 2. 끝! 3가지 내장 프로세서가 자동 구성됩니다 / Done! 3 built-in processors are configured automatically:
    - **Filter** — 에어컨 소음, 마이크 진동 같은 저주파 잡음을 제거합니다 / Removes low-frequency noise like AC hum and mic rumble
-   - **Noise Removal** — AI가 키보드, 팬 소리를 실시간으로 제거합니다 / AI removes keyboard clatter, fan noise in real-time
+   - **Noise Removal** — AI가 배경 잡음을 억제합니다. 8-192 kHz는 내부 48 kHz 변환으로 처리하며, 체인에서 실제 동작 상태를 확인하세요 / Suppresses background noise using native 48 kHz or internal conversion at supported rates
    - **Auto Gain** — 음량을 자동 조절합니다 (작으면 올리고 크면 줄임) / Auto-levels your volume (boosts quiet, tames loud)
 
 > **여기까지 하면 마이크 소리가 깨끗해진 것을 바로 확인할 수 있습니다!** 헤드폰을 연결하고 5단계(모니터)를 설정하면 직접 들을 수 있고, 아래 4단계는 Discord/OBS 등 다른 앱에 보내고 싶을 때 진행하세요.
@@ -157,7 +157,7 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 4. DirectPipe와 OBS의 샘플레이트를 같게 설정하고 Receiver 연결 상태를 확인합니다.
    / Match the host and OBS sample rates and check the Receiver connection status.
 
-현재 4.5.0 본체와 Receiver는 4.4.0에서 도입한 최대 8개의 독립 수신을 유지합니다.
+현재 4.5.1 후보 본체와 Receiver는 4.4.0에서 도입한 최대 8개의 독립 수신을 유지합니다.
 구형 본체에 연결한 새 Receiver의 `Connected (v1)`은 기존 단일 수신 제한을 뜻합니다.
 Windows의 기존 Receiver는 **Settings > Update Receiver...**에서 경로·버전을 확인하고
 갱신할 수 있습니다. 사용 중인 OBS는 직접 종료한 뒤 **Retry**, 또는 **Later**를 선택합니다.
@@ -269,3 +269,5 @@ DirectPipe stays in the system tray (Windows/Linux) or menu bar (macOS). The X b
 | HTTP/WebSocket API 연동 / API integration | [Control API Reference](CONTROL_API.md) |
 | ASIO 저지연 설정 (Windows) / ASIO low-latency (Windows) | [User Guide — 드라이버 선택](USER_GUIDE.md#드라이버-선택-가이드--driver-selection-guide) |
 | 소리 안 남 / No audio | [User Guide — 문제 해결](USER_GUIDE.md#문제-해결--troubleshooting) |
+
+Windows 앱 소리를 합치려면 Built-in 바로 아래의 `Install DPWIM...`으로 별도 VST3를 설치·업데이트하고, Open Plugin List에서 스캔·추가합니다. Auto에는 포함되지 않습니다. [설치와 사용법](DPWIM_WINDOWS_SETUP.md).

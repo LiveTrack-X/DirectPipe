@@ -25,7 +25,7 @@ AudioEngine RT callback (audioDeviceIOCallbackWithContext)
 |  2. Input gain (SIMD via JUCE FloatVectorOperations)
 |     - inputMuted_: clear buffer to silence (input-only mute, chain keeps running)
 |
-|  3. RMS input level (decimated: every 4th callback)
+|  3. Independent L/R RMS input levels (decimated: every 4th callback)
 |
 v
 VSTChain.processBlock(workBuffer_)
@@ -50,7 +50,8 @@ VSTChain.processBlock(workBuffer_)
 +---> outputChannelData (main output)    [apply output volume, or zero if outputMuted_]
  |
  v
-RMS output level (decimated: every 4th callback)
+Independent L/R RMS output levels (post protection, pre destination gain/mute;
+decimated every 4th callback; legacy scalar telemetry remains max(L,R))
 LatencyMonitor.markCallbackEnd()
 ```
 
@@ -72,7 +73,8 @@ LatencyMonitor.markCallbackEnd()
 | `SafetyLimiter.h/cpp` | RT-safe global Safety Guard (legacy class name). Atomic params (enabled, ceiling). Zero-latency stereo-linked sample-peak guard, instant attack, 50ms release smoothing, hard ceiling clamp. GR feedback for UI. Final `Safety Volume` trim (enable + dB) is applied in `AudioEngine` after guard processing |
 | `DeviceState.h` | 디바이스 연결 상태 열거형 (header-only). DeviceState enum + transition() + deviceStateToString() |
 | `BuiltinFilter.h/cpp` | 내장 HPF + LPF 필터 (AudioProcessor 상속). IIR 2차 버터워스. RT-safe. PDC 0 |
-| `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise 노이즈 제거 (AudioProcessor 상속). callback-size-aware FIFO, VAD 게이팅, dual-mono. 48kHz PDC 480 samples, unsupported-rate passthrough PDC 0 |
+| `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise, 독립 L/R, 8-192 kHz 내부 변환. 48 kHz에서 FIFO 480 + RNNoise 내부 960 = PDC 1440 samples. 지원 밖/미준비는 패스스루. power-of-two 출력 FIFO로 카운터 wrap 순서 보존 |
+| `StreamingSincResampler.h` | 사전 할당된 128-tap low-pass sinc 변환기. 비48 kHz RNNoise 경로 전용; Receiver 리샘플링과 독립 |
 | `BuiltinAutoGain.h/cpp` | 내장 LUFS AGC (AudioProcessor 상속). ITU-R BS.1770 K-weighting, 비대칭 보정 (Luveler Mode 2) + 고정 post limiter(ceiling 노출, 내부 lookahead/release 고정). 고정 지연 경로 사용 (PDC = lookahead samples) |
 
 ---
@@ -277,3 +279,9 @@ MainComponent/slot UI: loadingSlot_ = true
 - RT 콜백의 데이터 흐름이 변경될 때 (새 출력 대상 추가, 처리 순서 변경 등) Data Flow 다이어그램 업데이트
 - 스레드 모델이 변경될 때 (새 lock 추가, atomic 변수 추가, 스레드 소유권 변경) Thread Model 테이블 업데이트
 - 새로운 안전 규칙이 발견되거나 기존 DANGER ZONE이 변경될 때 해당 항목 업데이트
+
+## External DPWIM
+
+DPWIM loads through the ordinary VST path and retains `type: vst` in presets.
+There is no DPWIM compiled processor or Auto insertion. Installer operations
+run outside audio processing. [Setup](../../../docs/DPWIM_WINDOWS_SETUP.md).

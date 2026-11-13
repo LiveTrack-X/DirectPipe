@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Guide Version 4.5.0 / 가이드 4.5.0** — [Verification record / 검증 기록](RELEASE_4_5_0.md). [Public releases / 공개 릴리즈](https://github.com/LiveTrack-X/DirectPipe/releases).
+> **Guide Version 4.5.1 / 가이드 4.5.1** — [Verification record / 검증 기록](RELEASE_4_5_1.md). [Public releases / 공개 릴리즈](https://github.com/LiveTrack-X/DirectPipe/releases).
 > 4.3.0 자동 갱신은 본체만 교체합니다. 새 본체 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. / The 4.3.0 updater replaces only the host; after launching the updated host, update existing Receivers from **Settings > Update Receiver...** too.
 
 ## 시작하기 / Getting Started
@@ -609,6 +609,15 @@ Auto chain order: Filter -> Noise Removal -> Auto Gain -> Post Limiter -> Global
 | **Noise Removal** | RNNoise AI 노이즈 제거 + VAD 게이팅 | Standard (VAD 0.70), Hold 300ms |
 | **Auto Gain** | LUFS 기반 자동 볼륨 레벨러 + 고정 Post Limiter | Target -15 LUFS, Max Gain 22 dB, Limiter Ceiling -1.0 dBTP |
 
+### DPWIM 설치·업데이트 (Windows 전용)
+
+`+ Add Plugin` 메뉴의 Built-in 바로 아래 **Install DPWIM...**을 선택합니다.
+공식 최신 안정 버전을 확인해 별도 VST3를 설치하거나 업데이트합니다. 완료 후
+**Open Plugin List**에서 설치본을 스캔하고 원하는 위치에 추가하세요.
+DPWIM은 빌트인이나 Auto 구성 요소가 아닙니다. 기존 인스턴스와 프리셋 경로는
+유지되므로 업데이트 적용은 새 설치본을 명시적으로 추가·교체해 저장합니다.
+[설치 위치·동작·제한사항](DPWIM_WINDOWS_SETUP.md).
+
 ### Noise Removal 강도 프리셋 / Strength Presets
 
 | 프리셋 | VAD 임계값 | 특징 |
@@ -628,8 +637,8 @@ Auto chain order: Filter -> Noise Removal -> Auto Gain -> Post Limiter -> Global
 - **Limiter Ceiling**: Post limiter ceiling (고급에서 노출되는 유일한 limiter 항목, -2.0~0.0 dBTP, 기본 -1.0)
 - **고정 내부값 / Fixed internal**: post limiter lookahead 1ms, release 50ms (UI 미노출)
 
-> **참고**: 48kHz가 아닌 샘플레이트에서는 Noise Removal이 비활성화됩니다. 내부 리샘플링은 `DP-NOISE-RESAMPLE-0001`로 보류되어 있습니다.
-> **Note**: Noise Removal is inactive at non-48kHz sample rates. Internal resampling is deferred under `DP-NOISE-RESAMPLE-0001`.
+> **4.5.1**: Noise Removal은 8-192 kHz 입력을 내부 48 kHz로 변환하여 처리합니다. 48 kHz에서는 변환을 거치지 않습니다. 공개 4.5.0은 기존 48 kHz 제한을 유지합니다.
+> Version 4.5.1 converts 8-192 kHz to/from RNNoise's 48 kHz engine. Native 48 kHz avoids conversion. Published 4.5.0 still has the original 48 kHz limitation.
 
 ### 내장 프로세서 상세 가이드 / Built-in Processor Details
 
@@ -652,7 +661,9 @@ AI 기반 노이즈 억제. 배경 소음(키보드, 팬, 환경 소음)을 실�
   - **Light (가벼움)**: VAD 0.50. 약한 배경 소음 제거. 음성 왜곡 최소 / Mild noise. Minimal voice distortion
   - **Standard (표준)**: VAD 0.70. 일반적인 사용에 권장 (**기본값**) / Typical use (**default**)
   - **Aggressive (강력)**: VAD 0.90. 시끄러운 환경. 작은 목소리가 잘릴 수 있음 / Noisy environments. May clip quiet speech
-- ⚠️ **48kHz 전용**: Audio 탭에서 샘플레이트를 48kHz로 설정하세요. 다른 SR에서는 자동 패스스루됩니다 / **48kHz only**: set SR to 48kHz in Audio tab. Auto-bypassed at other rates
+- **샘플레이트 / Sample rate (4.5.1)**: 8-192 kHz 지원. 48 kHz는 기존 경로, 다른 주파수는 내부 리샘플링을 사용합니다. 변환 지연은 전체 Latency에 반영됩니다 / Native 48 kHz retains the original path; other supported rates use internal conversion, included in reported latency.
+- **동작 상태 / Status**: 체인과 편집창에서 `Active: native 48 kHz`, `Active: 44.1 -> 48 -> 44.1 kHz` 또는 비활성 이유를 표시합니다. 오디오 설정 변경 시 갱신됩니다 / The chain and editor show native/converted activity or the inactive reason and refresh after audio changes.
+- **입출력 L/R 미터 / Input/output L/R meters (4.5.1)**: 기존 양쪽 미터 영역에서 L/R을 따로 표시합니다. 입력은 Mono 혼합·복제 전의 선택된 캡처 채널에 게인·입력 뮤트를 반영한 값, 출력은 최종 보호 후 / 목적지별 볼륨·뮤트 전의 처리 신호입니다. 입력이 한쪽뿐이면 다른 입력 막대는 0이며, Mono 출력의 두 막대는 같을 수 있습니다 / Input shows selected capture channels before Mono mixing/duplication, with gain/mute applied; output is post final protection, pre destination volume/mute. Only the Mono output copies may display equal channels.
 
 #### Auto Gain (자동 게인 / LUFS AGC)
 

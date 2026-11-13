@@ -6,6 +6,7 @@
 #include <rnnoise.h>
 #include <atomic>
 #include <vector>
+#include "StreamingSincResampler.h"
 
 namespace directpipe {
 
@@ -26,12 +27,10 @@ namespace directpipe {
  * then feeds it to RNNoise. The output FIFO stores processed frames for
  * the host to drain at its own pace.
  *
- * IMPORTANT: JUCE's AudioProcessorGraph may reuse the SAME buffer for both
- * input and output (in-place / aliased processing). If we read input and write
- * output to the same buffer simultaneously, we corrupt the input data.
- * The 2-pass design solves this: Pass 1 copies ALL input into the FIFO first,
- * then Pass 2 writes processed output back. This is the ONLY safe approach
- * when `in` and `out` pointers may alias.
+ * JUCE may reuse the same input/output buffer. The native path stages the
+ * entire callback before draining output. The converted path instead consumes
+ * each sample completely before writing that sample's output. Both preserve
+ * unread input; writing over input that has not yet been consumed is unsafe.
  *
  * ### RNNoise Scaling (int16 range)
  * IMPORTANT: RNNoise was trained on int16 audio data, so it expects sample
@@ -46,20 +45,19 @@ namespace directpipe {
  * - Below threshold but within hold time: gate stays open (natural pauses between words)
  * - Below threshold and hold expired: gate closes (suppress background noise)
  *
- * NOTE: The gate starts CLOSED (0.0) on initialization. This prevents an
- * initial noise burst during the first ~50ms while RNNoise's internal state
- * stabilizes (warmup period). Without this, users hear a brief noise pop on start.
+ * The gate starts CLOSED (0.0); lifecycle warmup and FIFO priming reduce startup
+ * transients. The hold branch may begin opening it during initial frames.
  *
- * ### 48 kHz Only
- * TODO(DP-NOISE-RESAMPLE-0001): Non-48kHz sample rates currently pass audio
- * through unprocessed. Add resampling around RNNoise frames under a dedicated
- * real-time acceptance packet.
+ * ### Sample-rate conversion
+ * Native 48 kHz retains the original FIFO path. Other 8-192 kHz rates use
+ * preallocated streaming low-pass converters around the same 48 kHz engine.
+ * Gate timing always runs at 48 kHz. Reported latency includes conversion.
  *
  * ### Dual-Mono Processing
  * Each channel (L/R) has its own RNNoise instance, FIFO, and gate state.
  * This means stereo is processed as dual-mono (no cross-channel interaction).
- * This is correct for voice/microphone use cases where stereo content is
- * typically identical or near-identical.
+ * Independent suppression/gating can change stereo balance; this is not
+ * linked-stereo or binaural-preservation processing.
  *
  * Strength presets:
  *   0 = Light       (VAD threshold 0.50)
@@ -122,11 +120,14 @@ public:
     /** Set VAD threshold directly (advanced override, 0.0-1.0). */
     void setVADThreshold(float threshold);
 
-    // The editor uses this state to explain intentional non-48kHz passthrough.
-    bool isActive() const { return !needsResampling_.load(std::memory_order_relaxed); }
+    enum class Mode { Inactive, Native48k, Resampled, UnsupportedRate, Unavailable };
+    Mode getMode() const { return mode_.load(std::memory_order_acquire); }
+    bool isActive() const { const auto m = getMode(); return m == Mode::Native48k || m == Mode::Resampled; }
     bool needsResampling() const { return needsResampling_.load(std::memory_order_relaxed); }
+    juce::String getStatusText() const;
 
 private:
+    friend struct NoiseRemovalTestAccess;
     // -- Parameters --
     std::atomic<int>   strength_{ 1 };       // 0=Light, 1=Standard, 2=Aggressive
     std::atomic<float> vadThreshold_{ 0.70f };  // Standard preset default
@@ -147,10 +148,11 @@ private:
     // wrapping. Read and write positions grow monotonically and wrap via modulo.
     // This avoids the complexity of linear reset (which would need atomic
     // coordination between the read/write positions).
-    // The drain comparison uses (write - read) > 0u (not read < write) so that
-    // uint32_t wraparound after ~25 hours at 48kHz is handled correctly by
-    // unsigned modular subtraction.
+    // A power-of-two capacity keeps ring indexing continuous at uint32_t wrap
+    // (~25 hours). Unsigned (write - read) gives the queued count across wrap.
     static constexpr int kRNNFrameSize = 480;
+    // Vendored denoise.c: analysis overlap + delayed_X lookahead = two frames.
+    static constexpr int kRNNAlgorithmDelay = 2 * kRNNFrameSize;
     static constexpr int kMaxSupportedBlockSize = 4096;
     static constexpr int kMinimumOutputFifoCapacity = kRNNFrameSize * 2;
 
@@ -172,9 +174,16 @@ private:
     uint32_t outputFifoReadR_  = 0;
     uint32_t outputFifoWriteR_ = 0;
 
-    // -- Sample-rate compatibility (TODO(DP-NOISE-RESAMPLE-0001)) --
-    double hostSampleRate_ = 48000.0;
-    std::atomic<bool> needsResampling_{false};  // Message-thread write, RT-thread read.
+    // Lifecycle writes with rendering excluded; UI reads atomic status only.
+    std::atomic<double> hostSampleRate_{48000.0};
+    std::atomic<bool> needsResampling_{false};  // Lifecycle write, rendering/UI read.
+    std::atomic<Mode> mode_{Mode::Inactive};
+    struct ConversionChannel {
+        StreamingSincResampler to48k, from48k;
+        std::vector<float> output;
+        size_t read = 0, write = 0, queued = 0;
+    };
+    ConversionChannel conversion_[2];
 
     // -- VAD gating (per-channel smooth gain + hold time) --
     //
@@ -194,6 +203,7 @@ private:
 
     // -- Internal helpers --
     void destroyRNNoise();
+    void processConvertedChannel(float* samples, int count, int channel);
 
     /** Process one channel through the FIFO + RNNoise pipeline.
      *  Called from processBlock for each active channel. */

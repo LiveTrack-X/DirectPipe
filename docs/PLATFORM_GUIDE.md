@@ -4,8 +4,8 @@ DirectPipe는 Windows, macOS, Linux를 지원합니다. 플랫폼에 따라 기�
 
 DirectPipe supports Windows, macOS, and Linux. Features, setup, and release maturity vary by platform.
 
-> **현재 소스 / Current source: 4.5.0.** 플랫폼별 정확한 빌드·검사·공개 파일 확인은
-> [4.5.0 검증 기록](RELEASE_4_5_0.md)에 구분합니다. 소프트웨어 검사는 실제 장치·
+> **현재 소스 / Current source: 4.5.1.** 이번 후보의 검증과 남은 플랫폼 게이트는
+> [4.5.1 검증 기록](RELEASE_4_5_1.md)에 구분합니다. 소프트웨어 검사는 실제 장치·
 > 드라이버·청취 검증을 대신하지 않습니다. / Exact-source platform builds, tests and
 > public-download verification are recorded separately from physical-device and
 > listening acceptance. [4.4.0 기록 / Historical record](MULTI_RECEIVER_4_4_0.md).
@@ -300,3 +300,10 @@ Platform-specific CJK fonts are auto-selected for correct rendering of Korean, C
 각 플랫폼별 빌드 방법은 [Build Guide](BUILDING.md)를 참조하세요.
 
 See [Build Guide](BUILDING.md) for platform-specific build instructions.
+
+## Optional DPWIM (Windows only)
+
+Install DPWIM below Built-in manages a separate Windows x64 VST3 copy on explicit
+click. macOS/Linux do not show this action. DPWIM can mix Windows app playback
+with an ASIO microphone path, subject to Windows process-loopback support.
+It is not multi-USB microphone aggregation. [Setup](DPWIM_WINDOWS_SETUP.md).

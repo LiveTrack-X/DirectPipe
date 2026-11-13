@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.5.0 소스 기준입니다. [검증 기록](RELEASE_4_5_0.md)과 아래 과거 검증 이력을 구분합니다.
+> 역기획서 — v4.5.1 후보 소스 기준입니다. [검증 기록](RELEASE_4_5_1.md)과 아래 과거 검증 이력을 구분합니다.
 >
-> Reverse spec — current v4.5.0 source. See the [verification record](RELEASE_4_5_0.md); historical v4.3.0 validation remains separate from [4.4.0 evidence](MULTI_RECEIVER_4_4_0.md).
+> Reverse spec — current v4.5.1. See the [verification record](RELEASE_4_5_1.md); published-release evidence below remains historical.
 
 ---
 
@@ -223,14 +223,14 @@ All 3 output paths can be **independently toggled**. Main and Monitor have separ
 | 상태 전파 / State Propagation | `latency_ms`는 PDC 포함 총 추정값. `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms`는 세부값 / `latency_ms` is the PDC-inclusive total estimate; plugin and chain PDC fields provide the breakdown |
 
 #### 4.1.10 Built-in Processors
-VST 플러그인과 동일하게 AudioProcessorGraph에 삽입 가능한 내장 프로세서 3종.
+공통 내장 프로세서 3종. DPWIM은 Windows용 별도 VST이며 Auto에 포함되지 않습니다.
 
-3 built-in processors that can be inserted into the AudioProcessorGraph just like VST plugins.
+Three cross-platform built-ins: Filter, Noise Removal and Auto Gain. DPWIM is a separate Windows VST, installed optionally.
 
 | 프로세서 / Processor | 클래스 / Class | 상세 / Details |
 |---------|--------|------|
 | **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz / default ON, 60Hz) + LPF (기본 OFF, 16kHz / default OFF, 16kHz). 범위 / Range: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터 / IIR filters, atomic 파라미터 / atomic parameters. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
-| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-frame FIFO (~10ms 레이턴시 / ~10ms latency). 48kHz only (비-48kHz = 패스스루 / non-48kHz = passthrough; deferred: `DP-NOISE-RESAMPLE-0001`). 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, SR 기반 재계산 / SR-dependent). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, SR 기반 재계산 / SR-dependent). `getLatencySamples()` = 480 via `setLatencySamples()`. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
+| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-sample FIFO priming + 960-sample RNNoise intrinsic delay = 1440 samples (30 ms at 48 kHz). 4.5.1: 8-192 kHz via internal low-pass conversion; native 48 kHz retains the original path. Published 4.5.0 remains 48 kHz-only. 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, 내부 48 kHz 기준 / internal 48 kHz timing). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, 내부 48 kHz 기준 / internal 48 kHz timing). `getLatencySamples()` = 1440 at native 48 kHz; other rates include host-rate FIFO and conversion latency. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
 | **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC / LUFS-based AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 / default (범위 / range -24~-6, 내부적으로 -6dB 오프셋 적용하여 오픈루프 오버슈트 보정 / internal -6dB offset for open-loop overshoot compensation). Low Correct 0.50 기본 / default (hold↔full correction 블렌드, 부스트 / blend, boost). High Correct 0.90 기본 / default (hold↔full correction 블렌드, 컷 / blend, cut). Max Gain 22 dB 기본 / default. ITU-R BS.1770 K-weighting 사이드체인 / sidechain (copy, 실제 오디오 미적용 / not applied to actual audio). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음 / none), per-block linear ramp으로 click-free 전환 / for click-free transitions. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 / holds current gain on freeze (0dB 리셋 아님 / NOT reset to 0dB), -65 dBFS 미만 시 바이패스 / bypassed below -65 dBFS. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) / blend ratio between hold and full correction (NOT envelope speed). Fixed post limiter: limiter ceiling only user-facing (default -1.0 dBTP), fixed internal lookahead 1ms + release 50ms, constant latency path, final hard clamp. |
 
 **[Auto] 버튼 / [Auto] Button**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults. Auto Gain 내부에는 고정 post limiter가 포함됩니다.
@@ -242,6 +242,14 @@ Special preset slot next to input gain slider (separate from A-E bar, index 5 `P
 6th preset slot (index 5). Cannot be renamed, excluded from Next/Previous cycling. Reset restores Filter + NoiseRemoval + AutoGain defaults. Factory Reset also deletes the Auto slot (`slot_Auto.dppreset` wildcard deletion, message "(A-E + Auto)").
 
 ---
+
+Windows-only `Install DPWIM...` sits immediately below the Built-in submenu.
+It fetches the official stable Windows x64 VST3 release on explicit click,
+checks asset SHA-256 and bundle/PE version, then installs a per-user versioned
+copy. Equal/newer managed versions are retained; previous paths and active
+instances are not overwritten. The existing isolated scanner exposes the new
+copy for explicit chain addition. Auto is unchanged. No `builtin_dpwim` preset
+type is introduced. [DPWIM setup](DPWIM_WINDOWS_SETUP.md).
 
 ### 4.2 VST 호스팅 / VST Hosting
 
@@ -844,10 +852,10 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 #### 4.6.10 레벨 미터 / Level Meter (LevelMeter)
 | 항목 / Item | 상세 / Details |
 |------|------|
-| 표시 / Display | 현재 RMS 레벨 (초록→노랑→빨강) / Current RMS level (green→yellow→red) |
+| 표시 / Display | 4.5.1: 독립 L/R RMS 막대와 피크 홀드 / Independent L/R RMS bars and peak holds, in the existing meter areas. Input: selected capture channels before Mono conversion, with gain/mute applied. Output: post protection, pre destination volume/mute. |
 | 피크 홀드 / Peak Hold | 피크 인디케이터 (30틱 ≈ 1초 @30Hz) / Peak indicator (30 ticks ≈ 1 second @30Hz) |
 | 클리핑 / Clipping | 0dBFS 클리핑 인디케이터 / 0dBFS clipping indicator |
-| 스무딩 / Smoothing | Attack: 0.3, Release: 0.05 |
+| 스무딩 / Smoothing | Attack: 0.3, Release: 0.12 (per-channel log-display coefficients) |
 | 갱신 / Update | 부모 타이머에서 `tick()` 호출 (30Hz). 조건부 repaint / `tick()` called from parent timer (30Hz). Conditional repaint |
 
 ---
@@ -1394,7 +1402,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×216 UI, 연결·한도·호환/SR 경고 / Connection, limit, compatibility and SR status
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.5.0.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.5.1.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

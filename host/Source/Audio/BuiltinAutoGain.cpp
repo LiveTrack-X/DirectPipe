@@ -117,7 +117,7 @@ void BuiltinAutoGain::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // Incremental ring buffer update with running sum.
     //
-    // Instead of summing the entire ring buffer (O(windowSize) = ~72k samples at 48kHz),
+    // Instead of summing the entire 0.4s ring buffer (~19.2k samples at 48kHz),
     // we maintain a running sum and update it incrementally:
     //   runningSquareSum_ -= old_value_being_overwritten
     //   runningSquareSum_ += new_value

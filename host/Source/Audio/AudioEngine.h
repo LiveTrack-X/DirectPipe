@@ -227,6 +227,14 @@ public:
 
     float getInputLevel() const { return inputLevel_.load(std::memory_order_relaxed); }
     float getOutputLevel() const { return outputLevel_.load(std::memory_order_relaxed); }
+    /** Input bars show selected capture channels before Mono conversion, after gain/mute.
+     * Output bars retain the post-protection, pre-destination tap. */
+    float getInputLevel(int channel) const {
+        return (channel == 1 ? inputMeterLevelR_ : inputMeterLevelL_).load(std::memory_order_relaxed);
+    }
+    float getOutputLevel(int channel) const {
+        return (channel == 1 ? outputLevelR_ : outputLevelL_).load(std::memory_order_relaxed);
+    }
 
     juce::StringArray getAvailableInputDevices() const;
     juce::StringArray getAvailableOutputDevices() const;
@@ -444,6 +452,8 @@ private:
 
     std::atomic<float> inputLevel_{0.0f};               // [RT write, Message read]
     std::atomic<float> outputLevel_{0.0f};              // [RT write, Message read]
+    std::atomic<float> inputMeterLevelL_{0.0f}, inputMeterLevelR_{0.0f};
+    std::atomic<float> outputLevelL_{0.0f}, outputLevelR_{0.0f};
     std::atomic<float> inputGain_{1.0f};                // [Message write, RT read]
     std::atomic<bool> safetyHeadroomEnabled_{true};     // [Message write, RT read]
     std::atomic<float> safetyHeadroomdB_{-0.3f};        // [Message write, RT read]

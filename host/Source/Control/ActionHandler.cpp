@@ -337,18 +337,8 @@ void ActionHandler::handle(const ActionEvent& event)
                     onNotification("Auto setup failed: " + r.message, NotificationLevel::Error);
                 if (onDirty) onDirty();
             }
-            // Warn if sample rate is not 48kHz — Noise Removal (RNNoise) will be bypassed
-            {
-                double sr = engine_.getLatencyMonitor().getSampleRate();
-                if (sr > 0.0 && std::abs(sr - 48000.0) > 1.0) {
-                    if (onNotification)
-                        onNotification("Noise Removal requires 48 kHz. Current: "
-                            + juce::String(static_cast<int>(sr)) + " Hz (NR bypassed) / "
-                            "Noise Removal은 48kHz 전용입니다. 현재: "
-                            + juce::String(static_cast<int>(sr)) + " Hz (NR 비활성)",
-                            NotificationLevel::Warning);
-                }
-            }
+            // The chain/editor report native, converted or inactive RNNoise
+            // state. Host rate alone no longer implies inactive processing.
             break;
         }
 

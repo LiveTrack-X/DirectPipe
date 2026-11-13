@@ -768,10 +768,15 @@ std::vector<PluginStatusSnapshot> VSTChain::getPluginStatusSnapshot() const
         PluginStatusSnapshot snapshot;
         snapshot.name = slot.name;
         snapshot.bypassed = slot.bypassed;
+        snapshot.builtin = slot.type != PluginSlot::Type::VST;
         if (auto* processor = slot.getProcessor()) {
             snapshot.loaded = true;
             snapshot.parameterCount = processor->getParameters().size();
             snapshot.latencySamples = processor->getLatencySamples();
+            if (auto* noise = dynamic_cast<BuiltinNoiseRemoval*>(processor)) {
+                snapshot.processingStatus = slot.bypassed ? juce::String("Bypassed") : noise->getStatusText();
+                snapshot.processingActive = !slot.bypassed && noise->isActive();
+            }
         }
         result.push_back(std::move(snapshot));
     }

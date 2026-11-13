@@ -583,6 +583,87 @@ TEST_F(AudioEngineTest, InputGainIgnoresNonFiniteValuesWithoutCorruptingAudio)
     }
 }
 
+TEST_F(AudioEngineTest, StereoMetersKeepChannelsIndependentAndPanicClearsBoth)
+{
+    prepareInputCaptureTest();
+    engine_->setChannelMode(2);
+    const std::vector<float> left(128, 0.1f), right(128, 0.4f);
+    const float* inputs[] = {left.data(), right.data()};
+    for (int i = 0; i < 4; ++i) expectCapturedStereo(inputs, 2, left, right);
+    EXPECT_NEAR(engine_->getInputLevel(0), 0.1f, 0.00001f);
+    EXPECT_NEAR(engine_->getInputLevel(1), 0.4f, 0.00001f);
+    EXPECT_NEAR(engine_->getOutputLevel(0), 0.1f, 0.00001f);
+    EXPECT_NEAR(engine_->getOutputLevel(1), 0.4f, 0.00001f);
+    EXPECT_NEAR(engine_->getOutputLevel(), 0.4f, 0.00001f);
+    engine_->setMuted(true);
+    expectCapturedStereo(inputs, 2, std::vector<float>(128), std::vector<float>(128));
+    for (const int channel : {0, 1}) {
+        EXPECT_FLOAT_EQ(engine_->getInputLevel(channel), 0.0f);
+        EXPECT_FLOAT_EQ(engine_->getOutputLevel(channel), 0.0f);
+    }
+}
+
+TEST_F(AudioEngineTest, MonoInputMetersKeepCaptureSeparateFromDuplicatedOutput)
+{
+    prepareInputCaptureTest();
+    engine_->setChannelMode(1);
+    const std::vector<float> left(128, 0.1f), right(128, 0.3f), expected(128, 0.2f);
+    const float* inputs[] = {left.data(), right.data()};
+    for (int i = 0; i < 4; ++i) expectCapturedStereo(inputs, 2, expected, expected);
+    EXPECT_NEAR(engine_->getInputLevel(0), 0.1f, 0.00001f);
+    EXPECT_NEAR(engine_->getInputLevel(1), 0.3f, 0.00001f);
+    EXPECT_NEAR(engine_->getInputLevel(), 0.2f, 0.00001f); // Legacy API remains post-Mono.
+    for (const int channel : {0, 1})
+        EXPECT_NEAR(engine_->getOutputLevel(channel), 0.2f, 0.00001f);
+}
+
+TEST_F(AudioEngineTest, MonoMetersDoNotInventActivityInSilentCaptureChannel)
+{
+    prepareInputCaptureTest();
+    engine_->setChannelMode(1);
+    for (const bool rightOnly : {false, true}) {
+        const std::vector<float> left(128, rightOnly ? 0.0f : 0.4f);
+        const std::vector<float> right(128, rightOnly ? 0.6f : 0.0f);
+        const std::vector<float> mixed(128, rightOnly ? 0.3f : 0.2f);
+        const float* inputs[] = {left.data(), right.data()};
+        for (int i = 0; i < 4; ++i) expectCapturedStereo(inputs, 2, mixed, mixed);
+        EXPECT_NEAR(engine_->getInputLevel(0), left[0], 0.00001f);
+        EXPECT_NEAR(engine_->getInputLevel(1), right[0], 0.00001f);
+        EXPECT_NEAR(engine_->getOutputLevel(0), mixed[0], 0.00001f);
+        EXPECT_NEAR(engine_->getOutputLevel(1), mixed[0], 0.00001f);
+    }
+}
+
+TEST_F(AudioEngineTest, CaptureMetersApplyGainAndInputMuteBeforeMonoConversion)
+{
+    prepareInputCaptureTest();
+    engine_->setChannelMode(1);
+    engine_->setInputGain(2.0f);
+    const std::vector<float> left(128, 0.1f), right(128, 0.3f), mixed(128, 0.4f), zero(128);
+    const float* inputs[] = {left.data(), right.data()};
+    for (int i = 0; i < 4; ++i) expectCapturedStereo(inputs, 2, mixed, mixed);
+    EXPECT_NEAR(engine_->getInputLevel(0), 0.2f, 0.00001f);
+    EXPECT_NEAR(engine_->getInputLevel(1), 0.6f, 0.00001f);
+    engine_->setInputMuted(true);
+    for (int i = 0; i < 4; ++i) expectCapturedStereo(inputs, 2, zero, zero);
+    EXPECT_FLOAT_EQ(engine_->getInputLevel(0), 0.0f);
+    EXPECT_FLOAT_EQ(engine_->getInputLevel(1), 0.0f);
+}
+
+TEST_F(AudioEngineTest, SingleSparseCaptureMeterDoesNotDisplayDuplicatedChannel)
+{
+    prepareInputCaptureTest();
+    engine_->setMonoInputEnabled(true);
+    ASSERT_TRUE(engine_->setActiveInputChannels(1, 1));
+    const std::vector<float> selected(128, 0.35f);
+    const float* inputs[] = {nullptr, selected.data(), nullptr};
+    for (int i = 0; i < 4; ++i) expectCapturedStereo(inputs, 3, selected, selected);
+    EXPECT_NEAR(engine_->getInputLevel(0), 0.35f, 0.00001f);
+    EXPECT_FLOAT_EQ(engine_->getInputLevel(1), 0.0f);
+    EXPECT_NEAR(engine_->getOutputLevel(0), 0.35f, 0.00001f);
+    EXPECT_NEAR(engine_->getOutputLevel(1), 0.35f, 0.00001f);
+}
+
 TEST_F(AudioEngineTest, SingleInputCaptureDefaultsToLegacyPairBehavior)
 {
     prepareInputCaptureTest();

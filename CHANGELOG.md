@@ -4,6 +4,29 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.5.1] - 2026-11-13
+
+- Built-in RNNoise now converts finite 8-192 kHz input to/from its 48 kHz
+  engine. Native 48 kHz retains its existing audio processing path.
+- Include the vendored RNNoise model/overlap delay in reported latency:
+  native 48 kHz reports 1440 samples (30 ms), without adding an audio delay.
+  Other supported rates include conversion and host-rate processing latency.
+- Show actual native/converted/inactive status in the chain and editor; remove
+  obsolete 48 kHz-only warnings from Auto and external-control paths.
+- Show input and output L/R levels with independent peak holds in existing
+  meter areas; keep legacy scalar telemetry and existing Mono gain unchanged.
+- 노이즈 제거의 내부 리샘플링·상태 표시와 독립 입출력 L/R 미터를 추가하고,
+  실제 RNNoise 지연이 전체 Latency에 반영되도록 보고값을 수정합니다.
+- Current verification and remaining release gates: [4.5.1 readiness](docs/RELEASE_4_5_1.md).
+
+- Windows-only **Install DPWIM...** appears directly below Built-in. It checks
+  the official stable release and installs/updates a verified external VST3
+  copy. DPWIM remains separate from built-ins and Auto; active instances and
+  saved plugin paths are preserved.
+- Input L/R bars now show selected capture channels before Mono mixing or
+  duplication, with gain/mute applied. A silent input no longer shows the
+  other channel's copied activity. Mono audio gain and scalar API stay unchanged.
+
 ## [4.5.0] - 2026-11-12
 
 Exact-version release checks and packaging are tracked in the

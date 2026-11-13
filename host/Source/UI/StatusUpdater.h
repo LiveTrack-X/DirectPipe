@@ -33,7 +33,7 @@ namespace directpipe {
 class AudioEngine;
 class PresetManager;
 class StateBroadcaster;
-class LevelMeter;
+class StereoLevelMeter;
 
 class StatusUpdater {
 public:
@@ -45,7 +45,7 @@ public:
                juce::TextButton* monitorMuteBtn, juce::TextButton* vstMuteBtn,
                juce::TextButton* panicMuteBtn,
                juce::Slider* inputGainSlider,
-               LevelMeter* inputMeter, LevelMeter* outputMeter);
+               StereoLevelMeter* inputMeter, StereoLevelMeter* outputMeter);
 
     /** Perform all periodic updates. Called every timer tick (~30Hz). */
     void tick(PresetManager* pm, int numPresetSlots);
@@ -71,8 +71,8 @@ private:
     juce::TextButton* vstMuteBtn_ = nullptr;
     juce::TextButton* panicMuteBtn_ = nullptr;
     juce::Slider* inputGainSlider_ = nullptr;
-    LevelMeter* inputMeter_ = nullptr;
-    LevelMeter* outputMeter_ = nullptr;
+    StereoLevelMeter* inputMeter_ = nullptr;
+    StereoLevelMeter* outputMeter_ = nullptr;
 
     // Cached mute states
     bool cachedInputMuted_ = false;

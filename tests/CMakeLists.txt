@@ -93,6 +93,7 @@ if(DIRECTPIPE_BUILD_HOST)
         # Slice 6: Built-in Processors
         test_builtin_processors.cpp
         test_builtin_noise_removal.cpp
+        test_dpwim_installer.cpp
         test_builtin_auto_gain.cpp
         # Slice 7: VSTChain
         test_vst_chain.cpp
@@ -122,6 +123,7 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/UI/PresetSlotBar.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/PluginChainEditor.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/PluginScanner.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/DpwimInstaller.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/AudioEngine.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/VSTChain.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/OutputRouter.cpp

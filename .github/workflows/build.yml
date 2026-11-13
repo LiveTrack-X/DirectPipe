@@ -14,7 +14,41 @@ env:
   BUILD_TYPE: Release
 
 jobs:
+  # Create only the requested canonical tag, without moving an existing tag.
+  # The dispatch source is then the exact immutable source validated below.
+  prepare-release-tag:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify version and create immutable source tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          CANONICAL_VERSION=$(sed -nE 's/^project\(DirectPipe VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)
+          test -n "$CANONICAL_VERSION"
+          test "$RELEASE_TAG" = "v$CANONICAL_VERSION"
+          EXISTING_SHA=$(gh api "repos/${{ github.repository }}/git/ref/tags/$RELEASE_TAG" --jq '.object.sha' 2>/dev/null || true)
+          if [ -n "$EXISTING_SHA" ]; then
+            test "$EXISTING_SHA" = "$SOURCE_SHA" || {
+              echo "Refusing to move existing tag $RELEASE_TAG" >&2
+              exit 1
+            }
+          else
+            gh api --method POST "repos/${{ github.repository }}/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$SOURCE_SHA"
+          fi
+
   text-integrity:
+    needs: [prepare-release-tag]
+    if: always() && (needs.prepare-release-tag.result == 'success' || needs.prepare-release-tag.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -113,6 +147,7 @@ jobs:
         shell: pwsh
         env:
           DIRECTPIPE_TEST_STARTUP_EVIDENCE_DIR: ${{ github.workspace }}/build/test-results/startup-fixtures
+          DIRECTPIPE_DPWIM_ONLINE_SMOKE: '1'
         run: |
           # Match the existing desktop session's TEMP before creating fixtures.
           # The audio-free probe keeps its strict native-TEMP containment check.

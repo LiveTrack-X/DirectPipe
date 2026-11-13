@@ -50,6 +50,8 @@ void LevelMeter::setLevel(float level)
 void LevelMeter::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
+    if (label_.isNotEmpty()) bounds.removeFromBottom(16.0f);
+    auto meterBounds = bounds;
 
     // Background
     g.setColour(juce::Colour(0xFF1A1A2E));
@@ -92,7 +94,7 @@ void LevelMeter::paint(juce::Graphics& g)
         float peakPos;
         g.setColour(juce::Colours::white.withAlpha(0.8f));
 
-        auto fullBounds = getLocalBounds().toFloat();
+        auto fullBounds = meterBounds;
         if (vertical_) {
             peakPos = fullBounds.getBottom() - fullBounds.getHeight() * peakLevel_;
             g.drawHorizontalLine(static_cast<int>(peakPos),
@@ -108,9 +110,9 @@ void LevelMeter::paint(juce::Graphics& g)
     if (clipping_) {
         g.setColour(juce::Colour(0xFFF44336));
         if (vertical_) {
-            g.fillRect(getLocalBounds().removeFromTop(3));
+            g.fillRect(meterBounds.removeFromTop(3.0f));
         } else {
-            g.fillRect(getLocalBounds().removeFromRight(3));
+            g.fillRect(meterBounds.removeFromRight(3.0f));
         }
     }
 
@@ -118,7 +120,7 @@ void LevelMeter::paint(juce::Graphics& g)
     if (label_.isNotEmpty()) {
         g.setColour(juce::Colours::white.withAlpha(0.6f));
         g.setFont(juce::Font(10.0f));
-        g.drawText(label_, getLocalBounds(), juce::Justification::centred);
+        g.drawText(label_, getLocalBounds().removeFromBottom(16), juce::Justification::centred);
     }
 }
 

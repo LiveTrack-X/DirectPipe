@@ -1,7 +1,7 @@
 # DirectPipe 테스트 가이드
 
-> **4.5.0 검증 / Validation**: 현재 자동·격리 실행 결과와 미확인 범위는
-> [4.5.0 검증 기록](docs/RELEASE_4_5_0.md)에서 확인합니다. 이전 다중 Receiver의
+> **4.5.1 후보 검증 / Candidate validation**: 현재 자동·격리 실행 결과와 미확인 범위는
+> [4.5.1 검증 기록](docs/RELEASE_4_5_1.md)에서 확인합니다. 공개 4.5.0 및 이전 다중 Receiver의
 > [4.4.0 검증 기록](docs/MULTI_RECEIVER_4_4_0.md)은 당시 체크포인트로 보존합니다.
 > 아래 수동 체크리스트가 모두 완료됐다는 뜻은 아닙니다.
 > / Automated and isolated runtime evidence does not imply that every manual
@@ -255,7 +255,7 @@ node tools/test_api.js
 ### [Auto] 프리셋 슬롯
 - [ ] [Auto] 클릭 → 3개 내장 프로세서 삽입 확인 (Filter + Noise Removal + Auto Gain) / Click [Auto] → verify 3 built-in processors inserted
 - [ ] [Auto] 상태에서 각 프로세서 Edit 패널 열기 → 기본값 확인 / Open each processor's Edit panel in Auto state → verify defaults
-- [ ] 비-48kHz SR에서 [Auto] → "Noise Removal requires 48kHz" 경고 확인 / [Auto] at non-48kHz → verify NR warning shown
+- [ ] 44.1/96 kHz에서 [Auto] → 체인/편집창의 변환 처리 상태와 실제 억제 확인; 이전 48 kHz 전용 경고가 나오면 실패 / At 44.1/96 kHz verify converted processing and actual suppression, with no obsolete 48 kHz-only warning
 - [ ] [Auto] 우클릭 → Reset to Defaults → 기본 체인 복원 확인 / Right-click [Auto] → Reset to Defaults → verify chain restored
 - [ ] 다른 슬롯(A-E) 선택 → Auto 비활성화 확인 / Select slot A-E → verify Auto deactivated
 
@@ -287,10 +287,10 @@ node tools/test_api.js
 49. 모니터 장치 없음 선택 → No device 상태, 레이턴시 0
 
 ### 레벨 미터
-50. 마이크 입력 시 좌/우 입력 미터 반응
-51. 출력 미터가 VST 체인 처리 후 레벨 표시
-52. Mute 시 출력 미터 0
-53. 볼륨 변경 시 미터 레벨 반영
+50. Stereo pair에서 IN 1만 들어오면 입력 L만, IN 2만 들어오면 입력 R만 반응. Mono 출력은 혼합 신호를 양쪽에 복제하며 입력 게인·뮤트도 검증
+51. 출력 L/R 미터가 VST 체인·최종 보호 후의 처리 신호를 표시
+52. Panic Mute 시 양쪽 입력/출력 미터가 0으로 복귀
+53. 입력 게인은 입력 미터에 반영. 목적지별 볼륨·뮤트는 처리 탭의 출력 미터를 바꾸지 않음
 
 ### 녹음 (UI)
 54. REC 버튼 클릭 → 녹음 시작, 타이머 카운트 표시
@@ -400,3 +400,13 @@ and OBS-engine results do not mark installation, listening or UAC checks complet
 96. XRun 발생 시 빨간 표시, 0이면 기본 색상
 97. 버전 라벨 "Created by LiveTrack" 하단 표시
 98. 새 버전 존재 시 "NEW vX.Y.Z" 주황 표시 → 클릭 시 업데이트 다이얼로그
+
+### Optional DPWIM installer and input meters
+
+`DpwimInstallerTest.*` covers trusted-release selection, SHA-256 and safe ZIP
+handling, cancellation, owner lifetime, atomic manifest publication, side-by-side
+updates and no downgrade. An optional exact published ZIP fixture exercises real
+identity/extraction without loading the plugin; tests use owned temporary roots.
+Actual GUI installation/scanner/live app capture are separate acceptance checks.
+AudioEngine regressions cover one-sided pair capture before Mono conversion,
+selected mono, input gain/mute, output levels and Panic. [Setup](docs/DPWIM_WINDOWS_SETUP.md).

@@ -1,6 +1,6 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current source / 현재 소스: 4.5.0** — Exact-version build and package evidence is tracked in the [verification record / 검증 기록](RELEASE_4_5_0.md).
+> **Current source / 현재 소스: 4.5.1 candidate** — Current build/package evidence and remaining platform gates: [verification record / 검증 기록](RELEASE_4_5_1.md). Published [4.5.0 evidence](RELEASE_4_5_0.md) is historical.
 > Historical v4.3.0 release results below are separate from [4.4.0 validation](MULTI_RECEIVER_4_4_0.md). / 아래 v4.3.0 검증 수치는 당시 기록이며 현재 소스의 검증과 구분합니다.
 
 > **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 전체 플랫폼 빌드·패키지·checksum·Windows unsigned 상태를 검증했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
@@ -265,7 +265,7 @@ snapshot regression in **25 fresh processes** (`ctest --repeat until-fail:25
 --no-tests=error` with the exact filter). The uploaded JUnit and
 `snapshot-repeat.log` retain these separate results. Windows static DMG checks
 cannot substitute for native macOS mount, architecture and deployment-target
-checks. See [4.5.0 verification boundaries](RELEASE_4_5_0.md).
+checks. See [4.5.1 candidate verification boundaries](RELEASE_4_5_1.md).
 
 The tables below preserve the **v4.3.0 historical inventory** (582 CTest
 registrations: 580 passed, 2 environment-dependent skips, 0 failed; exact-tag CI
@@ -314,7 +314,7 @@ Authenticode remains optional until a trusted certificate is configured.
 | ActionHandlerTest | 8 | Panic mute engage/restore, callback order, explicit set-mode idempotency / 패닉 뮤트 활성화/복원, 콜백 순서, 명시 set 모드 멱등성 |
 | SafetyLimiterTest | 15 | Guard ceiling, gain reduction, zero-latency sample-peak guard behavior / 가드 실링, 게인 리덕션, zero-latency 샘플-피크 가드 동작 |
 | BuiltinFilterTest | 8 | HPF/LPF filter, frequency clamp, state roundtrip / HPF/LPF 필터, 주파수 클램프, 상태 왕복 |
-| BuiltinNoiseRemovalTest + FIFO | 9 | RNNoise VAD thresholds, non-48k passthrough, latency, FIFO overflow guard / RNNoise VAD 임계값, 비-48kHz 패스스루, 레이턴시, FIFO overflow 보호 |
+| BuiltinNoiseRemoval / conversion / FIFO / runtime evidence | See current execution report | RNNoise 8-192 kHz conversion, speech/noise evidence, truthful status/PDC, anti-aliasing, block invariance and actual counter-wrap ordering / 변환·실제 억제·상태·지연·장시간 카운터 순서 |
 | BuiltinAutoGainTest | 8 | AGC boost/cut, freeze level, max gain clamp, post limiter ceiling/state/latency / AGC 부스트/컷, 프리즈 레벨, 최대 게인 클램프, post limiter 실링/상태/레이턴시 |
 | VSTChainTest | 18 | VST chain operations, late active-path PDC refresh/bypass, stable status snapshot, cached-swap partial-failure guard / VST chain 연산, 늦은 활성 경로 PDC 갱신·bypass, 안정된 snapshot |
 | PlatformTest | 8 | Platform abstraction: auto-start, process priority, multi-instance lock / 플랫폼 추상화 테스트 |
@@ -408,3 +408,19 @@ bash tools/pre-release-test.sh --skip-api
 
 > Release CI가 마지막 publish 단계에서 `--latest`를 명시합니다. 공개 GitHub Release를 먼저 수동 생성하지 마세요. asset 없는 public latest를 막기 위해 CI가 완성된 draft를 직접 생성·공개합니다.
 > Release CI explicitly sets `--latest` only in its final publish step. Do not create the public GitHub Release first; CI creates and publishes the complete draft so an assetless public latest cannot appear.
+
+## Optional DPWIM installer
+
+The host compiles DpwimInstaller, not DPWIM DSP/editor sources. The Windows menu
+installs a separate external VST3 when clicked; build and host startup do not
+download/install it. No sibling checkout, extra DSP library or vendored DPWIM
+license payload is required in the DirectPipe ZIP. The external archive retains
+its own LICENSE/README. [Setup](DPWIM_WINDOWS_SETUP.md).
+
+For an authorized release, dispatch Build & Release from the reviewed source
+branch with release_tag equal to its canonical vX.Y.Z. The tag-preparation job
+creates a missing lightweight tag at the exact dispatch SHA, or requires an
+existing tag to point to that same SHA. It never moves an existing tag. CI-only
+dispatches and PRs skip tag creation. Publication still depends on all four
+platform/Stream Deck jobs and their checks. This bootstrap uses GitHub's scoped
+workflow token; no personal credential is embedded or exported.

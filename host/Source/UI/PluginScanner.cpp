@@ -22,9 +22,54 @@
  */
 
 #include "PluginScanner.h"
+#include "DpwimInstaller.h"
 #include "../Control/ControlMapping.h"
 
 namespace directpipe {
+
+void plugin_scan::applyResults(juce::KnownPluginList& cached, const juce::XmlElement& results,
+                                bool targeted, const juce::File& managedDpwimRoot)
+{
+    if (!results.hasTagName("KNOWNPLUGINS")) return;
+    if (!targeted) {
+        cached.recreateFromXml(results);
+        return;
+    }
+
+    juce::KnownPluginList discovered;
+    discovered.recreateFromXml(results);
+    const auto isManagedDpwim = [&managedDpwimRoot](const juce::PluginDescription& description) {
+        return managedDpwimRoot != juce::File()
+            && description.pluginFormatName == "VST3"
+            && description.name == "DirectPipe Windows Input Mixer"
+            && juce::File::isAbsolutePath(description.fileOrIdentifier)
+            && juce::File(description.fileOrIdentifier).isAChildOf(managedDpwimRoot);
+    };
+    const auto managedVersion = [](const juce::PluginDescription& description) {
+        const auto directory = juce::File(description.fileOrIdentifier).getParentDirectory().getFileName();
+        if (!directory.startsWithChar('v')) return juce::String();
+        const auto version = directory.substring(1).upToFirstOccurrenceOf("-", false, false);
+        return dpwim::validVersion(version) ? version : juce::String();
+    };
+    for (const auto& description : discovered.getTypes()) {
+        if (isManagedDpwim(description)) {
+            const auto version = managedVersion(description);
+            for (const auto& previous : cached.getTypes()) {
+                if (isManagedDpwim(previous)
+                    && previous.manufacturerName == description.manufacturerName
+                    && previous.uniqueId == description.uniqueId
+                    && previous.deprecatedUid == description.deprecatedUid
+                    && previous.fileOrIdentifier != description.fileOrIdentifier
+                    && version.isNotEmpty() && managedVersion(previous).isNotEmpty()
+                    && dpwim::compareVersions(managedVersion(previous), version) <= 0)
+                    cached.removeType(previous);
+            }
+        }
+        cached.addType(description);
+    }
+    for (const auto& file : discovered.getBlacklistedFiles())
+        cached.addToBlacklist(file);
+}
 
 // ─── DirectoryListModel ──────────────────────────────────────────
 
@@ -201,8 +246,12 @@ PluginScannerComponent::~PluginScannerComponent()
 void PluginScannerComponent::addDefaultDirectories()
 {
     scanDirectories_.clear();
+    targetedScan_ = false;
 
 #if JUCE_WINDOWS
+    const auto installedDpwim = dpwim::installedCopy(dpwim::managedRoot());
+    if (installedDpwim.success)
+        scanDirectories_.add(installedDpwim.bundle.getParentDirectory().getFullPathName());
     scanDirectories_.add("C:\\Program Files\\Common Files\\VST3");
     scanDirectories_.add("C:\\Program Files (x86)\\Common Files\\VST3");
     scanDirectories_.add("C:\\Program Files\\Common Files\\VST");
@@ -250,6 +299,7 @@ void PluginScannerComponent::addCustomDirectory()
         auto result = fc.getResult();
         if (result.isDirectory()) {
             if (!safeThis->scanDirectories_.contains(result.getFullPathName())) {
+                safeThis->targetedScan_ = false;
                 safeThis->scanDirectories_.add(result.getFullPathName());
                 safeThis->directoryListBox_.updateContent();
             }
@@ -261,9 +311,20 @@ void PluginScannerComponent::removeSelectedDirectory()
 {
     int selected = directoryListBox_.getSelectedRow();
     if (selected >= 0 && selected < scanDirectories_.size()) {
+        targetedScan_ = false;
         scanDirectories_.remove(selected);
         directoryListBox_.updateContent();
     }
+}
+
+void PluginScannerComponent::scanDirectory(const juce::File& directory)
+{
+    if (scanning_ || !directory.isDirectory()) return;
+    targetedScan_ = true;
+    scanDirectories_.clear();
+    scanDirectories_.add(directory.getFullPathName());
+    directoryListBox_.updateContent();
+    startScan();
 }
 
 void PluginScannerComponent::startScan()
@@ -286,6 +347,7 @@ void PluginScannerComponent::startScan()
 void PluginScannerComponent::clearCacheAndRescan()
 {
     if (scanning_) return;
+    targetedScan_ = false;
 
     // Delete cache file and dead man's pedal
     auto cacheFile = getCacheFile();
@@ -309,6 +371,9 @@ void PluginScannerComponent::clearCacheAndRescan()
 
 void PluginScannerComponent::run()
 {
+    const bool targetedScan = targetedScan_;
+    const auto targetedDirectory = targetedScan && scanDirectories_.size() == 1
+        ? juce::File(scanDirectories_[0]) : juce::File();
     // Out-of-process scanning: launch DirectPipe.exe --scan as a child process.
     // If a bad plugin crashes the scanner, only the child process dies.
     // The parent accumulates a blacklist of crashed plugins across retries
@@ -395,10 +460,10 @@ void PluginScannerComponent::run()
             if (xmlStr.isNotEmpty()) {
                 auto aliveFlag2 = alive_;
                 auto* self2 = this;
-                juce::MessageManager::callAsync([aliveFlag2, self2, xmlStr] {
+                juce::MessageManager::callAsync([aliveFlag2, self2, xmlStr, targetedScan] {
                     if (!aliveFlag2->load()) return;
                     if (auto parsed = juce::parseXML(xmlStr))
-                        self2->scannedPlugins_.recreateFromXml(*parsed);
+                        plugin_scan::applyResults(self2->scannedPlugins_, *parsed, targetedScan);
                     self2->refreshPluginList();
                 });
             }
@@ -426,13 +491,27 @@ void PluginScannerComponent::run()
 
     auto aliveFlag3 = alive_;
     auto* self3 = this;
-    juce::MessageManager::callAsync([aliveFlag3, self3, finalXml, lastRunCrashed, startFailed, badPluginCount] {
+    juce::MessageManager::callAsync([aliveFlag3, self3, finalXml, lastRunCrashed, startFailed, badPluginCount, targetedScan, targetedDirectory] {
         if (!aliveFlag3->load()) return;
         if (finalXml.isNotEmpty()) {
             if (auto parsed = juce::parseXML(finalXml))
-                self3->scannedPlugins_.recreateFromXml(*parsed);
+                plugin_scan::applyResults(self3->scannedPlugins_, *parsed, targetedScan,
+                    targetedScan && !lastRunCrashed && !startFailed ? dpwim::managedRoot() : juce::File());
         }
         self3->refreshPluginList();
+        if (targetedScan && !lastRunCrashed && !startFailed && targetedDirectory != juce::File()) {
+            const auto expectedBundle = targetedDirectory.getChildFile("DirectPipe Windows Input Mixer.vst3");
+            const auto types = self3->scannedPlugins_.getTypes();
+            for (size_t row = 0; row < self3->filteredIndices_.size(); ++row) {
+                const auto& description = types[self3->filteredIndices_[row]];
+                if (juce::File::isAbsolutePath(description.fileOrIdentifier)
+                    && juce::File(description.fileOrIdentifier) == expectedBundle) {
+                    self3->pluginTable_.selectRow(static_cast<int>(row));
+                    self3->pluginTable_.scrollToEnsureRowIsOnscreen(static_cast<int>(row));
+                    break;
+                }
+            }
+        }
         self3->saveCachedPlugins();
 
         self3->scanning_ = false;

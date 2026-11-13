@@ -621,7 +621,7 @@ TEST_F(VSTChainTest, ReportedTotalLatencyTracksActiveChain) {
     addBuiltin(PluginSlot::Type::BuiltinNoiseRemoval);
     addBuiltin(PluginSlot::Type::BuiltinAutoGain);
 
-    EXPECT_EQ(chain_->getTotalChainPDC(), 528);  // 480 + 48 samples
+    EXPECT_EQ(chain_->getTotalChainPDC(), 1488);  // RNNoise 1440 + AutoGain 48 samples
 
     chain_->setPluginBypassed(0, true);
     EXPECT_EQ(chain_->getTotalChainPDC(), 48);

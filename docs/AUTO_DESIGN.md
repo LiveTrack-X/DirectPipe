@@ -1,6 +1,6 @@
 # [Auto] 설계 문서 — Design Principles & Parameter Rationale
 
-> **4.5.0 compatibility:** Optional single-channel capture feeds internal L/R
+> **4.5.1 compatibility:** Optional single-channel capture feeds internal L/R
 > before this chain. **Keep Windows mic level at 100** is a separate, default-off
 > device preference; choosing Auto does not enable or reset it. AutoGain and the
 > system input level remain separate controls. / 개별 입력 선택은 Auto 체인 전단에
@@ -140,15 +140,18 @@ Reasons for separation:
 - Must catch momentary level jumps during preset switching, which is only meaningful after the full chain
 - Must allow independent on/off + ceiling control (independent from Auto)
 
-### 알려진 제한사항: 48kHz 전용 / Known Limitation: 48kHz Only
+### 샘플레이트 처리 / Sample-rate handling (4.5.1)
 
-Noise Removal(RNNoise)은 **48kHz에서만 동작**합니다. 비-48kHz 샘플레이트에서 [Auto]를 활성화하면 NR이 passthrough되어 소음 제거가 비활성화됩니다. 이 경우 경고 알림이 표시됩니다.
+4.5.1의 Noise Removal은 8-192 kHz를 내부 48 kHz로 변환하여 처리합니다. 48 kHz는 기존 경로를 유지합니다. 공개 4.5.0의 48 kHz 제한은 해당 공개 버전에 계속 적용됩니다.
 
-Noise Removal (RNNoise) **only works at 48kHz**. Activating [Auto] at a non-48kHz sample rate causes NR to passthrough (noise removal disabled). A warning notification is shown in this case.
+The development build supports 8-192 kHz through internal conversion around the
+48 kHz RNNoise engine. Published 4.5.0 retains its 48 kHz-only behavior.
 
-이는 "원클릭이 항상 같은 결과를 보장"하는 Auto 철학과 충돌하는 지점입니다. 내부 리샘플링은 `DP-NOISE-RESAMPLE-0001`의 실시간 설계·승인 전까지 보류합니다.
+체인과 편집창에 실제 처리 상태를 표시하며, 지원 범위 밖의 주파수나 준비 실패 시 원음을 통과시키고 비활성 이유를 표시합니다.
 
-This conflicts with Auto's "one click always gives the same result" philosophy. Internal resampling remains deferred under `DP-NOISE-RESAMPLE-0001` until its real-time design is approved.
+The chain and editor show actual processing status. Unsupported rates or failed
+preparation pass audio through and display the inactive reason. Conversion is
+preallocated outside rendering and its latency contributes to graph PDC.
 
 ### 권장 환경 / Recommended Environment
 
@@ -159,7 +162,7 @@ Auto가 가장 효과적인 환경 / Environment where Auto works best:
 - 배경 소음 -50 dBFS 이하 (조용한 방) / Background noise below -50 dBFS (quiet room)
 
 Auto가 덜 효과적인 환경 / Less effective environments:
-- 비-48kHz SR (NR 비활성 -- passthrough) / Non-48kHz SR (NR disabled -- passthrough)
+- 지원 범위 밖의 SR (NR 비활성) / Rates outside 8-192 kHz (NR inactive)
 - 저게인 다이나믹 마이크 + 먼 거리 (Max Gain 22dB 한계 도달 가능) / Low-gain dynamic mic + far distance (may hit Max Gain 22dB ceiling)
 - 배경 소음 -40 dBFS 이상 (Freeze Level 무력화 가능) / Background noise above -40 dBFS (Freeze Level may not engage)
 
@@ -356,3 +359,10 @@ Trade-offs to be aware of when customizing parameters:
 [Auto] can modify the chain even during panic mute. Reason:
 - Allows pre-setting Auto during panic for immediate use after unmute
 - Output is blocked during panic, so chain changes have no audible impact
+
+## DPWIM boundary (4.5.1)
+
+Auto continues to use Filter + Noise Removal + Auto Gain only. Windows
+Install DPWIM installs/updates an external VST3 on explicit click; it never adds
+the plugin to Auto or the current chain. An explicitly saved Auto slot retains
+its saved chain. [Setup](DPWIM_WINDOWS_SETUP.md).

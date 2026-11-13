@@ -18,10 +18,10 @@ class BuiltinNoiseRemoval;
  * Thread Ownership:
  *   All methods -- [Message thread]
  */
-class NoiseRemovalEditPanel : public juce::AudioProcessorEditor {
+class NoiseRemovalEditPanel : public juce::AudioProcessorEditor, private juce::Timer {
 public:
     explicit NoiseRemovalEditPanel(BuiltinNoiseRemoval& processor);
-    ~NoiseRemovalEditPanel() override = default;
+    ~NoiseRemovalEditPanel() override { stopTimer(); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -33,7 +33,7 @@ private:
     juce::Label strengthLabel_;
     juce::ComboBox strengthCombo_;
 
-    // -- Status warning (shown when sample rate != 48kHz) --
+    // Native / converted / inactive processing status, refreshed by the UI timer.
     juce::Label statusLabel_;
 
     // -- Advanced section --
@@ -44,6 +44,7 @@ private:
     void syncFromProcessor();
     void updateAdvancedVisibility();
     void updateStatusWarning();
+    void timerCallback() override { updateStatusWarning(); }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NoiseRemovalEditPanel)
 };

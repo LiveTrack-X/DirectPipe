@@ -82,4 +82,35 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LevelMeter)
 };
 
+/** Independent channel smoothing/peak holds in the existing meter footprint. */
+class StereoLevelMeter : public juce::Component {
+public:
+    explicit StereoLevelMeter(const juce::String& label) : label_(label)
+    {
+        addAndMakeVisible(left_);
+        addAndMakeVisible(right_);
+        setName(label + " L/R level meter");
+    }
+    void setLevels(float left, float right) { left_.setLevel(left); right_.setLevel(right); }
+    void tick() { left_.tick(); right_.tick(); }
+    void paint(juce::Graphics& g) override
+    {
+        g.setColour(juce::Colours::white.withAlpha(0.65f));
+        g.setFont(juce::Font(9.0f));
+        g.drawText(label_, getLocalBounds().removeFromTop(16), juce::Justification::centred);
+    }
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        area.removeFromTop(16);
+        const int width = juce::jmax(0, (area.getWidth() - 4) / 2);
+        left_.setBounds(area.removeFromLeft(width));
+        area.removeFromLeft(4);
+        right_.setBounds(area);
+    }
+private:
+    juce::String label_;
+    LevelMeter left_{"L"}, right_{"R"};
+};
+
 } // namespace directpipe

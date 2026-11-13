@@ -53,6 +53,9 @@ struct PluginStatusSnapshot {
     bool loaded = false;
     int parameterCount = 0;
     int latencySamples = 0;
+    bool builtin = false;
+    juce::String processingStatus;
+    bool processingActive = false;
 };
 
 /**
@@ -73,7 +76,7 @@ struct PluginStatusSnapshot {
  *
  * For built-in processors (Filter, NoiseRemoval, AutoGain):
  *   - instance == nullptr    (no AudioPluginInstance -- built-in is not a VST)
- *   - builtinProcessor != nullptr (points to the BuiltinFilter/BuiltinNoiseRemoval/BuiltinAutoGain)
+ *   - builtinProcessor != nullptr (points to the corresponding compiled AudioProcessor)
  *   - type == Type::BuiltinFilter / BuiltinNoiseRemoval / BuiltinAutoGain
  *
  * IMPORTANT: Always use getProcessor() for generic access. Never assume

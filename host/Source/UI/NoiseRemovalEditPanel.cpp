@@ -62,7 +62,7 @@ NoiseRemovalEditPanel::NoiseRemovalEditPanel(BuiltinNoiseRemoval& processor)
     };
     addAndMakeVisible(vadSlider_);
 
-    // -- Status warning label (non-48kHz) --
+    // -- Processing status label (native, converted, or inactive) --
     statusLabel_.setFont(juce::Font(11.0f));
     statusLabel_.setColour(juce::Label::textColourId, juce::Colour(0xFFFF8800));
     addAndMakeVisible(statusLabel_);
@@ -72,6 +72,7 @@ NoiseRemovalEditPanel::NoiseRemovalEditPanel(BuiltinNoiseRemoval& processor)
     advancedToggle_.setToggleState(false, juce::dontSendNotification);
     updateAdvancedVisibility();
     updateStatusWarning();
+    startTimerHz(5);
 }
 
 void NoiseRemovalEditPanel::paint(juce::Graphics& g)
@@ -126,12 +127,14 @@ void NoiseRemovalEditPanel::updateAdvancedVisibility()
 
 void NoiseRemovalEditPanel::updateStatusWarning()
 {
-    if (processor_.needsResampling()) {
-        statusLabel_.setText("Inactive: requires 48 kHz sample rate", juce::dontSendNotification);
-        statusLabel_.setVisible(true);
-    } else {
-        statusLabel_.setVisible(false);
-    }
+    const auto text = processor_.getStatusText();
+    if (statusLabel_.getText() == text) return;
+    statusLabel_.setText(text, juce::dontSendNotification);
+    statusLabel_.setColour(juce::Label::textColourId,
+        processor_.isActive() ? juce::Colour(NRColors::kText) : juce::Colour(0xFFFF8800));
+    statusLabel_.setVisible(true);
+    statusLabel_.setTooltip(text);
+    resized();
 }
 
 } // namespace directpipe

@@ -33,6 +33,9 @@ PluginChainEditor::PluginRowComponent::PluginRowComponent(
     : owner_(owner), rowIndex_(rowIndex)
 {
     addAndMakeVisible(nameLabel_);
+    addAndMakeVisible(statusLabel_);
+    statusLabel_.setFont(juce::Font(10.0f));
+    statusLabel_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(editButton_);
     addAndMakeVisible(bypassButton_);
     addAndMakeVisible(removeButton_);
@@ -103,7 +106,13 @@ void PluginChainEditor::PluginRowComponent::resized()
     bounds.removeFromRight(gap);
     editButton_.setBounds(bounds.removeFromRight(40));
     bounds.removeFromRight(gap);
-    nameLabel_.setBounds(bounds);
+    if (statusLabel_.getText().isNotEmpty()) {
+        nameLabel_.setBounds(bounds.removeFromTop(16));
+        statusLabel_.setBounds(bounds);
+    } else {
+        nameLabel_.setBounds(bounds);
+        statusLabel_.setBounds(0, 0, 0, 0);
+    }
 }
 
 void PluginChainEditor::PluginRowComponent::paint(juce::Graphics& g)
@@ -118,12 +127,32 @@ void PluginChainEditor::PluginRowComponent::update(int newRowIndex)
 {
     rowIndex_ = newRowIndex;
 
-    if (auto* slot = owner_.vstChain_.getPluginSlot(rowIndex_)) {
-        juce::String displayName = juce::String(rowIndex_ + 1) + ". " + slot->name;
-        if (slot->type != PluginSlot::Type::VST)
+    // Snapshot owns its text; no processor pointer survives the chain lock.
+    const auto snapshots = owner_.vstChain_.getPluginStatusSnapshot();
+    if (rowIndex_ >= 0 && rowIndex_ < static_cast<int>(snapshots.size())) {
+        const auto& slot = snapshots[static_cast<size_t>(rowIndex_)];
+        juce::String displayName = juce::String(rowIndex_ + 1) + ". " + slot.name;
+        if (slot.builtin)
             displayName += " (Built-in)";
         nameLabel_.setText(displayName, juce::dontSendNotification);
-        bypassButton_.setToggleState(slot->bypassed, juce::dontSendNotification);
+        bypassButton_.setToggleState(slot.bypassed, juce::dontSendNotification);
+        if (slot.processingStatus.isNotEmpty()) {
+            const auto& status = slot.processingStatus;
+            if (statusLabel_.getText() != status) {
+                statusLabel_.setText(status, juce::dontSendNotification);
+                statusLabel_.setTooltip(status);
+                statusLabel_.setColour(juce::Label::textColourId,
+                    !slot.bypassed && !slot.processingActive ? juce::Colour(0xFFFF8800) : juce::Colour(0xFFBBBBCC));
+                resized();
+            }
+            if (!isTimerRunning()) startTimerHz(5);
+        } else {
+            if (statusLabel_.getText().isNotEmpty()) {
+                statusLabel_.setText({}, juce::dontSendNotification);
+                resized();
+            }
+            stopTimer();
+        }
     }
 }
 
@@ -317,7 +346,7 @@ void PluginChainEditor::hideLoadingState()
 {
     loading_ = false;
     pluginList_.setEnabled(true);
-    addButton_.setEnabled(true);
+    addButton_.setEnabled(!dpwimInstaller_.isBusy());
     scanButton_.setEnabled(true);
     removeButton_.setEnabled(true);
     refreshList();
@@ -402,6 +431,9 @@ void PluginChainEditor::showAddPluginMenu()
         builtinMenu.addItem(902, "Noise Removal (RNNoise)");
         builtinMenu.addItem(903, "Auto Gain (LUFS AGC)");
         menu.addSubMenu("Built-in", builtinMenu);
+       #if JUCE_WINDOWS
+        menu.addItem(904, "Install DPWIM...", !dpwimInstaller_.isBusy());
+       #endif
         menu.addSeparator();
     }
 
@@ -444,7 +476,9 @@ void PluginChainEditor::showAddPluginMenu()
                 auto r = safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinAutoGain);
                 if (!r) juce::Logger::writeToLog("[VST] Failed to add Auto Gain: " + r.message);
             }
-            else if (result == 1) {
+            else if (result == 904) {
+                safeThis->installDpwim();
+            } else if (result == 1) {
                 safeThis->addPluginFromFile();
             } else if (result == 2) {
                 safeThis->openScannerDialog();
@@ -456,7 +490,7 @@ void PluginChainEditor::showAddPluginMenu()
         });
 }
 
-void PluginChainEditor::openScannerDialog()
+void PluginChainEditor::openScannerDialog(const juce::File& directoryToScan)
 {
     auto* scanner = new PluginScannerComponent(vstChain_);
     scanner->setSize(550, 500);
@@ -474,6 +508,31 @@ void PluginChainEditor::openScannerDialog()
     options.useNativeTitleBar = true;
     options.resizable = true;
     options.launchAsync();
+    if (directoryToScan.isDirectory()) scanner->scanDirectory(directoryToScan);
+}
+
+void PluginChainEditor::installDpwim()
+{
+   #if JUCE_WINDOWS
+    auto safeThis = juce::Component::SafePointer<PluginChainEditor>(this);
+    if (dpwimInstaller_.start(dpwim::managedRoot(), [safeThis](dpwim::Outcome result) {
+            if (!safeThis) return;
+            safeThis->addButton_.setButtonText("+ Add Plugin");
+            safeThis->addButton_.setEnabled(!safeThis->loading_);
+            if (!result.success) {
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "DPWIM", result.message);
+                return;
+            }
+            juce::AlertWindow::showAsync(juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::InfoIcon)
+                .withTitle("DPWIM").withMessage(result.message).withButton("Open Plugin List").withButton("Close"),
+                [safeThis, directory = result.bundle.getParentDirectory()](int button) {
+                    if (safeThis && button == 1) safeThis->openScannerDialog(directory);
+                });
+        })) {
+        addButton_.setButtonText("Installing DPWIM...");
+        addButton_.setEnabled(false);
+    }
+   #endif
 }
 
 void PluginChainEditor::addPluginFromDescription(const juce::PluginDescription& desc)

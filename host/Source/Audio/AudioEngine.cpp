@@ -1243,6 +1243,10 @@ void AudioEngine::enterDeviceRecoveryAfterRestoreFailure()
     autoMuteOutputForDeviceLoss();
     inputLevel_.store(0.0f, std::memory_order_relaxed);
     outputLevel_.store(0.0f, std::memory_order_relaxed);
+    inputMeterLevelL_.store(0.0f, std::memory_order_relaxed);
+    inputMeterLevelR_.store(0.0f, std::memory_order_relaxed);
+    outputLevelL_.store(0.0f, std::memory_order_relaxed);
+    outputLevelR_.store(0.0f, std::memory_order_relaxed);
     reconnectCooldown_ = kReconnectCooldownTicks;
     reconnectMissCount_ = 0;
 }
@@ -1481,6 +1485,10 @@ bool AudioEngine::markInputEndpointRestartPending(
     autoMuteOutputForDeviceLoss();
     inputLevel_.store(0.0f, std::memory_order_relaxed);
     outputLevel_.store(0.0f, std::memory_order_relaxed);
+    inputMeterLevelL_.store(0.0f, std::memory_order_relaxed);
+    inputMeterLevelR_.store(0.0f, std::memory_order_relaxed);
+    outputLevelL_.store(0.0f, std::memory_order_relaxed);
+    outputLevelR_.store(0.0f, std::memory_order_relaxed);
     reconnectCooldown_ = 0;
     reconnectMissCount_ = 0;
     return true;
@@ -3103,6 +3111,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         clearOutputRange(0, callbackSamples);
         inputLevel_.store(0.0f, std::memory_order_relaxed);
         outputLevel_.store(0.0f, std::memory_order_relaxed);
+        inputMeterLevelL_.store(0.0f, std::memory_order_relaxed);
+        inputMeterLevelR_.store(0.0f, std::memory_order_relaxed);
+        outputLevelL_.store(0.0f, std::memory_order_relaxed);
+        outputLevelR_.store(0.0f, std::memory_order_relaxed);
         latencyMonitor_.markCallbackEnd();
         return;
     }
@@ -3120,6 +3132,23 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
         return;
     }
 
+    const bool measureThisCallback = (++rmsDecimationCounter_ & 3) == 0;
+    const bool inputLost = inputDeviceLost_.load(std::memory_order_relaxed);
+    const bool inputMuted = inputMuted_.load(std::memory_order_relaxed);
+    if (measureThisCallback) {
+        float levels[2]{};
+        if (!inputLost && !inputMuted) {
+            int selected = 0;
+            const float meterGain = std::abs(gain - 1.0f) > 0.001f ? gain : 1.0f;
+            for (int ch = 0; ch < numInputChannels && selected < (monoInput ? 1 : 2); ++ch)
+                if (inputChannelData[ch] != nullptr)
+                    levels[selected++] = calculateRMS(inputChannelData[ch], numSamples) * meterGain;
+        }
+        // Observe capture before Mono fold-down/duplication; an absent source is zero.
+        inputMeterLevelL_.store(levels[0], std::memory_order_relaxed);
+        inputMeterLevelR_.store(levels[1], std::memory_order_relaxed);
+    }
+
     // 1. Copy input data into the pre-allocated work buffer (no heap allocation)
     auto& buffer = workBuffer_;
     int workChannels = juce::jmin(
@@ -3131,7 +3160,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 
     // Input device lost use silence instead of fallback device input.
     // Work buffer already cleared above, so just skip the copy.
-    if (!inputDeviceLost_.load(std::memory_order_relaxed)) {
+    if (!inputLost) {
         if (monoInput) {
             // JUCE may pack active inputs or retain null physical positions.
             // The active mask is the selection authority; copy its first valid
@@ -3191,16 +3220,16 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     // Independent input mute: silence the buffer but keep processing
     // (reverb tails fade naturally, AGC enters freeze, compressors release)
     // Different from panic mute which skips processBlock entirely.
-    if (inputMuted_.load(std::memory_order_relaxed)) {
+    if (inputMuted) {
         buffer.clear();
     }
 
     // Measure input level (RMS) decimated: every 4th callback (~23Hz at 48kHz/512smp).
     // UI timer runs at 30Hz so per-callback RMS is wasted work.
-    const bool measureThisCallback = (++rmsDecimationCounter_ & 3) == 0;
     if (measureThisCallback && buffer.getNumChannels() > 0) {
         float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
         inputLevel_.store(rms, std::memory_order_relaxed);
+        // Preserve the legacy scalar API tap after Mono conversion.
     }
 
     // 2. Process the VST chain inline (active plug-in latency still contributes PDC).
@@ -3281,10 +3310,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
 
     // Measure output level same decimation as input
     if (measureThisCallback && buffer.getNumChannels() > 0) {
-        float rms = calculateRMS(buffer.getReadPointer(0), numSamples);
-        if (buffer.getNumChannels() > 1)
-            rms = juce::jmax(rms, calculateRMS(buffer.getReadPointer(1), numSamples));
-        outputLevel_.store(rms, std::memory_order_relaxed);
+        const float left = calculateRMS(buffer.getReadPointer(0), numSamples);
+        const float right = buffer.getNumChannels() > 1
+            ? calculateRMS(buffer.getReadPointer(1), numSamples) : 0.0f;
+        outputLevelL_.store(left, std::memory_order_relaxed);
+        outputLevelR_.store(right, std::memory_order_relaxed);
+        outputLevel_.store(juce::jmax(left, right), std::memory_order_relaxed);
     }
 
     latencyMonitor_.markCallbackEnd();
@@ -3885,6 +3916,10 @@ void AudioEngine::audioDeviceStopped()
         autoMuteOutputForDeviceLoss();
         inputLevel_.store(0.0f, std::memory_order_relaxed);
         outputLevel_.store(0.0f, std::memory_order_relaxed);
+        inputMeterLevelL_.store(0.0f, std::memory_order_relaxed);
+        inputMeterLevelR_.store(0.0f, std::memory_order_relaxed);
+        outputLevelL_.store(0.0f, std::memory_order_relaxed);
+        outputLevelR_.store(0.0f, std::memory_order_relaxed);
     }
 
     Log::info("AUDIO", "Device stopped");
@@ -3900,6 +3935,10 @@ void AudioEngine::audioDeviceError(const juce::String& errorMessage)
     autoMuteOutputForDeviceLoss();
     inputLevel_.store(0.0f, std::memory_order_relaxed);
     outputLevel_.store(0.0f, std::memory_order_relaxed);
+    inputMeterLevelL_.store(0.0f, std::memory_order_relaxed);
+    inputMeterLevelR_.store(0.0f, std::memory_order_relaxed);
+    outputLevelL_.store(0.0f, std::memory_order_relaxed);
+    outputLevelR_.store(0.0f, std::memory_order_relaxed);
     requestImmediateReconnect();
 }
 

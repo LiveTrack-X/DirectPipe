@@ -80,7 +80,7 @@ void StatusUpdater::setUI(juce::Label* latencyLabel, juce::Label* cpuLabel, juce
                           juce::TextButton* monitorMuteBtn, juce::TextButton* vstMuteBtn,
                           juce::TextButton* panicMuteBtn,
                           juce::Slider* inputGainSlider,
-                          LevelMeter* inputMeter, LevelMeter* outputMeter)
+                          StereoLevelMeter* inputMeter, StereoLevelMeter* outputMeter)
 {
     latencyLabel_ = latencyLabel;
     cpuLabel_ = cpuLabel;
@@ -269,8 +269,9 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
     bool muted = engine_.isMuted();
 
     // ── Level meters ──
-    inputMeter_->setLevel(engine_.getInputLevel());
-    outputMeter_->setLevel(muted ? 0.0f : engine_.getOutputLevel());
+    inputMeter_->setLevels(engine_.getInputLevel(0), engine_.getInputLevel(1));
+    outputMeter_->setLevels(muted ? 0.0f : engine_.getOutputLevel(0),
+                            muted ? 0.0f : engine_.getOutputLevel(1));
     inputMeter_->tick();
     outputMeter_->tick();
 

@@ -1,6 +1,6 @@
 # DirectPipe Architecture / 아키텍처
 
-> **Current source: 4.5.0 / 현재 소스: 4.5.0** — [Verification record / 검증 기록](RELEASE_4_5_0.md).
+> **Current source: 4.5.1 candidate / 현재 소스: 4.5.1 후보** — [Verification and pending gates / 검증·남은 게이트](RELEASE_4_5_1.md). [Published 4.5.0 evidence](RELEASE_4_5_0.md) is historical.
 > Version-specific v4.3.0 results below and [4.4.0 validation](MULTI_RECEIVER_4_4_0.md) are historical. / 아래 이전 버전 수치는 당시 검증 이력이며 현재 변경·검증 범위와 구분합니다.
 
 ## System Overview / 시스템 개요
@@ -81,7 +81,7 @@ zero-output stages; a rejected connection cannot skip the final commit.
 - **SafetyLimiter** — RT-safe global Safety Guard (legacy class name retained): zero-latency stereo-linked sample-peak guard with instant attack, 50ms release smoothing, and final hard ceiling clamp. Inserted after VSTChain and before Safety Volume/all output paths. Atomic params: `enabled`, `ceilingdB`; Safety Volume adds `headroom_enabled`, `headroom_dB` as final trim. GR feedback via atomic for UI. / RT 안전 글로벌 Safety Guard(레거시 클래스명 유지): zero-latency 스테레오 링크드 샘플-피크 가드(instant attack, 50ms release smoothing, final hard clamp). VSTChain 이후 Safety Volume 및 모든 출력 경로 이전에 삽입. Atomic 파라미터.
 - **DeviceState** — Enum-based state machine for device connection status. Replaces multiple boolean flags with explicit states for switch-based handling. Compiler warns on missing cases. / 장치 연결 상태를 위한 enum 기반 상태 머신. 다수의 boolean 플래그 대신 명시적 상태로 switch 처리. 컴파일러가 누락된 case 경고.
 - **BuiltinFilter** — HPF+LPF audio processor (AudioProcessor subclass). Inserted into AudioProcessorGraph alongside VSTs. HPF default ON 60Hz, LPF default OFF 16kHz. Supports mono + stereo. / HPF+LPF 오디오 프로세서 (AudioProcessor 서브클래스). VST와 함께 AudioProcessorGraph에 삽입.
-- **BuiltinNoiseRemoval** — RNNoise-based noise suppression (AudioProcessor subclass). 48kHz only, 480-frame FIFO (~10ms latency), dual-mono. VAD gate with configurable threshold. / RNNoise 기반 노이즈 제거 (AudioProcessor 서브클래스). 48kHz 전용, 480프레임 FIFO, 듀얼 모노. VAD 게이트.
+- **BuiltinNoiseRemoval** — Unreleased: native 48 kHz retains the audio path and reports 1440 samples (480 FIFO + 960 intrinsic delay); other 8-192 kHz rates use preallocated streaming low-pass conversion to/from 48 kHz. Independent L/R state and gate timing remain at 48 kHz; converted latency is reported in host samples. Chain/editor status refreshes after device changes. Published 4.5.0 retains its 48 kHz-only behavior.
 - **BuiltinAutoGain** — LUFS-based automatic gain control (AudioProcessor subclass). WebRTC-inspired dual-envelope level detection (fast 10ms/200ms + slow 0.4s LUFS, max selection) with direct gain computation (no IIR gain envelope). K-weighting ITU-R BS.1770 sidechain. Incremental `runningSquareSum_`. Configurable target LUFS, lowCorr/hiCorr (hold↔full correction blend), max gain 22dB, freeze gate (holds current gain during silence). -6dB internal target offset for open-loop overshoot compensation. / LUFS 기반 자동 게인 제어 (AudioProcessor 서브클래스). WebRTC 영감의 듀얼 엔벨로프 레벨 감지 (fast 10ms/200ms + slow 0.4s LUFS) + 직접 게인 연산 (IIR 게인 엔벨로프 없음). K-weighting ITU-R BS.1770 사이드체인. 증분식 `runningSquareSum_`. freeze 게이트: 무음 시 현재 게인 유지.
 - **PluginLoadHelper** — Helper for cross-platform VST loading. Abstracts platform-specific plugin loading paths and formats. / 크로스 플랫폼 VST 로딩 헬퍼. 플랫폼별 플러그인 로딩 경로와 포맷을 추상화.
 
@@ -323,3 +323,14 @@ Cross-thread APIs return owned snapshots rather than unlocked container pointers
 22. **AudioEngine device reconnection** — `deviceLost_` is aggregate state derived from per-direction input/output loss. Manual input/output selection and Output None clear only the matching direction, then recheck the opposite direction and re-arm the timer when recovery is still pending. Dual mechanism: ChangeListener (immediate, cooldown bypass on device-list changes) + 3s timer (fallback). `desiredDeviceType_`, `desiredInputDevice_`, and `desiredOutputDevice_` are tracked. `attemptReconnection()` preserves SR/BS/channel routing; when the desired type is ASIO but the current fallback type is not, it scans the desired ASIO type first and switches back only after the saved ASIO duplex target is visible. `attemptingReconnection_` re-entrancy guard (message thread only). `reconnectMissCount_` fallback (accept current devices after 5 misses) only applies to cross-driver stale name scenarios; when startup restore, `inputDeviceLost_`, or `outputAutoMuted_` means an explicit target is pending, counter resets and waits indefinitely. / `deviceLost_`는 방향별 input/output loss에서 계산한 aggregate 상태다. 수동 input/output 선택과 Output None은 해당 방향만 해제하고 반대 방향을 다시 확인하여 복구가 남으면 timer를 재예약한다. `desiredDeviceType_`, `desiredInputDevice_`, `desiredOutputDevice_`를 추적하며, desired type이 ASIO이고 현재 fallback type이 다르면 먼저 원하는 ASIO type을 스캔한 뒤 저장된 ASIO duplex target이 보일 때만 다시 전환. 듀얼 감지 메커니즘 + 재진입 가드, 장치 목록 변경 시 즉시 재시도. `reconnectMissCount_` 폴백은 교차 드라이버 이름 불일치에만 적용; 시작 복원, `inputDeviceLost_`, 또는 `outputAutoMuted_`로 명시 대상이 대기 중이면 무기한 대기.
 23. **MonitorOutput device reconnection** — retryable device loss is tracked by `monitorLost_` for external `audioDeviceError`/`audioDeviceStopped` events only. Internal teardown is ignored, successful start clears retry state, and `SampleRateMismatch` stays paused instead of polling the UI timer. / 모니터 재연결은 retry 가능한 외부 장치 lost에만 적용하며, 내부 teardown과 샘플레이트 불일치는 반복 재연결하지 않습니다.
 24. **WebSocket sendFrame bool return** — `sendFrame` returns `bool`; on `false`, `broadcastToClients` closes socket for immediate dead client detection (prevents repeated write-error log spam). / `sendFrame`이 `bool` 반환; 실패 시 소켓 즉시 닫아 dead client 감지.
+
+## Optional external DPWIM installation (4.5.1)
+
+DPWIM remains an external Windows VST. `DpwimInstaller` checks the official
+stable release and verifies SHA-256, bounded paths/ZIP contents, VST3 metadata
+and x64 PE version. Worker-owned staging and an atomically published manifest
+point to versioned per-user copies; old/external modules are not replaced.
+The UI completion uses SafePointer and the existing child-process scanner.
+No DPWIM source, builtin type or Auto insertion is added. Input L/R bars remain
+pre-Mono capture with gain/mute; legacy scalar telemetry is unchanged.
+[Installation details](DPWIM_WINDOWS_SETUP.md).

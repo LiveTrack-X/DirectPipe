@@ -104,8 +104,8 @@ MainComponent::MainComponent(bool enableExternalControls)
     addAndMakeVisible(*pluginChainEditor_);
 
     // Level Meters
-    inputMeter_ = std::make_unique<LevelMeter>("INPUT");
-    outputMeter_ = std::make_unique<LevelMeter>("OUTPUT");
+    inputMeter_ = std::make_unique<StereoLevelMeter>("INPUT");
+    outputMeter_ = std::make_unique<StereoLevelMeter>("OUTPUT");
     addAndMakeVisible(*inputMeter_);
     addAndMakeVisible(*outputMeter_);
 
@@ -212,12 +212,7 @@ MainComponent::MainComponent(bool enableExternalControls)
                 showNotification("Auto preset could not be saved", NotificationLevel::Error);
             loadingSlot_ = false;
 
-            // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
-            if (auto* device = audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
-                if (std::abs(device->getCurrentSampleRate() - 48000.0) > 1.0)
-                    showNotification("Noise Removal requires 48kHz - currently inactive at this sample rate",
-                                     NotificationLevel::Warning);
-            }
+            // Native/converted/inactive RNNoise status is shown in its chain row.
 
             // Deselect A-E, highlight Auto button
             if (presetSlotBar_)
@@ -1121,12 +1116,7 @@ void MainComponent::mouseDown(const juce::MouseEvent& e)
 
                     safeThis->loadingSlot_ = false;
 
-                    // Warn if sample rate is not 48kHz (Noise Removal requires 48kHz)
-                    if (auto* device = safeThis->audioEngine_.getDeviceManager().getCurrentAudioDevice()) {
-                        if (std::abs(device->getCurrentSampleRate() - 48000.0) > 1.0)
-                            safeThis->showNotification("Noise Removal requires 48kHz - currently inactive at this sample rate",
-                                                       NotificationLevel::Warning);
-                    }
+                    // The chain row reports actual RNNoise processing status.
 
                     if (safeThis->pluginChainEditor_)
                         safeThis->pluginChainEditor_->refreshList();
