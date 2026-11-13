@@ -1,5 +1,6 @@
 name: Finish authorized v4.5.1 release
 
+# Retry missing-tag handling after the initial preflight.
 # One-time release orchestration; retries verify the same immutable source.
 # Triggered only when this file is explicitly updated on main.
 on:
