@@ -688,7 +688,8 @@ TEST(HttpApiServerTest, PerformanceLatencyIncludesActiveChainPDC)
     const auto added =
         chain.addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemoval);
     ASSERT_TRUE(added.success);
-    ASSERT_EQ(chain.getTotalChainPDC(), 480);
+    // RNNoise reports 480 FIFO + 960 intrinsic samples at 48 kHz.
+    ASSERT_EQ(chain.getTotalChainPDC(), 1440);
 
     const auto [status, body] =
         server.processRequestForTest("GET", "/api/perf");
@@ -698,7 +699,7 @@ TEST(HttpApiServerTest, PerformanceLatencyIncludesActiveChainPDC)
     ASSERT_TRUE(parsed.isObject());
     EXPECT_NEAR(static_cast<double>(
                     parsed.getDynamicObject()->getProperty("latencyMs")),
-                30.0, 0.01);
+                50.0, 0.01);  // 20 ms device I/O + 30 ms RNNoise PDC.
 }
 
 TEST(HttpApiServerTest, RejectsInvalidListenPorts)
