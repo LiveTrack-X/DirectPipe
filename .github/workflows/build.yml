@@ -80,6 +80,7 @@ jobs:
   # ═══════════════════════════════════════════
   build-windows:
     needs: [text-integrity]
+    if: ${{ !cancelled() && needs.text-integrity.result == 'success' }}
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -355,6 +356,7 @@ jobs:
   # ═══════════════════════════════════════════
   build-macos:
     needs: [text-integrity]
+    if: ${{ !cancelled() && needs.text-integrity.result == 'success' }}
     runs-on: macos-15
     timeout-minutes: 45
 
@@ -521,6 +523,7 @@ jobs:
   # ═══════════════════════════════════════════
   build-linux:
     needs: [text-integrity]
+    if: ${{ !cancelled() && needs.text-integrity.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -682,6 +685,7 @@ jobs:
   # ═══════════════════════════════════════════
   build-streamdeck:
     needs: [text-integrity]
+    if: ${{ !cancelled() && needs.text-integrity.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

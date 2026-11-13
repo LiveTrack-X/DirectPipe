@@ -222,3 +222,13 @@ fixes belong to the deferred integration snapshot, not the published 0.3.4 VST.
   diff whitespace pass. Review: PRE_RELEASE_REVIEW_4_5_1.md.
 - No actual user plugin folder/device/active application was changed. Network
   runtime/full-platform checks and public assets remain pending CI execution.
+
+
+### CI preflight correction
+
+Commit 507651846d52062f607cd21957be53a0da618a88 was staged in PR #10.
+Run 43358343218 reported success but only text/version checks actually ran:
+the four build jobs inherited a skipped optional tag-preparation ancestor.
+This is not a full validation pass. Explicit non-cancelled/text-success guards
+were added to all four build jobs so CI-only/PR runs execute their complete
+checks. The release run still requires all four validated artifacts.
