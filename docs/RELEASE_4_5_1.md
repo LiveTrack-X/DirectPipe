@@ -254,3 +254,51 @@ the three current non-main branches after publication; every recorded branch
 head must remain unchanged and be an ancestor of main before any ref is removed.
 The v4.5.1 source tag is retained. Hardware listening/device acceptance remains
 distinct from synthetic and hosted-runner checks.
+
+
+## Publication completed — 2026-11-13
+
+DirectPipe v4.5.1 was published at 04:23:30 UTC (13:23:30 KST):
+https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.5.1
+
+Immutable source tag: ff9ac89b479434f09485393c60b40805dc2a4a33.
+Exact-tag build/release run:
+https://github.com/LiveTrack-X/DirectPipe/actions/runs/43362916431
+
+| Release gate | Passed | Explicit skips | Failures |
+| --- | ---: | ---: | ---: |
+| Windows CTest | 800 | 4 | 0 |
+| macOS CTest | 686 | 39 | 0 |
+| Linux CTest | 686 | 39 | 0 |
+| Stream Deck tests | 28 | 0 | 0 |
+| Windows API parser tests | 9 | 0 | 0 |
+
+Windows live HTTPS DPWIM installation into an owned fixture passed. Platform
+and opt-in fixture skips are recorded in the uploaded CTest evidence; they
+are not counted as passes. macOS repeated snapshot recovery passed 25 fresh
+processes, and the mounted universal DMG matched staging. Linux ELF/package
+checks and Windows executable/Receiver version checks passed. Windows binaries
+were verified explicitly unsigned because no signing certificate is configured.
+
+The initial dispatch stopped before publication because a missing-tag 404 JSON
+body was mistaken for a SHA. Missing-tag handling was corrected without moving
+an existing tag. The successful exact-tag run above is the publication evidence.
+
+Public-download verification and authorized branch cleanup:
+https://github.com/LiveTrack-X/DirectPipe/actions/runs/43362905392
+
+All five release assets are public and nonempty. The four payload downloads
+passed checksums.sha256; Windows ZIP, Linux tar and Stream Deck package identities
+also passed. The three reviewed branch heads were unchanged and ancestors of
+main before deletion. Remote branches were then verified to contain only main.
+PR #10 is merged. The one-time orchestration workflow is removed from main after
+completion; its exact execution remains archived in the release tag and run.
+
+Issue #9 received a post-publication retry request and remains open:
+https://github.com/LiveTrack-X/DirectPipe/issues/9#issuecomment-6843895855
+
+Local working-tree synchronization and ignored local control-file closeout could
+not run after the Windows/Unix permission-root environment error. Remote source,
+publication and branch cleanup were completed through the connected GitHub API
+and hosted Actions. Physical-device listening and prolonged live-session tests
+remain unclaimed; the existing live DirectPipe session was not interrupted.
