@@ -1,22 +1,29 @@
-# Changelog
+# Changelog / 변경 이력
 
 Major notable changes to DirectPipe (maintained in this repository era, including v3.4.0+) are documented in this file.
+DirectPipe의 주요 변경 사항을 기록합니다. 이 저장소에서 관리하는 v3.4.0 이후의 이력을 포함합니다.
 
 ---
 
 ## [4.5.2] - 2026-11-16
 
-- Add manual Built-in **NoiseRemover (DSP)**: two-second Learn with a frozen
-  noise profile, or adaptive Realtime estimation. Excluded from AUTO.
-- Show live input (including voice), estimated noise and actual per-frequency
-  attenuation inside the DSP editor, with L/R selection.
-- Report actual DSP delay in samples/ms and chain compensation: 256 samples
-  (5.333 ms) at 48 kHz, including learning/no profile/zero reduction. Graph adds
-  no audio delay. Mode/reduction/completed manual profile persist in presets.
-- New Receiver instances default to **Medium (1024 frames)**; saved choices remain.
-- 내장 DSP 노이즈 제거의 Learn/Realtime과 입력·학습 노이즈·감쇠 그래프를 추가합니다.
-  AUTO에는 포함하지 않으며 Receiver 신규 기본 버퍼는 Medium입니다.
-- Verification and scan results: [4.5.2 readiness](docs/RELEASE_4_5_2.md).
+### English
+
+- Add manual Built-in **NoiseRemover (DSP)** with **Learn** (a frozen profile captured over two seconds) and **Realtime** (adaptive estimation). It is excluded from AUTO.
+- Show current input, including voice, the estimated noise profile and actual frequency-by-frequency attenuation inside the DSP editor. Select L / Mono or R independently for display.
+- Report actual DSP latency in samples and milliseconds, including chain compensation: **256 samples / 5.333 ms at 48 kHz**. The same delay remains during learning, without a profile and at zero reduction. The graph adds no audio delay. Mode, reduction and the completed manual profile are saved in presets.
+- New Receiver instances default to **Medium (1024 frames)**. Existing projects retain their saved buffer choices.
+
+[Verification and VirusTotal results](docs/RELEASE_4_5_2.md).
+
+### 한국어
+
+- 수동으로 추가하는 내장 **NoiseRemover (DSP)**를 제공합니다. **Learn(학습)**은 2초 동안 학습한 노이즈 프로필을 고정하며, **Realtime(실시간)**은 노이즈 추정치를 자동으로 갱신합니다. AUTO에는 포함하지 않습니다.
+- DSP 편집창에 음성을 포함한 현재 입력, 추정 노이즈 프로필, 주파수별 실제 감쇠량을 표시합니다. 표시 채널은 L / Mono 또는 R을 각각 선택할 수 있습니다.
+- 실제 DSP 지연을 샘플 수와 밀리초로 표시하고 체인의 지연 보정에도 반영합니다. **48 kHz에서 256샘플 / 5.333 ms**이며, 학습 중·프로필이 없는 상태·감쇠량 0에서도 같은 지연을 유지합니다. 그래프 표시는 오디오 지연을 추가하지 않습니다. 모드·감쇠량·완료된 수동 학습 프로필은 프리셋에 저장됩니다.
+- 새 Receiver 인스턴스의 기본 버퍼를 **Medium(1024프레임)**으로 변경했습니다. 기존 프로젝트에 저장된 버퍼 선택은 유지됩니다.
+
+[검증 결과 및 VirusTotal 검사 결과](docs/RELEASE_4_5_2.md).
 
 ## [4.5.1] - 2026-11-13
 

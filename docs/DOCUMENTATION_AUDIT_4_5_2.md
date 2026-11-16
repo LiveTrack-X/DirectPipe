@@ -114,3 +114,13 @@ Publication closeout: stable4.5.2 is public. All seven anonymous downloads match
 staging and all six checksums; final VirusTotal identities match the actual public
 bytes. Public notes preserve unsupported/failed-engine, signing, skipped-test and
 hardware/listening limits. Detailed results are in RELEASE_4_5_2.md.
+
+Language-parity correction: the former public description paired bilingual
+headings with a shortened Korean summary. Full English/Korean sections now
+cover all release content equally; links, file names, CI/scan figures and live
+body were compared. This correction changed documentation/release metadata only.
+
+언어 정합성 보완: 기존 공개 설명은 제목을 두 언어로 쓰고 한국어 본문을 짧게
+요약한 상태였습니다. 모든 릴리스 내용을 영어·한국어 각각의 전체 본문으로
+수정하고 링크·파일명·CI 및 검사 수치·공개 본문을 대조했습니다. 이번 보완은
+문서와 릴리스 설명에 반영했습니다.

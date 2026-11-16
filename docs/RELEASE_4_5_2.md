@@ -189,3 +189,18 @@ snapshots/summaries, public-verification.json and downloaded archive-verificatio
 No live installed app/device/configuration or installed Receiver was changed.
 Actual vocal/listening, hardware round-trip and prolonged deadline acceptance
 remain separate; Windows unsigned/macOS ad-hoc/not-notarized limits remain in notes.
+
+### Complete English/Korean release-note correction
+
+The public description and current repository release notes/changelog now have
+full English and Korean text for the same changes, usage, upgrade, verification,
+limitations, scan results and downloads. Both language sections contain the
+same links, file identifiers and test/scan figures. The live release body was
+retrieved and matched to source after newline normalization. The release ID,
+tag, publication timestamp and all seven asset IDs/sizes/digests are unchanged.
+
+공개 릴리스 설명과 현재 저장소의 릴리스 노트·변경 이력을 영어·한국어 전체
+본문으로 맞췄습니다. 변경 사항·사용법·업데이트·검증·제한 사항·검사 결과·
+다운로드 안내의 내용과 링크·파일명·수치를 두 언어에서 대조했습니다. 공개된
+본문도 원문과 일치하며 릴리스 ID·태그·공개 시각·첨부 파일 7개의 ID·크기·
+해시는 그대로입니다.
