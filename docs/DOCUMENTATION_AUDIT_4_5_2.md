@@ -99,3 +99,13 @@ int64_t differ from JUCE's exact var conversion type. The DPWIM release asset
 size conversion now names juce::int64 and explains the portability constraint.
 The failed run remains evidence of the original defect; subsequent platform
 validation is tracked in RELEASE_4_5_2.md.
+
+Final software checkpoint: CI43801035670 passed all four platform/package jobs;
+the tested Git tree matches the v4.5.2 source tag. Documentation is tied to the
+actual asset/version identities. Final scan/public-delivery results remain in
+RELEASE_4_5_2.md rather than being inferred from the audit itself.
+
+Final artifact/scan checkpoint: seven final CI file reports completed; hashes
+were rechecked, unsupported/failed engines are separate and no safety guarantee
+is inferred. Public notes name all four platform payloads, both scan reports
+and checksums. Public-download evidence is recorded after promotion.

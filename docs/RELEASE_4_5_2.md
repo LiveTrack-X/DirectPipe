@@ -1,6 +1,6 @@
 # DirectPipe 4.5.2 release preparation
 
-Status: Authorized public release execution; final exact-source CI and artifact checks in progress
+Status: Final software/artifact/scan verification complete; public delivery verification pending
 Date: 2026-11-16
 Authority: OD-2026-11-16-0007 / SPEC/DP-452-RELEASE-0001.md; prior preparation OD-0005 (local protocol)
 
@@ -69,7 +69,7 @@ Detailed local evidence: build/release-452/virustotal-report.json and .md.
 
 ## Authorized release execution and remaining gates
 
-- macOS/Linux builds/tests and source-version CI before all-platform claims.
+- Windows/macOS/Linux/Stream Deck source-version CI passed; see the final checkpoint below.
 - Real vocal/listening, hardware loopback and long-session deadline acceptance.
 - OD-2026-11-16-0007 now authorizes commits/PR/merge/tag/CI/draft/publication after gates.
 - The earlier preparation scans above apply only to their exact local hashes. Final
@@ -83,10 +83,80 @@ The source/document audit is recorded in DOCUMENTATION_AUDIT_4_5_2.md. Added
 native core CTest coverage on all CI platforms, completed-Learn concurrent save,
 async learned-profile persistence and restoration of all five Receiver choices.
 The workflow now stops at draft and checks exact Windows archive members/AMD64/
-VST3 metadata before staging. Local focused native41, DSP/preset15 and Receiver2
+VST3 metadata before staging. Local focused native 41, DSP/preset15 and Receiver2
 checks passed after these coverage changes.
 
 The first PR CI run43800434529 exposed a Linux LP64 compiler ambiguity in the
 DPWIM asset-size JSON conversion at e5c7d20. Restored the exact juce::int64
 conversion (int64_t may be long on LP64) and clarified its comment. Fresh platform
 CI is required; the failed run is retained and is not counted as validation.
+
+### Final source and CI checkpoint
+
+PR11 merged as `6f0fbd3110d52101faa704c8c098050187a5a868` and is the immutable
+v4.5.2 source tag. Full CI 43801035670 tested PR head a5fe0c2 via test merge
+634166c8; its Git tree `d8d105379cff7445d7c816311eb631dc5522a2e6` exactly matches
+the merged/tagged tree. The validated CI artifacts are promoted unchanged.
+
+| Gate | Passed | Skipped | Failed |
+|---|---:|---:|---:|
+| Windows CTest |825|4|0|
+| macOS CTest |710|40|0|
+| Linux CTest |710|40|0|
+| Stream Deck tests |28|0|0|
+| API parser |9|0|0|
+
+The native 41-check core executable is included in each platform's CTest total
+as one registered test. Windows exact-candidate API smoke passed and gracefully
+closed its own process; its EXE SHA256 matches the final Windows ZIP payload.
+The local live app was not contacted. Explicit platform/optional fixture skips
+remain in JUnit and are not passes. Full/production npm audits report 0 issues.
+
+Final Windows archive has exactly 4 payload files, 3 AMD64 binaries with 4.5.2
+file/product versions and matching VST3 metadata. Windows binaries are unsigned;
+repository secrets contain SDKs but no signing certificate. macOS app/VST2/VST3/
+AU bundle versions and arm64+x86_64 architectures passed CI; verified mounted
+DMG payload matches staging. Linux 3 ELF x86_64 binaries and tar payload passed
+identity checks. Stream Deck manifest 4.5.2.0/10 action UUIDs matches source.
+
+Draft downloads of all 4 payloads and the preliminary checksum file match the
+validated originals. Final VirusTotal analysis and final notes/reports/checksums
+are held before public promotion. This section is a software/artifact checkpoint,
+not yet a public-download claim or hardware/listening acceptance.
+
+### Final distributable scans and pre-publication gate
+
+All 7 final CI file reports completed and post-scan hashes match. Exact final
+identities/engine coverage/timestamps are in the release assets
+`virustotal-report.json` / `.md`; these supersede the earlier local checkpoint
+for public-distribution claims. The final Windows ZIP SHA256 is
+`428732cdbe78b03c1f853c25ddaf5537ba553a726edd9115029a933c8ea14134`.
+
+### VirusTotal
+
+Final distributable bytes checked on2026-11-16 (KST). Post-scan SHA-256 values
+match the files staged for this release.
+
+| File | Detections / checked engines | Report |
+|---|---:|---|
+| Windows ZIP | **0/66** | [VirusTotal](https://www.virustotal.com/gui/file/428732cdbe78b03c1f853c25ddaf5537ba553a726edd9115029a933c8ea14134) |
+| Windows host | **0/71** | [VirusTotal](https://www.virustotal.com/gui/file/ed053918fe6509d62f911425070564e17a9d3cc3d3254375cd99341b94af4036) |
+| Receiver VST2 | **0/71** | [VirusTotal](https://www.virustotal.com/gui/file/f2876b7c371e008b56776805fd0fb3485d682498904db9f6d45979cad903ed91) |
+| Receiver VST3 | **0/71** | [VirusTotal](https://www.virustotal.com/gui/file/071dbbb848d55e78e94b892fcff053262df02ac31b6d04cd4e9334bb76cadc09) |
+| macOS DMG | **0/61** | [VirusTotal](https://www.virustotal.com/gui/file/ebcbc09ba59bad1a2d58775b32e47044a1bcdf1f4eda0f99793f5e02d9f3b63c) |
+| Linux tar.gz | **0/62** | [VirusTotal](https://www.virustotal.com/gui/file/feb07908b1b4f5c866faa6c41faa37ad04546ca579421f1a61d42476970ac505) |
+| Stream Deck | **0/64** | [VirusTotal](https://www.virustotal.com/gui/file/8d2f0d3c41f003a21c56a94c0e9bca993a971eacec88bfca77110a7d98a09f1c) |
+
+검사 불가·실패·시간 초과 엔진은 위 분모에서 제외합니다. Windows ZIP과 Stream
+Deck에 각각 엔진 실패1건이 있습니다. 전체 범위·시각·정확한 해시는 첨부한
+`virustotal-report.md` / `.json`에 기록했습니다. 무탐지는 안전 보증이 아닙니다.
+
+Unsupported/failed/timeout engines are recorded separately. Archive scans do not
+prove exhaustive coverage of every nested file; the three Windows PE payloads
+also have individual reports. Rebuilt or differently signed bytes need new reports.
+
+
+Pre-publication review verified all seven release assets (four payloads, two
+reports and checksums) through private draft downloads. Public promotion and
+independent public-download verification are recorded after execution. No live
+user app/device or installed plugin was changed.

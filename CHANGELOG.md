@@ -16,7 +16,7 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 - New Receiver instances default to **Medium (1024 frames)**; saved choices remain.
 - 내장 DSP 노이즈 제거의 Learn/Realtime과 입력·학습 노이즈·감쇠 그래프를 추가합니다.
   AUTO에는 포함하지 않으며 Receiver 신규 기본 버퍼는 Medium입니다.
-- Preparation/scan status: [4.5.2 readiness](docs/RELEASE_4_5_2.md).
+- Verification and scan results: [4.5.2 readiness](docs/RELEASE_4_5_2.md).
 
 ## [4.5.1] - 2026-11-13
 

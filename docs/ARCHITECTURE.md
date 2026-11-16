@@ -1,6 +1,6 @@
 # DirectPipe Architecture / 아키텍처
 
-> **Current source: 4.5.2 candidate / 현재 소스: 4.5.2 후보** — [Verification and pending gates / 검증·남은 게이트](RELEASE_4_5_2.md). [Published 4.5.0 evidence](RELEASE_4_5_0.md) is historical.
+> **Current source: 4.5.2 / 현재 소스: 4.5.2** — [Verification and pending gates / 검증·남은 게이트](RELEASE_4_5_2.md). [Published 4.5.0 evidence](RELEASE_4_5_0.md) is historical.
 > Version-specific v4.3.0 results below and [4.4.0 validation](MULTI_RECEIVER_4_4_0.md) are historical. / 아래 이전 버전 수치는 당시 검증 이력이며 현재 변경·검증 범위와 구분합니다.
 
 ## System Overview / 시스템 개요

@@ -1,6 +1,6 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current source / 현재 소스: 4.5.2 candidate** — Current build/package evidence and remaining platform gates: [verification record / 검증 기록](RELEASE_4_5_2.md). Published [4.5.0 evidence](RELEASE_4_5_0.md) is historical.
+> **Current source / 현재 소스: 4.5.2** — Current build/package evidence and remaining field-test limits: [verification record / 검증 기록](RELEASE_4_5_2.md). Published [4.5.0 evidence](RELEASE_4_5_0.md) is historical.
 > Historical v4.3.0 release results below are separate from [4.4.0 validation](MULTI_RECEIVER_4_4_0.md). / 아래 v4.3.0 검증 수치는 당시 기록이며 현재 소스의 검증과 구분합니다.
 
 > **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 전체 플랫폼 빌드·패키지·checksum·Windows unsigned 상태를 검증했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
@@ -296,7 +296,7 @@ snapshot regression in **25 fresh processes** (`ctest --repeat until-fail:25
 --no-tests=error` with the exact filter). The uploaded JUnit and
 `snapshot-repeat.log` retain these separate results. Windows static DMG checks
 cannot substitute for native macOS mount, architecture and deployment-target
-checks. See [4.5.2 candidate verification boundaries](RELEASE_4_5_2.md).
+checks. See [4.5.2 verification boundaries](RELEASE_4_5_2.md).
 
 The tables below preserve the **v4.3.0 historical inventory** (582 CTest
 registrations: 580 passed, 2 environment-dependent skips, 0 failed; exact-tag CI

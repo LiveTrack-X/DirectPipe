@@ -4,7 +4,7 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.5.2 후보 소스 기준입니다. [검증 기록](RELEASE_4_5_2.md)과 아래 과거 검증 이력을 구분합니다.
+> 역기획서 — v4.5.2 소스 기준입니다. [검증 기록](RELEASE_4_5_2.md)과 아래 과거 검증 이력을 구분합니다.
 >
 > Reverse spec — current v4.5.2. See the [verification record](RELEASE_4_5_2.md); published-release evidence below remains historical.
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.5.2 candidate / 후보 (publication and exact-artifact status: [verification record](RELEASE_4_5_2.md))
+4.5.2 source / 소스 (publication and exact-artifact status: [verification record](RELEASE_4_5_2.md))
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources

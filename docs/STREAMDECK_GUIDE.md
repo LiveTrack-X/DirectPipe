@@ -1,6 +1,6 @@
 # DirectPipe Stream Deck Plugin / 스트림 덱 플러그인
 
-> **4.5.2.0 candidate** — Version aligned with the 4.5.2 host; action UUIDs, saved settings and control protocol are preserved. / 본체와 버전을 맞추며 액션 UUID·저장 설정·프로토콜을 유지합니다. Marketplace review/publication is separate. [Verification / 검증](RELEASE_4_5_2.md).
+> **4.5.2.0** — Version aligned with the 4.5.2 host; action UUIDs, saved settings and control protocol are preserved. / 본체와 버전을 맞추며 액션 UUID·저장 설정·프로토콜을 유지합니다. Marketplace review/publication is separate. [Verification / 검증](RELEASE_4_5_2.md).
 
 > **4.4.0.0** — Action IDs, saved settings and the control protocol are unchanged. Receiver upkeep is available through the Windows host **Settings > Update Receiver...**, separately from Stream Deck installation. The 4.3.0 host updater replaces only the host; update Receivers after launching 4.4.0. / 액션·설정·프로토콜은 유지합니다. 4.3.0 자동 갱신은 본체만 교체하므로 4.4.0 실행 후 Windows Settings에서 Receiver도 갱신하세요.
 

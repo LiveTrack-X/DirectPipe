@@ -4,7 +4,7 @@
 
 ## DirectPipe v4.5.2
 
-**2026-11-16 — preparation / 준비 중**
+**2026-11-16**
 
 - Add manual Built-in **NoiseRemover (DSP)**: two-second Learn with a frozen
   noise profile, or adaptive Realtime estimation. Excluded from AUTO.
@@ -18,7 +18,7 @@
   AUTO에는 포함하지 않으며 Receiver 신규 기본 버퍼는 Medium입니다.
 
 [Verification and completed VirusTotal results](RELEASE_4_5_2.md).
-Windows ZIP0/67; host/Receiver DLL/VST3 each0/71; Stream Deck0/64.
+Windows ZIP 0/66; host/Receiver DLL/VST3 each 0/71; macOS DMG 0/61; Linux 0/62; Stream Deck 0/64.
 Unsupported/failed engines and exact hashes are recorded separately.
 
 ## DirectPipe v4.5.1
