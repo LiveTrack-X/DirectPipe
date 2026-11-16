@@ -76,3 +76,17 @@ Detailed local evidence: build/release-452/virustotal-report.json and .md.
   CI/distributable bytes require matching or fresh reports before publication.
 - The workflow stages a draft only; final promotion follows complete artifact verification.
 - Live app/device/config and installed plugins remain untouched.
+
+### Pre-publication review corrections
+
+The source/document audit is recorded in DOCUMENTATION_AUDIT_4_5_2.md. Added
+native core CTest coverage on all CI platforms, completed-Learn concurrent save,
+async learned-profile persistence and restoration of all five Receiver choices.
+The workflow now stops at draft and checks exact Windows archive members/AMD64/
+VST3 metadata before staging. Local focused native41, DSP/preset15 and Receiver2
+checks passed after these coverage changes.
+
+The first PR CI run43800434529 exposed a Linux LP64 compiler ambiguity in the
+DPWIM asset-size JSON conversion at e5c7d20. Restored the exact juce::int64
+conversion (int64_t may be long on LP64) and clarified its comment. Fresh platform
+CI is required; the failed run is retained and is not counted as validation.

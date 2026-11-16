@@ -1,6 +1,6 @@
 # NoiseRemover (DSP): Learn and Realtime modes
 
-Status: NoiseRemover (DSP) is included in the4.5.2 source. Publication status
+Status: NoiseRemover (DSP) is included in the 4.5.2 source. Publication status
 and exact distributable verification are recorded in the release evidence.
 Current versioned artifact/scan status: [4.5.2 readiness](RELEASE_4_5_2.md).
 Date: 2026-11-16
@@ -90,7 +90,7 @@ in `../experiments/low_latency_nr/README.md`; its waveform/timing figures do not
 prove the extended processor's product or live readiness. Current processor,
 editor, graph/preset and exact-delay checks are recorded below after validation.
 
-## Evidence and limits
+## Prior implementation evidence and limits
 
 Windows Release candidate app and host tests built successfully. Candidate:
 `../build/dsp-nr-spectrum-candidate/bin/DirectPipe.exe` (not launched/installed).

@@ -120,7 +120,9 @@ juce::Result parseRelease(const juce::var& json, Release& release)
     for (const auto& asset : *assets) {
         if (asset["name"].toString() != release.assetName) continue;
         ++matches;
-        const auto size = static_cast<int64_t>(asset["size"]);
+        // juce::var exposes an exact juce::int64 conversion; int64_t can be
+        // a different fundamental type (long) on LP64 platforms.
+        const auto size = static_cast<juce::int64>(asset["size"]);
         release.url = asset["browser_download_url"].toString();
         const auto digest = asset["digest"].toString();
         release.sha256 = digest.startsWith("sha256:") ? digest.substring(7).toLowerCase() : juce::String{};

@@ -93,3 +93,9 @@ Historical records, live app/devices/configuration and installed plugins were
 not modified by this documentation audit. No source-level important defect was
 identified by this document/comment pass; software and artifact review remain
 separate evidence.
+
+The first PR CI exposed an additional cross-platform source issue: LP64 makes
+int64_t differ from JUCE's exact var conversion type. The DPWIM release asset
+size conversion now names juce::int64 and explains the portability constraint.
+The failed run remains evidence of the original defect; subsequent platform
+validation is tracked in RELEASE_4_5_2.md.
