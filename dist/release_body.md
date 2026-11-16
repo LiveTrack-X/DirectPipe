@@ -1,70 +1,62 @@
-## DirectPipe v4.5.1
+## DirectPipe v4.5.2
 
-2026-11-13
-
-Built-in noise removal now works at supported sample rates other than 48 kHz,
-and both input/output meters show L/R separately. Processing status and reported
-latency now match the implementation.
-
-내장 노이즈 제거를 다른 샘플레이트에서도 사용할 수 있게 하고, 입출력 미터에
-L/R을 각각 표시합니다. 실제 처리 상태와 누락됐던 내부 지연 보고도 수정합니다.
-
-- Windows-only **Install DPWIM...** appears directly below Built-in. It checks
-  the official stable release and installs/updates a verified external VST3
-  copy. DPWIM remains separate from built-ins and Auto; active instances and
-  saved plugin paths are preserved.
-- Input L/R bars now show selected capture channels before Mono mixing or
-  duplication, with gain/mute applied. A silent input no longer shows the
-  other channel's copied activity. Mono audio gain and scalar API stay unchanged.
-
-### Upgrade / 업데이트
-
-Preserve your configuration and close DirectPipe yourself before replacing
-files. Use Settings > Update Receiver... to review existing Receiver versions
-after updating the host. The updater in an older installed version performs
-the first upgrade; keep recovery files if it fails.
-
-기존 설정을 보존하고 파일 교체 전 DirectPipe를 직접 종료하세요. 본체 갱신 후
-Settings > Update Receiver...에서 Receiver 버전도 확인하세요. 첫 업데이트는
-기존 설치본의 업데이터가 수행하며, 실패 시 복구 파일을 보존하세요.
+2026-11-16
 
 ### Changes / 변경 사항
 
-- Internal low-pass conversion supports finite 8-192 kHz RNNoise operation;
-  native 48 kHz retains the existing processing path.
-- Chain/editor status follows native, converted and inactive processing.
-  Obsolete non-48 kHz warnings from Auto and external controls are removed.
-- Input/output meters have independent L/R bars and peak holds.
-- Reported latency includes RNNoise's intrinsic two-frame delay. Native
-  processing reports 30 ms rather than 10 ms; this corrects reporting without
-  inserting a new delay into the 48 kHz audio path.
-- Output FIFO indexing stays ordered across the long-session counter boundary.
-- 내장 노이즈 제거 내부 변환·동작 상태·입출력 L/R 미터를 개선하고,
-  지연 보고 및 장시간 FIFO 카운터 경계를 바로잡습니다.
+- Add manual Built-in **NoiseRemover (DSP)**: two-second Learn with a frozen
+  noise profile, or adaptive Realtime estimation. Excluded from AUTO.
+- Show live input (including voice), estimated noise and actual per-frequency
+  attenuation inside the DSP editor, with L/R selection.
+- Report actual DSP delay in samples/ms and chain compensation: 256 samples
+  (5.333 ms) at 48 kHz, including learning/no profile/zero reduction. Graph adds
+  no audio delay. Mode/reduction/completed manual profile persist in presets.
+- New Receiver instances default to **Medium (1024 frames)**; saved choices remain.
+- 내장 DSP 노이즈 제거의 Learn/Realtime과 입력·학습 노이즈·감쇠 그래프를 추가합니다.
+  AUTO에는 포함하지 않으며 Receiver 신규 기본 버퍼는 Medium입니다.
 
-### Compatibility and verification / 호환성·검증
+### Using Learn / Learn 사용
 
-Preset/settings formats, existing Mono gain, control API and Stream Deck action
-IDs are preserved. Host and Receiver sample rates must still match. Multi-mic,
-ASMR routing and independent USB aggregation are not included.
+Add Plugin > Built-in > NoiseRemover (DSP), select Learn, and capture two
+seconds with only background noise present. The orange noise estimate freezes
+when capture finishes; blue shows current input including voice, and purple
+shows actual applied reduction. Relearn when the noise changes.
 
-설정·프리셋·기존 Mono 게인·제어 API는 유지합니다. 본체와 Receiver는 계속 같은
-샘플레이트를 사용해야 합니다. 멀티마이크·ASMR 라우팅은 이번 범위에 포함하지 않습니다.
+배경 잡음만 있는 상태에서 Learn을 누르세요. 2초 학습 후 주황색 노이즈
+프로필이 고정됩니다. 파랑은 음성을 포함한 현재 입력, 보라는 실제 감쇠량입니다.
 
-Verification details and hardware/listening limits:
-[4.5.1 readiness](https://github.com/LiveTrack-X/DirectPipe/blob/main/docs/RELEASE_4_5_1.md).
-Software checks do not establish physical listening or long-session hardware acceptance.
+Realtime uses statistical DSP, not AI speech separation. Weak sustained voice
+may be attenuated; these software checks do not establish vocal/listening or
+physical loopback acceptance. Driver/Receiver buffers add separate latency.
 
-### Downloads and checksums / 다운로드·체크섬
+### Upgrade / 업데이트
 
-Download the platform asset below and verify it against `checksums.sha256`.
-Windows: `DirectPipe-v4.5.1-Windows.zip`; macOS: `DirectPipe-v4.5.1-macOS.dmg`;
-Linux: `DirectPipe-v4.5.1-Linux.tar.gz`; Stream Deck: `com.directpipe.directpipe.streamDeckPlugin`.
-DPWIM itself is downloaded separately only when the Windows install action is clicked.
+Preserve settings and close DirectPipe yourself before replacing files. Review
+Receiver versions through Settings > Update Receiver... after updating the host.
+Existing Receiver projects retain their saved buffer choice. RNNoise and AUTO
+retain their existing behavior. DPWIM remains a separate optional external VST.
 
-아래 플랫폼별 파일과 `checksums.sha256`을 확인하세요. DPWIM은 본체 ZIP에
-포함되지 않으며 Windows의 설치 메뉴를 클릭할 때 별도로 다운로드합니다.
+### Verification / 검증
 
-### Comparison / 비교
+[4.5.2 readiness and limits](https://github.com/LiveTrack-X/DirectPipe/blob/main/docs/RELEASE_4_5_2.md).
+Preparation evidence is local. macOS/Linux and final publication CI remain pending.
 
-[Changes since v4.5.0](https://github.com/LiveTrack-X/DirectPipe/compare/v4.5.0...v4.5.1).
+### VirusTotal
+
+The final distributable scan results, exact SHA-256 identities, analysis dates,
+engine coverage/failures and direct report links are included in the attached
+`virustotal-report.md` and `virustotal-report.json`. Verify file hashes against
+`checksums.sha256`. Local preparation scans do not certify different CI bytes.
+
+최종 배포 파일의 검사 결과·해시·검사 시각·엔진별 검사 범위와 보고서 링크를
+첨부한 VirusTotal 보고서에서 확인하세요. 무탐지는 안전 보증이 아닙니다.
+
+### Assets / 배포 파일
+
+Prepared/expected names: `DirectPipe-v4.5.2-Windows.zip`,
+`com.directpipe.directpipe.streamDeckPlugin`, `checksums.sha256`,
+`virustotal-report.md` and `virustotal-report.json`.
+macOS `DirectPipe-v4.5.2-macOS.dmg` and Linux `DirectPipe-v4.5.2-Linux.tar.gz`
+require their platform builds; their presence is not claimed by this draft.
+
+[Changes since v4.5.1](https://github.com/LiveTrack-X/DirectPipe/compare/v4.5.1...v4.5.2).

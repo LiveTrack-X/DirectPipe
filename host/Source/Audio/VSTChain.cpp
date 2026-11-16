@@ -463,6 +463,10 @@ ActionResult VSTChain::addBuiltinProcessor(PluginSlot::Type type, int insertInde
             processor = std::make_unique<BuiltinNoiseRemoval>();
             name = "Noise Removal";
             break;
+        case PluginSlot::Type::BuiltinNoiseRemovalDSP:
+            processor = std::make_unique<BuiltinNoiseRemovalDSP>();
+            name = "NoiseRemover (DSP)";
+            break;
         case PluginSlot::Type::BuiltinAutoGain:
             processor = std::make_unique<BuiltinAutoGain>();
             name = "Auto Gain";
@@ -774,6 +778,10 @@ std::vector<PluginStatusSnapshot> VSTChain::getPluginStatusSnapshot() const
             snapshot.parameterCount = processor->getParameters().size();
             snapshot.latencySamples = processor->getLatencySamples();
             if (auto* noise = dynamic_cast<BuiltinNoiseRemoval*>(processor)) {
+                snapshot.processingStatus = slot.bypassed ? juce::String("Bypassed") : noise->getStatusText();
+                snapshot.processingActive = !slot.bypassed && noise->isActive();
+            }
+            if (auto* noise = dynamic_cast<BuiltinNoiseRemovalDSP*>(processor)) {
                 snapshot.processingStatus = slot.bypassed ? juce::String("Bypassed") : noise->getStatusText();
                 snapshot.processingActive = !slot.bypassed && noise->isActive();
             }
@@ -1331,6 +1339,10 @@ bool VSTChain::replaceChainWithPreloaded(std::vector<PreloadedPlugin> preloaded,
                         case PluginSlot::Type::BuiltinNoiseRemoval:
                             processor = std::make_unique<BuiltinNoiseRemoval>();
                             slot.name = "Noise Removal";
+                            break;
+                        case PluginSlot::Type::BuiltinNoiseRemovalDSP:
+                            processor = std::make_unique<BuiltinNoiseRemovalDSP>();
+                            slot.name = "NoiseRemover (DSP)";
                             break;
                         case PluginSlot::Type::BuiltinAutoGain:
                             processor = std::make_unique<BuiltinAutoGain>();

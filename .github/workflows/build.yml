@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Upload artifacts to this exact source-version tag (e.g., vX.Y.Z). Leave empty for CI-only.'
+        description: 'Stage a draft at this exact source-version tag (e.g., vX.Y.Z). Leave empty for CI-only.'
         required: false
         default: ''
 
@@ -759,7 +759,7 @@ jobs:
   # ═══════════════════════════════════════════
   # Publish a GitHub Release only after every validation/build artifact exists.
   # ═══════════════════════════════════════════
-  publish-release:
+  stage-release:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
     needs: [build-windows, build-macos, build-linux, build-streamdeck]
     runs-on: ubuntu-latest
@@ -809,12 +809,35 @@ jobs:
           sha256sum * > checksums.sha256
           cd ..
 
+          python3 - <<'PYVERIFY'
+          import json, struct, zipfile
+          from pathlib import Path
+          archive = next(Path("release").glob("*-Windows.zip"))
+          expected = {"DirectPipe.exe", "DirectPipe Receiver.dll",
+                      "DirectPipe Receiver.vst3/Contents/x86_64-win/DirectPipe Receiver.vst3",
+                      "DirectPipe Receiver.vst3/Contents/Resources/moduleinfo.json"}
+          with zipfile.ZipFile(archive) as z:
+              files = {n for n in z.namelist() if not n.endswith("/")}
+              assert files == expected, files
+              for name in expected - {"DirectPipe Receiver.vst3/Contents/Resources/moduleinfo.json"}:
+                  data = z.read(name)
+                  assert data[:2] == b"MZ", name
+                  pe = struct.unpack_from("<I", data, 60)[0]
+                  assert data[pe:pe+4] == b"PE\0\0", name
+                  assert struct.unpack_from("<H", data, pe+4)[0] == 0x8664, name
+              text = z.read("DirectPipe Receiver.vst3/Contents/Resources/moduleinfo.json").decode()
+              import re
+              meta = json.loads(re.sub(r",(\s*[}\]])", r"\1", text))
+              assert meta["Version"] == "${{ steps.tag.outputs.tag }}".removeprefix("v")
+          print("Verified exact Windows payload set, AMD64 PE identities and VST3 version")
+          PYVERIFY
+
           echo "=== Release artifacts ==="
           ls -lh release/
           echo "=== Checksums ==="
           cat release/checksums.sha256
 
-      - name: Create draft with validated assets, then publish
+      - name: Create draft with validated assets for final review
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -844,9 +867,7 @@ jobs:
             --notes-file dist/release_body.md \
             --title "DirectPipe $TAG"
 
-          # The release is invisible to users until every asset (including
-          # checksums.sha256) has uploaded successfully.
-          gh release edit "$TAG" \
-            --repo ${{ github.repository }} \
-            --draft=false \
-            --latest
+          # Keep the complete release unpublished. Final distributable hashes,
+          # VirusTotal reports and release notes are checked before an owner-
+          # authorized promotion; source-only/local scans cannot approve CI bytes.
+          echo "Draft $TAG is staged; final artifact review/publication is separate."

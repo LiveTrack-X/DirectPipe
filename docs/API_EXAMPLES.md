@@ -1161,7 +1161,7 @@ AutoHotkey로 커스텀 핫키:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `plugins` | array | 플러그인 목록 `[{name, bypass, loaded, latency_samples, type}]` |
+| `plugins` | array | 플러그인 목록 `[{name, bypass, loaded, latency_samples, type}]`; type includes manual DSP `builtin_noise_removal_dsp` (see [API reference](CONTROL_API.md)) |
 | `volumes.input` | number | 입력 게인 배수 (0.0-2.0) |
 | `volumes.monitor` | number | 모니터 볼륨 (0.0-1.0) |
 | `volumes.output` | number | 출력 볼륨 (0.0-1.0) |

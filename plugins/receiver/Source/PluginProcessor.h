@@ -155,6 +155,7 @@ private:
     // Index matches the unchanged "buffer" parameter/state IDs. Runtime trimming
     // retains at least the current callback size; reported latency stays targetFill.
     static constexpr int kNumBufferPresets = 5;
+    static constexpr int kDefaultBufferPreset = 2;  // Medium (1024 samples)
     static constexpr uint32_t kBufferPresets[kNumBufferPresets][3] = {
         {  256,   768,   64 },  // 0: Ultra Low  (256 samples)
         {  512,  1536,  128 },  // 1: Low        (512 samples)

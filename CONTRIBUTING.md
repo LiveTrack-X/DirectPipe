@@ -40,10 +40,10 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## 테스트 / Testing
 
-- 현재 4.5.0의 로컬·정확 소스 CI·공개 파일 검증과 미확인 범위는
-  [검증 기록](docs/RELEASE_4_5_0.md)을 기준으로 확인합니다. Windows mic-level
+- 현재 4.5.2 후보의 로컬·정확 소스 CI·공개 파일 검증과 미확인 범위는
+  [검증 기록](docs/RELEASE_4_5_2.md)을 기준으로 확인합니다. Windows mic-level
   hold 검사는 fake endpoint를 사용하며 실제 마이크 레벨을 바꾸지 않습니다.
-  / Current results belong to the exact 4.5.0 verification record; historical
+  / Current results belong to the exact 4.5.2 verification record; historical
   [4.4.0 evidence](docs/MULTI_RECEIVER_4_4_0.md) and the v4.3.0 counts below stay separate.
 
 - Google Test 기반 v4.3.0은 core, host, focused endpoint의 로컬 Windows Release CTest 등록 582개를 완료했습니다(580 통과, 환경 의존 2 건너뜀, 실패 0). 정확 태그 CI run `30701998763`과 공개 자산·checksum·Windows 신원 검증도 통과했으며 확정 결과는 `docs/ReleaseNote.md`에 기록합니다. / v4.3.0 completed 582 local Windows Release CTest registrations across core, host, and focused endpoint suites (580 passed, 2 environment-dependent skips, 0 failed). Exact-tag CI run `30701998763` and public-asset, checksum, and Windows-identity verification also passed; final results are recorded in `docs/ReleaseNote.md`.

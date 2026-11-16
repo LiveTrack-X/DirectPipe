@@ -131,6 +131,7 @@ protected:
 };
 
 TEST_F(ReceiverProcessorTest, LowBufferTrimLeavesEnoughForLargerCallback) {
+    processor_.getAPVTS().getParameter("buffer")->setValueNotifyingHost(0.25f);
     warmUp(0.5f);
     ASSERT_EQ(write(0.5f, 2048), 2048u);
     auto output = render(1024);
@@ -414,6 +415,22 @@ TEST_F(ReceiverFanOutTest, FullTransportNeverFallsBackToTheLegacyQueue) {
     EXPECT_FALSE(legacyHeader->consumer_active.load());
 }
 
+TEST_F(ReceiverProcessorTest, SavedBufferChoicesOverrideTheNewMediumDefault) {
+    constexpr int frames[] = {256, 512, 1024, 2048, 4096};
+    for (int choice = 0; choice < 5; ++choice) {
+        DirectPipeReceiverProcessor source, restored;
+        EXPECT_EQ(restored.getTargetFillFrames(), 1024u);
+        source.getAPVTS().getParameter("buffer")->setValueNotifyingHost(choice / 4.0f);
+        juce::MemoryBlock state;
+        source.getStateInformation(state);
+        restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        DirectPipeReceiverProcessorTestAccess::prepare(restored, 128);
+        EXPECT_EQ(static_cast<int>(restored.getAPVTS().getRawParameterValue("buffer")->load()), choice);
+        EXPECT_EQ(restored.getTargetFillFrames(), static_cast<uint32_t>(frames[choice]));
+        EXPECT_EQ(restored.getLatencySamples(), frames[choice]);
+    }
+}
+
 TEST_F(ReceiverFanOutTest, OldHostFallsBackWithoutChangingSavedParameters) {
     const auto suffix = juce::Uuid().toString().removeCharacters("-").substring(0, 12).toStdString();
     const auto legacyName = std::string("Local\\DPRO_") + suffix;
@@ -441,7 +458,7 @@ TEST_F(ReceiverFanOutTest, PendingPublicationDoesNotAddWorkerPeriodToBufferingLa
     DirectPipeReceiverProcessorTestAccess::prepare(receiver, 128);
     ASSERT_TRUE(DirectPipeReceiverProcessorTestAccess::connectFanOut(receiver, aligned_, bytes_, producer_, 2048));
     EXPECT_EQ(DirectPipeReceiverProcessorTestAccess::available(receiver), receiver.getTargetFillFrames());
-    EXPECT_EQ(receiver.getLatencySamples(), 512);
+    EXPECT_EQ(receiver.getLatencySamples(), 1024);
     // Trimming the new connection does not trim either already-published one.
     EXPECT_EQ(DirectPipeReceiverProcessorTestAccess::available(first_), 2048u);
     EXPECT_EQ(DirectPipeReceiverProcessorTestAccess::available(second_), 2048u);

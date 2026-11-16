@@ -4,8 +4,8 @@ DirectPipe는 Windows, macOS, Linux를 지원합니다. 플랫폼에 따라 기�
 
 DirectPipe supports Windows, macOS, and Linux. Features, setup, and release maturity vary by platform.
 
-> **현재 소스 / Current source: 4.5.1.** 이번 후보의 검증과 남은 플랫폼 게이트는
-> [4.5.1 검증 기록](RELEASE_4_5_1.md)에 구분합니다. 소프트웨어 검사는 실제 장치·
+> **현재 소스 / Current source: 4.5.2 candidate.** 이번 후보의 검증과 남은 플랫폼 게이트는
+> [4.5.2 검증 기록](RELEASE_4_5_2.md)에 구분합니다. 소프트웨어 검사는 실제 장치·
 > 드라이버·청취 검증을 대신하지 않습니다. / Exact-source platform builds, tests and
 > public-download verification are recorded separately from physical-device and
 > listening acceptance. [4.4.0 기록 / Historical record](MULTI_RECEIVER_4_4_0.md).
@@ -16,7 +16,7 @@ DirectPipe supports Windows, macOS, and Linux. Features, setup, and release matu
 
 | 플랫폼 / Platform | 릴리즈 상태 / Release status | 빌드/배포 상태 / Build & distribution | 검증 메모 / Validation notes |
 |---|---|---|---|
-| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release 및 CI `windows-latest` ZIP | 정확한 실행 파일·Receiver 버전과 서명 상태, API·업데이트 fixture 결과는 4.5.0 검증 기록 참조. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
+| **Windows 10/11 x64** | 안정 / Stable | 로컬 Release 및 CI `windows-latest` ZIP | 정확한 실행 파일·Receiver 버전과 서명 상태, API·업데이트 fixture 결과는 현재 검증 기록 참조. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다. |
 | **macOS 10.15+ universal** | 베타 / Beta | CI `macos-15`, arm64 + x86_64 DMG | 전체 CTest, snapshot 25회 반복, 10.15 배포 대상과 native mount/파일 일치를 별도 검증합니다. 실기기 오디오 확인은 별도입니다. |
 | **Linux x86_64** | 실험적 / Experimental | CI `ubuntu-24.04` tar.gz | ALSA/JACK 경로는 유지. 배포판/데스크톱/오디오 서버 조합별 편차가 있을 수 있음. |
 | **Stream Deck plugin** | 별도 크로스 플랫폼 패키지 / Separate cross-platform package | CI `ubuntu-latest` `.streamDeckPlugin` | Manifest 기준 Windows 10+, macOS 10.15+, Stream Deck 6.9+. |
@@ -108,9 +108,9 @@ Close apps manually when prompted; Receiver-only maintenance keeps DirectPipe ru
 Protected destinations may require UAC. Current/newer installed copies are preserved.
 
 온라인 갱신은 공개 릴리즈를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로
-4.5.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요.
+업데이트된 본체 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요.
 / Online updates use published releases. **The 4.3.0 updater replaces only the
-host**; after launching 4.5.0, use **Settings > Update Receiver...** too.
+host**; after launching the updated host, use **Settings > Update Receiver...** too.
 
 ### Receiver 설치 / Receiver Installation
 
@@ -121,10 +121,10 @@ host**; after launching 4.5.0, use **Settings > Update Receiver...** too.
 VST3: `DirectPipe Receiver.vst3`를 VST3 폴더에 복사:
 - `C:\Program Files\Common Files\VST3\`
 
-본체와 Receiver 모두 4.5.0이면 같은 처리 음성을 최대 8곳에 독립적으로 전송합니다.
+본체와 Receiver가 같은 현재 버전이면 같은 처리 음성을 최대 8곳에 독립적으로 전송합니다.
 구형 Receiver는 legacy 연결 하나, 구형 본체에 연결한 새 Receiver는 단일 수신
 제약을 유지합니다. DirectPipe와 수신 앱의 샘플레이트는 같아야 합니다.
-/ Both ends on 4.5.0 support eight independent receivers. One legacy Receiver
+/ Matching current host/Receiver versions support eight independent receivers. One legacy Receiver
 can coexist; fallback to an older host remains single-reader. Sample rates must match.
 
 ---

@@ -2,7 +2,7 @@
 
 juce_add_gui_app(DirectPipe
     PRODUCT_NAME "DirectPipe"
-    VERSION "4.5.1"
+    VERSION "4.5.2"
     COMPANY_NAME "DirectPipe"
     BUNDLE_ID "com.directpipe.host"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
@@ -46,6 +46,9 @@ target_sources(DirectPipe PRIVATE
     Source/Audio/BuiltinAutoGain.cpp
     Source/Audio/BuiltinNoiseRemoval.h
     Source/Audio/BuiltinNoiseRemoval.cpp
+    Source/Audio/StreamingStftDenoiser.h
+    Source/Audio/BuiltinNoiseRemovalDSP.h
+    Source/Audio/BuiltinNoiseRemovalDSP.cpp
     # DeviceSelector removed — merged into AudioSettings
     Source/UI/PluginChainEditor.h
     Source/UI/PluginChainEditor.cpp
@@ -93,6 +96,10 @@ target_sources(DirectPipe PRIVATE
     Source/UI/FilterEditPanel.cpp
     Source/UI/NoiseRemovalEditPanel.h
     Source/UI/NoiseRemovalEditPanel.cpp
+    Source/UI/DspNoiseRemovalEditPanel.h
+    Source/UI/DspNoiseRemovalEditPanel.cpp
+    Source/UI/DspNoiseSpectrumView.h
+    Source/UI/DspNoiseSpectrumView.cpp
     Source/UI/AGCEditPanel.h
     Source/UI/AGCEditPanel.cpp
     Source/Control/ActionHandler.h

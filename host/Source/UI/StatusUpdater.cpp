@@ -511,6 +511,7 @@ void StatusUpdater::tick(PresetManager* pm, int numPresetSlots)
                 switch (slot->type) {
                     case PluginSlot::Type::BuiltinFilter: ps.type = "builtin_filter"; break;
                     case PluginSlot::Type::BuiltinNoiseRemoval: ps.type = "builtin_noise_removal"; break;
+                    case PluginSlot::Type::BuiltinNoiseRemovalDSP: ps.type = "builtin_noise_removal_dsp"; break;
                     case PluginSlot::Type::BuiltinAutoGain: ps.type = "builtin_auto_gain"; break;
                     default: ps.type = "vst"; break;
                 }

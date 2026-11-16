@@ -4,6 +4,20 @@ Major notable changes to DirectPipe (maintained in this repository era, includin
 
 ---
 
+## [4.5.2] - 2026-11-16
+
+- Add manual Built-in **NoiseRemover (DSP)**: two-second Learn with a frozen
+  noise profile, or adaptive Realtime estimation. Excluded from AUTO.
+- Show live input (including voice), estimated noise and actual per-frequency
+  attenuation inside the DSP editor, with L/R selection.
+- Report actual DSP delay in samples/ms and chain compensation: 256 samples
+  (5.333 ms) at 48 kHz, including learning/no profile/zero reduction. Graph adds
+  no audio delay. Mode/reduction/completed manual profile persist in presets.
+- New Receiver instances default to **Medium (1024 frames)**; saved choices remain.
+- 내장 DSP 노이즈 제거의 Learn/Realtime과 입력·학습 노이즈·감쇠 그래프를 추가합니다.
+  AUTO에는 포함하지 않으며 Receiver 신규 기본 버퍼는 Medium입니다.
+- Preparation/scan status: [4.5.2 readiness](docs/RELEASE_4_5_2.md).
+
 ## [4.5.1] - 2026-11-13
 
 - Built-in RNNoise now converts finite 8-192 kHz input to/from its 48 kHz

@@ -34,7 +34,7 @@ DirectPipeReceiverProcessor::createParameterLayout()
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"buffer", 1}, "Buffer",
         juce::StringArray{"Ultra Low (256)", "Low (512)", "Medium (1024)", "High (2048)", "Safe (4096)"},
-        1));  // default: Low (512 frames, ~10.7ms at 48kHz)
+        kDefaultBufferPreset));  // default: Medium (1024 frames, ~21.3ms at 48kHz)
     return { params.begin(), params.end() };
 }
 
@@ -487,24 +487,24 @@ void DirectPipeReceiverProcessor::applyFadeOut(juce::AudioBuffer<float>& buffer,
 uint32_t DirectPipeReceiverProcessor::getTargetFillFrames() const
 {
     auto* param = apvts_.getRawParameterValue("buffer");
-    int idx = param ? static_cast<int>(param->load()) : 1;
-    if (idx < 0 || idx >= kNumBufferPresets) idx = 1;
+    int idx = param ? static_cast<int>(param->load()) : kDefaultBufferPreset;
+    if (idx < 0 || idx >= kNumBufferPresets) idx = kDefaultBufferPreset;
     return kBufferPresets[idx][0];
 }
 
 uint32_t DirectPipeReceiverProcessor::getHighFillThreshold() const
 {
     auto* param = apvts_.getRawParameterValue("buffer");
-    int idx = param ? static_cast<int>(param->load()) : 1;
-    if (idx < 0 || idx >= kNumBufferPresets) idx = 1;
+    int idx = param ? static_cast<int>(param->load()) : kDefaultBufferPreset;
+    if (idx < 0 || idx >= kNumBufferPresets) idx = kDefaultBufferPreset;
     return kBufferPresets[idx][1];
 }
 
 uint32_t DirectPipeReceiverProcessor::getLowFillThreshold() const
 {
     auto* param = apvts_.getRawParameterValue("buffer");
-    int idx = param ? static_cast<int>(param->load()) : 1;
-    if (idx < 0 || idx >= kNumBufferPresets) idx = 1;
+    int idx = param ? static_cast<int>(param->load()) : kDefaultBufferPreset;
+    if (idx < 0 || idx >= kNumBufferPresets) idx = kDefaultBufferPreset;
     return kBufferPresets[idx][2];
 }
 
@@ -516,7 +516,7 @@ void DirectPipeReceiverProcessor::parameterChanged(const juce::String& parameter
 
     int index = static_cast<int>(std::lround(newValue));
     if (index < 0 || index >= kNumBufferPresets)
-        index = 1;
+        index = kDefaultBufferPreset;
     requestedLatencySamples_.store(static_cast<int>(kBufferPresets[index][0]),
                                    std::memory_order_release);
     // Host parameter notifications may arrive on an audio thread. This existing

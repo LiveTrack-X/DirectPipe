@@ -4,9 +4,9 @@
 >
 > A reverse-engineered specification documenting the detailed behavior of all currently implemented features. For usage see [User Guide](USER_GUIDE.md), for architecture overview see [Architecture](ARCHITECTURE.md).
 
-> 역기획서 — v4.5.1 후보 소스 기준입니다. [검증 기록](RELEASE_4_5_1.md)과 아래 과거 검증 이력을 구분합니다.
+> 역기획서 — v4.5.2 후보 소스 기준입니다. [검증 기록](RELEASE_4_5_2.md)과 아래 과거 검증 이력을 구분합니다.
 >
-> Reverse spec — current v4.5.1. See the [verification record](RELEASE_4_5_1.md); published-release evidence below remains historical.
+> Reverse spec — current v4.5.2. See the [verification record](RELEASE_4_5_2.md); published-release evidence below remains historical.
 
 ---
 
@@ -21,7 +21,7 @@ DAW 없이, 설치 없이, 마이크에 VST 이펙트를 거는 가장 가벼운
 The lightest way to apply VST effects to a microphone — no DAW, no installation (Windows / macOS / Linux)
 
 ### 버전 / Version
-4.5.0
+4.5.2 candidate / 후보 (publication and exact-artifact status: [verification record](RELEASE_4_5_2.md))
 
 ### 개발 배경 / Background
 - DAW(Reaper, Ableton 등)를 마이크 이펙트 용도로 구동하는 것은 자원 낭비 / Running a DAW (Reaper, Ableton, etc.) just for mic effects is a waste of resources
@@ -223,12 +223,16 @@ All 3 output paths can be **independently toggled**. Main and Monitor have separ
 | 상태 전파 / State Propagation | `latency_ms`는 PDC 포함 총 추정값. `plugins[].latency_samples`, `chain_pdc_samples`, `chain_pdc_ms`는 세부값 / `latency_ms` is the PDC-inclusive total estimate; plugin and chain PDC fields provide the breakdown |
 
 #### 4.1.10 Built-in Processors
-공통 내장 프로세서 3종. DPWIM은 Windows용 별도 VST이며 Auto에 포함되지 않습니다.
 
-Three cross-platform built-ins: Filter, Noise Removal and Auto Gain. DPWIM is a separate Windows VST, installed optionally.
+4.5.2: [NoiseRemover (DSP)](DSP_NOISE_REMOVAL.md) adds manual Learn/frozen and Realtime/adaptive modes, native 8-192 kHz processing and exact N-sample latency. Its editor plots actual input/estimated noise and applied gain, using bounded coherent telemetry with no extra audio delay. Existing RNNoise/AUTO behavior is retained. Publication and acceptance evidence remain in the release verification record.
+
+공통 내장 프로세서 4종 중 Auto 기본 구성은 기존 3종입니다. NoiseRemover (DSP)는 수동 추가 전용입니다. DPWIM은 Windows용 별도 VST이며 Auto에 포함되지 않습니다.
+
+Four cross-platform built-ins: Filter, Noise Removal, Auto Gain and manual-only NoiseRemover (DSP). AUTO defaults/reset retain the first three. DPWIM is a separate Windows VST, installed optionally.
 
 | 프로세서 / Processor | 클래스 / Class | 상세 / Details |
 |---------|--------|------|
+| **NoiseRemover (DSP)** | `BuiltinNoiseRemovalDSP` | 수동 전용 / Manual-only, excluded from AUTO. Native STFT/Wiener, Learn/frozen (default) or Realtime/adaptive. Reduction 0–24 dB (default 12 dB); exact N-sample delay and completed-profile persistence described below. |
 | **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz / default ON, 60Hz) + LPF (기본 OFF, 16kHz / default OFF, 16kHz). 범위 / Range: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터 / IIR filters, atomic 파라미터 / atomic parameters. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
 | **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-sample FIFO priming + 960-sample RNNoise intrinsic delay = 1440 samples (30 ms at 48 kHz). 4.5.1: 8-192 kHz via internal low-pass conversion; native 48 kHz retains the original path. Published 4.5.0 remains 48 kHz-only. 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, 내부 48 kHz 기준 / internal 48 kHz timing). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, 내부 48 kHz 기준 / internal 48 kHz timing). `getLatencySamples()` = 1440 at native 48 kHz; other rates include host-rate FIFO and conversion latency. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
 | **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC / LUFS-based AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 / default (범위 / range -24~-6, 내부적으로 -6dB 오프셋 적용하여 오픈루프 오버슈트 보정 / internal -6dB offset for open-loop overshoot compensation). Low Correct 0.50 기본 / default (hold↔full correction 블렌드, 부스트 / blend, boost). High Correct 0.90 기본 / default (hold↔full correction 블렌드, 컷 / blend, cut). Max Gain 22 dB 기본 / default. ITU-R BS.1770 K-weighting 사이드체인 / sidechain (copy, 실제 오디오 미적용 / not applied to actual audio). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음 / none), per-block linear ramp으로 click-free 전환 / for click-free transitions. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 / holds current gain on freeze (0dB 리셋 아님 / NOT reset to 0dB), -65 dBFS 미만 시 바이패스 / bypassed below -65 dBFS. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) / blend ratio between hold and full correction (NOT envelope speed). Fixed post limiter: limiter ceiling only user-facing (default -1.0 dBTP), fixed internal lookahead 1ms + release 50ms, constant latency path, final hard clamp. |
@@ -236,6 +240,30 @@ Three cross-platform built-ins: Filter, Noise Removal and Auto Gain. DPWIM is a 
 **[Auto] 버튼 / [Auto] Button**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults. Auto Gain 내부에는 고정 post limiter가 포함됩니다.
 
 Special preset slot next to input gain slider (separate from A-E bar, index 5 `PresetSlotBar::kAutoSlotIndex`). Green when active. First click creates default chain (Filter + Noise Removal + Auto Gain), subsequent clicks load last saved state. Right-click → Reset to Defaults. Auto Gain includes a fixed post limiter internally.
+
+**NoiseRemover (DSP), manual only:** `builtin_noise_removal_dsp` is a separate
+processor/preset/API type. Learn is the default; Learn/Relearn captures two seconds
+of noise-only processed input and freezes a completed per-channel profile.
+Realtime initializes/tracks a statistical estimate without overwriting the saved
+manual profile. Mode, Reduction (0–24 dB, default 12 dB), and the last completed
+manual profile persist; partial captures and changing Realtime estimates do not.
+The saved profile must match the current sample rate and FFT geometry. Missing or
+incompatible profiles display Learn required and use delayed unity reconstruction.
+
+Native rates are finite 8–192 kHz, with no resampling. FFT size N is the smallest
+power of two at least rate/187.5, bounded to 64–1024; actual/reported delay is N
+samples in both modes, including learning, missing profile and Reduction 0 dB.
+At 48 kHz this is 256 samples / 5.333 ms; at 44.1 kHz, 256 / 5.805 ms.
+Unsupported/unprepared/released states pass through with inactive status and zero
+DSP delay. Other processors, devices and Receiver buffering add separate delay.
+
+The editor selects L/Mono or R and plots input power (blue, including voice),
+estimated noise (orange, frozen after Learn) and applied reduction (purple).
+It uses actual cached FFT/profile/gain snapshots, labels Hz/bin and omits DC from
+the log-frequency display; low-frequency space below the first resolved bin is
+shaded. Stale curves expire after 750 ms. Viewing adds no FFT, queue or audio
+latency. Statistical tracking can damage weak/sustained voice; software tests do
+not establish vocal quality or real-device acceptance. See the [DSP guide](DSP_NOISE_REMOVAL.md).
 
 **Auto 프리셋 슬롯 / Auto Preset Slot**: 6번째 프리셋 슬롯 (인덱스 5). 이름 변경 불가, Next/Previous 사이클에서 제외. Reset 시 Filter + NoiseRemoval + AutoGain 기본값 복원. Factory Reset 시 Auto 슬롯도 포함 삭제 (`slot_Auto.dppreset` 와일드카드 삭제, 메시지 "(A-E + Auto)").
 
@@ -919,7 +947,9 @@ This design prevents audio duplication between OBS source audio and DirectPipe a
 | ID | 타입 / Type | 기본값 / Default | 설명 / Description |
 |----|------|--------|------|
 | `mute` | Boolean | false | 오디오 뮤트 / Audio mute |
-| `buffer` | Choice (0-4) | 1 (Low) | 버퍼 프리셋 선택 / Buffer preset selection |
+| `buffer` | Choice (0-4) | 2 (Medium) | 버퍼 프리셋 선택 / Buffer preset selection |
+
+새 인스턴스의 기본값은 Medium(1024)이며, 기존 프로젝트에 저장된 선택은 그대로 복원한다. / New instances default to Medium (1024); saved project selections are restored unchanged.
 
 #### 버퍼 프리셋 / Buffer Presets
 | # | 이름 / Name | targetFillFrames | highFillThreshold | lowFillThreshold | 보고 버퍼 지연 / Reported buffering @48kHz |
@@ -1279,8 +1309,8 @@ If OBS or another app uses a target, **Retry / Later** lets the user finish the
 session and close that app manually. No automatic app termination occurs.
 Receiver-only maintenance leaves DirectPipe running. Routine startup behavior
 stays quiet when no newer host exists. The 4.3.0 updater replaces only the host;
-after launching 4.5.0, use **Settings > Update Receiver...** to update Receivers
-too. / 4.3.0 최초 자동 갱신은 본체만 교체하므로 4.5.0 실행 후 Settings에서
+after launching the updated host, use **Settings > Update Receiver...** to update Receivers
+too. / 4.3.0 최초 자동 갱신은 본체만 교체하므로 업데이트된 본체 실행 후 Settings에서
 Receiver도 갱신해야 합니다. See [4.4.0 scope](MULTI_RECEIVER_4_4_0.md).
 
 host가 최신이어도 Settings에서 Receiver만 명시적으로 확인합니다. 사용자 폴더와
@@ -1402,7 +1432,7 @@ DirectPipe/
 │       └── PluginEditor.h/cpp      → 240×216 UI, 연결·한도·호환/SR 경고 / Connection, limit, compatibility and SR status
 │
 ├── com.directpipe.directpipe.sdPlugin/ → Stream Deck 플러그인 / Stream Deck plugin
-│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.5.1.0
+│   ├── manifest.json               → SDKVersion 3, 10 액션 / actions, v4.5.2.0
 │   ├── package.json                → ws v8.21, @elgato/streamdeck v2.0.1
 │   └── src/
 │       ├── plugin.js               → 진입점, UDP 디스커버리, 상태 관리 / Entry point, UDP discovery, state management

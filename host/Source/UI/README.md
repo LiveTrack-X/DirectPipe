@@ -65,6 +65,8 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `UpdateStartupSupport.h/cpp` | 초기 복원·창/트레이 준비 후 attempt-bound ACK 작성. 구형 flag 방식은 실제 PE/product/version·SHA와 배타 파일 핸들로 정확한 EXE만 정리. caller/설치기 역할 및 완료 알림 분리 |
 | `FilterEditPanel.h/cpp` | 내장 Filter 설정 패널 (AudioProcessorEditor). HPF/LPF 프리셋 + 커스텀 슬라이더 |
 | `NoiseRemovalEditPanel.h/cpp` | 내장 Noise Removal 설정 패널. 강도 프리셋 (약/중/강) + VAD 임계값 |
+| `DspNoiseRemovalEditPanel.h/cpp` | Manual DSP NR editor: Learn/frozen or Realtime/adaptive, noise-only capture/progress, 0–24 dB reduction and exact sample/ms latency; message-thread timer only, excluded from AUTO |
+| `DspNoiseSpectrumView.h/cpp` | Actual input (including speech)/estimated-noise spectra and applied-mask plot; L/Mono or R, units/resolution and 750 ms stale expiry; frozen Learn/adaptive Realtime profile, no additional FFT/audio delay |
 | `AGCEditPanel.h/cpp` | 내장 Auto Gain 설정 패널. LUFS 타겟 슬라이더 + 실시간 측정 + 고급 설정 |
 
 ---
@@ -77,6 +79,8 @@ MainComponent                           ← 최상위 윈도우 컴포넌트
 | `AudioSettings` | `[Message thread]` | ChangeListener로 디바이스 변경 감지 |
 | `OutputPanel` | `[Message thread]` | 내부 Timer로 모니터 상태 폴링 |
 | `PluginChainEditor` | `[Message thread]` | 플러그인 추가는 callAsync + SafePointer |
+| `DspNoiseRemovalEditPanel` | `[Message thread]` | 20 Hz status/spectrum timer; atomic mode/reduction/Learn requests, no direct access to rendering spectra |
+| `DspNoiseSpectrumView` | `[Message thread]` | Editor 20Hz refresh reads coherent atomic telemetry; log conversion and drawing stay on UI thread |
 | `PluginScanner` | `[BG thread]` | `juce::Thread` 상속. 스캔은 별도 스레드에서 실행, UI 업데이트는 callAsync + `alive_` 플래그 |
 | `PresetManager` | `[Message thread]` | `loadSlotAsync`는 `VSTChain::replaceChainAsync` → BG 스레드 로드 후 callAsync 완료 |
 | `PresetSlotBar` | `[Message thread]` | — |

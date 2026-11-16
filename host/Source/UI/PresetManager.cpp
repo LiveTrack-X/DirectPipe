@@ -381,6 +381,7 @@ juce::String PresetManager::exportToJSON()
             switch (slot->type) {
                 case PluginSlot::Type::BuiltinFilter:       plugin->setProperty("type", "builtin_filter"); break;
                 case PluginSlot::Type::BuiltinNoiseRemoval: plugin->setProperty("type", "builtin_noise_removal"); break;
+                case PluginSlot::Type::BuiltinNoiseRemovalDSP: plugin->setProperty("type", "builtin_noise_removal_dsp"); break;
                 case PluginSlot::Type::BuiltinAutoGain:     plugin->setProperty("type", "builtin_auto_gain"); break;
                 default:                                    plugin->setProperty("type", "vst"); break;
             }
@@ -1226,6 +1227,8 @@ std::vector<PresetManager::TargetPlugin> PresetManager::parseTargetPlugins(
                 t.type = PluginSlot::Type::BuiltinFilter;
             else if (typeStr == "builtin_noise_removal")
                 t.type = PluginSlot::Type::BuiltinNoiseRemoval;
+            else if (typeStr == "builtin_noise_removal_dsp")
+                t.type = PluginSlot::Type::BuiltinNoiseRemovalDSP;
             else if (typeStr == "builtin_auto_gain")
                 t.type = PluginSlot::Type::BuiltinAutoGain;
             else
@@ -1548,6 +1551,7 @@ juce::String PresetManager::exportChainToJSON()
             switch (slot->type) {
                 case PluginSlot::Type::BuiltinFilter:       plugin->setProperty("type", "builtin_filter"); break;
                 case PluginSlot::Type::BuiltinNoiseRemoval: plugin->setProperty("type", "builtin_noise_removal"); break;
+                case PluginSlot::Type::BuiltinNoiseRemovalDSP: plugin->setProperty("type", "builtin_noise_removal_dsp"); break;
                 case PluginSlot::Type::BuiltinAutoGain:     plugin->setProperty("type", "builtin_auto_gain"); break;
                 default:                                    plugin->setProperty("type", "vst"); break;
             }
