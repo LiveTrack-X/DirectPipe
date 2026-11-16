@@ -45,7 +45,7 @@ struct AppState {
         bool bypassed = false;
         bool loaded = false;
         int latencySamples = 0;
-        std::string type;  // "vst", "builtin_filter", "builtin_noise_removal", "builtin_auto_gain"
+        std::string type;  // "vst", "builtin_filter", "builtin_noise_removal", "builtin_auto_gain", "builtin_noise_removal_dsp"
     };
 
     std::vector<PluginState> plugins;

@@ -1293,6 +1293,66 @@ TEST_F(PresetManagerPortableTest, TransactionalPresetLoadCommitsCompleteBuiltinC
 #endif
 }
 
+TEST_F(PresetManagerPortableTest, DspNoiseRemoverRoundTripsThroughAsyncPresetFactory) {
+#if ! JUCE_WINDOWS
+    GTEST_SKIP() << "Deterministic JUCE message-queue pumping is Windows-only";
+#else
+    juce::MessageManager::getInstance();
+    AudioEngine source;
+    source.getVSTChain().prepareToPlay(48000.0, 128);
+    ASSERT_TRUE(source.getVSTChain().addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemovalDSP).success);
+    auto* dsp = dynamic_cast<BuiltinNoiseRemovalDSP*>(source.getVSTChain().getPluginSlot(0)->getProcessor());
+    ASSERT_NE(dsp, nullptr);
+    dsp->startLearning();
+    juce::AudioBuffer<float> noise(2, 96000);
+    for (int i = 0; i < noise.getNumSamples(); ++i) {
+        noise.setSample(0, i, 0.02f);
+        noise.setSample(1, i, 0.01f);
+    }
+    juce::MidiBuffer midi;
+    dsp->processBlock(noise, midi);
+    ASSERT_TRUE(dsp->hasLearnedProfile());
+    juce::MemoryBlock learnedState;
+    dsp->getStateInformation(learnedState);
+    const auto learnedProfile = juce::JSON::parse(juce::String::fromUTF8(
+        static_cast<const char*>(learnedState.getData()), static_cast<int>(learnedState.getSize())))["profile"];
+    dsp->setMode(BuiltinNoiseRemovalDSP::Mode::Realtime);
+    dsp->setReductionDb(7.0f);
+    PresetManager saved(source);
+    const auto json = saved.exportToJSON();
+    const auto parsed = juce::JSON::parse(json);
+    ASSERT_EQ(parsed["plugins"].size(), 1);
+    EXPECT_EQ(parsed["plugins"][0]["type"].toString(), "builtin_noise_removal_dsp");
+
+    AudioEngine target;
+    target.getVSTChain().prepareToPlay(48000.0, 128);
+    PresetManager restored(target);
+    std::atomic<bool> completed{false};
+    bool loaded = false;
+    restored.importFromJSONTransactionalAsync(json, nullptr, nullptr, [&](bool ok) {
+        loaded = ok;
+        completed.store(true, std::memory_order_release);
+    });
+    ASSERT_TRUE(pumpMessagesUntil(completed));
+    ASSERT_TRUE(loaded);
+    ASSERT_EQ(target.getVSTChain().getPluginCount(), 1);
+    const auto* slot = target.getVSTChain().getPluginSlot(0);
+    EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinNoiseRemovalDSP);
+    dsp = dynamic_cast<BuiltinNoiseRemovalDSP*>(slot->getProcessor());
+    ASSERT_NE(dsp, nullptr);
+    EXPECT_EQ(dsp->getMode(), BuiltinNoiseRemovalDSP::Mode::Realtime);
+    EXPECT_FLOAT_EQ(dsp->getReductionDb(), 7.0f);
+    EXPECT_EQ(dsp->getLatencySamples(), 256);
+    EXPECT_EQ(target.getVSTChain().getTotalChainPDC(), 256);
+    EXPECT_TRUE(dsp->hasLearnedProfile());
+    juce::MemoryBlock restoredState;
+    dsp->getStateInformation(restoredState);
+    const auto restoredProfile = juce::JSON::parse(juce::String::fromUTF8(
+        static_cast<const char*>(restoredState.getData()), static_cast<int>(restoredState.getSize())))["profile"];
+    EXPECT_EQ(juce::JSON::toString(restoredProfile), juce::JSON::toString(learnedProfile));
+#endif
+}
+
 TEST_F(PresetManagerPortableTest, AsyncSlotLoadRejectsMalformedEntriesAtomically) {
     AudioEngine engine;
     engine.getVSTChain().prepareToPlay(48000.0, 512);

@@ -1,7 +1,7 @@
 # DirectPipe 테스트 가이드
 
-> **4.5.1 후보 검증 / Candidate validation**: 현재 자동·격리 실행 결과와 미확인 범위는
-> [4.5.1 검증 기록](docs/RELEASE_4_5_1.md)에서 확인합니다. 공개 4.5.0 및 이전 다중 Receiver의
+> **4.5.2 후보 검증 / Candidate validation**: 현재 자동·격리 실행 결과와 미확인 범위는
+> [4.5.2 검증 기록](docs/RELEASE_4_5_2.md)에서 확인합니다. 공개 4.5.1은 업그레이드 기준이며 4.5.0 및 이전 다중 Receiver의
 > [4.4.0 검증 기록](docs/MULTI_RECEIVER_4_4_0.md)은 당시 체크포인트로 보존합니다.
 > 아래 수동 체크리스트가 모두 완료됐다는 뜻은 아닙니다.
 > / Automated and isolated runtime evidence does not imply that every manual
@@ -97,10 +97,49 @@ results are recorded separately.
 
 | 결과 | 판정 |
 |------|------|
-| Step 1 PASS + Dashboard auto PASS + Manual 전체 체크 + AI Critical 0 | 릴리스 가능 |
+| 필수 자동·artifact 게이트 PASS + 중요 결함 해결 + 실제 수동 검증 범위/한계 기록 + 공개 승인 / Required automated/artifact gates pass, important findings resolved, actual manual evidence/limits recorded, publication authorized | 최종 draft 검사 후 공개 가능 / Eligible for publication after final draft checks |
 | Step 1 FAIL (버전 불일치) | 버전 수정 후 재실행 |
 | Dashboard auto FAIL | 해당 API 확인 후 수정 |
 | AI Critical > 0 | 코드 수정 후 재실행 |
+
+Unchecked manual items remain unverified. A source review, software fixture pass,
+or release authorization does not mark device, listening, OBS frontend, UAC,
+long-run or signing/notarization checks complete. Exact-source platform CI,
+final-file identity/checksums and exact-hash scan evidence are separate release
+gates; keep the release as draft until they pass. See [current evidence](docs/RELEASE_4_5_2.md).
+
+---
+
+## NoiseRemover (DSP) and Receiver defaults — 4.5.2
+
+Reproduce the standalone production-core checks without JUCE or proprietary SDKs
+using the [native DSP build commands](docs/BUILDING.md#native-dsp-core-and-host-integration-452).
+The JUCE host suite covers `BuiltinNoiseRemovalDSPTest`, `DspNoiseSpectrumViewTest`
+and graph/preset integration; the actual Receiver suite covers fresh defaults and
+saved-choice restoration. Source/test inventories are not execution results;
+fresh pass/skip/fail counts belong in the [release evidence](docs/RELEASE_4_5_2.md).
+
+Manual follow-up checklist (unchecked until explicitly observed):
+
+- [ ] Manually add **Built-in → NoiseRemover (DSP)**; AUTO creation/reset and
+  `auto_processors_add` still add only Filter + RNNoise + Auto Gain.
+- [ ] Learn captures two seconds of background-only input; orange freezes while
+  blue input continues moving. Relearn replaces the profile only when complete.
+- [ ] Realtime adapts, retains the previous manual profile, and switching back to
+  Learn restores it. Interrupting Relearn does not save a partial profile.
+- [ ] Save/load a slot or preset with mode/reduction/completed profile; incompatible
+  sample rates require Learn again. Existing RNNoise and ordinary VST states restore.
+- [ ] At 48 kHz both modes show 256 samples / 5.333 ms, including Learn required,
+  capture and 0 dB. Other native rates follow the DSP guide, with graph PDC included.
+- [ ] L/Mono and R show their own input/noise/mask data; purple is applied reduction,
+  not removed audio. Bin resolution/unresolved low frequencies are labelled and
+  stopped-callback curves disappear after 750 ms.
+- [ ] A new Receiver selects Medium (1024); projects saved with each of the five
+  choices reopen with the saved choice, without migration to Medium.
+- [ ] Assess weak/sustained voice, singing, transients, CPU deadline behavior and
+  long-session monitoring on actual intended devices; record the setup and limits.
+
+Neither this checklist nor the software plot screenshots prove those manual items.
 
 ---
 
@@ -330,9 +369,9 @@ node tools/test_api.js
 
 #### 독립 수신 (4.4.0에서 도입, 4.5.0 유지) / Independent reception
 
-- [ ] 현재 4.5.0 본체와 Receiver를 사용하고 같은 샘플레이트로 두 OBS 소스 또는
+- [ ] 현재 후보 본체와 Receiver를 사용하고 같은 샘플레이트로 두 OBS 소스 또는
   OBS/DAW에 동시에 연결합니다. 두 곳에서 같은 처리 음성을 정상 수신해야 합니다.
-  / With both ends on 4.5.0 and matching sample rates, verify the same processed
+  / With both ends on the candidate version and matching sample rates, verify the same processed
   audio arrives at two OBS sources or OBS/DAW instances simultaneously.
 - [ ] 한 Receiver만 뮤트·정지·재연결하고 다른 Receiver가 계속 수신하는지 확인합니다.
   오래 정지한 쪽을 재개했을 때 묵은 음성이 재생되지 않아야 합니다.
@@ -352,9 +391,9 @@ node tools/test_api.js
 
 #### Receiver 갱신 / Receiver upkeep (Windows)
 
-- [ ] 4.3.0의 본체 전용 갱신 후 현재 4.5.0을 실행하고 **Settings > Update Receiver...**로
+- [ ] 4.3.0의 본체 전용 갱신 후 업데이트된 본체를 실행하고 **Settings > Update Receiver...**로
   별도 Receiver 갱신이 가능한지 확인합니다. / Verify the two-step migration from
-  the 4.3.0 host-only updater to 4.5.0 Receiver maintenance.
+  the 4.3.0 host-only updater to current Receiver maintenance.
 - [ ] **Settings > Update Receiver...**에서 설치 경로·버전과 `Choose Folder...`
   검색 결과를 확인합니다. 현재/더 최신 설치본은 갱신 대상에서 제외합니다.
   / Verify discovered/custom-folder targets and preservation of current/newer copies.
@@ -368,10 +407,10 @@ node tools/test_api.js
   bundle resources and rejection of unsupported transaction paths before host exit.
 
 온라인 갱신은 공개 릴리즈를 사용합니다. **4.3.0 업데이터로 처음 갱신하면 본체만
-교체**되므로 현재 4.5.0 실행 후 **Settings > Update Receiver...**로 Receiver도 갱신해야
+교체**되므로 업데이트된 본체 실행 후 **Settings > Update Receiver...**로 Receiver도 갱신해야
 합니다. 실제 설치·청취·UAC 검증은 격리된 helper/OBS 엔진 검사와 별도입니다.
 / Online maintenance uses published releases. **Updating from 4.3.0 replaces only
-the host**; launch 4.5.0 and update the Receiver from Settings too. Isolated helper
+the host**; launch the updated host and update the Receiver from Settings too. Isolated helper
 and OBS-engine results do not mark installation, listening or UAC checks complete.
 
 ### 설정 내보내기/가져오기

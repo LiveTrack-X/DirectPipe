@@ -429,6 +429,7 @@ void PluginChainEditor::showAddPluginMenu()
         juce::PopupMenu builtinMenu;
         builtinMenu.addItem(901, "Filter (HPF + LPF)");
         builtinMenu.addItem(902, "Noise Removal (RNNoise)");
+        builtinMenu.addItem(905, "NoiseRemover (DSP)");
         builtinMenu.addItem(903, "Auto Gain (LUFS AGC)");
         menu.addSubMenu("Built-in", builtinMenu);
        #if JUCE_WINDOWS
@@ -475,6 +476,9 @@ void PluginChainEditor::showAddPluginMenu()
             } else if (result == 903) {
                 auto r = safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinAutoGain);
                 if (!r) juce::Logger::writeToLog("[VST] Failed to add Auto Gain: " + r.message);
+            } else if (result == 905) {
+                auto r = safeThis->vstChain_.addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemovalDSP);
+                if (!r) juce::Logger::writeToLog("[VST] Failed to add NoiseRemover (DSP): " + r.message);
             }
             else if (result == 904) {
                 safeThis->installDpwim();

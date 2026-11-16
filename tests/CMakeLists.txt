@@ -2,6 +2,16 @@
 
 include(GoogleTest)
 
+# Exercise the same header-only DSP core used by the built-in on every CI OS.
+# Keep the allocation-guard executable separate from JUCE/GTest allocations.
+add_executable(directpipe-stft-tests ../experiments/low_latency_nr/tests.cpp)
+if(MSVC)
+    target_compile_options(directpipe-stft-tests PRIVATE /W4 /utf-8 /fp:precise)
+else()
+    target_compile_options(directpipe-stft-tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME StreamingStftNativeCore COMMAND directpipe-stft-tests)
+
 # ─── Core IPC Tests (no JUCE dependency) ────────────────────────
 add_executable(directpipe-tests
     test_ring_buffer.cpp
@@ -93,6 +103,8 @@ if(DIRECTPIPE_BUILD_HOST)
         # Slice 6: Built-in Processors
         test_builtin_processors.cpp
         test_builtin_noise_removal.cpp
+        test_builtin_noise_removal_dsp.cpp
+        test_dsp_noise_spectrum_view.cpp
         test_dpwim_installer.cpp
         test_builtin_auto_gain.cpp
         # Slice 7: VSTChain
@@ -134,6 +146,7 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinFilter.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinAutoGain.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinNoiseRemoval.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/Audio/BuiltinNoiseRemovalDSP.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Audio/PluginPreloadCache.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Platform/EndpointChangeWatcher.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/Platform/WindowsMicLevelKeeper.cpp
@@ -144,6 +157,8 @@ if(DIRECTPIPE_BUILD_HOST)
         ${CMAKE_SOURCE_DIR}/host/Source/UI/ReceiverUpdateSupport.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/FilterEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/NoiseRemovalEditPanel.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/DspNoiseRemovalEditPanel.cpp
+        ${CMAKE_SOURCE_DIR}/host/Source/UI/DspNoiseSpectrumView.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/UI/AGCEditPanel.cpp
         ${CMAKE_SOURCE_DIR}/host/Source/IPC/SharedMemWriter.cpp
     )

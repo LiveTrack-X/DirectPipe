@@ -1,6 +1,6 @@
 # DirectPipe User Guide / 사용자 가이드
 
-> **Guide Version 4.5.1 / 가이드 4.5.1** — [Verification record / 검증 기록](RELEASE_4_5_1.md). [Public releases / 공개 릴리즈](https://github.com/LiveTrack-X/DirectPipe/releases).
+> **Guide Version 4.5.2 / 가이드 4.5.2** — [Verification record / 검증 기록](RELEASE_4_5_2.md). [Public releases / 공개 릴리즈](https://github.com/LiveTrack-X/DirectPipe/releases).
 > 4.3.0 자동 갱신은 본체만 교체합니다. 새 본체 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. / The 4.3.0 updater replaces only the host; after launching the updated host, update existing Receivers from **Settings > Update Receiver...** too.
 
 ## 시작하기 / Getting Started
@@ -242,10 +242,15 @@ Select the balance between latency and stability in the Receiver plugin GUI **Bu
 | 프리셋 / Preset | 샘플 / Samples | @48kHz | 권장 용도 / Recommended Use |
 |---|---|---|---|
 | **Ultra Low** | 256 | ~5ms | 최소 지연, 고사양 PC / Minimum latency, high-end PC |
-| **Low** (기본 / default) | 512 | ~10ms | **대부분의 사용자 / Most users** |
-| **Medium** | 1024 | ~21ms | 안정적 / Stable |
+| **Low** | 512 | ~10ms | **대부분의 사용자 / Most users** |
+| **Medium** (기본 / default) | 1024 | ~21ms | 안정적 / Stable |
 | **High** | 2048 | ~42ms | CPU 부하 높을 때 / High CPU load |
 | **Safe** | 4096 | ~85ms | 끊김 자주 발생 시 / Frequent crackling |
+
+4.5.2의 새 Receiver만 Medium을 기본값으로 사용합니다. 기존 OBS/DAW 프로젝트에
+저장된 Ultra Low/Low/Medium/High/Safe 선택은 그대로 복원됩니다. / Only new
+Receivers default to Medium in 4.5.2; existing OBS/DAW projects retain their saved
+choice from all five presets.
 
 #### 6단계: 샘플레이트 맞추기 / Step 6: Match Sample Rates
 
@@ -585,7 +590,7 @@ Slots store **chain data + name** (plugins, order, bypass, parameters, slot name
 
 ## Auto 모드 (내장 프로세서) / Auto Mode (Built-in Processors)
 
-VST 플러그인 없이 기본적인 마이크 처리를 제공하는 내장 프로세서 3종. / 3 built-in processors for basic microphone processing without VST plugins.
+VST 플러그인 없이 마이크 처리를 제공하는 내장 프로세서 4종 중 Auto는 기존 3종을 구성합니다. NoiseRemover (DSP)는 수동 추가 전용입니다. / Four built-in processors are available; AUTO configures Filter, RNNoise Noise Removal and Auto Gain. NoiseRemover (DSP) is added manually.
 
 Auto chain order: Filter -> Noise Removal -> Auto Gain -> Post Limiter -> Global Safety Guard -> Safety Volume -> Output.
 
@@ -607,6 +612,7 @@ Auto chain order: Filter -> Noise Removal -> Auto Gain -> Post Limiter -> Global
 |---------|------|----------|
 | **Filter** | HPF (하이패스) + LPF (로우패스) | HPF ON 60Hz, LPF OFF |
 | **Noise Removal** | RNNoise AI 노이즈 제거 + VAD 게이팅 | Standard (VAD 0.70), Hold 300ms |
+| **NoiseRemover (DSP)** | 수동 Learn/frozen 또는 Realtime/adaptive 추정 / Manual Learn/frozen or Realtime/adaptive estimation; excluded from AUTO | Learn, Reduction 12 dB; Learn required until captured |
 | **Auto Gain** | LUFS 기반 자동 볼륨 레벨러 + 고정 Post Limiter | Target -15 LUFS, Max Gain 22 dB, Limiter Ceiling -1.0 dBTP |
 
 ### DPWIM 설치·업데이트 (Windows 전용)
@@ -637,8 +643,8 @@ DPWIM은 빌트인이나 Auto 구성 요소가 아닙니다. 기존 인스턴스
 - **Limiter Ceiling**: Post limiter ceiling (고급에서 노출되는 유일한 limiter 항목, -2.0~0.0 dBTP, 기본 -1.0)
 - **고정 내부값 / Fixed internal**: post limiter lookahead 1ms, release 50ms (UI 미노출)
 
-> **4.5.1**: Noise Removal은 8-192 kHz 입력을 내부 48 kHz로 변환하여 처리합니다. 48 kHz에서는 변환을 거치지 않습니다. 공개 4.5.0은 기존 48 kHz 제한을 유지합니다.
-> Version 4.5.1 converts 8-192 kHz to/from RNNoise's 48 kHz engine. Native 48 kHz avoids conversion. Published 4.5.0 still has the original 48 kHz limitation.
+> **4.5.1**: Noise Removal은 8-192 kHz 입력을 내부 48 kHz로 변환하여 처리합니다. 48 kHz에서는 변환을 거치지 않습니다. 이전 4.5.0의 기존 48 kHz 제한과 구분합니다.
+> Version 4.5.1 converts 8-192 kHz to/from RNNoise's 48 kHz engine. Native 48 kHz avoids conversion. Historical 4.5.0 has the original 48 kHz limitation.
 
 ### 내장 프로세서 상세 가이드 / Built-in Processor Details
 
@@ -664,6 +670,29 @@ AI 기반 노이즈 억제. 배경 소음(키보드, 팬, 환경 소음)을 실�
 - **샘플레이트 / Sample rate (4.5.1)**: 8-192 kHz 지원. 48 kHz는 기존 경로, 다른 주파수는 내부 리샘플링을 사용합니다. 변환 지연은 전체 Latency에 반영됩니다 / Native 48 kHz retains the original path; other supported rates use internal conversion, included in reported latency.
 - **동작 상태 / Status**: 체인과 편집창에서 `Active: native 48 kHz`, `Active: 44.1 -> 48 -> 44.1 kHz` 또는 비활성 이유를 표시합니다. 오디오 설정 변경 시 갱신됩니다 / The chain and editor show native/converted activity or the inactive reason and refresh after audio changes.
 - **입출력 L/R 미터 / Input/output L/R meters (4.5.1)**: 기존 양쪽 미터 영역에서 L/R을 따로 표시합니다. 입력은 Mono 혼합·복제 전의 선택된 캡처 채널에 게인·입력 뮤트를 반영한 값, 출력은 최종 보호 후 / 목적지별 볼륨·뮤트 전의 처리 신호입니다. 입력이 한쪽뿐이면 다른 입력 막대는 0이며, Mono 출력의 두 막대는 같을 수 있습니다 / Input shows selected capture channels before Mono mixing/duplication, with gain/mute applied; output is post final protection, pre destination volume/mute. Only the Mono output copies may display equal channels.
+
+#### NoiseRemover (DSP) — 4.5.2
+
+`Add Plugin -> Built-in -> NoiseRemover (DSP)`에서 수동 추가합니다. AUTO에는 포함하지 않습니다.
+Learn은 소음만 있는 상태로 2초 학습 후 프로필을 고정하고, Realtime은 추정치를 계속 갱신합니다.
+모드·감쇠량·완료된 수동 프로필은 프리셋에 저장됩니다. 학습/프로필 없음/감쇠 0에서도
+FFT 버퍼 지연은 남습니다: 48 kHz에서 256 samples = 5.333 ms, 44.1 kHz에서 5.805 ms.
+장치/Receiver 지연은 별도입니다. 편집창 위 그래프는 현재 입력(파랑, 음성 포함)과 노이즈 추정치(주황), 아래 그래프는 실제 적용 감쇠량(보라)을 표시합니다. Learn 완료 후 주황 프로필은 고정됩니다. 다른 주파수와 제한은 [DSP 가이드](DSP_NOISE_REMOVAL.md)를 참조하세요.
+
+Manual-only DSP noise suppression with frozen Learn or adaptive Realtime modes. Capture two seconds
+of background noise in Learn; a completed profile is retained across mode changes and saved in
+presets. Both modes report the actual native FFT delay, including zero attenuation or no profile.
+Reduction ranges from 0 to 24 dB (default 12 dB). With no compatible profile, Learn required
+passes delayed audio until Learn completes. Realtime's changing estimate and partial captures
+do not replace the completed manual profile. Profiles must match the sample rate/FFT geometry;
+relearn after an incompatible rate change. Statistical tracking can affect weak or sustained
+voice; real vocal/singing and hardware acceptance remain unverified unless recorded in the
+[current release evidence](RELEASE_4_5_2.md).
+
+Select **L / Mono** or **R** to inspect each channel. Blue includes all current input, including
+speech; orange is the noise estimate (frozen after Learn); purple is the actual applied gain
+reduction, not isolated removed-noise audio. The view labels Hz/bin and shades unresolved low
+frequencies. Curves expire after 750 ms without fresh audio; viewing them adds no audio delay.
 
 #### Auto Gain (자동 게인 / LUFS AGC)
 
@@ -787,8 +816,8 @@ Receiver 플러그인 GUI에서 Buffer 드롭다운으로 선택합니다. / Sel
 | 프리셋 / Preset | 보고 버퍼 지연 @48kHz / Reported buffering @48kHz | 권장 / Recommended |
 |---|---|---|
 | **Ultra Low** | ~5ms | 최소 지연 (끊김 가능성) / Minimum latency (may crackle) |
-| **Low** (기본 / default) | ~10ms | 대부분의 상황 / Most situations |
-| **Medium** | ~21ms | 안정적 / Stable |
+| **Low** | ~10ms | 대부분의 상황 / Most situations |
+| **Medium** (기본 / default) | ~21ms | 안정적 / Stable |
 | **High** | ~42ms | CPU 부하 높을 때 / High CPU load |
 | **Safe** | ~85ms | 끊김 자주 발생 시 / Frequent crackling |
 
@@ -1291,7 +1320,7 @@ View all app events (audio engine, plugins, WebSocket, HTTP, etc.) in real-time.
 
 DirectPipe는 실행 시 백그라운드에서 최신 공개 버전을 확인합니다. 설치 host가 같거나 더 최신이면 조용히 유지하며 downgrade하지 않습니다. / Checks the latest public release in the background on startup; stays quiet when the host is current/ahead and never downgrades.
 
-업데이트 버튼은 **공개 릴리즈**를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로 4.5.0을 실행한 다음 아래 **Settings > Update Receiver...** 절차로 기존 Receiver도 갱신하세요. 현재 릴리즈의 본체·Receiver 4.5.0 조합을 사용하세요. 독립 수신은 4.4.0에서 도입되었으며 구형 연결의 호환 경로는 유지합니다. / The updater uses **published releases**. **The 4.3.0 updater replaces only the host**; launch 4.5.0 and then update existing Receivers using **Settings > Update Receiver...** below. Use the current 4.5.0 host/Receiver pair; independent reception was introduced in 4.4.0 and the legacy compatibility path remains available.
+업데이트 버튼은 **공개 릴리즈**를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로 업데이트된 본체를 실행한 다음 아래 **Settings > Update Receiver...** 절차로 기존 Receiver도 갱신하세요. 같은 릴리즈의 본체·Receiver 조합을 사용하세요. 독립 수신은 4.4.0에서 도입되었으며 구형 연결의 호환 경로는 유지합니다. / The updater uses **published releases**. **The 4.3.0 updater replaces only the host**; launch the updated host and then update existing Receivers using **Settings > Update Receiver...** below. Use a matching host/Receiver release pair; independent reception was introduced in 4.4.0 and the legacy compatibility path remains available.
 
 4.5.0은 본체 종료 대기를 60초로 제한하고 실패 단계·이유·복구 파일을 로그에 기록합니다. 초기 복원과 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며, 시작 미확인 시에는 복구 파일을 보존합니다. 이전 설치본에서 넘어오는 첫 업데이트는 **이전 설치본의 업데이터**가 실행합니다. 멈춤이 발생하면 기존 EXE와 백업을 보존하고 [업데이트 진단·복구 안내](WINDOWS_UPDATE_RECOVERY.md)를 확인하세요. / Version 4.5.0 adds a 60-second host wait and persistent stage/error/recovery diagnostics. Verified previous EXEs are cleaned only after initial restore and window/tray startup confirmation; unconfirmed starts retain recovery files. The first upgrade from an older binary still uses its older updater. Keep existing EXE/backup files if it stops; see the recovery guide.
 
@@ -1444,13 +1473,13 @@ If the main audio device and monitor device have different sample rates, monitor
 
 ### DirectPipe Receiver에서 끊김 / Receiver audio crackling
 
-4.5.0 본체와 Receiver는 최대 8개를 독립 연결합니다. 기존 필터·프리셋·Buffer
+현재 본체와 Receiver는 최대 8개를 독립 연결합니다. 기존 필터·프리셋·Buffer
 설정은 유지됩니다. `Connected (v1)`은 구형 방식이므로 Receiver 하나만 사용하세요.
 `Receiver limit`이면 사용하지 않는 Receiver 필터를 제거·언로드하거나 해당 호스트 앱을 종료하면 자동으로 다시 연결합니다. 편집 창만 닫아서는 슬롯이 해제되지 않습니다.
 `Connecting...`은 본체의 첫 오디오 처리를 기다리는 상태일 수 있습니다(패닉 뮤트 포함).
 한 수신기의 정지·복귀는 다른 수신기를 막지 않으며, 넘친 큐는 복귀할 때 비웁니다.
 
-Current 4.5.0 host/Receiver pairs support eight independent connections. `Connected
+Current host/Receiver pairs support eight independent connections. `Connected
 (v1)` retains the old single-reader restriction. At `Receiver limit`, unload an
 unused Receiver filter or close its host app; closing only the editor does not release a slot. The waiting connection retries automatically. `Connecting...`
 can mean waiting for the host's first audio block, including while panic-muted.

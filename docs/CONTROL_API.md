@@ -272,6 +272,11 @@ Toggles the IPC output (DirectPipe Receiver) on/off. When enabled, processed aud
 
 Adds built-in Filter + NoiseRemoval + AutoGain processors to the chain. Already-present types are skipped. Not blocked by panic mute. / 내장 Filter + NoiseRemoval + AutoGain 프로세서를 체인에 추가. 이미 있는 타입은 스킵. 패닉 뮤트에 의해 차단되지 않음.
 
+NoiseRemover (DSP) is manual-only and is not inserted by this action or AUTO
+defaults/reset. Its mode, Learn/Relearn and reduction controls live in its editor;
+no DSP-specific control endpoint or spectrum payload is added in 4.5.2. Existing
+plugin bypass, type and latency fields describe it through the unchanged protocol.
+
 ---
 
 #### `xrun_reset` — Reset XRun Counter / XRun 카운터 리셋
@@ -363,7 +368,7 @@ Not blocked by panic mute. / 패닉 뮤트에 의해 차단되지 않음.
 | `plugins[].bypass` | boolean | Bypassed / Bypass 여부 |
 | `plugins[].loaded` | boolean | Loaded (slot not empty) / 로드 여부 |
 | `plugins[].latency_samples` | number | Plugin-reported latency in samples / 플러그인 보고 레이턴시 (샘플) |
-| `plugins[].type` | string | Plugin type: `"vst"`, `"builtin_filter"`, `"builtin_noise_removal"`, `"builtin_auto_gain"` / 플러그인 타입 |
+| `plugins[].type` | string | Plugin type: `"vst"`, `"builtin_filter"`, `"builtin_noise_removal"`, `"builtin_noise_removal_dsp"`, `"builtin_auto_gain"` / 플러그인 타입 |
 | `volumes.input` | number | Input gain multiplier (0.0-2.0) / 입력 게인 배수 |
 | `volumes.monitor` | number | Monitor volume (0.0-1.0) / 모니터 볼륨 |
 | `volumes.output` | number | Output volume (0.0-1.0) / 출력 볼륨 |

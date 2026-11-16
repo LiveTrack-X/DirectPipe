@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-0078d4?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/version-v4.5.1-blue?style=flat-square" alt="DirectPipe 4.5.1">
+  <img src="https://img.shields.io/badge/version-v4.5.2-blue?style=flat-square" alt="DirectPipe 4.5.2">
   <img src="https://img.shields.io/badge/C%2B%2B17-JUCE%207-00599C?style=flat-square&logo=cplusplus" alt="C++17">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/VST2%20%2B%20VST3%20%2B%20AU-supported-ff6f00?style=flat-square" alt="VST">
@@ -22,13 +22,13 @@
 
 <h3 align="center">📖 <a href="docs/QUICKSTART.md">Quick Start</a> · <a href="docs/USER_GUIDE.md">User Guide</a> · <a href="#faq">FAQ</a> · 💬 <a href="https://litt.ly/livetrack">Contact</a></h3>
 
-> **4.5.1** — Adds internal RNNoise sample-rate conversion and independent input/output L/R meters, fixes stale activity warnings and reported processing latency. [Verification and remaining gates / 검증·남은 게이트](docs/RELEASE_4_5_1.md). Published 4.5.0 remains unchanged. / 기존 공개 4.5.0은 그대로 유지합니다.
+> **4.5.2 candidate / 후보** — Adds manual Built-in NoiseRemover (DSP) with Learn/Realtime and live input/noise/reduction plots; new Receivers default to Medium. [Verification and scan status / 검증·검사 상태](docs/RELEASE_4_5_2.md). Published 4.5.1 is the upgrade baseline.
 >
 > **Windows mic-level hold is off by default.** It affects the exact selected supported WASAPI shared input in all apps; manual Windows slider changes are corrected while enabled. ASIO is unsupported; mute and boost are unchanged. [Usage and limits](docs/USER_GUIDE.md#windows-mic-level-hold). / **Windows 마이크 레벨 유지는 기본 꺼짐**입니다. 정확히 식별한 선택 WASAPI 공유 입력에만 적용하며 다른 앱과 수동 Windows 볼륨 변경에도 영향을 줍니다. ASIO는 지원하지 않고 음소거·부스트는 바꾸지 않습니다. [사용법과 제한](docs/USER_GUIDE.md#windows-mic-level-hold).
 
 > **4.4.0** — Up to eight independent Receiver connections, plus one separate legacy Receiver, with existing A–E/Auto slots and OBS settings preserved. / A–E/Auto 슬롯과 OBS 설정을 유지하며 최대 8개의 독립 Receiver와 구형 Receiver 1개를 별도로 지원합니다. [Scope and validation / 변경 범위와 검증](docs/MULTI_RECEIVER_4_4_0.md).
 >
-> **Upgrading from 4.3.0 / 4.3.0에서 갱신할 때:** Its updater replaces only the host. After launching 4.5.0, use **Settings > Update Receiver...** to update existing Receiver installations too. The first upgrade uses the updater in your installed version; see [update recovery](docs/WINDOWS_UPDATE_RECOVERY.md). / 4.3.0 업데이터는 본체만 교체합니다. 4.5.0 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. 첫 갱신은 기존 설치본의 업데이터를 사용합니다. [업데이트 복구 안내](docs/WINDOWS_UPDATE_RECOVERY.md)를 참고하세요.
+> **Upgrading from 4.3.0 / 4.3.0에서 갱신할 때:** Its updater replaces only the host. After launching the updated host, use **Settings > Update Receiver...** to update existing Receiver installations too. The first upgrade uses the updater in your installed version; see [update recovery](docs/WINDOWS_UPDATE_RECOVERY.md). / 4.3.0 업데이터는 본체만 교체합니다. 업데이트된 본체 실행 후 **Settings > Update Receiver...**에서 Receiver도 갱신하세요. 첫 갱신은 기존 설치본의 업데이터를 사용합니다. [업데이트 복구 안내](docs/WINDOWS_UPDATE_RECOVERY.md)를 참고하세요.
 
 ## 다운로드 / Download
 
@@ -194,7 +194,7 @@ External Control:
 - **실시간 L/R 레벨 미터** — 입력·출력 각각 독립 L/R RMS와 피크 홀드, dB 로그 스케일. 입력은 Mono 혼합·복제 전 캡처 채널에 게인·입력 뮤트를 반영, 출력은 최종 보호 후/목적지 볼륨·뮤트 전 — Independent L/R bars: input capture before Mono conversion with gain/mute applied, output after protection
 - **RNNoise 샘플레이트 지원** — 내장 노이즈 제거는 8-192 kHz를 내부 48 kHz로 변환하며, 48 kHz는 기존 경로를 유지합니다. 상태와 전체 처리 지연을 표시합니다 — Internal conversion supports 8-192 kHz; native 48 kHz avoids conversion. Receiver still requires matching sample rates
 - **Safety Guard** — VST 체인 이후 전역 샘플-피크 가드(legacy API/action name: SafetyLimiter). zero-latency runtime, instant attack + smooth release + hard clamp, 기본 ceiling -0.3 dBFS — Global sample-peak guard after VST chain (legacy API/action name: SafetyLimiter). Zero-latency runtime with instant attack + smooth release + hard clamp, default ceiling -0.3 dBFS
-- **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter). Auto configures these three. Windows에서는 바로 아래 `Install DPWIM...`으로 별도 DPWIM VST3를 설치·업데이트할 수 있습니다. DPWIM은 빌트인이나 Auto 구성 요소가 아닙니다. [설치와 사용법 / Setup](docs/DPWIM_WINDOWS_SETUP.md)
+- **Built-in Processors** — Filter (HPF+LPF), Noise Removal (RNNoise AI), Auto Gain (LUFS AGC + fixed post limiter), and manual-only [NoiseRemover (DSP)](docs/DSP_NOISE_REMOVAL.md) (Learn/frozen or Realtime/adaptive). Auto configures the first three. Windows에서는 바로 아래 `Install DPWIM...`으로 별도 DPWIM VST3를 설치·업데이트할 수 있습니다. DPWIM은 빌트인이나 Auto 구성 요소가 아닙니다. [설치와 사용법 / Setup](docs/DPWIM_WINDOWS_SETUP.md)
 - **Clock Drift Compensation** — IPC uses bidirectional drift handling with hysteresis dead-band, and Monitor output trims stale ring-buffer frames when independent device clocks drift apart (auto buffer management helps reduce clicks/pops and prevents monitor latency from growing over time) / IPC는 히스테리시스 데드 밴드를 포함한 양방향 클록 드리프트 보상을 사용하고, Monitor 출력은 독립 장치 클록이 벌어질 때 오래된 링 버퍼 프레임을 정리합니다 (자동 버퍼 관리로 끊김/팝을 완화하고 모니터 지연 누적을 제한)
 
 ### 외부 제어 / External Control
@@ -228,13 +228,13 @@ External Control:
   | 프리셋 / Preset | 샘플 / Samples | @48kHz | @44.1kHz | 용도 / Best for |
   |---|---|---|---|---|
   | Ultra Low | 256 | ~5ms | ~6ms | 최소 지연 / Minimum latency |
-  | Low (기본) | 512 | ~10ms | ~12ms | 일반 사용 / General use (default) |
-  | Medium | 1024 | ~21ms | ~23ms | 안정적 / Stable |
+  | Low | 512 | ~10ms | ~12ms | 일반 사용 / General use |
+  | Medium (기본 / default) | 1024 | ~21ms | ~23ms | 안정적 / Stable |
   | High | 2048 | ~42ms | ~46ms | CPU 여유 적을 때 / Low CPU headroom |
   | Safe | 4096 | ~85ms | ~93ms | 최대 안정성 / Maximum stability |
 - **샘플레이트 불일치 경고** — DirectPipe 송신 샘플레이트와 OBS(호스트) 샘플레이트가 다르면 Receiver GUI에 경고 표시. 샘플레이트가 다르면 피치/속도 변동 발생 — Sample rate mismatch warning shown in Receiver GUI when source and host sample rates differ
 
-  표의 값은 Receiver가 보고하는 버퍼 분량이며 전체 마이크→OBS 지연의 실측값이 아닙니다. 자동 리샘플링은 없으므로 두 앱의 샘플레이트를 맞추세요. / The table shows Receiver-reported buffering, not measured end-to-end microphone-to-OBS latency. Match both sample rates; there is no automatic resampling.
+  표의 값은 Receiver가 보고하는 버퍼 분량이며 전체 마이크→OBS 지연의 실측값이 아닙니다. 자동 리샘플링은 없으므로 두 앱의 샘플레이트를 맞추세요. / New instances default to Medium; saved project choices are retained. The table shows Receiver-reported buffering, not measured end-to-end microphone-to-OBS latency. Match both sample rates; there is no automatic resampling.
 
 ### 녹음 / Recording
 
@@ -256,7 +256,7 @@ External Control:
 - **상태 바** — 총 추정 레이턴시(드라이버 보고 입력·출력 지연, 미보고 방향은 1버퍼 대체 + 활성 플러그인 체인 보고 PDC), CPU % + XRun 카운터(60초간), 오디오 포맷, [LIM] 인디케이터, 포터블 모드, 버전 정보. 콜백 처리시간은 CPU/XRun 진단에만 사용하며 총 지연에 중복 합산하지 않습니다. 하드웨어 루프백 실측값은 아니며 Receiver/OBS 버퍼는 별도입니다. 오류/경고/정보 알림 자동 표시 (3-8초 페이드) — Status bar: total estimated latency (driver-reported input/output latency, with a one-buffer fallback per unreported direction, plus active plugin-chain reported PDC), CPU % + XRun counter (60s window), audio format, [LIM] indicator, portable mode, version. Callback execution time remains a CPU/XRun diagnostic and is not double-counted as path latency. This is not a hardware loopback measurement; Receiver/OBS buffering is separate. Auto-fade notifications
 - **인앱 자동 업데이트** — 새 버전 감지 시 credit 라벨에 "NEW vX.Y.Z" 표시. 클릭하면 [Update Now] / [View on GitHub] / [Later] 다이얼로그. Update Now로 GitHub에서 다운로드 → 검증 → 교체 → 재시작. Windows의 **Settings > Update Receiver...**에서는 오래된 Receiver만 별도로 갱신하며 정확한 경로를 먼저 표시합니다. 사용 중이면 OBS 등을 직접 종료한 뒤 Retry / Verified in-app host updates, plus explicit Windows Receiver-only maintenance with exact path preview and Retry/Later for in-use plugins
 
-  업데이트 대상은 공개 릴리즈입니다. **4.3.0에서 처음 갱신하면 본체만 교체**되므로 4.5.0 실행 후 Settings에서 Receiver도 갱신하세요. SHA-256 검사는 패키지 일치 여부를 확인하며 코드 서명을 대신하지 않습니다. / Updates use published releases. **The 4.3.0 updater replaces only the host**; launch 4.5.0 and update the Receiver from Settings. SHA-256 verifies package integrity and does not replace code signing.
+  업데이트 대상은 공개 릴리즈입니다. **4.3.0에서 처음 갱신하면 본체만 교체**되므로 업데이트된 본체 실행 후 Settings에서 Receiver도 갱신하세요. SHA-256 검사는 패키지 일치 여부를 확인하며 코드 서명을 대신하지 않습니다. / Updates use published releases. **The 4.3.0 updater replaces only the host**; launch the updated host and update the Receiver from Settings. SHA-256 verifies package integrity and does not replace code signing.
 - **한국어/CJK 폰트 지원** — 한글, 中文, 日本語 장치명 정상 표시. Windows: Malgun Gothic, macOS: Apple SD Gothic Neo, Linux: Noto Sans CJK KR — Korean/Chinese/Japanese device names rendered correctly with platform-specific CJK font support
 - **다크 테마** — Custom JUCE LookAndFeel
 - **포터블 모드** — exe 옆에 [`portable.flag`](tools/portable.flag) 파일 배치 시 설정을 `./config/`에 저장. 다중 인스턴스 지원: 일반 모드와 포터블을 동시에 실행하면 포터블은 "Audio Only" 모드로 동작 (외부 제어 충돌 방지). 트레이/타이틀 바에 모드 표시 ([상세 설명](docs/USER_GUIDE.md#포터블-모드--portable-mode)) — Place [`portable.flag`](tools/portable.flag) next to exe to store config in `./config/`. Multi-instance support: running portable alongside normal mode puts portable in "Audio Only" mode (prevents external control conflicts). Mode shown in tray/title bar ([details](docs/USER_GUIDE.md#포터블-모드--portable-mode))
@@ -390,8 +390,8 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - **[Quick Start](docs/QUICKSTART.md) — USB 마이크 5분 설정 가이드 / 5-minute USB mic setup guide**
 - [Platform Guide](docs/PLATFORM_GUIDE.md) — 플랫폼별 가이드 (Windows/macOS/Linux) / Platform-specific setup, features, and limitations
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
-- [4.5.1 Verification](docs/RELEASE_4_5_1.md) — 이번 버전 검증·제한사항 / Version evidence and limitations
-- [4.5.1 Documentation Audit](docs/DOCUMENTATION_AUDIT_4_5_1.md) — 현재 문서·주석 정합성 / Current documentation and comment review
+- [4.5.2 Verification](docs/RELEASE_4_5_2.md) — 이번 버전 검증·제한사항 / Version evidence and limitations
+- [4.5.1 Documentation Audit](docs/DOCUMENTATION_AUDIT_4_5_1.md) — 이전 릴리스 문서 검토 / Previous release documentation review
 - [Published 4.5.0 Verification](docs/RELEASE_4_5_0.md) — 이전 공개 버전 기록 / Previous published-release evidence
 - [4.4.0 Changes and Validation](docs/MULTI_RECEIVER_4_4_0.md) — 독립 Receiver·프리셋 수정·업데이트와 검증 범위 / Independent Receivers, preset fixes, upgrade workflow and validation scope
 - [Auto Design](docs/AUTO_DESIGN.md) — [Auto] 설계 원칙 및 파라미터 근거 / Auto chain design principles, parameter rationale
@@ -975,8 +975,8 @@ Receiver 플러그인 UI를 열면 **Buffer** 드롭다운에서 버퍼 크기�
 | 프리셋 | 지연 | 권장 상황 |
 |---|---|---|
 | **Ultra Low** | ~5ms | 실시간 모니터링이 중요할 때 (끊김 가능성 있음) |
-| **Low** (기본) | ~10ms | 대부분의 상황에 적합 |
-| **Medium** | ~21ms | 안정적인 연결 |
+| **Low** | ~10ms | 대부분의 상황에 적합 |
+| **Medium** (기본 / default) | ~21ms | 안정적인 연결 |
 | **High** | ~42ms | CPU 사용량이 높을 때 |
 | **Safe** | ~85ms | 끊김이 자주 발생할 때 |
 
@@ -994,8 +994,8 @@ Open the Receiver plugin interface and select a buffer size from the **Buffer** 
 | Preset | Latency | Recommended for |
 |---|---|---|
 | **Ultra Low** | ~5ms | When real-time monitoring matters (risk of dropouts) |
-| **Low** (default) | ~10ms | Most situations |
-| **Medium** | ~21ms | Stable connection |
+| **Low** | ~10ms | Most situations |
+| **Medium** (기본 / default) | ~21ms | Stable connection |
 | **High** | ~42ms | When CPU load is high |
 | **Safe** | ~85ms | If you experience frequent dropouts |
 
@@ -1095,7 +1095,7 @@ DirectPipe는 **인앱 업데이트 알림**을 지원합니다. 새 버전이 �
 **Windows**: "Update Now" 버튼으로 자동 다운로드 → exe 교체 → 재시작. v4.2.0 이후 릴리즈는 정확히 일치하는 `checksums.sha256` 항목과 SHA-256을 필수 확인하며, metadata가 없거나 읽지 못하거나 불일치하면 fail-closed로 중단합니다.
 **macOS/Linux**: "View on GitHub" 버튼으로 릴리즈 페이지에서 수동 다운로드.
 
-**4.5.0 Receiver 업데이트**: 4.3.0 업데이터는 본체만 교체합니다. 4.5.0을 실행한 뒤 Windows **Settings > Update Receiver...**에서 Receiver의 설치 경로·버전을 확인하고 갱신하세요. 사용자 경로는 **Choose Folder...**로 선택하고, OBS 등이 사용 중이면 직접 종료한 뒤 **Retry** 또는 **Later**를 선택합니다. Receiver만 갱신할 때 DirectPipe는 계속 실행되며, 같은 버전과 더 최신 설치본은 덮어쓰지 않습니다.
+**4.5.0 Receiver 업데이트**: 4.3.0 업데이터는 본체만 교체합니다. 업데이트된 본체를 실행한 뒤 Windows **Settings > Update Receiver...**에서 Receiver의 설치 경로·버전을 확인하고 갱신하세요. 사용자 경로는 **Choose Folder...**로 선택하고, OBS 등이 사용 중이면 직접 종료한 뒤 **Retry** 또는 **Later**를 선택합니다. Receiver만 갱신할 때 DirectPipe는 계속 실행되며, 같은 버전과 더 최신 설치본은 덮어쓰지 않습니다.
 
 브라우저 수동 다운로드는 Windows 인앱 checksum 검사 범위 밖입니다.
 
@@ -1108,7 +1108,7 @@ DirectPipe includes **in-app update notification**. When a newer version is avai
 **Windows**: Click "Update Now" for auto-download → replace exe → restart. Releases v4.2.0 and later require an exact readable `checksums.sha256` entry and matching SHA-256; missing, unreadable, or mismatched metadata fails closed.
 **macOS/Linux**: Click "View on GitHub" to manually download from the release page.
 
-**Receiver upkeep in 4.5.0**: The 4.3.0 updater replaces only the host. After launching 4.5.0, open Windows **Settings > Update Receiver...** to review and update existing Receivers too. Use **Choose Folder...** for custom folders. Close OBS or another using app yourself before **Retry**, or choose **Later**. Receiver-only updates keep DirectPipe running and preserve same/newer installations.
+**Receiver upkeep in 4.5.0**: The 4.3.0 updater replaces only the host. After launching the updated host, open Windows **Settings > Update Receiver...** to review and update existing Receivers too. Use **Choose Folder...** for custom folders. Close OBS or another using app yourself before **Retry**, or choose **Later**. Receiver-only updates keep DirectPipe running and preserve same/newer installations.
 
 Manual browser downloads are outside the Windows in-app checksum check.
 
@@ -1267,3 +1267,7 @@ SDAD는 현재 범위, 검증 증거, 미해결 항목, 릴리즈나 공개 호�
 ## License
 
 GPL v3 — [LICENSE](LICENSE)
+
+### NoiseRemover (DSP) — 4.5.2 candidate
+
+Add manually with **Add Plugin → Built-in → NoiseRemover (DSP)**; AUTO defaults/reset keep Filter + RNNoise + Auto Gain. Learn captures two seconds of noise-only input and freezes the completed profile; Realtime adapts without replacing that saved manual profile. Mode, reduction (0–24 dB; default 12 dB) and completed profile persist in presets. The editor overlays live input (including speech) and estimated noise, then shows applied reduction for L/Mono or R. At 48 kHz the DSP path adds and reports 256 samples (5.333 ms), including learning/no profile/zero attenuation. Device, other plugin and Receiver delays are additional. Statistical estimation can affect weak or sustained voice; listening and hardware acceptance remain separate from software tests. See the [DSP guide](docs/DSP_NOISE_REMOVAL.md) and [current release evidence](docs/RELEASE_4_5_2.md).

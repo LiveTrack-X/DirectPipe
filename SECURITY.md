@@ -21,15 +21,16 @@ If you discover a security vulnerability in DirectPipe, **please do NOT report i
 
 ## 지원 버전 / Supported Versions
 
-현재 릴리즈는 **v4.5.0**입니다. 현재 버전의 보안 문제도 위 비공개 채널로
+공개 **v4.5.1**은 업그레이드 기준이며 **v4.5.2 후보**의 공개 상태는 검증 기록을 확인하세요. 현재 버전의 보안 문제도 위 비공개 채널로
 보고해 주세요. 기존 버전의 아래 지원 등급은 보존합니다. / The current release
-is **v4.5.0**. Report current-version security issues through the private channel
+baseline is **v4.5.1**; see the verification record for the **v4.5.2 candidate** publication status. Report current-version security issues through the private channel
 above; existing support grades below are preserved. Build/dependency checks in
-the [verification record](docs/RELEASE_4_5_0.md) are not a complete security audit.
+the [verification record](docs/RELEASE_4_5_2.md) are not a complete security audit.
 
 | Version | Supported |
 |---|---|
-| v4.5.0 (current) | ✅ |
+| v4.5.1 (published baseline) | ✅ |
+| v4.5.0 | ✅ |
 | v4.3.0 | ✅ |
 | v4.2.7 | ⚠️ Critical fixes only / 치명적 버그만 |
 | v4.2.3 | ⚠️ Critical fixes only / 치명적 버그만 |

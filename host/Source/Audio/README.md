@@ -15,17 +15,21 @@ AudioEngine RT callback (audioDeviceIOCallbackWithContext)
  |
  |  Fast path: panic mute active (`muted_`) -> zero output and return immediately
  |
- |  1. inputChannelData -> workBuffer_ (pre-allocated 8ch)
+ |  1. Independent L/R input-meter tap on selected capture channels, before mapping
+ |     - Numerically includes input gain/mute; missing/right channel reads zero
+ |     - Decimated every 4th callback; no Mono duplication of meter input
+ |
+ |  2. inputChannelData -> workBuffer_ (pre-allocated 8ch)
  |     - Mono: average first two enabled inputs (one input: copy) -> ch0, duplicate to ch1
  |     - Stereo: compact first two enabled inputs -> internal L/R
  |     - Opt-in mono capture: selected active input -> internal L/R at unity
  |       (separate from legacy Mono averaging; effects may still generate stereo)
  |     - inputDeviceLost_: skip copy (use silence)
  |
-|  2. Input gain (SIMD via JUCE FloatVectorOperations)
+|  3. Input gain (SIMD via JUCE FloatVectorOperations)
 |     - inputMuted_: clear buffer to silence (input-only mute, chain keeps running)
 |
-|  3. Independent L/R RMS input levels (decimated: every 4th callback)
+|  4. Legacy scalar inputLevel telemetry after channel mapping and gain/mute
 |
 v
 VSTChain.processBlock(workBuffer_)
@@ -74,6 +78,8 @@ LatencyMonitor.markCallbackEnd()
 | `DeviceState.h` | 디바이스 연결 상태 열거형 (header-only). DeviceState enum + transition() + deviceStateToString() |
 | `BuiltinFilter.h/cpp` | 내장 HPF + LPF 필터 (AudioProcessor 상속). IIR 2차 버터워스. RT-safe. PDC 0 |
 | `BuiltinNoiseRemoval.h/cpp` | 내장 RNNoise, 독립 L/R, 8-192 kHz 내부 변환. 48 kHz에서 FIFO 480 + RNNoise 내부 960 = PDC 1440 samples. 지원 밖/미준비는 패스스루. power-of-two 출력 FIFO로 카운터 wrap 순서 보존 |
+| `StreamingStftDenoiser.h` | 사전 할당 STFT/Wiener mono core; native 8-192kHz, N-sample WOLA delay, frozen/adaptive noise profiles |
+| `BuiltinNoiseRemovalDSP.h/cpp` | Manual-only DSP noise remover, Learn/Realtime selection, exact latency and coherent completed-profile persistence; excluded from AUTO |
 | `StreamingSincResampler.h` | 사전 할당된 128-tap low-pass sinc 변환기. 비48 kHz RNNoise 경로 전용; Receiver 리샘플링과 독립 |
 | `BuiltinAutoGain.h/cpp` | 내장 LUFS AGC (AudioProcessor 상속). ITU-R BS.1770 K-weighting, 비대칭 보정 (Luveler Mode 2) + 고정 post limiter(ceiling 노출, 내부 lookahead/release 고정). 고정 지연 경로 사용 (PDC = lookahead samples) |
 
@@ -117,6 +123,9 @@ LatencyMonitor.markCallbackEnd()
 | `BuiltinFilter` | `processBlock()` | `[RT audio]` | IIR 필터 적용. atomic freq 읽기, setCoefficients (스택 연산) |
 | `BuiltinFilter` | `setters` | `[Any thread]` | atomic 쓰기 |
 | `BuiltinNoiseRemoval` | `processBlock()` | `[RT audio]` | FIFO + rnnoise_process_frame. 힙 할당 없음 |
+| `BuiltinNoiseRemovalDSP` | `processBlock()` | `[RT audio]` | Independent channel cores, bounded atomic controls/profile snapshots; no allocation/lock/wait/logging |
+| `BuiltinNoiseRemovalDSP` | editor/state controls | `[Message/control]` | Atomic requests/status and coherent profile mailboxes; never read mutable core spectra |
+| `BuiltinNoiseRemovalDSP` | spectrum publication / UI read | `[RT/lifecycle writer]` / `[Message reader]` | Approximately 20 Hz fixed atomic snapshots of cached FFT/profile/gains; one bounded coherent read, no new FFT/queue/delay |
 | `BuiltinNoiseRemoval` | `prepareToPlay/release` | `[Non-RT control / Device lifecycle]` | rendering 제외 상태에서 rnnoise_create (malloc) / rnnoise_destroy |
 | `BuiltinAutoGain` | `processBlock()` | `[RT audio]` | K-weighting sidechain + 증분 LUFS + 게인 적용 |
 | `BuiltinAutoGain` | `prepareToPlay` | `[Non-RT control / Device lifecycle]` | rendering 제외 상태에서 링버퍼 할당, K-weighting 계수 계산 |

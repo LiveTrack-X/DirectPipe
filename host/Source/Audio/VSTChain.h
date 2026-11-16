@@ -30,6 +30,7 @@
 #include "../ActionResult.h"
 #include "BuiltinFilter.h"
 #include "BuiltinNoiseRemoval.h"
+#include "BuiltinNoiseRemovalDSP.h"
 #include "BuiltinAutoGain.h"
 #include <vector>
 #include <memory>
@@ -87,7 +88,7 @@ struct PluginSlot {
     /// other values for built-in processors that are compiled into the host.
     /// NOTE: The serialization layer (PresetManager) uses these type values to
     /// distinguish between "load a VST from disk" and "create a built-in processor."
-    enum class Type { VST, BuiltinFilter, BuiltinNoiseRemoval, BuiltinAutoGain };
+    enum class Type { VST, BuiltinFilter, BuiltinNoiseRemoval, BuiltinAutoGain, BuiltinNoiseRemovalDSP };
 
     juce::String name;
     juce::String path;           ///< fileOrIdentifier (may be shared for shell plugins)

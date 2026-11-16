@@ -1,13 +1,13 @@
 # Quick Start: USB 마이크 설정 가이드 / USB Mic Setup Guide
 
-> **4.5.1 안내 / Version 4.5.1:** 본체와 Receiver를 함께 갱신하세요. 4.4.0에서
-> 도입한 독립 다중 Receiver는 유지됩니다. 첫 4.5.0 갱신에는 현재 설치된 구형
+> **4.5.2 후보 안내 / Version 4.5.2 candidate:** 본체와 Receiver를 함께 갱신하세요. 4.4.0에서
+> 도입한 독립 다중 Receiver는 유지됩니다. 첫 갱신에는 현재 설치된 구형
 > 업데이터가 사용되므로, 구형 본체 전용 갱신이나 수동 교체 뒤에는
 > **Settings > Update Receiver...**에서 Receiver도 확인하세요.
 > / Update the host and Receiver together. Independent reception from 4.4.0
 > remains available. The first upgrade uses your installed older updater; after
 > an older host-only or manual update, review **Settings > Update Receiver...**.
-> 소프트웨어 검증과 미확인 범위: [4.5.1 검증 / Verification](RELEASE_4_5_1.md).
+> 소프트웨어 검증과 미확인 범위: [4.5.2 검증 / Verification](RELEASE_4_5_2.md).
 
 > USB 마이크 사용자를 위한 5분 온보딩 가이드. 자세한 내용은 [User Guide](USER_GUIDE.md) 참조.
 >
@@ -157,14 +157,18 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 4. DirectPipe와 OBS의 샘플레이트를 같게 설정하고 Receiver 연결 상태를 확인합니다.
    / Match the host and OBS sample rates and check the Receiver connection status.
 
-현재 4.5.1 후보 본체와 Receiver는 4.4.0에서 도입한 최대 8개의 독립 수신을 유지합니다.
+현재 4.5.2 후보 본체와 Receiver는 4.4.0에서 도입한 최대 8개의 독립 수신을 유지합니다.
 구형 본체에 연결한 새 Receiver의 `Connected (v1)`은 기존 단일 수신 제한을 뜻합니다.
 Windows의 기존 Receiver는 **Settings > Update Receiver...**에서 경로·버전을 확인하고
 갱신할 수 있습니다. 사용 중인 OBS는 직접 종료한 뒤 **Retry**, 또는 **Later**를 선택합니다.
-/ Both ends on 4.5.0 retain eight independent receivers of the same processed
+/ Matching current host/Receiver versions retain eight independent receivers of the same processed
 stream. `Connected (v1)` on an older host retains its single-reader restriction.
 Windows **Settings > Update Receiver...** previews existing copies; close OBS
 manually before **Retry**, or choose **Later**. Online upkeep follows public releases.
+
+새 4.5.2 Receiver의 버퍼 기본값은 Medium(1024)이며 기존 프로젝트의 저장된 선택은
+유지됩니다. / New 4.5.2 Receivers default to Medium (1024); existing project choices
+are preserved. Match sample rates; Receiver buffering is additional to host DSP delay.
 
 > 플랫폼별 Receiver 설치 경로 상세: [플랫폼 가이드 — Receiver 설치](PLATFORM_GUIDE.md#receiver-설치--receiver-installation)
 

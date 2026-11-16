@@ -555,6 +555,60 @@ TEST_F(VSTChainTest, AddBuiltinFilter) {
     EXPECT_EQ(slot->type, PluginSlot::Type::BuiltinFilter);
 }
 
+TEST_F(VSTChainTest, DspNoiseRemovalIsManualBuiltinWithAccurateGraphDelay) {
+    // The next appended enum value must leave all legacy identities unchanged.
+    const auto result = chain_->addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemovalDSP);
+    ASSERT_TRUE(result.success);
+    ASSERT_EQ(chain_->getPluginCount(), 1);
+    EXPECT_EQ(chain_->getPluginSlot(0)->name, "NoiseRemover (DSP)");
+    EXPECT_EQ(chain_->getPluginSlot(0)->getProcessor()->getLatencySamples(), 256);
+    EXPECT_EQ(chain_->getTotalChainPDC(), 256);
+    const auto snapshots = chain_->getPluginStatusSnapshot();
+    ASSERT_EQ(snapshots.size(), 1u);
+    EXPECT_EQ(snapshots[0].latencySamples, 256);
+    EXPECT_TRUE(snapshots[0].processingStatus.contains("Learn"));
+    auto* dsp = dynamic_cast<BuiltinNoiseRemovalDSP*>(chain_->getPluginSlot(0)->getProcessor());
+    ASSERT_NE(dsp, nullptr);
+    dsp->setMode(BuiltinNoiseRemovalDSP::Mode::Realtime);
+    EXPECT_EQ(dsp->getLatencySamples(), 256);
+    EXPECT_EQ(chain_->getTotalChainPDC(), 256);
+    chain_->prepareToPlay(96000.0, 64);
+    EXPECT_EQ(dsp->getLatencySamples(), 512);
+    EXPECT_EQ(chain_->getTotalChainPDC(), 512);
+    chain_->prepareToPlay(48000.0, 128);
+    addBuiltin(PluginSlot::Type::BuiltinNoiseRemoval);
+    EXPECT_EQ(chain_->getTotalChainPDC(), 1696);
+}
+
+TEST_F(VSTChainTest, DspNoiseRemovalGraphImpulseMatchesReportedLatencyInBothModes) {
+    for (const auto mode : {BuiltinNoiseRemovalDSP::Mode::Learn, BuiltinNoiseRemovalDSP::Mode::Realtime}) {
+        VSTChain graph;
+        graph.prepareToPlay(48000.0, 128);
+        ASSERT_TRUE(graph.addBuiltinProcessor(PluginSlot::Type::BuiltinNoiseRemovalDSP).success);
+        auto* processor = dynamic_cast<BuiltinNoiseRemovalDSP*>(graph.getPluginSlot(0)->getProcessor());
+        ASSERT_NE(processor, nullptr);
+        processor->setMode(mode);
+        processor->setReductionDb(0.0f);
+        std::array<float, 1024> output{};
+        juce::AudioBuffer<float> block(2, 128);
+        std::thread rendering([&] {
+            for (int offset = 0; offset < 1024; offset += 128) {
+                block.clear();
+                if (offset == 0) block.setSample(0, 0, 0.5f);
+                graph.processBlock(block, 128);
+                for (int i = 0; i < 128; ++i) output[static_cast<size_t>(offset + i)] = block.getSample(0, i);
+            }
+        });
+        rendering.join();
+        const auto peak = static_cast<int>(std::max_element(output.begin(), output.end()) - output.begin());
+        EXPECT_EQ(peak, processor->getLatencySamples());
+        EXPECT_EQ(peak, graph.getTotalChainPDC());
+        EXPECT_EQ(peak, 256);
+        for (int i = 0; i < 1024; ++i)
+            EXPECT_NEAR(output[static_cast<size_t>(i)], i == 256 ? 0.5f : 0.0f, 2.0e-5f);
+    }
+}
+
 // Test 3: Add 2 built-in processors, remove first, count goes from 2 to 1
 TEST_F(VSTChainTest, AddRemovePlugin) {
     addBuiltin(PluginSlot::Type::BuiltinFilter);

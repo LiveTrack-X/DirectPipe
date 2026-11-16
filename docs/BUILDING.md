@@ -1,6 +1,6 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current source / 현재 소스: 4.5.1 candidate** — Current build/package evidence and remaining platform gates: [verification record / 검증 기록](RELEASE_4_5_1.md). Published [4.5.0 evidence](RELEASE_4_5_0.md) is historical.
+> **Current source / 현재 소스: 4.5.2 candidate** — Current build/package evidence and remaining platform gates: [verification record / 검증 기록](RELEASE_4_5_2.md). Published [4.5.0 evidence](RELEASE_4_5_0.md) is historical.
 > Historical v4.3.0 release results below are separate from [4.4.0 validation](MULTI_RECEIVER_4_4_0.md). / 아래 v4.3.0 검증 수치는 당시 기록이며 현재 소스의 검증과 구분합니다.
 
 > **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 전체 플랫폼 빌드·패키지·checksum·Windows unsigned 상태를 검증했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
@@ -227,24 +227,55 @@ An interactive HTML test dashboard is available for manual and automated pre-rel
 
 ## Test Suite / 테스트
 
-Four test targets are available when host and Receiver are enabled:
+Five test targets are available when host and Receiver are enabled:
 `directpipe-tests` (core, no JUCE dependency), `directpipe-host-tests` (host),
 `directpipe-endpoint-watcher-tests` (endpoint notifications), and
 `directpipe-receiver-tests` (actual Receiver processor using isolated in-memory
-connections and uniquely named test mappings). The latter never attaches to the
-user's production IPC stream. `fanout-test-child` supports separate-process
-core tests; it is a helper, not a fifth CTest suite.
+connections and uniquely named test mappings), plus `directpipe-stft-tests`
+(the native shared DSP core, registered as `StreamingStftNativeCore`). Receiver
+tests never attach to the user's production IPC stream. `fanout-test-child`
+supports separate-process core tests; it is a helper, not another CTest suite.
 
-호스트와 Receiver를 활성화하면 네 테스트 target을 빌드합니다. 새 Receiver 전용
+호스트와 Receiver를 활성화하면 다섯 테스트 target을 빌드합니다. Receiver 전용
 테스트는 실제 processor 코드를 로컬 메모리와 고유한 테스트 mapping으로 실행하며
 사용자 운영 IPC에 연결하지 않습니다.
 
-Build and run focused 4.5.0 tests without launching the application or opening an audio device:
+Build and run focused routing/persistence/Receiver tests without launching the application or opening an audio device:
 
 ```bash
 cmake --build build --config Release --target directpipe-tests directpipe-host-tests directpipe-receiver-tests
 ctest --test-dir build -C Release --output-on-failure -R "AudioSettingsTest|WindowsMicLevelKeeperTest|StartupUpdateSupportTest|HostUpdateStartupTest|UpdateStartupScriptTest|PairedStartupScriptTest|SettingsAutosaverTest|PresetManagerTest|Receiver.*Test"
 ```
+
+### Native DSP core and host integration (4.5.2)
+
+The shared production `StreamingStftDenoiser.h` is also exercised by a standalone
+C++17 target in the published source. It needs no JUCE, GoogleTest, VST2 or ASIO
+SDK, device, installed application, or audio fixture:
+
+```bash
+cmake -S experiments/low_latency_nr -B build/stft-core -DCMAKE_BUILD_TYPE=Release
+cmake --build build/stft-core --config Release --target stft-nr-tests
+ctest --test-dir build/stft-core -C Release --output-on-failure --no-tests=error
+```
+
+The historical experiment directory is the test entrypoint; its compatibility
+header includes the current host core. For the JUCE processor, plot, graph and
+preset checks, build `directpipe-host-tests` in the normal configured build and run:
+
+```bash
+ctest --test-dir build -C Release --output-on-failure --no-tests=error -R "BuiltinNoiseRemovalDSPTest|DspNoiseSpectrumViewTest|VSTChainTest|PresetManagerTest"
+```
+
+The regular test build also includes `directpipe-stft-tests`; full CTest runs the
+same native checks as `StreamingStftNativeCore` on Windows, macOS and Linux.
+The standalone commands above remain useful without downloading host dependencies.
+
+These check software processing, serialization, plotted data and reported/actual
+graph delay. They do not establish microphone/DAW compatibility, singing quality,
+physical loopback latency or long-session deadline performance. Fixture-dependent
+skips remain distinct from passes. See the [test guide](../TESTING.md) and
+[current evidence](RELEASE_4_5_2.md).
 
 The Windows mic-level controller and UI tests inject fake endpoints; they never
 change a real Windows microphone level. Startup integration tests launch only a
@@ -265,7 +296,7 @@ snapshot regression in **25 fresh processes** (`ctest --repeat until-fail:25
 --no-tests=error` with the exact filter). The uploaded JUnit and
 `snapshot-repeat.log` retain these separate results. Windows static DMG checks
 cannot substitute for native macOS mount, architecture and deployment-target
-checks. See [4.5.1 candidate verification boundaries](RELEASE_4_5_1.md).
+checks. See [4.5.2 candidate verification boundaries](RELEASE_4_5_2.md).
 
 The tables below preserve the **v4.3.0 historical inventory** (582 CTest
 registrations: 580 passed, 2 environment-dependent skips, 0 failed; exact-tag CI
@@ -403,11 +434,11 @@ bash tools/pre-release-test.sh --skip-api
 1. 검증된 commit을 `main`에 push하고 같은 commit에 immutable `vX.Y.Z` tag를 만들어 push / Push the validated commit and its immutable exact tag.
 2. `gh workflow run build.yml --repo LiveTrack-X/DirectPipe -f release_tag=vX.Y.Z`로 `Build & Release` 실행 / Dispatch the workflow with the exact pushed tag.
 3. CI가 tag/version을 확인하고 Windows/macOS/Linux + Stream Deck을 모두 빌드·테스트 / CI validates the tag/version and builds/tests every platform artifact.
-4. 모든 산출물과 `checksums.sha256` 준비 후에만 draft를 public latest로 전환 / Only after every asset and checksum is ready, publish the draft as latest.
+4. CI는 모든 산출물과 `checksums.sha256`을 포함한 draft만 생성합니다. 최종 파일 신원·checksum·검사 보고서·필수 게이트를 확인하고 명시된 한계를 노트에 기록한 뒤 별도로 public latest로 전환 / CI creates a draft only; verify final-file identities, checksums, exact-hash scan evidence and required gates, record actual limits, then promote separately to public latest.
 5. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention.
 
-> Release CI가 마지막 publish 단계에서 `--latest`를 명시합니다. 공개 GitHub Release를 먼저 수동 생성하지 마세요. asset 없는 public latest를 막기 위해 CI가 완성된 draft를 직접 생성·공개합니다.
-> Release CI explicitly sets `--latest` only in its final publish step. Do not create the public GitHub Release first; CI creates and publishes the complete draft so an assetless public latest cannot appear.
+> Release CI는 draft를 자동 공개하지 않습니다. 먼저 public 릴리스를 만들지 말고, 최종 artifact 검사와 별도 공개 판정을 완료하세요. 공개 후에는 실제 다운로드로 checksum·payload·tag/commit·노트를 다시 확인합니다.
+> Release CI never automatically publishes its draft. Keep it private until final artifact checks and the publication decision are complete; independently download public assets afterward to verify hashes, payloads, tag/commit identity and notes. Historical scan reports apply only to matching file hashes.
 
 ## Optional DPWIM installer
 
