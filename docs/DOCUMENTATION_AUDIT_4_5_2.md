@@ -109,3 +109,8 @@ Final artifact/scan checkpoint: seven final CI file reports completed; hashes
 were rechecked, unsupported/failed engines are separate and no safety guarantee
 is inferred. Public notes name all four platform payloads, both scan reports
 and checksums. Public-download evidence is recorded after promotion.
+
+Publication closeout: stable4.5.2 is public. All seven anonymous downloads match
+staging and all six checksums; final VirusTotal identities match the actual public
+bytes. Public notes preserve unsupported/failed-engine, signing, skipped-test and
+hardware/listening limits. Detailed results are in RELEASE_4_5_2.md.

@@ -1,6 +1,6 @@
 # DirectPipe 4.5.2 release preparation
 
-Status: Final software/artifact/scan verification complete; public delivery verification pending
+Status: Published stable 4.5.2; public downloads, checksums and scan identities verified
 Date: 2026-11-16
 Authority: OD-2026-11-16-0007 / SPEC/DP-452-RELEASE-0001.md; prior preparation OD-0005 (local protocol)
 
@@ -160,3 +160,32 @@ Pre-publication review verified all seven release assets (four payloads, two
 reports and checksums) through private draft downloads. Public promotion and
 independent public-download verification are recorded after execution. No live
 user app/device or installed plugin was changed.
+
+## Public publication and independent verification
+
+Published stable release: https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.5.2
+
+Publication time: 2026-11-16T13:33:29+09:00. Latest stable release selects 4.5.2;
+release ID 446600830 is public, non-draft and non-prerelease. Source tag remains
+`6f0fbd3110d52101faa704c8c098050187a5a868`; subsequent main commits update
+only documentation/evidence, without changing the validated source tag or assets.
+
+All seven assets were downloaded again through anonymous public URLs. Their
+bytes match validated staging; all six checksum entries match, and all seven
+VirusTotal file identities match public archive bytes or Windows archive members.
+Public notes match the final reviewed Markdown after GitHub line-ending
+normalization. Windows exact-member/AMD64/VST3 identities, Stream Deck manifest,
+Linux ELF/tar and DMG container checks passed on those downloaded files. macOS
+universal bundle and mounted payload checks passed on the CI runner.
+
+Public scan records:
+[Markdown report](https://github.com/LiveTrack-X/DirectPipe/releases/download/v4.5.2/virustotal-report.md),
+[JSON report](https://github.com/LiveTrack-X/DirectPipe/releases/download/v4.5.2/virustotal-report.json),
+[checksums](https://github.com/LiveTrack-X/DirectPipe/releases/download/v4.5.2/checksums.sha256).
+
+Detailed reproducible evidence is retained under build/release-452-publication:
+source-artifact-provenance.json, ci-test-summary.json, final raw VirusTotal GUI
+snapshots/summaries, public-verification.json and downloaded archive-verification.
+No live installed app/device/configuration or installed Receiver was changed.
+Actual vocal/listening, hardware round-trip and prolonged deadline acceptance
+remain separate; Windows unsigned/macOS ad-hoc/not-notarized limits remain in notes.
