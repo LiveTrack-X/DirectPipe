@@ -234,7 +234,7 @@ Four cross-platform built-ins: Filter, Noise Removal, Auto Gain and manual-only 
 |---------|--------|------|
 | **NoiseRemover (DSP)** | `BuiltinNoiseRemovalDSP` | 수동 전용 / Manual-only, excluded from AUTO. Native STFT/Wiener, Learn/frozen (default) or Realtime/adaptive. Reduction 0–24 dB (default 12 dB); exact N-sample delay and completed-profile persistence described below. |
 | **Filter** | `BuiltinFilter` | HPF (기본 ON, 60Hz / default ON, 60Hz) + LPF (기본 OFF, 16kHz / default OFF, 16kHz). 범위 / Range: HPF 20-300Hz, LPF 4k-20kHz. IIR 필터 / IIR filters, atomic 파라미터 / atomic parameters. `isBusesLayoutSupported`: mono + stereo. `getLatencySamples()` = 0 |
-| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-sample FIFO priming + 960-sample RNNoise intrinsic delay = 1440 samples (30 ms at 48 kHz). 4.5.1: 8-192 kHz via internal low-pass conversion; native 48 kHz retains the original path. Published 4.5.0 remains 48 kHz-only. 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, 내부 48 kHz 기준 / internal 48 kHz timing). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, 내부 48 kHz 기준 / internal 48 kHz timing). `getLatencySamples()` = 1440 at native 48 kHz; other rates include host-rate FIFO and conversion latency. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
+| **Noise Removal** | `BuiltinNoiseRemoval` | RNNoise AI 기반 노이즈 제거 / RNNoise AI-based noise removal. 480-sample FIFO priming + 960-sample RNNoise intrinsic delay = 1440 samples (30 ms at 48 kHz). 8-192 kHz via internal low-pass conversion; native 48 kHz retains the original path. 듀얼 모노 / Dual mono (2 RNNoise 인스턴스 / instances). x32767 스케일링 전처리, /32767 후처리 / x32767 scaling before, /32767 after. 2-pass FIFO (in-place 버퍼 안전 / in-place buffer safety). 링 버퍼 출력 FIFO (modulo wrapping). 게이트 초기 / Gate starts CLOSED (0.0), 5프레임 워밍업 / 5-frame warmup. VAD 게이트 홀드 타임 / VAD gate hold time 300ms (`holdSamples_`, 내부 48 kHz 기준 / internal 48 kHz timing). 게이트 스무딩 / Gate smoothing 20ms (`gateSmooth_`, 내부 48 kHz 기준 / internal 48 kHz timing). `getLatencySamples()` = 1440 at native 48 kHz; other rates include host-rate FIFO and conversion latency. VAD 임계값 / VAD thresholds: Light 0.50, Standard 0.70 (기본값 / default), Aggressive 0.90 |
 | **Auto Gain** | `BuiltinAutoGain` | LUFS 기반 AGC / LUFS-based AGC (WebRTC-inspired dual-envelope). Target LUFS -15.0 기본 / default (범위 / range -24~-6, 내부적으로 -6dB 오프셋 적용하여 오픈루프 오버슈트 보정 / internal -6dB offset for open-loop overshoot compensation). Low Correct 0.50 기본 / default (hold↔full correction 블렌드, 부스트 / blend, boost). High Correct 0.90 기본 / default (hold↔full correction 블렌드, 컷 / blend, cut). Max Gain 22 dB 기본 / default. ITU-R BS.1770 K-weighting 사이드체인 / sidechain (copy, 실제 오디오 미적용 / not applied to actual audio). Dual-envelope level detection: fast envelope (~10ms attack, ~200ms release) + slow LUFS window (0.4s EBU Momentary), effective = max(fast, slow). Direct gain computation (IIR gain envelope 없음 / none), per-block linear ramp으로 click-free 전환 / for click-free transitions. Freeze Level -45 dBFS (per-block RMS, NOT LUFS): freeze 시 현재 게인 유지 / holds current gain on freeze (0dB 리셋 아님 / NOT reset to 0dB), -65 dBFS 미만 시 바이패스 / bypassed below -65 dBFS. Incremental `runningSquareSum_` (O(blockSize)). lowCorr/hiCorr = hold↔full correction 블렌드 비율 (엔벨로프 속도 아님) / blend ratio between hold and full correction (NOT envelope speed). Fixed post limiter: limiter ceiling only user-facing (default -1.0 dBTP), fixed internal lookahead 1ms + release 50ms, constant latency path, final hard clamp. |
 
 **[Auto] 버튼 / [Auto] Button**: 입력 게인 슬라이더 옆 특수 프리셋 슬롯 (A-E 바와 별도 위치, 인덱스 5 `PresetSlotBar::kAutoSlotIndex`). 활성 시 초록색 (green when active). 첫 클릭 시 Filter + Noise Removal + Auto Gain 기본 체인 생성, 이후 마지막 저장 상태 로드. 우클릭 → Reset to Defaults. Auto Gain 내부에는 고정 post limiter가 포함됩니다.
@@ -413,7 +413,7 @@ Latency(ms) = (bufferSize / sampleRate) × 1000
 
 ### 4.5 외부 제어 시스템 / External Control System
 
-#### 4.5.1 통합 아키텍처 / Unified Architecture
+#### 통합 아키텍처 / Unified Architecture
 ```
 핫키 / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
 Hotkey / MIDI / WebSocket / HTTP → ControlManager → ActionDispatcher
@@ -880,7 +880,7 @@ Recording settings are persisted in `recording-config.json` in the app data dire
 #### 4.6.10 레벨 미터 / Level Meter (LevelMeter)
 | 항목 / Item | 상세 / Details |
 |------|------|
-| 표시 / Display | 4.5.1: 독립 L/R RMS 막대와 피크 홀드 / Independent L/R RMS bars and peak holds, in the existing meter areas. Input: selected capture channels before Mono conversion, with gain/mute applied. Output: post protection, pre destination volume/mute. |
+| 표시 / Display | 독립 L/R RMS 막대와 피크 홀드 / Independent L/R RMS bars and peak holds, in the existing meter areas. Input: selected capture channels before Mono conversion, with gain/mute applied. Output: post protection, pre destination volume/mute. |
 | 피크 홀드 / Peak Hold | 피크 인디케이터 (30틱 ≈ 1초 @30Hz) / Peak indicator (30 ticks ≈ 1 second @30Hz) |
 | 클리핑 / Clipping | 0dBFS 클리핑 인디케이터 / 0dBFS clipping indicator |
 | 스무딩 / Smoothing | Attack: 0.3, Release: 0.12 (per-channel log-display coefficients) |
@@ -1197,7 +1197,7 @@ legacy-format acceptance, warnings and transaction ordering remain unchanged.
   "version": 2,
   "platform": "windows",
   "exportDate": "2025-03-06T14:30:00Z",
-  "appVersion": "4.5.0",
+  "appVersion": "4.5.2",
   "audioSettings": { /* plugins 키 제거됨 */ },
   "controlConfig": {
     "hotkeys": [...],
@@ -1220,7 +1220,7 @@ legacy-format acceptance, warnings and transaction ordering remain unchanged.
   "type": "full",
   "platform": "windows",
   "exportDate": "...",
-  "appVersion": "4.5.0",
+  "appVersion": "4.5.2",
   "audioSettings": {
     "recordingFolder": "C:\\Users\\...\\Documents\\DirectPipe Recordings",
     /* plugins 포함 */

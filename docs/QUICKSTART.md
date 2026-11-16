@@ -1,6 +1,6 @@
 # Quick Start: USB 마이크 설정 가이드 / USB Mic Setup Guide
 
-> **4.5.2 후보 안내 / Version 4.5.2 candidate:** 본체와 Receiver를 함께 갱신하세요. 4.4.0에서
+> **4.5.2 정식 릴리스 / Version 4.5.2 released:** 본체와 Receiver를 함께 갱신하세요. 4.4.0에서
 > 도입한 독립 다중 Receiver는 유지됩니다. 첫 갱신에는 현재 설치된 구형
 > 업데이터가 사용되므로, 구형 본체 전용 갱신이나 수동 교체 뒤에는
 > **Settings > Update Receiver...**에서 Receiver도 확인하세요.
@@ -157,7 +157,7 @@ USB 마이크 → DirectPipe → 가상 케이블 / Virtual Cable
 4. DirectPipe와 OBS의 샘플레이트를 같게 설정하고 Receiver 연결 상태를 확인합니다.
    / Match the host and OBS sample rates and check the Receiver connection status.
 
-현재 4.5.2 후보 본체와 Receiver는 4.4.0에서 도입한 최대 8개의 독립 수신을 유지합니다.
+공개 4.5.2 본체와 Receiver는 4.4.0에서 도입한 최대 8개의 독립 수신을 유지합니다.
 구형 본체에 연결한 새 Receiver의 `Connected (v1)`은 기존 단일 수신 제한을 뜻합니다.
 Windows의 기존 Receiver는 **Settings > Update Receiver...**에서 경로·버전을 확인하고
 갱신할 수 있습니다. 사용 중인 OBS는 직접 종료한 뒤 **Retry**, 또는 **Later**를 선택합니다.

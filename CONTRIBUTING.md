@@ -26,7 +26,11 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## Pull Request 규칙 / PR Guidelines
 
-1. `main` 브랜치에서 feature 브랜치를 생성하세요 / Create a feature branch from `main`
+DirectPipe 저장소는 `main` 하나로 운영합니다. 관리 작업은 `main`에서 진행하며 소유자의 명시적 요청 없이 작업 브랜치나 추가 worktree를 만들지 않습니다. 외부 기여자는 개인 fork에서 작업하고 `main`으로 PR을 보내세요.
+
+The DirectPipe repository uses only `main`. Maintainers work on `main` and create additional branches or worktrees only when the owner explicitly requests them. External contributors can work in their own forks and submit PRs targeting `main`.
+
+1. 최신 `main`을 기준으로 작업하세요 / Start from the latest `main`
 2. 커밋 메시지: `type: description` 형식 (예: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`) / Commit message format: `type: description`
 3. 테스트 통과 확인 / Verify tests pass:
    ```bash
@@ -40,7 +44,7 @@ DirectPipe에 기여해 주셔서 감사합니다! / Thank you for contributing 
 
 ## 테스트 / Testing
 
-- 현재 4.5.2 후보의 로컬·정확 소스 CI·공개 파일 검증과 미확인 범위는
+- 공개 4.5.2의 로컬·정확 소스 CI·공개 파일 검증과 미확인 범위는
   [검증 기록](docs/RELEASE_4_5_2.md)을 기준으로 확인합니다. Windows mic-level
   hold 검사는 fake endpoint를 사용하며 실제 마이크 레벨을 바꾸지 않습니다.
   / Current results belong to the exact 4.5.2 verification record; historical

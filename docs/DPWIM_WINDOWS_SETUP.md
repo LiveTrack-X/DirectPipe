@@ -1,7 +1,9 @@
 # Windows DPWIM 설치와 업데이트
 
-DirectPipe 4.5.1의 DPWIM은 **별도 VST3 플러그인**입니다. 내장 프로세서는
-Filter, Noise Removal, Auto Gain의 3종이며 DPWIM은 Auto에 포함되지 않습니다.
+DirectPipe 4.5.2에서 DPWIM은 **별도 VST3 플러그인**입니다. 내장 프로세서는
+Filter, Noise Removal (RNNoise), Auto Gain, NoiseRemover (DSP)의 4종입니다.
+Auto는 기존 3종(Filter, RNNoise, Auto Gain)을 구성하며, NoiseRemover (DSP)는
+수동 추가 전용입니다. DPWIM도 Auto에 포함되지 않습니다.
 DPWIM을 설치하지 않아도 DirectPipe와 내장 프로세서는 사용할 수 있습니다.
 
 ## 설치·업데이트

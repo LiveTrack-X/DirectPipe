@@ -1,8 +1,8 @@
 # NoiseRemover (DSP): Learn and Realtime modes
 
-Status: NoiseRemover (DSP) is included in the 4.5.2 source. Publication status
-and exact distributable verification are recorded in the release evidence.
-Current versioned artifact/scan status: [4.5.2 readiness](RELEASE_4_5_2.md).
+Status: NoiseRemover (DSP) is included in the published 4.5.2 release.
+Exact distributable identities, software checks, scan results and field-test
+limits: [4.5.2 verification](RELEASE_4_5_2.md).
 Date: 2026-11-16
 Implementation intent: `../SPEC/DP-DSP-NR-0001.md`; release scope: `../SPEC/DP-452-RELEASE-0001.md` (local protocol).
 

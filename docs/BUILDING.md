@@ -1,6 +1,6 @@
 # Building DirectPipe / 빌드 가이드
 
-> **Current source / 현재 소스: 4.5.2** — Current build/package evidence and remaining field-test limits: [verification record / 검증 기록](RELEASE_4_5_2.md). Published [4.5.0 evidence](RELEASE_4_5_0.md) is historical.
+> **Published release / 공개 버전: 4.5.2** — Current build/package evidence and remaining field-test limits: [verification record / 검증 기록](RELEASE_4_5_2.md). Published [4.5.0 evidence](RELEASE_4_5_0.md) is historical.
 > Historical v4.3.0 release results below are separate from [4.4.0 validation](MULTI_RECEIVER_4_4_0.md). / 아래 v4.3.0 검증 수치는 당시 기록이며 현재 소스의 검증과 구분합니다.
 
 > **플랫폼 지원 상태**: Windows 10/11 x64는 안정 릴리즈 대상입니다. v4.3.0은 로컬 Windows Release 등록 582개 중 580개 통과, 환경 의존 2개 건너뜀, 실패 0개와 정확 태그 CI run `30701998763`을 완료했습니다. 전체 플랫폼 빌드·패키지·checksum·Windows unsigned 상태를 검증했습니다. 실기기·제3자 VST crash-containment는 별도 검증 범위입니다.
@@ -301,7 +301,7 @@ checks. See [4.5.2 verification boundaries](RELEASE_4_5_2.md).
 The tables below preserve the **v4.3.0 historical inventory** (582 CTest
 registrations: 580 passed, 2 environment-dependent skips, 0 failed; exact-tag CI
 `30701998763`). Version 4.4.0 adds independent transport, preset, actual Receiver and updater coverage;
-use its [validation report](MULTI_RECEIVER_4_4_0.md) and current CTest
+use [current 4.5.2 verification](RELEASE_4_5_2.md) and current CTest
 results for current totals. Do not treat old counts as new release evidence.
 Authenticode remains optional until a trusted certificate is configured.
 
@@ -406,7 +406,7 @@ bash tools/pre-release-test.sh --skip-api
 | 이벤트 / Event | 조건 / Condition | 동작 / Action |
 |---|---|---|
 | Pull Request | `v4` 또는 `main` 브랜치 대상 / targeting `v4` or `main` | Windows/macOS/Linux + Stream Deck 빌드/테스트 (릴리스 업로드 없음) / Build + test (no upload) |
-| workflow_dispatch | 이미 push된 정확한 `vX.Y.Z` tag 입력 / Manual with an existing exact tag | tag/version 검증 → 전체 빌드/테스트 → draft asset/checksum 업로드 → public latest 공개 / Validate, build/test, upload a complete draft, then publish latest |
+| workflow_dispatch | 공개할 버전의 `vX.Y.Z` 입력, 비우면 CI만 실행 / Supply the next release's exact tag; leave empty for CI only | 소스/tag/version 검증 → 전체 빌드/테스트 → draft asset/checksum 업로드 (별도 공개 판정 필요) / Validate source/tag/version, build/test and upload a draft; publication is separate |
 
 ### 빌드 매트릭스 / Build Matrix
 
@@ -431,8 +431,8 @@ bash tools/pre-release-test.sh --skip-api
 
 ### 릴리스 프로세스 / Release Process
 
-1. 검증된 commit을 `main`에 push하고 같은 commit에 immutable `vX.Y.Z` tag를 만들어 push / Push the validated commit and its immutable exact tag.
-2. `gh workflow run build.yml --repo LiveTrack-X/DirectPipe -f release_tag=vX.Y.Z`로 `Build & Release` 실행 / Dispatch the workflow with the exact pushed tag.
+1. 차기 버전의 검증된 commit을 `main`에 push합니다. 기존 공개 tag를 이동하거나 재사용하지 않습니다 / Push the validated next-version commit to `main`; never move or reuse a published tag.
+2. `gh workflow run build.yml --repo LiveTrack-X/DirectPipe --ref main -f release_tag=vX.Y.Z`로 `Build & Release` 실행. CI는 실행 소스의 버전을 확인하고 해당 commit의 immutable tag를 생성합니다. 기존 tag는 정확히 같은 commit일 때만 허용합니다 / Dispatch on `main`; CI validates the source version and creates its immutable tag, accepting an existing tag only at the identical commit.
 3. CI가 tag/version을 확인하고 Windows/macOS/Linux + Stream Deck을 모두 빌드·테스트 / CI validates the tag/version and builds/tests every platform artifact.
 4. CI는 모든 산출물과 `checksums.sha256`을 포함한 draft만 생성합니다. 최종 파일 신원·checksum·검사 보고서·필수 게이트를 확인하고 명시된 한계를 노트에 기록한 뒤 별도로 public latest로 전환 / CI creates a draft only; verify final-file identities, checksums, exact-hash scan evidence and required gates, record actual limits, then promote separately to public latest.
 5. 릴리스 asset 네이밍: `DirectPipe-{tag}-{platform}.{ext}` / Asset naming convention.

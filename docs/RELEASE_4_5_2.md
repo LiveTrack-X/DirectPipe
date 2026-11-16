@@ -1,13 +1,15 @@
-# DirectPipe 4.5.2 release preparation
+# DirectPipe 4.5.2 release verification
 
 Status: Published stable 4.5.2; public downloads, checksums and scan identities verified
 Date: 2026-11-16
 Authority: OD-2026-11-16-0007 / SPEC/DP-452-RELEASE-0001.md; prior preparation OD-0005 (local protocol)
 
 Scope: manual DSP Learn/Realtime and actual spectrum/mask editor; Receiver
-Medium default with saved choices retained. Published 4.5.1 is the upgrade base.
-The dirty local checkout preserves prior work and missing published workflow/API
-latency-test corrections have been reconciled from directpipe/main 481cdda.
+Medium default with saved choices retained. Release preparation compared against
+the previously published 4.5.1. The preparation checkout preserved prior work;
+workflow/API latency-test corrections were reconciled from directpipe/main 481cdda.
+The sections below retain those earlier checkpoints; the final publication
+closeout records the public 4.5.2 files and their verification.
 
 ## Prior local preparation checkpoint
 

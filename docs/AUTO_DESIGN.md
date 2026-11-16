@@ -1,6 +1,6 @@
 # [Auto] 설계 문서 — Design Principles & Parameter Rationale
 
-> **4.5.1 compatibility:** Optional single-channel capture feeds internal L/R
+> **4.5.2 compatibility / 호환성:** Optional single-channel capture feeds internal L/R
 > before this chain. **Keep Windows mic level at 100** is a separate, default-off
 > device preference; choosing Auto does not enable or reset it. AutoGain and the
 > system input level remain separate controls. / 개별 입력 선택은 Auto 체인 전단에
@@ -140,12 +140,12 @@ Reasons for separation:
 - Must catch momentary level jumps during preset switching, which is only meaningful after the full chain
 - Must allow independent on/off + ceiling control (independent from Auto)
 
-### 샘플레이트 처리 / Sample-rate handling (4.5.1)
+### 샘플레이트 처리 / Sample-rate handling
 
-4.5.1의 Noise Removal은 8-192 kHz를 내부 48 kHz로 변환하여 처리합니다. 48 kHz는 기존 경로를 유지합니다. 공개 4.5.0의 48 kHz 제한은 해당 공개 버전에 계속 적용됩니다.
+현재 Noise Removal은 8-192 kHz를 내부 48 kHz로 변환하여 처리합니다. 48 kHz는 기존 경로를 유지합니다.
 
-The development build supports 8-192 kHz through internal conversion around the
-48 kHz RNNoise engine. Published 4.5.0 retains its 48 kHz-only behavior.
+Noise Removal supports 8-192 kHz through internal conversion around the
+48 kHz RNNoise engine. Native 48 kHz retains the original path.
 
 체인과 편집창에 실제 처리 상태를 표시하며, 지원 범위 밖의 주파수나 준비 실패 시 원음을 통과시키고 비활성 이유를 표시합니다.
 
@@ -360,7 +360,7 @@ Trade-offs to be aware of when customizing parameters:
 - Allows pre-setting Auto during panic for immediate use after unmute
 - Output is blocked during panic, so chain changes have no audible impact
 
-## DPWIM boundary (4.5.1)
+## DPWIM boundary
 
 Auto continues to use Filter + Noise Removal + Auto Gain only. Windows
 Install DPWIM installs/updates an external VST3 on explicit click; it never adds

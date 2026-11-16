@@ -1,7 +1,7 @@
 # Backup restore diagnostics
 
 Date: 2026-11-12
-Status: 4.5.0 behavior and historical diagnostic checkpoint; see [current verification](RELEASE_4_5_0.md)
+Status: Current backup/restore behavior, introduced in 4.5.0; diagnostic checkpoints below are historical. See [current 4.5.2 verification](RELEASE_4_5_2.md) and [historical 4.5.0 verification](RELEASE_4_5_0.md).
 
 ## Requested behavior
 

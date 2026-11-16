@@ -21,15 +21,17 @@ If you discover a security vulnerability in DirectPipe, **please do NOT report i
 
 ## 지원 버전 / Supported Versions
 
-공개 **v4.5.1**은 업그레이드 기준이며 **v4.5.2 후보**의 공개 상태는 검증 기록을 확인하세요. 현재 버전의 보안 문제도 위 비공개 채널로
-보고해 주세요. 기존 버전의 아래 지원 등급은 보존합니다. / The current release
-baseline is **v4.5.1**; see the verification record for the **v4.5.2 candidate** publication status. Report current-version security issues through the private channel
-above; existing support grades below are preserved. Build/dependency checks in
-the [verification record](docs/RELEASE_4_5_2.md) are not a complete security audit.
+현재 공개 버전은 **v4.5.2**입니다. 보안 문제는 위 비공개 채널로 보고해 주세요.
+[검증 기록](docs/RELEASE_4_5_2.md)의 빌드·의존성·VirusTotal 검사는 완전한 보안 감사나 안전 보장이 아닙니다.
+
+The current published release is **v4.5.2**. Report security issues through the
+private channel above. Build, dependency and VirusTotal checks in the
+[verification record](docs/RELEASE_4_5_2.md) are not a complete security audit or a safety guarantee.
 
 | Version | Supported |
 |---|---|
-| v4.5.1 (published baseline) | ✅ |
+| v4.5.2 (current release / 현재 공개 버전) | ✅ |
+| v4.5.1 | ✅ |
 | v4.5.0 | ✅ |
 | v4.3.0 | ✅ |
 | v4.2.7 | ⚠️ Critical fixes only / 치명적 버그만 |
@@ -45,9 +47,9 @@ the [verification record](docs/RELEASE_4_5_2.md) are not a complete security aud
 
 ### 네트워크 바인딩 / Network Binding
 
-DirectPipe의 모든 네트워크 서비스는 **localhost (127.0.0.1)에만** 바인딩됩니다. 외부 네트워크에서 접근할 수 없습니다.
+DirectPipe의 HTTP·WebSocket 제어 서버는 **localhost (127.0.0.1)에만** 수신 대기합니다. UDP 자동 감지는 임시 송신 소켓에서 같은 PC의 `127.0.0.1:8767`로 알림을 보내며 Stream Deck 플러그인은 해당 localhost 포트에서 수신합니다.
 
-All network services bind to **localhost (127.0.0.1) only**. No remote access is possible.
+The HTTP and WebSocket control servers listen on **localhost (127.0.0.1) only**. UDP discovery sends notifications from an ephemeral socket to `127.0.0.1:8767`; the Stream Deck plugin listens on that localhost port.
 
 | 서비스 / Service | 포트 / Port | 프로토콜 / Protocol | 용도 / Purpose |
 |---|---|---|---|
@@ -75,9 +77,9 @@ HTTP API는 `Access-Control-Allow-Origin: *`를 사용합니다. 이는 브라�
 
 The HTTP API uses `Access-Control-Allow-Origin: *` to support browser-based clients (OBS browser sources, custom web dashboards).
 
-**알려진 제한사항**: 이 설정으로 인해 악의적인 웹사이트가 사용자의 브라우저를 통해 DirectPipe API에 접근할 수 있습니다 (CSRF). localhost 전용이므로 원격 공격은 불가하지만, 로컬 브라우저를 통한 간접 접근은 가능합니다.
+**알려진 제한사항**: 악의적인 웹사이트가 사용자의 브라우저를 통해 DirectPipe API 접근을 시도할 수 있습니다 (CSRF). 브라우저 정책에 따라 제한될 수 있지만, localhost 바인딩만으로 브라우저를 통한 간접 요청을 방지하지는 못합니다.
 
-**Known limitation**: This allows malicious websites to access the DirectPipe API through the user's browser (CSRF). Remote attacks are impossible (localhost-only), but indirect access via local browser is possible.
+**Known limitation**: Malicious websites may attempt to access the API through the user's browser (CSRF). Browser policies can restrict this, but localhost binding alone does not prevent indirect requests through a local browser.
 
 > **참고**: CORS preflight 응답의 `Access-Control-Allow-Methods`에 `POST, PUT, DELETE`가 포함되어 있지만, 실제로는 GET과 OPTIONS만 처리됩니다. 향후 최소 권한 원칙에 따라 `GET, OPTIONS`로 제한하는 것을 검토 중입니다.
 > **Note**: The CORS preflight response includes `POST, PUT, DELETE` in `Access-Control-Allow-Methods`, but only GET and OPTIONS are actually handled. Restricting to `GET, OPTIONS` per least-privilege principle is under consideration.

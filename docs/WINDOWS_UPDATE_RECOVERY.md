@@ -1,7 +1,7 @@
-# Windows update diagnosis and recovery (4.5.0)
+# Windows update diagnosis and recovery
 
 Date: 2026-11-12
-Status: 4.5.0 recovery behavior; verification and acceptance limits are recorded in [the release verification record](RELEASE_4_5_0.md).
+Status: Current recovery behavior, introduced in 4.5.0. See [current 4.5.2 verification and limits](RELEASE_4_5_2.md); the 4.5.0 defect and fixture checkpoints below are historical.
 
 ## Comparison with previous releases
 

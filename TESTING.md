@@ -1,7 +1,7 @@
 # DirectPipe 테스트 가이드
 
 > **4.5.2 검증 / Version validation**: 현재 자동·격리 실행 결과와 미확인 범위는
-> [4.5.2 검증 기록](docs/RELEASE_4_5_2.md)에서 확인합니다. 공개 4.5.1은 업그레이드 기준이며 4.5.0 및 이전 다중 Receiver의
+> [4.5.2 검증 기록](docs/RELEASE_4_5_2.md)에서 확인합니다. 현재 공개 버전은 4.5.2이며 4.5.0 및 이전 다중 Receiver의
 > [4.4.0 검증 기록](docs/MULTI_RECEIVER_4_4_0.md)은 당시 체크포인트로 보존합니다.
 > 아래 수동 체크리스트가 모두 완료됐다는 뜻은 아닙니다.
 > / Automated and isolated runtime evidence does not imply that every manual
@@ -221,7 +221,7 @@ node tools/test_api.js
 | 32 | Volume Precision | 2 |
 | 33 | Panic During Operations | 3 |
 
-> 위 숫자는 이전 문서 작성 시점의 스냅샷으로 보존합니다. 4.5.0에서는 acceptance·실제 상태·fixture·WebSocket 검사가 추가됐으므로 현재 총합은 실행 로그와 [검증 기록](docs/RELEASE_4_5_0.md)을 확인합니다.
+> 위 숫자는 이전 문서 작성 시점의 스냅샷으로 보존합니다. 4.5.0에서는 acceptance·실제 상태·fixture·WebSocket 검사가 추가됐으므로 현재 총합은 실행 로그와 [4.5.2 검증 기록](docs/RELEASE_4_5_2.md)을 확인합니다.
 >
 > Counts above are historical, not the current release gate total. Isolated mode fails missing required coverage; only explicitly unavailable audio sample progression can skip.
 
@@ -367,7 +367,7 @@ node tools/test_api.js
 78. Receiver 버퍼 사이즈 변경(5단계) → 반영 확인
 79. SR 불일치 시 Receiver에 경고 표시
 
-#### 독립 수신 (4.4.0에서 도입, 4.5.0 유지) / Independent reception
+#### 독립 수신 (4.4.0에서 도입, 4.5.2 유지) / Independent reception
 
 - [ ] 현재 후보 본체와 Receiver를 사용하고 같은 샘플레이트로 두 OBS 소스 또는
   OBS/DAW에 동시에 연결합니다. 두 곳에서 같은 처리 음성을 정상 수신해야 합니다.

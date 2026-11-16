@@ -4,7 +4,7 @@ DirectPipe는 Windows, macOS, Linux를 지원합니다. 플랫폼에 따라 기�
 
 DirectPipe supports Windows, macOS, and Linux. Features, setup, and release maturity vary by platform.
 
-> **현재 소스 / Current source: 4.5.2 candidate.** 이번 후보의 검증과 남은 플랫폼 게이트는
+> **현재 공개 버전 / Current published release: 4.5.2.** 빌드·검사·공개 파일 검증과 실기기 미확인 범위는
 > [4.5.2 검증 기록](RELEASE_4_5_2.md)에 구분합니다. 소프트웨어 검사는 실제 장치·
 > 드라이버·청취 검증을 대신하지 않습니다. / Exact-source platform builds, tests and
 > public-download verification are recorded separately from physical-device and

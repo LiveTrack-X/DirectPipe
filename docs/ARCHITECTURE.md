@@ -1,6 +1,6 @@
 # DirectPipe Architecture / 아키텍처
 
-> **Current source: 4.5.2 / 현재 소스: 4.5.2** — [Verification and pending gates / 검증·남은 게이트](RELEASE_4_5_2.md). [Published 4.5.0 evidence](RELEASE_4_5_0.md) is historical.
+> **Published release: 4.5.2 / 공개 버전: 4.5.2** — [Verification and field-test limits / 검증·실기기 확인 범위](RELEASE_4_5_2.md).
 > Version-specific v4.3.0 results below and [4.4.0 validation](MULTI_RECEIVER_4_4_0.md) are historical. / 아래 이전 버전 수치는 당시 검증 이력이며 현재 변경·검증 범위와 구분합니다.
 
 ## System Overview / 시스템 개요
@@ -83,7 +83,7 @@ zero-output stages; a rejected connection cannot skip the final commit.
 - **BuiltinFilter** — HPF+LPF audio processor (AudioProcessor subclass). Inserted into AudioProcessorGraph alongside VSTs. HPF default ON 60Hz, LPF default OFF 16kHz. Supports mono + stereo. / HPF+LPF 오디오 프로세서 (AudioProcessor 서브클래스). VST와 함께 AudioProcessorGraph에 삽입.
 - **BuiltinNoiseRemovalDSP (4.5.2)** — Manual-only frozen Learn/adaptive Realtime processor; shared `StreamingStftDenoiser` core, native 8-192 kHz, independent channel state. Fixed actual and reported N-sample delay in both modes (256 samples / 5.333 ms at 48 kHz), including Learn, missing profile and zero reduction. Mode/reduction and the completed compatible manual profile persist in `builtin_noise_removal_dsp` processor/preset state; transient Realtime estimates and unfinished captures do not replace that profile. Control-side serialization uses coherent atomic mailboxes; rendering does not acquire the state mutex, allocate, or wait for a reader. Separate from RNNoise and excluded from AUTO. See [DSP NR](DSP_NOISE_REMOVAL.md).
 - **DspNoiseSpectrumView** — UI-only rendering of the processor's existing input/noise power bins and applied gains, with L/Mono and R selection. Bounded coherent snapshots publish at about 20 Hz; plotting/logarithms run on the message thread. The view adds no FFT or audio buffering. It labels bin resolution, shades unresolved low frequencies and expires stale curves after 750 ms. The plotted input includes speech; the reduction curve is applied gain, not isolated removed-noise audio.
-- **BuiltinNoiseRemoval** — Since 4.5.1, native 48 kHz retains the audio path and reports 1440 samples (480 FIFO + 960 intrinsic delay); other 8-192 kHz rates use preallocated streaming low-pass conversion to/from 48 kHz. Independent L/R state and gate timing remain at 48 kHz; converted latency is reported in host samples. Chain/editor status refreshes after device changes. Historical 4.5.0 retains its 48 kHz-only behavior.
+- **BuiltinNoiseRemoval** — Native 48 kHz reports 1440 samples (480 FIFO + 960 intrinsic delay); other 8-192 kHz rates use preallocated streaming low-pass conversion to/from 48 kHz. Independent L/R state and gate timing remain at 48 kHz; converted latency is reported in host samples. Chain/editor status refreshes after device changes.
 - **BuiltinAutoGain** — LUFS-based automatic gain control (AudioProcessor subclass). WebRTC-inspired dual-envelope level detection (fast 10ms/200ms + slow 0.4s LUFS, max selection) with direct gain computation (no IIR gain envelope). K-weighting ITU-R BS.1770 sidechain. Incremental `runningSquareSum_`. Configurable target LUFS, lowCorr/hiCorr (hold↔full correction blend), max gain 22dB, freeze gate (holds current gain during silence). -6dB internal target offset for open-loop overshoot compensation. / LUFS 기반 자동 게인 제어 (AudioProcessor 서브클래스). WebRTC 영감의 듀얼 엔벨로프 레벨 감지 (fast 10ms/200ms + slow 0.4s LUFS) + 직접 게인 연산 (IIR 게인 엔벨로프 없음). K-weighting ITU-R BS.1770 사이드체인. 증분식 `runningSquareSum_`. freeze 게이트: 무음 시 현재 게인 유지.
 - **PluginLoadHelper** — Helper for cross-platform VST loading. Abstracts platform-specific plugin loading paths and formats. / 크로스 플랫폼 VST 로딩 헬퍼. 플랫폼별 플러그인 로딩 경로와 포맷을 추상화.
 
@@ -326,7 +326,7 @@ Cross-thread APIs return owned snapshots rather than unlocked container pointers
 23. **MonitorOutput device reconnection** — retryable device loss is tracked by `monitorLost_` for external `audioDeviceError`/`audioDeviceStopped` events only. Internal teardown is ignored, successful start clears retry state, and `SampleRateMismatch` stays paused instead of polling the UI timer. / 모니터 재연결은 retry 가능한 외부 장치 lost에만 적용하며, 내부 teardown과 샘플레이트 불일치는 반복 재연결하지 않습니다.
 24. **WebSocket sendFrame bool return** — `sendFrame` returns `bool`; on `false`, `broadcastToClients` closes socket for immediate dead client detection (prevents repeated write-error log spam). / `sendFrame`이 `bool` 반환; 실패 시 소켓 즉시 닫아 dead client 감지.
 
-## Optional external DPWIM installation (4.5.1)
+## Optional external DPWIM installation
 
 DPWIM remains an external Windows VST. `DpwimInstaller` checks the official
 stable release and verifies SHA-256, bounded paths/ZIP contents, VST3 metadata

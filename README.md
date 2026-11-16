@@ -22,7 +22,9 @@
 
 <h3 align="center">📖 <a href="docs/QUICKSTART.md">Quick Start</a> · <a href="docs/USER_GUIDE.md">User Guide</a> · <a href="#faq">FAQ</a> · 💬 <a href="https://litt.ly/livetrack">Contact</a></h3>
 
-> **4.5.2 candidate / 후보** — Adds manual Built-in NoiseRemover (DSP) with Learn/Realtime and live input/noise/reduction plots; new Receivers default to Medium. [Verification and scan status / 검증·검사 상태](docs/RELEASE_4_5_2.md). Published 4.5.1 is the upgrade baseline.
+> **4.5.2 released / 정식 릴리스** — Manual Built-in NoiseRemover (DSP) offers Learn/Realtime modes and live input/noise/reduction plots; new Receivers default to Medium. [Download 4.5.2](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.5.2) · [Verification and scan results](docs/RELEASE_4_5_2.md).
+>
+> 수동으로 추가하는 내장 NoiseRemover (DSP)에 Learn/Realtime 모드와 실시간 입력·노이즈·감쇄 그래프가 제공됩니다. 새 Receiver의 기본 버퍼는 Medium입니다. [4.5.2 다운로드](https://github.com/LiveTrack-X/DirectPipe/releases/tag/v4.5.2) · [검증·검사 결과](docs/RELEASE_4_5_2.md).
 >
 > **Windows mic-level hold is off by default.** It affects the exact selected supported WASAPI shared input in all apps; manual Windows slider changes are corrected while enabled. ASIO is unsupported; mute and boost are unchanged. [Usage and limits](docs/USER_GUIDE.md#windows-mic-level-hold). / **Windows 마이크 레벨 유지는 기본 꺼짐**입니다. 정확히 식별한 선택 WASAPI 공유 입력에만 적용하며 다른 앱과 수동 Windows 볼륨 변경에도 영향을 줍니다. ASIO는 지원하지 않고 음소거·부스트는 바꾸지 않습니다. [사용법과 제한](docs/USER_GUIDE.md#windows-mic-level-hold).
 
@@ -72,7 +74,7 @@ Apply VST plugins (noise removal, EQ, compressor, etc.) to your USB mic and deli
   <img src="docs/images/main-ui.png" alt="DirectPipe earlier-version UI illustration" width="700">
 </p>
 
-Earlier-version illustration / 이전 버전 화면 예시. Version 4.5.1 adds separate L/R meter bars and RNNoise processing status.
+Earlier-version illustration; current releases show separate L/R meter bars and RNNoise processing status. / 이전 버전 화면 예시입니다. 현재 버전은 독립 L/R 미터와 RNNoise 처리 상태를 표시합니다.
 
 **DirectPipe는 누구를 위한 건가요? / Who is DirectPipe for?**
 
@@ -391,7 +393,7 @@ thirdparty/               VST2 SDK, ASIO SDK (not included), RNNoise (BSD-3, inc
 - [Platform Guide](docs/PLATFORM_GUIDE.md) — 플랫폼별 가이드 (Windows/macOS/Linux) / Platform-specific setup, features, and limitations
 - [Release Notes](docs/ReleaseNote.md) — 변경 이력 / Changelog and version history
 - [4.5.2 Verification](docs/RELEASE_4_5_2.md) — 이번 버전 검증·제한사항 / Version evidence and limitations
-- [4.5.1 Documentation Audit](docs/DOCUMENTATION_AUDIT_4_5_1.md) — 이전 릴리스 문서 검토 / Previous release documentation review
+- [4.5.2 Documentation Audit](docs/DOCUMENTATION_AUDIT_4_5_2.md) — 현재 릴리스 문서 검토 / Current release documentation review
 - [Published 4.5.0 Verification](docs/RELEASE_4_5_0.md) — 이전 공개 버전 기록 / Previous published-release evidence
 - [4.4.0 Changes and Validation](docs/MULTI_RECEIVER_4_4_0.md) — 독립 Receiver·프리셋 수정·업데이트와 검증 범위 / Independent Receivers, preset fixes, upgrade workflow and validation scope
 - [Auto Design](docs/AUTO_DESIGN.md) — [Auto] 설계 원칙 및 파라미터 근거 / Auto chain design principles, parameter rationale
@@ -1095,7 +1097,7 @@ DirectPipe는 **인앱 업데이트 알림**을 지원합니다. 새 버전이 �
 **Windows**: "Update Now" 버튼으로 자동 다운로드 → exe 교체 → 재시작. v4.2.0 이후 릴리즈는 정확히 일치하는 `checksums.sha256` 항목과 SHA-256을 필수 확인하며, metadata가 없거나 읽지 못하거나 불일치하면 fail-closed로 중단합니다.
 **macOS/Linux**: "View on GitHub" 버튼으로 릴리즈 페이지에서 수동 다운로드.
 
-**4.5.0 Receiver 업데이트**: 4.3.0 업데이터는 본체만 교체합니다. 업데이트된 본체를 실행한 뒤 Windows **Settings > Update Receiver...**에서 Receiver의 설치 경로·버전을 확인하고 갱신하세요. 사용자 경로는 **Choose Folder...**로 선택하고, OBS 등이 사용 중이면 직접 종료한 뒤 **Retry** 또는 **Later**를 선택합니다. Receiver만 갱신할 때 DirectPipe는 계속 실행되며, 같은 버전과 더 최신 설치본은 덮어쓰지 않습니다.
+**Receiver 업데이트**: 4.3.0 업데이터는 본체만 교체합니다. 업데이트된 본체를 실행한 뒤 Windows **Settings > Update Receiver...**에서 Receiver의 설치 경로·버전을 확인하고 갱신하세요. 사용자 경로는 **Choose Folder...**로 선택하고, OBS 등이 사용 중이면 직접 종료한 뒤 **Retry** 또는 **Later**를 선택합니다. Receiver만 갱신할 때 DirectPipe는 계속 실행되며, 같은 버전과 더 최신 설치본은 덮어쓰지 않습니다.
 
 브라우저 수동 다운로드는 Windows 인앱 checksum 검사 범위 밖입니다.
 
@@ -1108,7 +1110,7 @@ DirectPipe includes **in-app update notification**. When a newer version is avai
 **Windows**: Click "Update Now" for auto-download → replace exe → restart. Releases v4.2.0 and later require an exact readable `checksums.sha256` entry and matching SHA-256; missing, unreadable, or mismatched metadata fails closed.
 **macOS/Linux**: Click "View on GitHub" to manually download from the release page.
 
-**Receiver upkeep in 4.5.0**: The 4.3.0 updater replaces only the host. After launching the updated host, open Windows **Settings > Update Receiver...** to review and update existing Receivers too. Use **Choose Folder...** for custom folders. Close OBS or another using app yourself before **Retry**, or choose **Later**. Receiver-only updates keep DirectPipe running and preserve same/newer installations.
+**Receiver upkeep**: The 4.3.0 updater replaces only the host. After launching the updated host, open Windows **Settings > Update Receiver...** to review and update existing Receivers too. Use **Choose Folder...** for custom folders. Close OBS or another using app yourself before **Retry**, or choose **Later**. Receiver-only updates keep DirectPipe running and preserve same/newer installations.
 
 Manual browser downloads are outside the Windows in-app checksum check.
 
@@ -1268,6 +1270,8 @@ SDAD는 현재 범위, 검증 증거, 미해결 항목, 릴리즈나 공개 호�
 
 GPL v3 — [LICENSE](LICENSE)
 
-### NoiseRemover (DSP) — 4.5.2 candidate
+### NoiseRemover (DSP) — 4.5.2
 
 Add manually with **Add Plugin → Built-in → NoiseRemover (DSP)**; AUTO defaults/reset keep Filter + RNNoise + Auto Gain. Learn captures two seconds of noise-only input and freezes the completed profile; Realtime adapts without replacing that saved manual profile. Mode, reduction (0–24 dB; default 12 dB) and completed profile persist in presets. The editor overlays live input (including speech) and estimated noise, then shows applied reduction for L/Mono or R. At 48 kHz the DSP path adds and reports 256 samples (5.333 ms), including learning/no profile/zero attenuation. Device, other plugin and Receiver delays are additional. Statistical estimation can affect weak or sustained voice; listening and hardware acceptance remain separate from software tests. See the [DSP guide](docs/DSP_NOISE_REMOVAL.md) and [current release evidence](docs/RELEASE_4_5_2.md).
+
+**Add Plugin → Built-in → NoiseRemover (DSP)**에서 수동 추가합니다. AUTO 기본 구성·초기화는 Filter + RNNoise + Auto Gain을 유지합니다. Learn은 잡음만 있는 입력을 2초간 학습해 프로필을 고정하고, Realtime은 저장된 수동 프로필을 덮어쓰지 않고 자동 적응합니다. 모드·감쇄량(0–24 dB, 기본 12 dB)·완료된 프로필은 프리셋에 저장됩니다. 편집창에서 L/Mono 또는 R의 실시간 입력(음성 포함)·추정 노이즈·실제 적용 감쇄를 확인할 수 있습니다. 48 kHz에서 DSP 지연은 256샘플(5.333 ms)이며 학습 중·프로필 없음·감쇄 0에서도 동일하게 보고합니다. 장치·다른 플러그인·Receiver 지연은 추가됩니다. 약하거나 지속적인 음성이 영향을 받을 수 있으며 청취·실기기 검증은 소프트웨어 검사와 별개입니다. [DSP 안내](docs/DSP_NOISE_REMOVAL.md)와 [현재 릴리스 검증 기록](docs/RELEASE_4_5_2.md)을 확인하세요.

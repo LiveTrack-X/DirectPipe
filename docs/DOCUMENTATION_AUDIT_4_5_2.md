@@ -1,16 +1,17 @@
 # DirectPipe 4.5.2 documentation and source-comment audit
 
 Date: 2026-11-16
-Status: Source/document reconciliation; release execution is recorded separately.
+Status: Published 4.5.2 documentation; post-publication correction recorded below.
 
 ## Scope and evidence
 
-The published 4.5.1 source is the comparison baseline. This audit reconciles
+The previously published 4.5.1 source was the preparation comparison baseline. This audit reconciles
 4.5.2's manual DSP processor, spectrum view and fresh Receiver default against
 current source/tests. It also checks current usage, product, architecture, API,
 build, test, update, dependency and release-document routes for stale claims.
-The active local release packet is `SPEC/DP-452-RELEASE-0001.md`; local control
-files are not required to build or use the public source.
+Release preparation used local packet `SPEC/DP-452-RELEASE-0001.md`; the subsequent
+documentation correction uses `SPEC/DP-452-DOCS-0001.md`. Local control files are
+not required to build or use the public source.
 
 The consistency guard inventories tracked/current Markdown by path, line count
 and SHA-256, classifies historical records, checks current document links and
@@ -79,16 +80,17 @@ points rather than mechanically rewritten across unrelated code.
 - Prior VirusTotal reports bind exact prior bytes. Final archives/payloads and
   public downloads require their own identity/hash checks and applicable scans.
 
-## Validation and outstanding gates
+## Preparation validation and subsequent publication
 
 Documentation validation uses `python tools/check_release_consistency.py`,
 `python tools/check_text_integrity.py --repo-root .`, and `git diff --check`.
 Their executed results and fresh software/CI results are recorded in the
 [4.5.2 verification record](RELEASE_4_5_2.md), not inferred from this inventory.
 
-At source reconciliation, exact-source multi-platform CI, final public-payload
-scan/hash review and independently verified publication remain release gates.
-The release stays draft until the coordinator records those gates as passed.
+At initial source reconciliation, exact-source multi-platform CI, final public-payload
+scan/hash review and independently verified publication were still release gates.
+Those publication gates were subsequently completed as recorded below and in the
+release verification record. Physical-device, listening and long-run limits remain.
 Historical records, live app/devices/configuration and installed plugins were
 not modified by this documentation audit. No source-level important defect was
 identified by this document/comment pass; software and artifact review remain
@@ -124,3 +126,36 @@ body were compared. This correction changed documentation/release metadata only.
 요약한 상태였습니다. 모든 릴리스 내용을 영어·한국어 각각의 전체 본문으로
 수정하고 링크·파일명·CI 및 검사 수치·공개 본문을 대조했습니다. 이번 보완은
 문서와 릴리스 설명에 반영했습니다.
+
+## Post-publication documentation correction
+
+The owner identified stale candidate wording on the main page after publication.
+The earlier audit missed current release-status labels: version metadata and link
+checks passed while README, security, contributor, quick-start and platform prose
+still described a pre-release. This correction updates those labels to published
+4.5.2, adds matching English/Korean README summaries, fixes the DPWIM guide's
+available built-in count (four, with three AUTO defaults), routes current guides
+to current evidence and refreshes current version examples. The build guide now
+matches CI's immutable-tag creation and draft-only upload behavior. Security
+wording distinguishes control listeners from UDP notifications and does not
+claim that localhost binding prevents browser-mediated requests.
+
+The existing consistency guard now rejects version-qualified pre-release labels
+in current guides once the release record says Published. Before correction it
+rejected eight actual stale labels; historical release/preparation records and
+technical test-candidate wording remain distinct. This is a targeted regression
+guard, not a proof that all documentation is correct.
+
+The repository now uses only `main`; contributor guidance records this policy.
+Previous local/DirectPipe remote branch tips and full history were preserved in
+a verified local recovery bundle before extra branches were removed. Tags and
+the separate DirectLoopMic remote were preserved. This documentation correction
+does not rebuild binaries, change the published source tag/assets, or alter the
+owner-edited issue discussion.
+
+Correction validation: the consistency guard passed (67 Markdown records, 35
+current, 145 source inventory entries), canonical version checks passed, UTF-8
+integrity and whitespace checks passed, and an independent read-only review
+found no actionable material issue in the tracked current-doc/guard changes.
+These checks do not add new runtime/hardware acceptance. Public tag and seven
+release-asset identities were compared before publication of this docs-only fix.

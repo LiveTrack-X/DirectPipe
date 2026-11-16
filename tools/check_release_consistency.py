@@ -42,6 +42,12 @@ if not re.search(re.escape(version + ".0"), guide):
 
 paths = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=root, text=True).splitlines()
 historical_names = {"MULTI_RECEIVER_4_4_0.md", "MONO_VST_ROUTING.md", "RECEIVER_RELIABILITY_UPDATE.md"}
+release_record = root / f"docs/RELEASE_{version.replace('.', '_')}.md"
+published = bool(re.search(r"^Status: Published\b", release_record.read_text(encoding="utf-8"), re.M))
+# Once published, current guides must not keep the pre-release version label.
+# Restrict this to version-qualified labels: test candidates and historical
+# checkpoint prose remain valid in current documents.
+stale_label = re.compile(rf"\b(?:v|Version\s+)?{re.escape(version)}\s+(?:candidate\b|후보|unreleased\b)", re.I)
 inventory = []
 for rel in sorted(set(paths)):
     path = root / rel
@@ -49,7 +55,7 @@ for rel in sorted(set(paths)):
         continue
     historical = ((rel.startswith("dist/") and rel not in {"dist/release_body.md", f"dist/release_body_v{version}.md", "dist/RELEASE_NOTES.md"})
                   or "/superpowers/" in rel or path.name in historical_names
-                  or (path.name.startswith(("RELEASE_", "DOCUMENTATION_AUDIT_")) and version.replace(".", "_") not in path.name))
+                  or (path.name.startswith(("RELEASE_", "DOCUMENTATION_AUDIT_", "PRE_RELEASE_REVIEW_")) and version.replace(".", "_") not in path.name))
     content = path.read_text(encoding="utf-8")
     inventory.append({"path": rel, "role": "historical" if historical else "current",
                       "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "lines": len(content.splitlines())})
@@ -57,6 +63,10 @@ for rel in sorted(set(paths)):
         continue
     # Fenced examples are examples, not local navigational links.
     prose = re.sub(r"```.*?```", "", content, flags=re.S)
+    if published and rel not in {f"docs/RELEASE_{version.replace('.', '_')}.md", f"docs/DOCUMENTATION_AUDIT_{version.replace('.', '_')}.md"}:
+        for line in prose.splitlines():
+            if stale_label.search(line):
+                errors.append(f"Published version still labelled pre-release: {rel}: {line.strip()}")
     for target in re.findall(r"\]\(([^)]+)\)", prose):
         target = target.strip().split(' "')[0].strip("<>")
         if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target) or target.startswith(("#", "/", "//")):

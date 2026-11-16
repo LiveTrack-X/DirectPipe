@@ -1,10 +1,8 @@
-# RNNoise and L/R meters — 4.5.1 behavior and checkpoints
+# RNNoise and L/R meters — current behavior and historical checkpoints
 
 Date: 2026-11-13
 Scope: RNNoise sample-rate conversion/status and existing input/output meters.
-Published 4.5.0 binaries and their original 48 kHz limitation are unchanged.
-
-This behavior shipped in 4.5.1 and is retained in the 4.5.2 source. The checkpoints
+This behavior shipped in 4.5.1 and is retained in the published 4.5.2 release. The checkpoints
 below preserve their original test runs; use [current release evidence](RELEASE_4_5_2.md)
 for fresh validation/publication status. The separate manual-only DSP processor
 and its in-editor spectra are described in [NoiseRemover (DSP)](DSP_NOISE_REMOVAL.md).

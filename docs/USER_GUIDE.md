@@ -643,8 +643,8 @@ DPWIM은 빌트인이나 Auto 구성 요소가 아닙니다. 기존 인스턴스
 - **Limiter Ceiling**: Post limiter ceiling (고급에서 노출되는 유일한 limiter 항목, -2.0~0.0 dBTP, 기본 -1.0)
 - **고정 내부값 / Fixed internal**: post limiter lookahead 1ms, release 50ms (UI 미노출)
 
-> **4.5.1**: Noise Removal은 8-192 kHz 입력을 내부 48 kHz로 변환하여 처리합니다. 48 kHz에서는 변환을 거치지 않습니다. 이전 4.5.0의 기존 48 kHz 제한과 구분합니다.
-> Version 4.5.1 converts 8-192 kHz to/from RNNoise's 48 kHz engine. Native 48 kHz avoids conversion. Historical 4.5.0 has the original 48 kHz limitation.
+> **4.5.2**: Noise Removal은 8-192 kHz 입력을 내부 48 kHz로 변환하여 처리합니다. 48 kHz에서는 변환을 거치지 않습니다.
+> Version 4.5.2 converts 8-192 kHz to/from RNNoise's 48 kHz engine. Native 48 kHz avoids conversion.
 
 ### 내장 프로세서 상세 가이드 / Built-in Processor Details
 
@@ -667,9 +667,9 @@ AI 기반 노이즈 억제. 배경 소음(키보드, 팬, 환경 소음)을 실�
   - **Light (가벼움)**: VAD 0.50. 약한 배경 소음 제거. 음성 왜곡 최소 / Mild noise. Minimal voice distortion
   - **Standard (표준)**: VAD 0.70. 일반적인 사용에 권장 (**기본값**) / Typical use (**default**)
   - **Aggressive (강력)**: VAD 0.90. 시끄러운 환경. 작은 목소리가 잘릴 수 있음 / Noisy environments. May clip quiet speech
-- **샘플레이트 / Sample rate (4.5.1)**: 8-192 kHz 지원. 48 kHz는 기존 경로, 다른 주파수는 내부 리샘플링을 사용합니다. 변환 지연은 전체 Latency에 반영됩니다 / Native 48 kHz retains the original path; other supported rates use internal conversion, included in reported latency.
+- **샘플레이트 / Sample rate**: 8-192 kHz 지원. 48 kHz는 기존 경로, 다른 주파수는 내부 리샘플링을 사용합니다. 변환 지연은 전체 Latency에 반영됩니다 / Native 48 kHz retains the original path; other supported rates use internal conversion, included in reported latency.
 - **동작 상태 / Status**: 체인과 편집창에서 `Active: native 48 kHz`, `Active: 44.1 -> 48 -> 44.1 kHz` 또는 비활성 이유를 표시합니다. 오디오 설정 변경 시 갱신됩니다 / The chain and editor show native/converted activity or the inactive reason and refresh after audio changes.
-- **입출력 L/R 미터 / Input/output L/R meters (4.5.1)**: 기존 양쪽 미터 영역에서 L/R을 따로 표시합니다. 입력은 Mono 혼합·복제 전의 선택된 캡처 채널에 게인·입력 뮤트를 반영한 값, 출력은 최종 보호 후 / 목적지별 볼륨·뮤트 전의 처리 신호입니다. 입력이 한쪽뿐이면 다른 입력 막대는 0이며, Mono 출력의 두 막대는 같을 수 있습니다 / Input shows selected capture channels before Mono mixing/duplication, with gain/mute applied; output is post final protection, pre destination volume/mute. Only the Mono output copies may display equal channels.
+- **입출력 L/R 미터 / Input/output L/R meters**: 기존 양쪽 미터 영역에서 L/R을 따로 표시합니다. 입력은 Mono 혼합·복제 전의 선택된 캡처 채널에 게인·입력 뮤트를 반영한 값, 출력은 최종 보호 후 / 목적지별 볼륨·뮤트 전의 처리 신호입니다. 입력이 한쪽뿐이면 다른 입력 막대는 0이며, Mono 출력의 두 막대는 같을 수 있습니다 / Input shows selected capture channels before Mono mixing/duplication, with gain/mute applied; output is post final protection, pre destination volume/mute. Only the Mono output copies may display equal channels.
 
 #### NoiseRemover (DSP) — 4.5.2
 
@@ -1322,7 +1322,7 @@ DirectPipe는 실행 시 백그라운드에서 최신 공개 버전을 확인합
 
 업데이트 버튼은 **공개 릴리즈**를 사용합니다. **4.3.0 업데이터는 본체만 교체**하므로 업데이트된 본체를 실행한 다음 아래 **Settings > Update Receiver...** 절차로 기존 Receiver도 갱신하세요. 같은 릴리즈의 본체·Receiver 조합을 사용하세요. 독립 수신은 4.4.0에서 도입되었으며 구형 연결의 호환 경로는 유지합니다. / The updater uses **published releases**. **The 4.3.0 updater replaces only the host**; launch the updated host and then update existing Receivers using **Settings > Update Receiver...** below. Use a matching host/Receiver release pair; independent reception was introduced in 4.4.0 and the legacy compatibility path remains available.
 
-4.5.0은 본체 종료 대기를 60초로 제한하고 실패 단계·이유·복구 파일을 로그에 기록합니다. 초기 복원과 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며, 시작 미확인 시에는 복구 파일을 보존합니다. 이전 설치본에서 넘어오는 첫 업데이트는 **이전 설치본의 업데이터**가 실행합니다. 멈춤이 발생하면 기존 EXE와 백업을 보존하고 [업데이트 진단·복구 안내](WINDOWS_UPDATE_RECOVERY.md)를 확인하세요. / Version 4.5.0 adds a 60-second host wait and persistent stage/error/recovery diagnostics. Verified previous EXEs are cleaned only after initial restore and window/tray startup confirmation; unconfirmed starts retain recovery files. The first upgrade from an older binary still uses its older updater. Keep existing EXE/backup files if it stops; see the recovery guide.
+현재 업데이터는 본체 종료 대기를 60초로 제한하고 실패 단계·이유·복구 파일을 로그에 기록합니다. 초기 복원과 창/트레이 시작이 확인된 뒤 검증된 이전 EXE를 정리하며, 시작 미확인 시에는 복구 파일을 보존합니다. 이전 설치본에서 넘어오는 첫 업데이트는 **이전 설치본의 업데이터**가 실행합니다. 멈춤이 발생하면 기존 EXE와 백업을 보존하고 [업데이트 진단·복구 안내](WINDOWS_UPDATE_RECOVERY.md)를 확인하세요. / The current updater uses a 60-second host wait and persistent stage/error/recovery diagnostics. Verified previous EXEs are cleaned only after initial restore and window/tray startup confirmation; unconfirmed starts retain recovery files. The first upgrade from an older binary still uses its older updater. Keep existing EXE/backup files if it stops; see the recovery guide.
 
 정상 업데이트에서는 새 프로그램의 초기 설정·플러그인 로딩과 창/트레이 준비가 확인된 뒤 이전 본체 EXE를 정리합니다. **시작 시 트레이로 최소화** 설정이 켜져 있으면 창이 보이지 않아도 트레이 시작을 확인합니다. 시작을 확인하지 못하거나 복원·파일 정리가 실패하면 백업을 유지하고 단계·로그 위치를 안내합니다. 날짜가 붙은 수동 백업과 설정은 자동 정리 대상이 아닙니다. / After verified initial restore and window/tray startup, the updater removes only known previous host executables. Saved tray startup is respected. Failed or unconfirmed startup/cleanup retains recovery files and provides diagnostic details; dated manual backups and settings are preserved.
 

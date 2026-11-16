@@ -1,10 +1,10 @@
 # Low-latency voice noise-removal prototype
 
-Date: 2026-11-16. Experimental software checkpoint, not a shipped feature.
+Date: 2026-11-16. Historical experimental checkpoint, separate from shipped-product verification.
 Authority/acceptance: `../../SPEC/DP-STFT-NR-0001.md` (local protocol).
 
 This document preserves the earlier isolated 33-test/30-row experiment. Later
-local source integration adds Learn/frozen and Realtime/adaptive modes; see
+integration shipped Learn/frozen and Realtime/adaptive modes in 4.5.2; see
 [current DSP feature/evidence](../../docs/DSP_NOISE_REMOVAL.md). The shared core
 now lives in `host/Source/Audio/StreamingStftDenoiser.h`; this directory's header
 is a compatibility alias. Original WAV/timing hashes remain historical and were
